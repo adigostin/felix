@@ -1,0 +1,137 @@
+
+#include "dispids.h"
+
+import "servprov.idl";
+
+//cpp_quote("#ifdef __midl")
+typedef DWORD VSITEMID;
+typedef LONG VSHPROPID;
+//cpp_quote("#endif")
+
+[uuid(C045D7BF-B8F2-4F6E-8E4A-0D4DF3322AC7)]
+library ATLProject1Lib
+{
+	importlib("stdole2.tlb");
+
+	[uuid(15412FDD-6A57-420C-933E-0A89A1DF497D)]
+	enum OutputFileType { Binary, Sna };
+
+	[object, uuid(A6F7B8F9-7FD3-4819-963A-5238B32F4123), dual, nonextensible, pointer_default(unique)]
+	interface IZ80ProjectConfig : IDispatch
+	{
+		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
+
+		[id(dispidGeneralProperties), propget] HRESULT GeneralProperties ([out, retval] IDispatch** ppDispatch);
+		[id(dispidGeneralProperties), propput] HRESULT GeneralProperties (IDispatch* pDispatch);
+
+		[id(dispidDebuggingProperties), propget] HRESULT DebuggingProperties ([out, retval] IDispatch** ppDispatch);
+		[id(dispidDebuggingProperties), propput] HRESULT DebuggingProperties (IDispatch* pDispatch);
+
+		[propget] HRESULT ConfigName ([out, retval] BSTR* pbstr);
+		[propput] HRESULT ConfigName (BSTR pbstr);
+
+		[propget] HRESULT PlatformName ([out, retval] BSTR* pbstr);
+		[propput] HRESULT PlatformName (BSTR pbstr);
+
+		HRESULT GetOutputDirectory ([out, retval] BSTR* pbstr);
+		HRESULT GetOutputFileName ([out, retval] BSTR* pbstr);
+		HRESULT GetSldFileName ([out, retval] BSTR* pbstr);
+	};
+
+	// This interface is used by our property pages that contain a Property grid.
+	// It is used to get an object to be displayed in the property grid, out of the 
+	// hierarchy node (IVsHierarchy+VSITEMID) selected by the user.
+	// Must be implemented by every object that is potentially passed to our PGPropertyPage.
+	[object, uuid(D7FCC91A-8E86-4DDD-94B8-166A84DC4599), nonextensible, pointer_default(unique)]
+	interface IPropertyGridObjectSelector : IUnknown
+	{
+		// The returned object should implement IDispatch and have rich type info, as it is shown in a property grid.
+		HRESULT GetObjectForPropertyGrid (REFGUID pageGuid, IUnknown** ppUnkOut) = 0;
+	};
+
+	[object, uuid(6109C4FD-C067-4120-9853-6A2D6682BCB0), dual, nonextensible, pointer_default(unique)]
+	interface IZ80ProjectConfigGeneralProperties : IDispatch
+	{
+		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
+
+		[id(dispidOutputFileType), propget] HRESULT OutputFileType ([out, retval] enum OutputFileType* value);
+		[id(dispidOutputFileType), propput] HRESULT OutputFileType (enum OutputFileType value);
+	};
+
+	[uuid(A6C45AD3-6F11-4116-A65D-9083381843D8)]
+	enum LaunchType {PrintUsr, RandomizeUsr, ResetAndJump };
+
+	[object, uuid(D529C72D-D7B3-40EF-9FF9-31595F4518D2), dual, nonextensible, pointer_default(unique)]
+	interface IZ80ProjectConfigDebugProperties : IDispatch
+	{
+		[id(dispid__name), propget]
+		HRESULT __id ([out, retval] BSTR* value);
+
+		[id(dispidLoadAddress), propget] HRESULT LoadAddress ([out, retval] unsigned int* value);
+		[id(dispidLoadAddress), propput] HRESULT LoadAddress (unsigned int value);
+
+		[id(dispidEntryPointAddress), propget] HRESULT EntryPointAddress ([out, retval] unsigned short* value);
+		[id(dispidEntryPointAddress), propput] HRESULT EntryPointAddress (unsigned short value);
+
+		[id(dispidLaunchType), propget, helpstring("Selects the launch method: PRINT USR from Basic, RANDOMIZE USR from Basic, or jump right after reset.")]
+		HRESULT LaunchType ([out, retval] enum LaunchType* value);
+		[id(dispidLaunchType), propput] HRESULT LaunchType (enum LaunchType value);
+	};
+
+	[object, uuid(A2EE7852-34B1-49A9-A3DB-36232AC6680C), dual, nonextensible, pointer_default(unique)]
+	interface IZ80ProjectItem : IDispatch
+	{
+		VSITEMID GetItemId();
+		HRESULT GetMkDocument (BSTR* pbstrMkDocument);
+		IZ80ProjectItem* Next(); // TODO: keep an unordered_map with itemid/itemptr, then get rid of Next, SetNext, FindDescendant
+		void SetNext (IZ80ProjectItem* next);
+		HRESULT GetProperty (VSHPROPID propid, VARIANT* pvar);
+		HRESULT SetProperty (VSHPROPID propid, REFVARIANT var);
+		HRESULT GetGuidProperty (VSHPROPID propid, GUID* pguid);
+		HRESULT SetGuidProperty (VSHPROPID propid, REFGUID rguid);
+		HRESULT GetCanonicalName (BSTR* pbstrName);
+		HRESULT IsItemDirty (IUnknown *punkDocData, BOOL *pfDirty);
+	}
+
+	[object, uuid(D930CCA1-E515-4569-8DC6-959CD6367654), nonextensible, pointer_default(unique)]
+	interface IZ80ProjectItemParent : IUnknown
+	{
+		IZ80ProjectItem* FirstChild();
+		void SetFirstChild (IZ80ProjectItem* next);
+	}
+
+	// IID Same as the pkgdef entry [$RootKey$\Projects\{D438161C-F032-4014-BC5C-20A80EAFF59B}]
+	[object, uuid(D438161C-F032-4014-BC5C-20A80EAFF59B), dual, nonextensible, pointer_default(unique)]
+	interface IZ80ProjectProperties : IDispatch
+	{
+		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
+
+		[id(dispidConfigurations), propget] HRESULT Configurations ([out, ref, retval] SAFEARRAY(IDispatch*)* configs);
+		[id(dispidConfigurations), propput] HRESULT Configurations (SAFEARRAY(IDispatch*) configs);
+
+		[id(dispidItems), propget] HRESULT Items ([out, ref, retval] SAFEARRAY(IZ80ProjectItem*)* items);
+		[id(dispidItems), propput] HRESULT Items (SAFEARRAY(IZ80ProjectItem*) items);
+
+		[id(dispidProjectGuid), propget] HRESULT Guid ([out, retval] BSTR* value);
+		[id(dispidProjectGuid), propput] HRESULT Guid (BSTR value);
+	}
+
+	[object, uuid(680DBE9B-ABED-41BE-8A26-30446EEC47FB), dual, nonextensible, pointer_default(unique)]
+	interface IZ80SourceFile : IZ80ProjectItem
+	{
+		[propget] HRESULT Path ([out, retval] BSTR* value);
+		[propput] HRESULT Path (BSTR value); // possible to use LPWSTR here? (VT_LPWSTR in VARIANT)
+	};
+
+	[object, uuid(9E7C4743-BF65-4436-BB48-E0B52FF8D6C1), dual, nonextensible, pointer_default(unique)]
+	interface IZ80AsmFile : IZ80SourceFile
+	{
+	};
+
+	[object, uuid(588F7F04-8B74-404D-A80B-F7CCE9FA3E27), dual, nonextensible, pointer_default(unique)]
+	interface IFelixLaunchOptions : IDispatch
+	{
+		[id(1), propget] HRESULT ProjectDir ([out, retval] BSTR* pbstr);
+		[id(1), propput] HRESULT ProjectDir (BSTR pbstr);
+	}
+};

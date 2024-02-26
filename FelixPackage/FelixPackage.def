@@ -1,0 +1,7 @@
+﻿; FelixPackage.def : Declares the module parameters.
+
+LIBRARY      "FelixPackage.DLL"
+
+EXPORTS
+	DllCanUnloadNow            PRIVATE
+	DllGetClassObject          PRIVATE

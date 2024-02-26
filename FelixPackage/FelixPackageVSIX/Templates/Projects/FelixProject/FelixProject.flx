@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Z80Project>
+	<Configurations>
+		<Configuration ConfigName="Debug" PlatformName="ZX Spectrum 48K">
+			<GeneralProperties/>
+			<DebuggingProperties></DebuggingProperties>
+		</Configuration>
+	</Configurations>
+	<Items>
+		<!-- When creating a new project, the package will try to open the first child of the project node. -->
+		<AsmFile Path="start.asm" />
+		<AsmFile Path="lib.asm" />
+	</Items>
+</Z80Project>

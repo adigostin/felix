@@ -1,0 +1,113 @@
+﻿
+; https://docs.microsoft.com/en-us/visualstudio/extensibility/internals/registering-project-and-item-templates?view=vs-2022
+
+[$RootKey$\InstalledProducts\FelixPackage]
+@="#100"
+"Package"="{768bc57b-42a8-42ab-b389-457946c4fc6a}"
+"PID"="1.0"
+"ProductDetails"="#102"
+"LogoID"="#400"
+"UseInterface"=dword:00000000
+
+[$RootKey$\Packages\{768bc57b-42a8-42ab-b389-457946c4fc6a}]
+@="Felix Package"
+"InprocServer32"="$PackageFolder$\FelixPackage.dll"
+"CompanyName"="Adi Gostin"
+"ProductName"="Felix"
+"ProductVersion"="1.0"
+
+[$RootKey$\Packages\{768bc57b-42a8-42ab-b389-457946c4fc6a}\SatelliteDll]
+"DllName"="FelixPackageUI.dll"
+"Path"="$PackageFolder$"
+
+; Be sure to keep DisplayProjectFileExtensions in sync with Z80Project::GetFormatList.
+[$RootKey$\Projects\{D438161C-F032-4014-BC5C-20A80EAFF59B}]
+@="Z80ProjectFactory"
+"DisplayName"="Z80 Project55"
+"DisplayProjectFileExtensions"="Felix Project Files (*.flx);*.flx"
+"Package"="{768bc57b-42a8-42ab-b389-457946c4fc6a}"
+"DefaultProjectExtension"="flx"
+"PossibleProjectExtensions"="flx"
+"ProjectTemplatesDir"="$PackageFolder$\Templates\Projects\FelixProject"
+"Language(VsTemplate)"="Felix Project"
+
+; Name after "Language Services" must match Z80AsmLanguageName.
+; The "@" string must match Z80AsmLanguageGuid.
+[$RootKey$\Languages\Language Services\Z80Asm]
+@="{598BC226-2E96-43AD-AD42-67D9CC6F75F6}"
+"Package"="{768bc57b-42a8-42ab-b389-457946c4fc6a}"
+[$RootKey$\Languages\File Extensions\.asm]
+@="{598BC226-2E96-43AD-AD42-67D9CC6F75F6}"
+
+; New Project template
+[$RootKey$\NewProjectTemplates\TemplateDirs\{768bc57b-42a8-42ab-b389-457946c4fc6a}\/1]
+@="Felix"
+"SortPriority"=dword:00000064
+"TemplatesDir"="$PackageFolder$\Templates\Projects\FelixProject"
+
+; New Item templates
+[$RootKey$\Projects\{D438161C-F032-4014-BC5C-20A80EAFF59B}\AddItemTemplates\TemplateDirs\{768bc57b-42a8-42ab-b389-457946c4fc6a}\/1]
+@="Z80"
+"TemplatesDir"="$PackageFolder$\Templates\Items"
+"SortPriority"=dword:00000064
+
+[$RootKey$\Menus]
+"{768bc57b-42a8-42ab-b389-457946c4fc6a}"=", 1000, 1"
+[$RootKey$\ToolWindows\{6f52da3a-e13c-4a1e-a178-98805f356a66}]
+@="{768bc57b-42a8-42ab-b389-457946c4fc6a}"
+"Name"="Simulator Screen"
+"Float"="100,100,400,400"
+"Orientation"="Right"
+"Style"="Float"
+"Window"="{4A9B7E51-AA16-11D0-A8C5-00A0C921A4D2}"
+// The GUID above is the TaskList GUID. You can replace it with any tool
+// window GUID to have the new window dock to that tool window.
+
+
+[$RootKey$\CLSID\{0D7FDCBD-7936-495D-9EE1-1F7423367705}]
+@="Z80 Project General Property Page"
+"InprocServer32"="$PackageFolder$\FelixPackage.dll"
+
+[$RootKey$\CLSID\{8A5DDADC-8F55-4BD9-80A7-BB5510E078DA}]
+@="Z80 Project Debugging Property Page"
+"InprocServer32"="$PackageFolder$\FelixPackage.dll"
+
+// ----------------------------------------------------------------------------
+// Debug Engine section
+
+// PortSupplier_Id is {AFD42502-0F35-43DA-98A3-7CA143B51E62}. It is used for launching a debug session.
+// PortSupplier_CLSID is {A51C1431-B378-4C13-B32B-8513D35CA4A4}. It is used to instantiate the IDebugPortSupplier2 object.
+
+[$RootKey$\AD7Metrics\PortSupplier\{AFD42502-0F35-43DA-98A3-7CA143B51E62}]
+"CLSID"="{A51C1431-B378-4C13-B32B-8513D35CA4A4}"
+"Name"="Z80SimulatorPortSupplier"
+[$RootKey$\CLSID\{A51C1431-B378-4C13-B32B-8513D35CA4A4}]
+"InprocServer32"="$PackageFolder$\FelixPackage.dll"
+
+// Engine_Id is {190A3900-3E1B-44F7-BA2A-1A3F3FAEA1CA}. It is used for launching a debug session.
+// Engine_CLSID is {0C9A3710-B822-45A1-859B-C5A8B33CF34B}. It is used to instantiate the IDebugEngine2 object.
+
+[$RootKey$\AD7Metrics\Engine\{190A3900-3E1B-44F7-BA2A-1A3F3FAEA1CA}]
+@="Z80 Simulator Debug Engine"
+"CLSID"="{0C9A3710-B822-45A1-859B-C5A8B33CF34B}"
+"Attach"=dword:00000001
+"AutoSelectPriority"=dword:00000004
+"Disassembly"=dword:00000001
+"Name"="Z80 Simulator Debug Engine"
+"SetNextStatement"=dword:1
+"Exceptions"=dword:1
+"Memory"=dword:1
+;"PortSupplier"="{AFD42502-0F35-43DA-98A3-7CA143B51E62}"
+;"ProgramProvider"="{1CE085CD-85AB-49A5-921C-5B80113425D7}"
+; Plenty other options can be found in dbgmetric.h
+[$RootKey$\CLSID\{0C9A3710-B822-45A1-859B-C5A8B33CF34B}]
+"InprocServer32"="$PackageFolder$\FelixPackage.dll"
+
+[$RootKey$\AD7Metrics\Engine\{190A3900-3E1B-44F7-BA2A-1A3F3FAEA1CA}\IncompatibleList]
+"guidCOMPlusNativeEng"="{92EF0900-2251-11D2-B72E-0000F87572EF}"
+"guidCOMPlusOnlyEng"="{449EC4CC-30D2-4032-9256-EE18EB41B62B}"
+"guidNativeOnlyEng"="{449EC4CC-30D2-4032-9256-EE18EB41B62B}"
+"guidScriptEng"="{F200A7E7-DEA5-11D0-B854-00A0244A1DE2}"
+
+;[$RootKey$\CLSID\{1CE085CD-85AB-49A5-921C-5B80113425D7}]
+;"InprocServer32"="$PackageFolder$\FelixPackage.dll"
