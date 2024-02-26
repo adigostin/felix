@@ -56,19 +56,9 @@ public:
 		RETURN_HR(E_NOTIMPL);
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return ++_refCount;
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_refCount);
-		ULONG newRefCount = --_refCount;
-		if (newRefCount == 0)
-			delete this;
-		return newRefCount;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	#pragma region IDebugThread2

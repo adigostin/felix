@@ -19,16 +19,6 @@ HRESULT MakeBstrFromString (const char* name, BSTR* bstr);
 HRESULT MakeBstrFromString (const char* name, size_t len, BSTR* bstr);
 HRESULT MakeBstrFromString (const char* sl_name_from, const char* sl_name_to, BSTR* to);
 
-template<typename T>
-ULONG ReleaseST (T* _this, ULONG& refCount)
-{
-	WI_ASSERT(refCount);
-	if (refCount > 1)
-		return --refCount;
-	delete _this;
-	return 0;
-}
-
 inline VARIANT MakeVariantFromVSITEMID (VSITEMID itemid)
 {
 	VARIANT variant;

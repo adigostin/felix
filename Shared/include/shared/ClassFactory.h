@@ -1,10 +1,11 @@
 
 #pragma once
+#include "TryQI.h"
 
 template<typename I, std::enable_if_t<std::is_constructible_v<IUnknown*, I*>, int> = 0>
 class Z80ClassFactory : public IClassFactory
 {
-	ULONG _ref_count = 0;
+	ULONG _refCount = 0;
 
 	using create_t = HRESULT(*)(I** out);
 	create_t const _create;
@@ -40,19 +41,9 @@ public:
 		return E_NOINTERFACE;
 	}
 
-	virtual ULONG __stdcall AddRef() override
-	{
-		return InterlockedIncrement (&_ref_count);
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG __stdcall Release() override
-	{
-		WI_ASSERT(_ref_count);
-		ULONG new_ref_count = InterlockedDecrement(&_ref_count);
-		if (new_ref_count == 0)
-			delete this;
-		return new_ref_count;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 
 	virtual HRESULT __stdcall CreateInstance(IUnknown* pUnkOuter, REFIID riid, void** ppvObject) override
 	{

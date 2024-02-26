@@ -6,6 +6,7 @@
 #include "shared/z80_register_set.h"
 #include "shared/vector_nothrow.h"
 #include "shared/string_builder.h"
+#include "shared/TryQI.h"
 
 class Z80StackFrame : public IDebugStackFrame2
 {
@@ -60,19 +61,9 @@ public:
 		return E_NOINTERFACE;
 	}
 
-	virtual ULONG __stdcall AddRef() override
-	{
-		return InterlockedIncrement(&_refCount);
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG __stdcall Release() override
-	{
-		WI_ASSERT(_refCount);
-		ULONG new_ref_count = InterlockedDecrement(&_refCount);
-		if (new_ref_count == 0)
-			delete this;
-		return new_ref_count;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	#pragma region IDebugStackFrame2
@@ -344,19 +335,9 @@ public:
 		return E_NOINTERFACE;
 	}
 
-	virtual ULONG __stdcall AddRef() override
-	{
-		return InterlockedIncrement(&_refCount);
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG __stdcall Release() override
-	{
-		WI_ASSERT(_refCount);
-		ULONG new_ref_count = InterlockedDecrement(&_refCount);
-		if (new_ref_count == 0)
-			delete this;
-		return new_ref_count;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	HRESULT ProduceStackFrame (const Entry* entry, FRAMEINFO* fi)

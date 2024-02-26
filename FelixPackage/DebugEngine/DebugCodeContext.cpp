@@ -64,19 +64,9 @@ struct Z80CodeContext : public IDebugCodeContext2, IFelixCodeContext
 		return E_NOINTERFACE;
 	}
 
-	virtual ULONG __stdcall AddRef() override
-	{
-		return InterlockedIncrement(&_refCount);
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG __stdcall Release() override
-	{
-		WI_ASSERT(_refCount);
-		ULONG newRefCount = InterlockedDecrement(&_refCount);
-		if (newRefCount == 0)
-			delete this;
-		return newRefCount;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	#pragma region IDebugMemoryContext2

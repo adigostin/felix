@@ -136,6 +136,8 @@ public:
 				_profferZXSimulatorServiceCookie = VSCOOKIE_NIL;
 			}
 		}
+
+		_simulator = nullptr;
 	}
 
 	#pragma region IVsPackage

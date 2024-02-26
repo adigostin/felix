@@ -36,15 +36,15 @@ class ScreenDeviceImpl : public IScreenDevice, public IInterruptingDevice
 	uint8_t _border;
 	wil::unique_process_heap_ptr<BITMAPINFO> _screenData;
 	wil::srwlock _screenDataLock;
-	com_ptr<IWeakRef> _screenCompleteHandler;
+	IScreenDeviceCompleteEventHandler* _screenCompleteHandler;
 
 public:
-	HRESULT InitInstance (Bus* memory, Bus* io, irq_line_i* irq, IScreenCompleteEventHandler* screenCompleteHandler)
+	HRESULT InitInstance (Bus* memory, Bus* io, irq_line_i* irq, IScreenDeviceCompleteEventHandler* screenCompleteHandler)
 	{
 		this->memory = memory;
 		this->io = io;
 		this->irq = irq;
-		auto hr = ToWeak(screenCompleteHandler, &_screenCompleteHandler); RETURN_IF_FAILED(hr);
+		_screenCompleteHandler = screenCompleteHandler;
 
 		bool pushed = io->write_responders.try_push_back({ this, &process_io_write_request }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 		pushed = irq->interrupting_devices.try_push_back(this); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
@@ -290,12 +290,7 @@ public:
 				dest_pixel[1] = argb;
 
 				if ((col == ticks_per_row - 1) && (row == rows_per_frame - 1))
-				{
-					com_ptr<IScreenCompleteEventHandler> h;
-					auto hr = _screenCompleteHandler->Resolve(&h);
-					if (SUCCEEDED(hr))
-						h->OnScreenComplete();
-				}
+					_screenCompleteHandler->OnScreenComplete();
 
 				col++;
 				_time++;
@@ -428,14 +423,11 @@ public:
 		uint32_t frame_time = (uint32_t) (_time % (ticks_per_row * rows_per_frame));
 		uint32_t row = frame_time / ticks_per_row;
 		uint32_t col = frame_time % ticks_per_row; // column in clock cycles (one unit equals two pixels)
-		com_ptr<IScreenCompleteEventHandler> h;
-		auto hr = _screenCompleteHandler->Resolve(&h);
-		if (SUCCEEDED(hr))
-			h->OnScreenComplete();
+		_screenCompleteHandler->OnScreenComplete();
 	}
 };
 
-HRESULT STDMETHODCALLTYPE MakeScreenDevice (Bus* memory, Bus* io, irq_line_i* irq, IScreenCompleteEventHandler* eh, wistd::unique_ptr<IScreenDevice>* ppDevice)
+HRESULT STDMETHODCALLTYPE MakeScreenDevice (Bus* memory, Bus* io, irq_line_i* irq, IScreenDeviceCompleteEventHandler* eh, wistd::unique_ptr<IScreenDevice>* ppDevice)
 {
 	auto d = wil::make_unique_nothrow<ScreenDeviceImpl>(); RETURN_IF_NULL_ALLOC(d);
 	auto hr = d->InitInstance(memory, io, irq, eh); RETURN_IF_FAILED(hr);

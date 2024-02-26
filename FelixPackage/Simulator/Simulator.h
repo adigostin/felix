@@ -1,6 +1,5 @@
 
 #pragma once
-#include "shared/WeakRef.h"
 #include "shared/z80_register_set.h"
 
 struct ISimulator;
@@ -9,12 +8,12 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{E420CF93-E250-4C0A-A96D-A58D52651D14}")
 {
 };
 
-struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{A8DC31F4-2BFD-4BCF-BBA0-7DA0DE6C9F71}") ISimulatorEventHandler : IWeakRefSource
+struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{A8DC31F4-2BFD-4BCF-BBA0-7DA0DE6C9F71}") ISimulatorEventHandler : IUnknown
 {
 	virtual HRESULT STDMETHODCALLTYPE ProcessSimulatorEvent (ISimulatorEvent* event, REFIID riidEvent) = 0;
 };
 
-struct DECLSPEC_NOVTABLE DECLSPEC_UUID("F578EBE3-7596-4FC7-A976-56C9B0AAD856") IScreenCompleteEventHandler : IWeakRefSource
+struct DECLSPEC_NOVTABLE DECLSPEC_UUID("F578EBE3-7596-4FC7-A976-56C9B0AAD856") IScreenCompleteEventHandler : IUnknown
 {
 	virtual HRESULT STDMETHODCALLTYPE OnScreenComplete() = 0;
 };

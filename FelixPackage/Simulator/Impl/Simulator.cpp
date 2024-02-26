@@ -18,7 +18,7 @@ HRESULT STDMETHODCALLTYPE MakeHC91RAM (Bus* memory_bus, Bus* io_bus, wistd::uniq
 
 // ============================================================================
 
-class SimulatorImpl : public ISimulator, IDeviceEventHandler, IScreenCompleteEventHandler
+class SimulatorImpl : public ISimulator, IDeviceEventHandler, IScreenDeviceCompleteEventHandler
 {
 	ULONG _refCount = 0;
 
@@ -38,9 +38,8 @@ class SimulatorImpl : public ISimulator, IDeviceEventHandler, IScreenCompleteEve
 	bool _running = false; // and this only by the main thread
 	wil::unique_handle _cpuThread;
 	wil::unique_handle _cpu_thread_exit_request;
-	vector_nothrow<com_ptr<IWeakRef>> _eventHandlers; // ISimulatorEventHandler
-	vector_nothrow<com_ptr<IWeakRef>> _screenCompleteHandlers; // IScreenCompleteEventHandler
-	WeakRefToThis _wr;
+	vector_nothrow<com_ptr<ISimulatorEventHandler>> _eventHandlers;
+	vector_nothrow<com_ptr<IScreenCompleteEventHandler>> _screenCompleteHandlers;
 
 	using RunOnSimulatorThreadFunction = HRESULT(*)(void*);
 	stdext::inplace_function<HRESULT()> _runOnSimulatorThreadFunction;
@@ -112,6 +111,7 @@ public:
 	~SimulatorImpl()
 	{
 		WI_ASSERT (_eventHandlers.empty());
+		WI_ASSERT (_screenCompleteHandlers.empty());
 
 		if (_cpu)
 			WI_ASSERT(!_cpu->HasBreakpoints());
@@ -138,8 +138,6 @@ public:
 
 		if (   TryQI<IUnknown>(static_cast<ISimulator*>(this), riid, ppvObject)
 			|| TryQI<ISimulator>(this, riid, ppvObject)
-			|| TryQI<IScreenCompleteEventHandler>(this, riid, ppvObject)
-			|| TryQI<IWeakRefSource>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -449,14 +447,9 @@ public:
 		{
 			WI_ASSERT(_running);
 			_running = false;
-			for (auto& p : _eventHandlers)
+			for (uint32_t i = 0; i < _eventHandlers.size(); i++)
 			{
-				com_ptr<ISimulatorEventHandler> h;
-				auto hr = p->Resolve(&h); LOG_IF_FAILED(hr);
-				if (SUCCEEDED(hr))
-				{
-					hr = h->ProcessSimulatorEvent(bbps.get(), __uuidof(bbps)); LOG_IF_FAILED(hr);
-				}
+				auto hr = _eventHandlers[i]->ProcessSimulatorEvent(bbps.get(), __uuidof(bbps)); LOG_IF_FAILED(hr);
 			}
 
 			return S_OK;
@@ -479,7 +472,7 @@ public:
 			WI_ASSERT(_running);
 			_running = false;
 
-			for (auto& p : _eventHandlers)
+			for (uint32_t i = 0; i < _eventHandlers.size(); i++)
 			{
 				WI_ASSERT(false);
 				/*
@@ -543,13 +536,8 @@ public:
 		using SimulateOneEvent = SimulatorEvent<ISimulatorSimulateOneEvent>;
 		auto event = com_ptr(new (std::nothrow) SimulateOneEvent()); RETURN_IF_NULL_ALLOC(event);
 
-		for (auto& p : _eventHandlers)
-		{
-			com_ptr<ISimulatorEventHandler> h;
-			auto hr = p->Resolve(&h); LOG_IF_FAILED(hr);
-			if (SUCCEEDED(hr))
-				h->ProcessSimulatorEvent(event, __uuidof(event));
-		}
+		for (uint32_t i = 0; i < _eventHandlers.size(); i++)
+			_eventHandlers[i]->ProcessSimulatorEvent(event, __uuidof(event));
 
 		return S_OK;
 	}
@@ -635,7 +623,7 @@ public:
 		RETURN_IF_FAILED(hr);
 
 		_running = false;
-		for (auto& p : _eventHandlers)
+		for (uint32_t i = 0; i < _eventHandlers.size(); i++)
 		{
 			WI_ASSERT(false);
 			/*
@@ -673,13 +661,9 @@ public:
 		using ResumeEvent = SimulatorEvent<ISimulatorResumeEvent>;
 		auto event = com_ptr(new (std::nothrow) ResumeEvent()); RETURN_IF_NULL_ALLOC(event);
 
-		for (auto& p : _eventHandlers)
-		{
-			com_ptr<ISimulatorEventHandler> h;
-			auto hr = p->Resolve(&h); LOG_IF_FAILED(hr);
-			if (SUCCEEDED(hr))
-				h->ProcessSimulatorEvent(event, __uuidof(event));
-		}
+		for (uint32_t i = 0; i < _eventHandlers.size(); i++)
+			_eventHandlers[i]->ProcessSimulatorEvent(event, __uuidof(event));
+
 		return S_OK;
 	}
 
@@ -714,20 +698,14 @@ public:
 /*
 	virtual HRESULT STDMETHODCALLTYPE AdviseSimulatorEvents (ISimulatorEventHandler* handler) override
 	{
-		com_ptr<IWeakRef> wr;
-		auto hr = handler->GetWeakReference(&wr); RETURN_IF_FAILED(hr);
-		auto it = _eventHandlers.find(wr);
-		RETURN_HR_IF (E_INVALIDARG, it != _eventHandlers.end());
+		RETURN_HR_IF (E_INVALIDARG, _eventHandlers.contains(handler));
 		bool added = _eventHandlers.try_push_back(std::move(wr)); RETURN_HR_IF(E_OUTOFMEMORY, !added);
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE UnadviseSimulatorEvents (ISimulatorEventHandler* handler) override
 	{
-		com_ptr<IWeakRef> wr;
-		auto hr = handler->GetWeakReference(&wr); RETURN_IF_FAILED(hr);
-		auto it = _eventHandlers.find(wr);
-		RETURN_HR_IF (E_INVALIDARG, it == _eventHandlers.end());
+		RETURN_HR_IF (E_INVALIDARG, !_eventHandlers.contains(handler));
 		_eventHandlers.erase(it);
 		return S_OK;
 	}
@@ -826,39 +804,27 @@ public:
 	*/
 	virtual HRESULT STDMETHODCALLTYPE AdviseDebugEvents (ISimulatorEventHandler* handler) override
 	{
-		com_ptr<IWeakRefSource> wrs;
-		auto hr = handler->QueryInterface(&wrs); RETURN_IF_FAILED(hr);
-		com_ptr<IWeakRef> wr;
-		hr = wrs->GetWeakRef(&wr); RETURN_IF_FAILED(hr);
-		auto it = _eventHandlers.find(wr); RETURN_HR_IF(E_INVALIDARG, it != _eventHandlers.end());
-		bool pushed = _eventHandlers.try_push_back(std::move(wr)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		auto it = _eventHandlers.find(handler); RETURN_HR_IF(E_INVALIDARG, it != _eventHandlers.end());
+		bool pushed = _eventHandlers.try_push_back(handler); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE UnadviseDebugEvents (ISimulatorEventHandler* handler) override
 	{
-		com_ptr<IWeakRefSource> wrs;
-		auto hr = handler->QueryInterface(&wrs); RETURN_IF_FAILED(hr);
-		com_ptr<IWeakRef> wr;
-		hr = wrs->GetWeakRef(&wr); RETURN_IF_FAILED(hr);
-		auto it = _eventHandlers.find(wr); RETURN_HR_IF(E_INVALIDARG, it == _eventHandlers.end());
+		auto it = _eventHandlers.find(handler); RETURN_HR_IF(E_INVALIDARG, it == _eventHandlers.end());
 		_eventHandlers.erase(it);
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE AdviseScreenComplete (IScreenCompleteEventHandler* handler) override
 	{
-		com_ptr<IWeakRef> weak;
-		auto hr = ToWeak(handler, &weak); RETURN_IF_FAILED(hr);
-		bool pushed = _screenCompleteHandlers.try_push_back(std::move(weak)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		bool pushed = _screenCompleteHandlers.try_push_back(handler); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE UnadviseScreenComplete (IScreenCompleteEventHandler* handler) override
 	{
-		com_ptr<IWeakRef> weak;
-		auto hr = ToWeak(handler, &weak); RETURN_IF_FAILED(hr);
-		auto it = _screenCompleteHandlers.find(weak.get()); RETURN_HR_IF(E_INVALIDARG, it == _screenCompleteHandlers.end());
+		auto it = _screenCompleteHandlers.find(handler); RETURN_HR_IF(E_INVALIDARG, it == _screenCompleteHandlers.end());
 		_screenCompleteHandlers.erase(it);
 		return S_OK;
 	}
@@ -943,40 +909,23 @@ public:
 	{
 		return PostWorkToMainThread([this, event=com_ptr(event), riidEvent]
 			{
-				for (auto& eh : _eventHandlers)
-				{
-					com_ptr<ISimulatorEventHandler> h;
-					auto hr = eh->Resolve(&h);
-					if (SUCCEEDED(hr))
-						h->ProcessSimulatorEvent(event.get(), riidEvent);
-				}
+				for (uint32_t i = 0; i < _eventHandlers.size(); i++)
+					_eventHandlers[i]->ProcessSimulatorEvent(event.get(), riidEvent);
 				return S_OK;
 			});
 	}
 	#pragma endregion
 
-	#pragma region IScreenCompleteEventHandler
-	virtual HRESULT STDMETHODCALLTYPE OnScreenComplete() override
+	#pragma region IScreenDeviceCompleteEventHandler
+	virtual void OnScreenComplete() override
 	{
-		return PostWorkToMainThread([this]
+		// No error checking, not even logging, as in case of error it would probably freeze the app.
+		PostWorkToMainThread([this]
 			{
-				for (auto& weak : _screenCompleteHandlers)
-				{
-					com_ptr<IScreenCompleteEventHandler> h;
-					auto hr = weak->Resolve(&h);
-					if (SUCCEEDED(hr))
-						h->OnScreenComplete();
-				}
-
+				for (uint32_t i = 0; i < _screenCompleteHandlers.size(); i++)
+					_screenCompleteHandlers[i]->OnScreenComplete();
 				return S_OK;
 			});
-	}
-	#pragma endregion
-
-	#pragma region IWeakRefSource
-	virtual HRESULT STDMETHODCALLTYPE GetWeakRef (IWeakRef **weakReference) override
-	{
-		return _wr.GetOrCreate(this, weakReference);
 	}
 	#pragma endregion
 };

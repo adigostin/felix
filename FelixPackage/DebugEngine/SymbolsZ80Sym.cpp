@@ -2,10 +2,11 @@
 #include "pch.h"
 #include "DebugEngine.h"
 #include "../FelixPackage.h"
+#include "shared/TryQI.h"
 
 struct Z80SymSymbols : IZ80Symbols
 {
-	ULONG _ref_count = 0;
+	ULONG _refCount = 0;
 	wil::unique_hlocal_ansistring _text;
 
 	static HRESULT CreateInstance (IDebugModule2* module, IZ80Symbols** to) noexcept
@@ -51,20 +52,9 @@ struct Z80SymSymbols : IZ80Symbols
 		return E_NOINTERFACE;
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return ++_ref_count;
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_ref_count);
-		_ref_count--;
-		if (_ref_count)
-			return _ref_count;
-		delete this;
-		return 0;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	struct Entry

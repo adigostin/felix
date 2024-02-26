@@ -4,6 +4,7 @@
 #include "../FelixPackage.h"
 #include "shared/z80_register_set.h"
 #include "shared/ula_register_set.h"
+#include "shared/TryQI.h"
 
 enum class Reg { A, F, BC, DE, HL, SP, PC, IX, IY, I, R, IM, count };
 static const wchar_t* const RegNames[] = { L"A", L"F", L"BC", L"DE", L"HL", L"SP", L"PC", L"IX", L"IY", L"I", L"R", L"IM" };
@@ -103,7 +104,7 @@ class RegisterDebugProperty : IDebugProperty2
 {
 	wil::com_ptr_nothrow<IDebugThread2> _thread;
 	Reg _reg;
-	ULONG _ref_count = 0;
+	ULONG _refCount = 0;
 
 public:
 	static HRESULT CreateInstance (IDebugThread2* thread, Reg reg, IDebugProperty2** to)
@@ -139,19 +140,9 @@ public:
 		return E_NOINTERFACE;
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return InterlockedIncrement(&_ref_count);
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_ref_count);
-		ULONG new_ref_count = InterlockedDecrement(&_ref_count);
-		if (new_ref_count == 0)
-			delete this;
-		return new_ref_count;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	#pragma region IDebugProperty2
@@ -274,7 +265,7 @@ public:
 class UlaRegisterDebugProperty : IDebugProperty2
 {
 	ula_reg _reg;
-	ULONG _ref_count = 0;
+	ULONG _refCount = 0;
 
 public:
 	static HRESULT CreateInstance (ula_reg reg, IDebugProperty2** to)
@@ -309,19 +300,9 @@ public:
 		return E_NOINTERFACE;
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return InterlockedIncrement(&_ref_count);
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_ref_count);
-		ULONG new_ref_count = InterlockedDecrement(&_ref_count);
-		if (new_ref_count == 0)
-			delete this;
-		return new_ref_count;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	#pragma region IDebugProperty2
@@ -445,19 +426,9 @@ public:
 		return E_NOINTERFACE;
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return InterlockedIncrement(&_refCount);
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_refCount);
-		ULONG new_ref_count = InterlockedDecrement(&_refCount);
-		if (new_ref_count == 0)
-			delete this;
-		return new_ref_count;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	#pragma region IEnumDebugPropertyInfo2
@@ -563,19 +534,9 @@ public:
 		return E_NOINTERFACE;
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return InterlockedIncrement(&_refCount);
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_refCount);
-		ULONG new_ref_count = InterlockedDecrement(&_refCount);
-		if (new_ref_count == 0)
-			delete this;
-		return new_ref_count;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	// Inherited via IDebugProperty2
@@ -714,19 +675,9 @@ public:
 		return E_NOINTERFACE;
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return InterlockedIncrement(&_refCount);
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_refCount);
-		ULONG new_ref_count = InterlockedDecrement(&_refCount);
-		if (new_ref_count == 0)
-			delete this;
-		return new_ref_count;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	static void Cleanup (ULONG celt, DEBUG_PROPERTY_INFO* rgelt)

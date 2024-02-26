@@ -33,7 +33,6 @@ class ScreenWindowImpl
 	wil::unique_hfont _beamFont;
 	wil::unique_hgdiobj _beamPen;
 	LONG _debugFontLineHeight;
-	WeakRefToThis _wr;
 
 	struct render_perf_info
 	{
@@ -76,7 +75,6 @@ public:
 			|| TryQI<IVsWindowFrameNotify3>(this, riid, ppvObject)
 			|| TryQI<IOleCommandTarget>(this, riid, ppvObject)
 			|| TryQI<IScreenCompleteEventHandler>(this, riid, ppvObject)
-			|| TryQI<IWeakRefSource>(this, riid, ppvObject)
 			|| TryQI<IVsBroadcastMessageEvents>(this, riid, ppvObject)
 		)
 			return S_OK;
@@ -648,13 +646,6 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged(VSFPROPID propid) override
 	{
 		return E_NOTIMPL;
-	}
-	#pragma endregion
-
-	#pragma region IWeakRefSource
-	virtual HRESULT STDMETHODCALLTYPE GetWeakRef (IWeakRef **weakReference) override
-	{
-		return _wr.GetOrCreate(this, weakReference);
 	}
 	#pragma endregion
 };

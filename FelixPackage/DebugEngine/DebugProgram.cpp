@@ -28,7 +28,6 @@ class DebugProgramProcessImpl : public IDebugProcess2, IDebugProgram2, IDebugMod
 	com_ptr<ISimulator> _simulator;
 	bool _advisingSimulatorEvents = false;
 	SIM_BP_COOKIE _stepOverOrOutBreakpoint = 0;
-	WeakRefToThis _wrtt;
 
 public:
 	HRESULT InitInstance (IDebugPort2* pPort, LPCOLESTR pszExe, IDebugEngine2* engine, ISimulator* simulator, IDebugEventCallback2* callback)
@@ -67,7 +66,6 @@ public:
 			|| TryQI<IDebugProcess2>(this, riid, ppvObject)
 			|| TryQI<IDebugProgram2>(this, riid, ppvObject)
 			|| TryQI<IDebugModuleCollection>(this, riid, ppvObject)
-			|| TryQI<IWeakRefSource>(this, riid, ppvObject)
 			|| TryQI<ISimulatorEventHandler>(this, riid, ppvObject)
 		)
 			return S_OK;
@@ -109,19 +107,9 @@ public:
 		RETURN_HR(E_NOINTERFACE);
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return ++_refCount;
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_refCount);
-		ULONG newRefCount = --_refCount;
-		if (newRefCount == 0)
-			delete this;
-		return newRefCount;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	#pragma region IDebugProgram2
@@ -540,13 +528,6 @@ public:
 ///		}
 
 		return S_OK;
-	}
-	#pragma endregion
-
-	#pragma region IWeakRefSource
-	virtual HRESULT STDMETHODCALLTYPE GetWeakRef (IWeakRef **weakReference) override
-	{
-		return _wrtt.GetOrCreate(this, weakReference);
 	}
 	#pragma endregion
 

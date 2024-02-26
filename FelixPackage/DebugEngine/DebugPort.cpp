@@ -79,19 +79,9 @@ public:
 		return E_NOINTERFACE;
 	}
 
-	virtual ULONG __stdcall AddRef(void) override
-	{
-		return InterlockedIncrement(&_refCount);
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG __stdcall Release(void) override
-	{
-		WI_ASSERT(_refCount);
-		ULONG newRefCount = InterlockedDecrement(&_refCount);
-		if (newRefCount == 0)
-			DestroyDebugPort(this);
-		return newRefCount;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	#pragma region IDebugPort2

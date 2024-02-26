@@ -24,7 +24,6 @@ class Z80DebugEngine : public IDebugEngine2, IDebugEngineLaunch2, ISimulatorEven
 	SIM_BP_COOKIE _entryPointBreakpoint = 0;
 	SIM_BP_COOKIE _exitPointBreakpoint = 0;
 	bool _advisingSimulatorEvents = false;
-	WeakRefToThis _wrtt;
 	static const uint16_t binFileAddr = 0x8000;
 
 public:
@@ -44,7 +43,6 @@ public:
 			|| TryQI<IDebugEngine2>(this, riid, ppvObject)
 			|| TryQI<IDebugEngineLaunch2>(this, riid, ppvObject)
 			|| TryQI<ISimulatorEventHandler>(this, riid, ppvObject)
-			|| TryQI<IWeakRefSource>(this, riid, ppvObject)
 			|| TryQI<IFelixLaunchOptionsProvider>(this, riid, ppvObject)
 		)
 			return S_OK;
@@ -88,19 +86,9 @@ public:
 		RETURN_HR(E_NOINTERFACE);
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return ++_refCount;
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_refCount);
-		ULONG newRefCount = --_refCount;
-		if (newRefCount == 0)
-			delete this;
-		return newRefCount;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	#pragma region IDebugEngine2
@@ -757,13 +745,6 @@ public:
 		// Another example is the Disassembly window.)
 
 		return S_OK;
-	}
-	#pragma endregion
-
-	#pragma region IWeakRefSource
-	virtual HRESULT STDMETHODCALLTYPE GetWeakRef (IWeakRef **weakReference) override
-	{
-		return _wrtt.GetOrCreate(this, weakReference);
 	}
 	#pragma endregion
 

@@ -257,13 +257,18 @@ struct __declspec(novtable) irq_line_i
 	}
 };
 
+struct IScreenDeviceCompleteEventHandler
+{
+	virtual void OnScreenComplete() = 0;
+};
+
 struct IScreenDevice : IDevice//, IInterruptingDevice
 {
 	//virtual zx_spectrum_ula_regs regs() const = 0;
 	virtual void generate_all() = 0;
 	virtual HRESULT GetScreenData (BITMAPINFO** ppBitmapInfo, POINT* pBeamLocation) = 0;
 };
-HRESULT STDMETHODCALLTYPE MakeScreenDevice (Bus* memory, Bus* io, irq_line_i* irq, IScreenCompleteEventHandler* eh, wistd::unique_ptr<IScreenDevice>* ppDevice);
+HRESULT STDMETHODCALLTYPE MakeScreenDevice (Bus* memory, Bus* io, irq_line_i* irq, IScreenDeviceCompleteEventHandler* eh, wistd::unique_ptr<IScreenDevice>* ppDevice);
 
 struct IKeyboardDevice : IDevice
 {

@@ -15,7 +15,6 @@ class BreakpointManagerImpl : public IBreakpointManager, ISimulatorEventHandler
 	com_ptr<IDebugEngine2> _engine;
 	com_ptr<IDebugProgram2> _program;
 	com_ptr<ISimulator> _simulator;
-	WeakRefToThis _wrtt;
 	unordered_map_nothrow<SIM_BP_COOKIE, com_ptr<IDebugBoundBreakpoint2>> _bps;
 
 public:
@@ -26,15 +25,12 @@ public:
 		p->_engine = engine;
 		p->_program = program;
 		p->_simulator = simulator;
-		auto hr = simulator->AdviseDebugEvents(p); RETURN_IF_FAILED(hr);
 		*ppManager = p.detach();
 		return S_OK;
 	}
 
 	~BreakpointManagerImpl()
 	{
-		WI_ASSERT(_refCount == 1);
-		auto hr = _simulator->UnadviseDebugEvents(this); LOG_IF_FAILED(hr);
 	}
 
 	#pragma region IUnknown
@@ -44,27 +40,16 @@ public:
 
 		if (   TryQI<IUnknown>(static_cast<IBreakpointManager*>(this), riid, ppvObject)
 			|| TryQI<IBreakpointManager>(this, riid, ppvObject)
-			|| TryQI<ISimulatorEventHandler>(this, riid, ppvObject)
-			|| TryQI<IWeakRefSource>(this, riid, ppvObject))
+			|| TryQI<ISimulatorEventHandler>(this, riid, ppvObject))
 			return S_OK;
 
 		*ppvObject = nullptr;
 		RETURN_HR(E_NOINTERFACE);
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return ++_refCount;
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_refCount);
-		if (_refCount > 1)
-			return --_refCount;
-		delete this;
-		return 0;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	#pragma region ISimulatorEventHandler
@@ -121,22 +106,36 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region IWeakRefSource
-	virtual HRESULT STDMETHODCALLTYPE GetWeakRef (IWeakRef **weakReference) override
-	{
-		return _wrtt.GetOrCreate(this, weakReference);
-	}
-	#pragma endregion
-
 	#pragma region IBreakpointManager
 	virtual HRESULT AddBreakpoint (IDebugBoundBreakpoint2* bp, BreakpointType type, bool physicalMemorySpace, UINT64 address) override
 	{
-		for (auto& existing : _bps)
-			WI_ASSERT(existing.second != bp);
+		HRESULT hr;
 
-		bool reserved = _bps.try_reserve(_bps.size() + 1); RETURN_HR_IF(E_OUTOFMEMORY, !reserved);
+		for (auto& existing : _bps)
+			RETURN_HR_IF(E_INVALIDARG, existing.second == bp);
+
+		if (_bps.empty())
+		{
+			hr = _simulator->AdviseDebugEvents(this); RETURN_IF_FAILED(hr);
+		}
+
+		bool reserved = _bps.try_reserve(_bps.size() + 1);
+		if (!reserved)
+		{
+			if (_bps.empty())
+				_simulator->UnadviseDebugEvents(this);
+			RETURN_HR(E_OUTOFMEMORY);
+		}
+
 		SIM_BP_COOKIE cookie;
-		auto hr = _simulator->AddBreakpoint (type, physicalMemorySpace, address, &cookie); RETURN_IF_FAILED(hr);
+		hr = _simulator->AddBreakpoint (type, physicalMemorySpace, address, &cookie);
+		if (FAILED(hr))
+		{
+			if (_bps.empty())
+				_simulator->UnadviseDebugEvents(this);
+			RETURN_HR(hr);
+		}
+
 		bool inserted = _bps.try_insert({ cookie, bp }); WI_ASSERT(inserted);
 		return S_OK;
 	}
@@ -146,6 +145,12 @@ public:
 		auto it = _bps.find_if([bp](auto& p) { return p.second == bp; }); RETURN_HR_IF(E_INVALIDARG, it == _bps.end());
 		auto hr = _simulator->RemoveBreakpoint(it->first); LOG_IF_FAILED(hr);
 		_bps.erase(it);
+
+		if (_bps.empty())
+		{
+			hr = _simulator->UnadviseDebugEvents(this); LOG_IF_FAILED(hr);
+		}
+
 		return S_OK;
 	}
 	
@@ -166,7 +171,7 @@ HRESULT MakeBreakpointManager (IDebugEventCallback2* callback, IDebugEngine2* en
 
 class ErrorBreakpointResolution : IDebugErrorBreakpointResolution2
 {
-	ULONG _ref_count = 0;
+	ULONG _refCount = 0;
 	wil::com_ptr_nothrow<IDebugProgram2> _program;
 	BP_TYPE _bp_type;
 	BP_ERROR_TYPE _errorType;
@@ -208,20 +213,9 @@ public:
 		return E_NOINTERFACE;
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return ++_ref_count;
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_ref_count);
-		_ref_count--;
-		if (_ref_count)
-			return _ref_count;
-		delete this;
-		return 0;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	#pragma region IDebugErrorBreakpointResolution2
@@ -299,19 +293,9 @@ struct BoundBreakpointImpl : IDebugBoundBreakpoint2, IDebugBreakpointResolution2
 		return E_NOINTERFACE;
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return ++_refCount;
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_refCount);
-		if (_refCount > 1)
-			return --_refCount;
-		delete this;
-		return 0;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	#pragma region IDebugBoundBreakpoint2
@@ -455,7 +439,7 @@ struct BoundBreakpointImpl : IDebugBoundBreakpoint2, IDebugBreakpointResolution2
 
 class ErrorBreakpoint : IDebugErrorBreakpoint2
 {
-	ULONG _ref_count = 0;
+	ULONG _refCount = 0;
 	wil::com_ptr_nothrow<IDebugProgram2> _program;
 	wil::com_ptr_nothrow<IDebugPendingBreakpoint2> _pending;
 	BP_ERROR_TYPE _errorType;
@@ -497,20 +481,9 @@ public:
 		return E_NOINTERFACE;
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return ++_ref_count;
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_ref_count);
-		_ref_count--;
-		if (_ref_count)
-			return _ref_count;
-		delete this;
-		return 0;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	#pragma region IDebugErrorBreakpoint2
@@ -631,19 +604,9 @@ struct SimplePendingBreakpoint : IDebugPendingBreakpoint2
 		RETURN_HR(E_NOINTERFACE);
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return InterlockedIncrement(&_refCount);
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_refCount);
-		ULONG newRefCount = InterlockedDecrement(&_refCount);
-		if (newRefCount == 0)
-			delete this;
-		return newRefCount;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	#pragma region IDebugPendingBreakpoint2
@@ -785,7 +748,7 @@ HRESULT SimplePendingBreakpoint_CreateInstance (IDebugEventCallback2* callback, 
 
 class SourceLinePendingBreakpoint : IDebugPendingBreakpoint2, IDebugEventCallback2
 {
-	ULONG _ref_count = 0;
+	ULONG _refCount = 0;
 	com_ptr<IDebugEventCallback2> _callback;
 	com_ptr<IDebugEngine2> _engine;
 	com_ptr<IDebugProgram2> _program;
@@ -843,19 +806,9 @@ public:
 		RETURN_HR(E_NOINTERFACE);
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return ++_ref_count;
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_ref_count);
-		if (_ref_count > 1)
-			return --_ref_count;
-		delete this;
-		return 0;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	#pragma region IDebugPendingBreakpoint2

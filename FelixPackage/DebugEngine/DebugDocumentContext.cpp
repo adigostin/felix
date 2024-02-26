@@ -1,10 +1,11 @@
 
 #include "pch.h"
 #include "DebugEngine.h"
+#include "shared/TryQI.h"
 
 class DocumentContext : public IDebugDocumentContext2
 {
-	ULONG _ref_count = 0;
+	ULONG _refCount = 0;
 
 	wil::unique_bstr _doc_path;
 	uint32_t _line_number;
@@ -54,20 +55,9 @@ public:
 		return E_NOINTERFACE;
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return ++_ref_count;
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_ref_count);
-		_ref_count--;
-		if (_ref_count)
-			return _ref_count;
-		delete this;
-		return 0;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	#pragma region IDebugDocumentContext2
