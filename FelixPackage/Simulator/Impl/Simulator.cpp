@@ -15,6 +15,7 @@ static ATOM wndClassAtom;
 
 HRESULT STDMETHODCALLTYPE MakeHC91ROM (Bus* memory_bus, Bus* io_bus, const wchar_t* folder, const wchar_t* BinaryFilename, wistd::unique_ptr<IMemoryDevice>* ppDevice);
 HRESULT STDMETHODCALLTYPE MakeHC91RAM (Bus* memory_bus, Bus* io_bus, wistd::unique_ptr<IMemoryDevice>* ppDevice);
+HRESULT STDMETHODCALLTYPE MakeBeeper (Bus* io_bus, wistd::unique_ptr<IDevice>* ppDevice);
 
 // ============================================================================
 
@@ -59,6 +60,7 @@ class SimulatorImpl : public ISimulator, IDeviceEventHandler, IScreenDeviceCompl
 	wistd::unique_ptr<IKeyboardDevice> _keyboard;
 	wistd::unique_ptr<IMemoryDevice> _romDevice;
 	wistd::unique_ptr<IMemoryDevice> _ramDevice;
+	wistd::unique_ptr<IDevice> _beeper;
 	vector_nothrow<IDevice*> _active_devices_;
 
 public:
@@ -69,17 +71,15 @@ public:
 		hr = MakeScreenDevice(&memoryBus, &ioBus, &irq, this, &_screen); RETURN_IF_FAILED(hr);
 
 		hr = MakeKeyboardDevice(&ioBus, &_keyboard); RETURN_IF_FAILED(hr);
-		/*
-		com_ptr<IDevice> beeperDevice;
-		hr = make_beeper (&ioBus, &beeperDevice); RETURN_IF_FAILED(hr);
-		hr = simulator->AddDevice(beeperDevice.get()); RETURN_IF_FAILED(hr);
-		*/
+		
+		hr = MakeBeeper(&ioBus, &_beeper); RETURN_IF_FAILED(hr);
+
 		hr = MakeHC91ROM (&memoryBus, &ioBus, dir, romFilename, &_romDevice); RETURN_IF_FAILED(hr);
 ///		hr = _romDevice->AdviseBusAddressRangeChange(this); RETURN_IF_FAILED(hr);
 
 		hr = MakeHC91RAM (&memoryBus, &ioBus, &_ramDevice); RETURN_IF_FAILED(hr);
 
-		bool pushed = _active_devices_.try_push_back({ _screen.get(), _keyboard.get(), _romDevice.get(), _ramDevice.get() }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		bool pushed = _active_devices_.try_push_back({ _screen.get(), _keyboard.get(), _romDevice.get(), _ramDevice.get(), _beeper.get() }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 
 		QueryPerformanceFrequency(&qpFrequency);
 

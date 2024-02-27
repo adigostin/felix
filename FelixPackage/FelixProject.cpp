@@ -5,7 +5,6 @@
 #include "shared/unordered_map_nothrow.h"
 #include "shared/inplace_function.h"
 #include "shared/TryQI.h"
-#include "shared/WeakRef.h"
 #include "Z80Xml.h"
 #include "dispids.h"
 #include "guids.h"
@@ -36,14 +35,12 @@ class Z80Project
 	//, IVsProjectBuildSystem
 	//, IVsBuildPropertyStorage
 	//, IVsBuildPropertyStorage2
-	, IWeakRefSource
 	, IZ80ProjectItemParent
 {
 	static inline wil::com_ptr_nothrow<ITypeLib> _typeLib;
 	static inline wil::com_ptr_nothrow<ITypeInfo> _typeInfo;
 	wil::com_ptr_nothrow<IServiceProvider> _sp;
 	ULONG _refCount = 0;
-	WeakRefToThis _wrtt;
 	GUID _projectInstanceGuid;
 	wil::unique_hlocal_string _location;
 	wil::unique_hlocal_string _filename;
@@ -574,7 +571,6 @@ public:
 			//|| TryQI<IVsProjectBuildSystem>(this, riid, ppvObject)
 			//|| TryQI<IVsBuildPropertyStorage>(this, riid, ppvObject)
 			//|| TryQI<IVsBuildPropertyStorage2>(this, riid, ppvObject)
-			|| TryQI<IWeakRefSource>(this, riid, ppvObject)
 			|| TryQI<IZ80ProjectItemParent>(this, riid, ppvObject)
 		)
 			return S_OK;
@@ -739,7 +735,6 @@ public:
 		_parentHierarchyItemId = VSITEMID_NIL;
 		_firstChild = nullptr;
 		_configs.clear();
-		_wrtt.Reset();
 		return S_OK;
 	}
 
@@ -2176,13 +2171,6 @@ public:
 			return S_FALSE;
 
 		return S_OK;
-	}
-	#pragma endregion
-
-	#pragma region IWeakRefSource
-	virtual HRESULT STDMETHODCALLTYPE GetWeakRef (IWeakRef **weakReference) override
-	{
-		return _wrtt.GetOrCreate(this, weakReference);
 	}
 	#pragma endregion
 

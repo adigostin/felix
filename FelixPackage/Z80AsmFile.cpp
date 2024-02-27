@@ -3,14 +3,13 @@
 #include "FelixPackage.h"
 #include "shared/OtherGuids.h"
 #include "shared/TryQI.h"
-#include "shared/WeakRef.h"
 
 struct Z80AsmFile : IZ80AsmFile, IProvideClassInfo, IOleCommandTarget, IVsGetCfgProvider
 {
 	static inline wil::com_ptr_nothrow<ITypeInfo> _typeInfo;
 	VSITEMID _itemId;
 	ULONG _refCount = 0;
-	com_ptr<IWeakRef> _hier;
+	com_ptr<IVsUIHierarchy> _hier;
 	wil::com_ptr_nothrow<IZ80ProjectItem> _next;
 	VSITEMID _parentItemId = VSITEMID_NIL;
 	VSCOOKIE _docCookie = VSDOCCOOKIE_NIL;
@@ -27,7 +26,7 @@ public:
 		}
 
 		_itemId = itemId;
-		hr = ToWeak(hier, &_hier); RETURN_IF_FAILED(hr);
+		_hier = hier;
 		_parentItemId = parentItemId;
 		return S_OK;
 	}
@@ -127,10 +126,8 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (BSTR* pbstrMkDocument) override
 	{
-		com_ptr<IVsUIHierarchy> hier;
-		auto hr = _hier->Resolve(&hier); RETURN_IF_FAILED(hr);
 		wil::unique_variant location;
-		hr = hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &location); RETURN_IF_FAILED(hr);
+		auto hr = _hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &location); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_FAIL, location.vt != VT_BSTR);
 
 		wil::unique_hlocal_string filePath;
@@ -602,10 +599,10 @@ public:
 			
 			if (nCmdID == cmdidOpen) // 261
 			{
-				com_ptr<IVsProject3> vsp3;
-				auto hr = _hier->Resolve(&vsp3); RETURN_IF_FAILED(hr);
+				com_ptr<IVsProject2> vsp;
+				auto hr = _hier->QueryInterface(&vsp); RETURN_IF_FAILED(hr);
 				wil::com_ptr_nothrow<IVsWindowFrame> windowFrame;
-				hr = vsp3->OpenItem (_itemId, LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &windowFrame); RETURN_IF_FAILED(hr);
+				hr = vsp->OpenItem (_itemId, LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &windowFrame); RETURN_IF_FAILED(hr);
 				hr = windowFrame->Show(); RETURN_IF_FAILED(hr);
 				return S_OK;
 			}
@@ -641,10 +638,8 @@ public:
 				POINTS pts;
 				memcpy (&pts, &pvaIn->uintVal, 4);
 
-				com_ptr<IVsUIHierarchy> hier;
-				hr = _hier->Resolve(&hier); RETURN_IF_FAILED(hr);
 				com_ptr<IServiceProvider> site;
-				hr = hier->GetSite(&site); RETURN_IF_FAILED(hr);
+				hr = _hier->GetSite(&site); RETURN_IF_FAILED(hr);
 				wil::com_ptr_nothrow<IVsUIShell> shell;
 				hr = site->QueryService(SID_SVsUIShell, &shell);
 				if (FAILED(hr))
@@ -655,15 +650,10 @@ public:
 
 			if (nCmdID == UIHWCMDID_DoubleClick || nCmdID == UIHWCMDID_EnterKey)
 			{
-				com_ptr<IVsUIHierarchy> hier;
-				hr = _hier->Resolve(&hier); RETURN_IF_FAILED(hr);
-				wil::com_ptr_nothrow<IVsProject2> vsp2;
-				hr = hier->QueryInterface(&vsp2); RETURN_IF_FAILED(hr);
+				wil::com_ptr_nothrow<IVsProject2> vsp;
+				hr = _hier->QueryInterface(&vsp); RETURN_IF_FAILED(hr);
 				wil::com_ptr_nothrow<IVsWindowFrame> windowFrame;
-				auto hr = vsp2->OpenItem (_itemId, LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &windowFrame);
-				if (FAILED(hr))
-					return hr;
-
+				hr = vsp->OpenItem (_itemId, LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &windowFrame); RETURN_IF_FAILED_EXPECTED(hr);
 				hr = windowFrame->Show();
 				if (FAILED(hr))
 					return hr;
@@ -681,7 +671,7 @@ public:
 	#pragma region IVsGetCfgProvider
 	virtual HRESULT STDMETHODCALLTYPE GetCfgProvider (IVsCfgProvider** ppCfgProvider) override
 	{
-		return _hier->Resolve(ppCfgProvider);
+		return _hier->QueryInterface(ppCfgProvider);
 	}
 	#pragma endregion
 };

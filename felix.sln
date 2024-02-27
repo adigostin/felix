@@ -34,7 +34,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "shared", "shared", "{9141C0
 		Shared\include\shared\ula_register_set.h = Shared\include\shared\ula_register_set.h
 		Shared\include\shared\unordered_map_nothrow.h = Shared\include\shared\unordered_map_nothrow.h
 		Shared\include\shared\vector_nothrow.h = Shared\include\shared\vector_nothrow.h
-		Shared\include\shared\WeakRef.h = Shared\include\shared\WeakRef.h
 		Shared\include\shared\z80_register_set.h = Shared\include\shared\z80_register_set.h
 	EndProjectSection
 EndProject

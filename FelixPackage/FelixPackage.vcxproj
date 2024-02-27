@@ -161,6 +161,7 @@
     </ClCompile>
     <ClCompile Include="PGPropertyPage.cpp" />
     <ClCompile Include="ScreenWindow.cpp" />
+    <ClCompile Include="Simulator\Impl\Beeper.cpp" />
     <ClCompile Include="Simulator\Impl\HC_RAM.cpp" />
     <ClCompile Include="Simulator\Impl\HC_ROM.cpp" />
     <ClCompile Include="Simulator\Impl\Keyboard.cpp" />

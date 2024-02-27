@@ -4,7 +4,6 @@
 #include "shared/OtherGuids.h"
 #include "shared/unordered_map_nothrow.h"
 #include "shared/TryQI.h"
-#include "shared/WeakRef.h"
 #include "shared/string_builder.h"
 #include "dispids.h"
 #include "guids.h"
@@ -31,7 +30,7 @@ struct Z80ProjectConfig
 	//, public IVsProjectCfgDebugTypeSelection
 {
 	ULONG _refCount = 0;
-	com_ptr<IWeakRef> _hier;
+	com_ptr<IVsUIHierarchy> _hier;
 	DWORD _threadId;
 	wil::unique_bstr _configName;
 	wil::unique_bstr _platformName;
@@ -88,7 +87,7 @@ public:
 			hr = typeLib->GetTypeInfoOfGuid(IID_IZ80ProjectConfig, &_typeInfo); RETURN_IF_FAILED(hr);
 		}
 
-		hr = ToWeak(hier, &_hier); RETURN_IF_FAILED(hr);
+		_hier = hier;
 		_threadId = GetCurrentThreadId();
 
 		if (!atom)
@@ -298,10 +297,8 @@ public:
 		com_ptr<IFelixLaunchOptions> opts;
 		auto hr = MakeLaunchOptions(&opts); RETURN_IF_FAILED(hr);
 
-		com_ptr<IVsUIHierarchy> hier;
-		hr = _hier->Resolve(&hier); RETURN_IF_FAILED(hr);
 		wil::unique_variant projectDir;
-		hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
+		_hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
 
 		RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
 		hr = opts->put_ProjectDir(projectDir.bstrVal); RETURN_IF_FAILED(hr);
@@ -330,10 +327,8 @@ public:
 	{
 		// https://docs.microsoft.com/en-us/visualstudio/extensibility/debugger/launching-a-program?view=vs-2022
 
-		com_ptr<IVsUIHierarchy> hier;
-		auto hr = _hier->Resolve(&hier); RETURN_IF_FAILED(hr);
 		com_ptr<IServiceProvider> sp;
-		hr = hier->GetSite(&sp); RETURN_IF_FAILED(hr);
+		auto hr = _hier->GetSite(&sp); RETURN_IF_FAILED(hr);
 		wil::com_ptr_nothrow<IVsDebugger> debugger;
 		hr = sp->QueryService (SID_SVsShellDebugger, &debugger); RETURN_IF_FAILED(hr);
 
@@ -484,16 +479,13 @@ public:
 		for (auto& p : _buildStatusCallbacks)
 		{
 			BOOL fContinue;
-			auto hr = p.second->BuildBegin(&fContinue); RETURN_IF_FAILED(hr);
+			hr = p.second->BuildBegin(&fContinue); RETURN_IF_FAILED(hr);
 			if (!fContinue)
 				RETURN_HR(OLECMDERR_E_CANCELED);
 		}
 
-		wil::com_ptr_nothrow<IVsHierarchy> hier;
-		hr = _hier->Resolve(&hier); RETURN_IF_FAILED(hr);
-
 		wil::unique_variant project_dir;
-		hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &project_dir); RETURN_IF_FAILED(hr);
+		hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &project_dir); RETURN_IF_FAILED(hr);
 		if (project_dir.vt != VT_BSTR)
 			return E_FAIL;
 
@@ -535,16 +527,16 @@ public:
 
 		// input files
 		wil::unique_variant childItemId;
-		hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &childItemId); RETURN_IF_FAILED(hr);
+		hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &childItemId); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_FAIL, childItemId.vt != VT_VSITEMID);
 		while (V_VSITEMID(&childItemId) != VSITEMID_NIL)
 		{
 			wil::unique_variant asmFileRelativePath;
-			hier->GetProperty(V_VSITEMID(&childItemId), VSHPROPID_SaveName, &asmFileRelativePath); RETURN_IF_FAILED(hr);
+			_hier->GetProperty(V_VSITEMID(&childItemId), VSHPROPID_SaveName, &asmFileRelativePath); RETURN_IF_FAILED(hr);
 			RETURN_HR_IF(E_FAIL, asmFileRelativePath.vt != VT_BSTR);
 			cmdLine << ' ' << asmFileRelativePath.bstrVal;
 
-			hr = hier->GetProperty(V_VSITEMID(&childItemId), VSHPROPID_NextSibling, &childItemId); RETURN_IF_FAILED(hr);
+			hr = _hier->GetProperty(V_VSITEMID(&childItemId), VSHPROPID_NextSibling, &childItemId); RETURN_IF_FAILED(hr);
 			RETURN_HR_IF(E_FAIL, childItemId.vt != VT_VSITEMID);
 		}
 
@@ -834,11 +826,8 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetOutputDirectory (BSTR* pbstr) override
 	{
-		wil::com_ptr_nothrow<IVsHierarchy> hier;
-		auto hr = _hier->Resolve(&hier); RETURN_IF_FAILED(hr);
-
 		wil::unique_variant project_dir;
-		hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &project_dir); RETURN_IF_FAILED(hr);
+		auto hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &project_dir); RETURN_IF_FAILED(hr);
 		if (project_dir.vt != VT_BSTR)
 			return E_FAIL;
 
