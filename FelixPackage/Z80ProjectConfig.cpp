@@ -160,6 +160,7 @@ public:
 		)
 			return S_OK;
 
+		#ifdef _DEBUG
 		// These will never be implemented.
 		if (   riid == IID_IManagedObject
 			|| riid == IID_IInspectable
@@ -177,8 +178,10 @@ public:
 			|| riid == IID_IProvideClassInfo
 			|| riid == IID_IProvideMultipleClassInfo
 			|| riid == IID_IWeakReferenceSource
+			|| riid == IID_ICustomCast
 		)
 			return E_NOINTERFACE;
+		#endif
 
 		if (riid == __uuidof(IVsDeployableProjectCfg))
 			return E_NOINTERFACE;
@@ -232,12 +235,9 @@ public:
 	#pragma region IVsCfg
 	virtual HRESULT STDMETHODCALLTYPE get_DisplayName(BSTR * pbstrDisplayName) override
 	{
-		size_t allocLen = wcslen(_configName.get()) + 1 + wcslen(_platformName.get()) + 1;
-		*pbstrDisplayName = SysAllocStringLen (_configName.get(), (UINT)allocLen);
-		if (!*pbstrDisplayName)
-			return E_OUTOFMEMORY;
-		wcscat_s (*pbstrDisplayName, allocLen, L"|");
-		wcscat_s (*pbstrDisplayName, allocLen, _platformName.get());
+		wstring_builder sb;
+		sb << _configName.get() << L"|" << _platformName.get();
+		*pbstrDisplayName = SysAllocStringLen(sb.data(), sb.size()); RETURN_IF_NULL_ALLOC(*pbstrDisplayName);
 		return S_OK;
 	}
 
