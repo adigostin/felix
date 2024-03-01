@@ -374,6 +374,12 @@ public:
 			return E_NOTIMPL;
 		}
 
+		if (*pguidCmdGroup == CMDSETID_StandardCommandSet12)
+			return OLECMDERR_E_UNKNOWNGROUP;
+
+		if (*pguidCmdGroup == CMDSETID_StandardCommandSet16)
+			return OLECMDERR_E_UNKNOWNGROUP;
+
 		if (*pguidCmdGroup == CMDSETID_StandardCommandSet17)
 			return OLECMDERR_E_UNKNOWNGROUP;
 
@@ -389,11 +395,14 @@ public:
 			return E_NOTIMPL;
 		}
 
+		#ifdef _DEBUG
 		if (   *pguidCmdGroup == guidUnknownCmdGroup0
 			|| *pguidCmdGroup == guidUnknownCmdGroup1
 			|| *pguidCmdGroup == guidUnknownCmdGroup5
 			|| *pguidCmdGroup == guidUnknownCmdGroup6
 			|| *pguidCmdGroup == guidUnknownCmdGroup7
+			|| *pguidCmdGroup == guidUnknownCmdGroup8
+			|| *pguidCmdGroup == guidUnknownCmdGroup9
 			|| *pguidCmdGroup == guidSourceExplorerPackage
 			|| *pguidCmdGroup == WebAppCmdId
 			|| *pguidCmdGroup == guidWebProjectPackage
@@ -405,14 +414,47 @@ public:
 			|| *pguidCmdGroup == guidSccProviderPackage
 			|| *pguidCmdGroup == GUID{ 0xB101F7CB, 0x4BB9, 0x46D0, { 0xA4, 0x89, 0x83, 0x0D, 0x45, 0x01, 0x16, 0x0A } } // something from Microsoft.VisualStudio.ProjectSystem.VS.Implementation.dll
 			|| *pguidCmdGroup == GUID{ 0x665CC136, 0x6455, 0x491D, { 0xAB, 0x17, 0xEA, 0xF3, 0x84, 0x7A, 0x23, 0xBC } } // same
+			|| *pguidCmdGroup == guidProjOverviewAppCapabilities
+			|| *pguidCmdGroup == guidTrackProjectRetargetingCmdSet
+			|| *pguidCmdGroup == guidProjectAddTest
+			|| *pguidCmdGroup == guidProjectAddWPF
+			|| *pguidCmdGroup == guidProjectClassWizard
+			|| *pguidCmdGroup == guidDataSources
+			|| *pguidCmdGroup == tfsCmdSet
+			|| *pguidCmdGroup == tfsCmdSet1
+			|| *pguidCmdGroup == guidCmdGroupClassDiagram
+			|| *pguidCmdGroup == guidCmdGroupDatabase
+			|| *pguidCmdGroup == guidCmdGroupTableQueryDesigner
+			|| *pguidCmdGroup == guidXamlCmdSet
+			|| *pguidCmdGroup == guidCmdGroupTestExplorer
+			|| *pguidCmdGroup == guidVSEQTPackageCmdSet
+			|| *pguidCmdGroup == guidSomethingResourcesCmdSet
+			|| *pguidCmdGroup == guidCmdSetPerformance
+			|| *pguidCmdGroup == guidCmdSetEdit
+			|| *pguidCmdGroup == guidCmdSetHelp
+			|| *pguidCmdGroup == guidCmdSetTaskRunnerExplorer
+			|| *pguidCmdGroup == guidCmdSetCtxMenuPrjSolOtherClsWiz
+			|| *pguidCmdGroup == guidCmdSetCodeAnalysis
+			|| *pguidCmdGroup == guidCmdSetCodeMetrics
+			|| *pguidCmdGroup == guidCmdSetClassViewProject
+			|| *pguidCmdGroup == guidCmdSetSolExplPivotStartList
+			|| *pguidCmdGroup == guidCmdSetWebToolsScaffolding
+			|| *pguidCmdGroup == guidCmdSetWebToolsScaffolding2
+			|| *pguidCmdGroup == guidUniversalProjectsCmdSet
+			|| *pguidCmdGroup == guidCmdSetNetAspire
+			|| *pguidCmdGroup == guidCmdSetBowerPackages
+			|| *pguidCmdGroup == guidDotNetCoreWebCmdId
+			|| *pguidCmdGroup == guidCmdSetCSharpInteractive
+			|| *pguidCmdGroup == guidCmdSetTFS
+			|| *pguidCmdGroup == guidSccPkg
+			|| *pguidCmdGroup == guidToolWindowTimestampButton
+			|| *pguidCmdGroup == guidCmdSetSomethingIntellisense
+			|| *pguidCmdGroup == guidCmdSetSomethingTerminal
+			|| *pguidCmdGroup == guidSHLMainMenu
+			|| *pguidCmdGroup == guidCommonIDEPackage
 		)
 			return OLECMDERR_E_UNKNOWNGROUP;
-
-		if (*pguidCmdGroup == tfsCmdSet)
-			return OLECMDERR_E_UNKNOWNGROUP;
-
-		if (*pguidCmdGroup == guidDebugTargetHandlerCmdSet)
-			return OLECMDERR_E_UNKNOWNGROUP;
+		#endif
 
 		if (*pguidCmdGroup == guidNuGetDialogCmdSet || *pguidCmdGroup == guidNuGetSomethingCmdSet)
 		{
@@ -500,15 +542,6 @@ public:
 			//BreakIntoDebugger();
 			return OLECMDERR_E_NOTSUPPORTED;
 		}
-
-		if (*pguidCmdGroup == guidDebugTargetHandlerCmdSet)
-		{
-			//BreakIntoDebugger();
-			return OLECMDERR_E_NOTSUPPORTED;
-		}
-
-		//if (*pguidCmdGroup == CMDSETID_HtmEdGrp || *pguidCmdGroup == CMDSETID_WebForms)
-		//	return OLECMDERR_E_NOTSUPPORTED;
 
 		if (*pguidCmdGroup == guidNuGetDialogCmdSet || *pguidCmdGroup == guidNuGetSomethingCmdSet)
 		{

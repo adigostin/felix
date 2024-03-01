@@ -58,6 +58,8 @@
 #include <portpriv.h>
 #include <vsdebugguids.h>
 #include <venuscmddef.h>
+#include <sccmnid.h>
+#include <vsshlids.h>
 
 // WIL
 #include <wil/result_macros.h>

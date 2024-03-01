@@ -515,8 +515,8 @@ public:
 			// These are in VsDbgCmd.h
 			return OLECMDERR_E_UNKNOWNGROUP;
 
-		if (   *pguidCmdGroup == guidDebugTargetHandlerCmdSet
-			|| *pguidCmdGroup == guidSourceControlExplorerMenuGroup
+		if (   *pguidCmdGroup == guidCommonIDEPackage
+			|| *pguidCmdGroup == guidCmdSetTFS
 			|| *pguidCmdGroup == DebugTargetTypeCommandGuid
 		)
 			return OLECMDERR_E_UNKNOWNGROUP; // not yet there
@@ -524,10 +524,6 @@ public:
 		if (*pguidCmdGroup == GUID{ 0x25FD982B, 0x8CAE, 0x4CBD, { 0xA4, 0x40, 0xE0, 0x3F, 0xFC, 0xCD, 0xE1, 0x06 } }) // NuGet
 			return OLECMDERR_E_UNKNOWNGROUP;
 
-		if (*pguidCmdGroup == GUID{ 0x1E198C22, 0x5980, 0x4E7E, { 0x92, 0xF3, 0xF7, 0x31, 0x68, 0xD1, 0xFB, 0x63 } }) // Test Explorer
-			return OLECMDERR_E_UNKNOWNGROUP;
-
-		if (*pguidCmdGroup == GUID{ 0x9E78B319, 0x2142, 0x4381, { 0x87, 0x3C, 0x6E, 0xC8, 0x3F, 0x09, 0x29, 0x15 } }) // something about External Tools
 			return OLECMDERR_E_UNKNOWNGROUP;
 
 		if (   *pguidCmdGroup == GUID{ 0x25113E5B, 0x9964, 0x4375, { 0x9D, 0xD1, 0x0A, 0x5E, 0x98, 0x40, 0x50, 0x7A } } // no idea
@@ -548,9 +544,9 @@ public:
 			|| *pguidCmdGroup == guidUnknownMsenvDll
 			|| *pguidCmdGroup == guidUnknownCmdGroup0
 			|| *pguidCmdGroup == guidUnknownCmdGroup1
-			|| *pguidCmdGroup == guidUnknownCmdGroup2
-			|| *pguidCmdGroup == guidUnknownCmdGroup3
-			|| *pguidCmdGroup == guidUnknownCmdGroup4
+			|| *pguidCmdGroup == guidProjOverviewAppCapabilities
+			|| *pguidCmdGroup == guidProjectAddTest
+			|| *pguidCmdGroup == guidProjectAddWPF
 			|| *pguidCmdGroup == guidUnknownCmdGroup5
 			|| *pguidCmdGroup == guidUnknownCmdGroup6
 			|| *pguidCmdGroup == guidUnknownCmdGroup7
@@ -560,12 +556,14 @@ public:
 			|| *pguidCmdGroup == guidSccProviderPackage
 			|| *pguidCmdGroup == guidTrackProjectRetargetingCmdSet
 			|| *pguidCmdGroup == guidUniversalProjectsCmdSet
-			|| *pguidCmdGroup == guidUnknownProjectClsWiz
-			|| *pguidCmdGroup == guidUnknownDataSources
+			|| *pguidCmdGroup == guidProjectClassWizard
+			|| *pguidCmdGroup == guidDataSources
 			|| *pguidCmdGroup == guidSHLMainMenu
 			|| *pguidCmdGroup == tfsCmdSet
 			|| *pguidCmdGroup == tfsCmdSet1
 			|| *pguidCmdGroup == WebAppCmdId
+			|| *pguidCmdGroup == guidCmdGroupTestExplorer
+			|| *pguidCmdGroup == guidCmdSetTaskRunnerExplorer
 		)
 			return OLECMDERR_E_UNKNOWNGROUP;
 
