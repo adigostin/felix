@@ -9,7 +9,6 @@
 class Z80DebugPortSupplier : public IDebugPortSupplier2, /*public IDebugPortSupplierEx2, */public IDebugPortSupplierDescription2
 {
 	ULONG _refCount = 0;
-
 	wil::com_ptr_nothrow<IDebugCoreServer2> _server;
 	wil::com_ptr_nothrow<IDebugPort2> _z80Port;
 
@@ -20,39 +19,19 @@ public:
 	#pragma region IUnknown
 	virtual HRESULT __stdcall QueryInterface(REFIID riid, void** ppvObject) override
 	{
-		if (!ppvObject)
-			return E_POINTER;
+		RETURN_HR_IF(E_POINTER, !ppvObject);
+		*ppvObject = nullptr;
 
-		*ppvObject = NULL;
+		if (   TryQI<IUnknown>(static_cast<IDebugPortSupplier2*>(this), riid, ppvObject)
+			|| TryQI<IDebugPortSupplier2>(this, riid, ppvObject)
+			|| TryQI<IDebugPortSupplierDescription2>(this, riid, ppvObject))
+			return S_OK;
 
-		if (riid == __uuidof(IUnknown))
-		{
-			*ppvObject = static_cast<IDebugPortSupplier2*>(this);
-			AddRef();
-			return S_OK;
-		}
-		else if (riid == IID_IDebugPortSupplier2)
-		{
-			*ppvObject = static_cast<IDebugPortSupplier2*>(this);
-			AddRef();
-			return S_OK;
-		}
-///		else if (riid == IID_IDebugPortSupplierEx2)
-///		{
-///			*ppvObject = static_cast<IDebugPortSupplierEx2*>(this);
-///			AddRef();
-///			return S_OK;
-///		}
-		else if (riid == IID_IDebugPortSupplierDescription2)
-		{
-			*ppvObject = static_cast<IDebugPortSupplierDescription2*>(this);
-			AddRef();
-			return S_OK;
-		}
-		else if (/*riid == IID_IDebugPortSupplierLocale2
-			|| */riid == IID_IClientSecurity
+		if (   riid == IID_IDebugPortSupplierLocale2
+			|| riid == IID_IClientSecurity
+			|| riid == IID_IDebugPortSupplierEx2
 			|| riid == IID_IDebugPortSupplier3
-		)
+			|| riid == IID_IDebugPortSupplier169)
 			return E_NOINTERFACE;
 
 		return E_NOINTERFACE;
