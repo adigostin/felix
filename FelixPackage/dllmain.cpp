@@ -7,9 +7,11 @@
 
 HRESULT FelixPackage_CreateInstance (IVsPackage** out);
 
-BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
+BOOL APIENTRY DllMain(HMODULE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
 {
-	switch (ul_reason_for_call)
+	wil::DLLMain (hinstDLL, fdwReason, lpvReserved);
+
+	switch (fdwReason)
 	{
 		case DLL_PROCESS_ATTACH:
 			wil::g_fBreakOnFailure = IsDebuggerPresent();
