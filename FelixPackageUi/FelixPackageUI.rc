@@ -12,6 +12,7 @@
 /////////////////////////////////////////////////////////////////////////////
 #undef APSTUDIO_READONLY_SYMBOLS
 
+/////////////////////////////////////////////////////////////////////////////
 // English (United States) resources
 
 #if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
@@ -46,12 +47,14 @@ END
 
 #endif    // APSTUDIO_INVOKED
 
+
 /////////////////////////////////////////////////////////////////////////////
 //
 // PNG
 //
 
 IDB_IMAGES              PNG                     "Z80Images.png"
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -61,8 +64,60 @@ IDB_IMAGES              PNG                     "Z80Images.png"
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
 IDI_PACKAGE_ICON        ICON                    "Package.ico"
+
 IDI_SPECTRUM            ICON                    "Spectrum.ico"
+
 IDI_ASM_FILE            ICON                    "AsmFile.ico"
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_REPORT_ERROR DIALOGEX 0, 0, 312, 159
+STYLE DS_SETFONT | DS_MODALFRAME | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_OVERLAPPEDWINDOW
+CAPTION "Unhandled Error"
+FONT 10, "Segoe UI", 400, 0, 0xEE
+BEGIN
+    LTEXT           "Sorry for the inconvenience.\r\nPlease help improve this software by sending the developers this anonymous error report:",IDC_STATIC,4,4,304,16
+    EDITTEXT        IDC_EDIT_ERROR_REPORT,4,24,304,84,ES_MULTILINE | ES_AUTOHSCROLL | ES_READONLY | WS_VSCROLL
+    LTEXT           "Optionally type your email address if you want to hear back regarding this particular issue:",IDC_STATIC,4,112,152,20
+    EDITTEXT        IDC_EDIT_EMAIL_ADDRESS,160,116,148,12,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "Send This One",IDOK,96,136,68,20
+    PUSHBUTTON      "Don't send",IDCANCEL,240,136,68,20
+    PUSHBUTTON      "Send From Now On\r\nWithout Asking",IDYES,168,136,68,20,BS_MULTILINE
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO
+BEGIN
+    IDD_REPORT_ERROR, DIALOG
+    BEGIN
+        RIGHTMARGIN, 311
+        BOTTOMMARGIN, 135
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// AFX_DIALOG_LAYOUT
+//
+
+IDD_REPORT_ERROR AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
 
 /////////////////////////////////////////////////////////////////////////////
 //

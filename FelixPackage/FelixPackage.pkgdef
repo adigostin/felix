@@ -1,10 +1,15 @@
 ﻿
 ; https://docs.microsoft.com/en-us/visualstudio/extensibility/internals/registering-project-and-item-templates?view=vs-2022
 
+; Substitution Strings Used in .Pkgdef and .Pkgundef Files:
+; https://learn.microsoft.com/en-us/previous-versions/visualstudio/visual-studio-2010/ee390882(v=vs.100)?redirectedfrom=MSDN
+
+; This must be kept in sync with the string InstalledProductRegPath.
 [$RootKey$\InstalledProducts\FelixPackage]
 @="#100"
 "Package"="{768bc57b-42a8-42ab-b389-457946c4fc6a}"
-"PID"="1.0"
+; this is the one that goes to the list in Help -> About -> Installed products.
+"PID"="0.9"
 "ProductDetails"="#102"
 "LogoID"="#400"
 "UseInterface"=dword:00000000
@@ -14,7 +19,7 @@
 "InprocServer32"="$PackageFolder$\FelixPackage.dll"
 "CompanyName"="Adi Gostin"
 "ProductName"="Felix"
-"ProductVersion"="1.0"
+"ProductVersion"="1.8"
 
 [$RootKey$\Packages\{768bc57b-42a8-42ab-b389-457946c4fc6a}\SatelliteDll]
 "DllName"="FelixPackageUI.dll"

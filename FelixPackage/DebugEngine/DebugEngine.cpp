@@ -306,7 +306,7 @@ public:
 		langId = wLangID;
 		return S_OK;
 	}
-
+	
 	virtual HRESULT __stdcall SetRegistryRoot(LPCOLESTR pszRegistryRoot) override
 	{
 		_registryRoot.reset (SysAllocString(pszRegistryRoot)); RETURN_IF_NULL_ALLOC(_registryRoot);

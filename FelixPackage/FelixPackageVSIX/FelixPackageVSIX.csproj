@@ -53,6 +53,16 @@
     <None Include="source.extension.vsixmanifest">
       <SubType>Designer</SubType>
     </None>
+    <Content Include="sentry.dll">
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="sentry.pdb">
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Spectrum.ico">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Templates\Items\source.asm">
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>

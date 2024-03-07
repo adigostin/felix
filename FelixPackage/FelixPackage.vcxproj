@@ -61,7 +61,7 @@
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)wil\include;$(SolutionDir)shared\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)wil\include;$(SolutionDir)shared\include;$(SolutionDir)sentry;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
@@ -80,12 +80,13 @@
     </ResourceCompile>
     <Link>
       <RegisterOutput>false</RegisterOutput>
-      <AdditionalDependencies>vsguids.lib;Shlwapi.lib;ad2de.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>vsguids.lib;Shlwapi.lib;ad2de.lib;sentry.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <ModuleDefinitionFile>.\FelixPackage.def</ModuleDefinitionFile>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ImportLibrary>$(OutDir)FelixPackage.lib</ImportLibrary>
+      <AdditionalLibraryDirectories>$(SolutionDir)sentry;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -102,7 +103,7 @@
     </Midl>
     <ClCompile>
       <AdditionalOptions>/Oxs</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)wil\include;$(SolutionDir)shared\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)wil\include;$(SolutionDir)shared\include;$(SolutionDir)sentry;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -122,12 +123,13 @@
     </ResourceCompile>
     <Link>
       <RegisterOutput>false</RegisterOutput>
-      <AdditionalDependencies>vsguids.lib;Shlwapi.lib;ad2de.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>vsguids.lib;Shlwapi.lib;ad2de.lib;sentry.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <ModuleDefinitionFile>.\FelixPackage.def</ModuleDefinitionFile>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ImportLibrary>$(OutDir)FelixPackage.lib</ImportLibrary>
+      <AdditionalLibraryDirectories>$(SolutionDir)sentry;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -168,7 +170,10 @@
     <ClCompile Include="Simulator\Impl\ScreenDevice.cpp" />
     <ClCompile Include="Simulator\Impl\Simulator.cpp" />
     <ClCompile Include="Simulator\Impl\Z80CPU.cpp" />
-    <ClCompile Include="FelixPackage.cpp" />
+    <ClCompile Include="FelixPackage.cpp">
+      <MultiProcessorCompilation Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</MultiProcessorCompilation>
+      <MultiProcessorCompilation Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</MultiProcessorCompilation>
+    </ClCompile>
     <ClCompile Include="FelixPackage_i.c">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
@@ -181,6 +186,7 @@
     <ClCompile Include="Z80Xml.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="ExtensionManager.tlb" />
     <None Include="FelixPackage.def" />
   </ItemGroup>
   <ItemGroup>
