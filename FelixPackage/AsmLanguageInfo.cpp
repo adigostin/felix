@@ -338,7 +338,7 @@ public:
 	#pragma region IVsLanguageDebugInfo
 	virtual HRESULT STDMETHODCALLTYPE GetProximityExpressions (IVsTextBuffer *pBuffer, long iLine, long iCol, long cLines, IVsEnumBSTR **ppEnum) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE ValidateBreakpointLocation (IVsTextBuffer *pBuffer, long iLine, long iCol, TextSpan *pCodeSpan) override
@@ -353,12 +353,12 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetLocationOfName (LPCOLESTR pszName, BSTR *pbstrMkDoc, TextSpan *pspanLocation) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE ResolveName (LPCOLESTR pszName, DWORD dwFlags, IVsEnumDebugName **ppNames) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetLanguageID (IVsTextBuffer *pBuffer, long iLine, long iCol, GUID *pguidLanguageID) override
@@ -369,7 +369,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE IsMappedLocation (IVsTextBuffer *pBuffer, long iLine, long iCol) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 	#pragma endregion
 };

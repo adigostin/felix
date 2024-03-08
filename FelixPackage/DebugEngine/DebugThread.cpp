@@ -28,6 +28,7 @@ public:
 			|| TryQI<IDebugThread2>(this, riid, ppvObject))
 			return S_OK;
 
+		#ifdef _DEBUG
 		if (   riid == IID_IAgileObject
 			|| riid == IID_IClientSecurity
 			|| riid == IID_IMarshal
@@ -52,8 +53,9 @@ public:
 		for (auto& i : HardcodedRundownIFsOfInterest)
 			if (*i == riid)
 				return E_NOINTERFACE;
+		#endif
 
-		RETURN_HR(E_NOTIMPL);
+		return E_NOINTERFACE;
 	}
 
 	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
@@ -120,7 +122,7 @@ public:
 			dwFields &= ~TPF_STATE;
 		}
 
-		LOG_HR_IF(E_NOTIMPL, (bool)dwFields);
+		//LOG_HR_IF(E_NOTIMPL, (bool)dwFields);
 		
 		return S_OK;
 	}

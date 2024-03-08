@@ -496,10 +496,16 @@ public:
 		if (win32err != ERROR_SUCCESS && win32err != ERROR_ALREADY_EXISTS)
 			RETURN_WIN32(win32err);
 
-		static constexpr wchar_t exe_name[] = L"sjasmplus.exe";
-
 		wstring_builder cmdLine;
-		cmdLine << exe_name << " --fullpath";
+
+		wil::unique_hlocal_string moduleFilename;
+		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, moduleFilename); RETURN_IF_FAILED(hr);
+		auto fnres = PathFindFileName(moduleFilename.get()); RETURN_HR_IF(CO_E_BAD_PATH, fnres == moduleFilename.get());
+		cmdLine << L'\"';
+		cmdLine.append(moduleFilename.get(), fnres - moduleFilename.get());
+		cmdLine << "sjasmplus.exe" << L'\"';
+
+		cmdLine << " --fullpath";
 
 		{
 			// --raw=...

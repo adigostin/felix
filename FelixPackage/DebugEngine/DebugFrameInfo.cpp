@@ -192,7 +192,7 @@ public:
 
 	virtual HRESULT __stdcall GetDebugProperty(IDebugProperty2** ppProperty) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT __stdcall EnumProperties(DEBUGPROP_INFO_FLAGS dwFields, UINT nRadix, REFGUID guidFilter, DWORD dwTimeout, ULONG* pcelt, IEnumDebugPropertyInfo2** ppEnum) override
@@ -209,7 +209,7 @@ public:
 			return S_OK;
 		}
 
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT __stdcall GetThread(IDebugThread2** ppThread) override

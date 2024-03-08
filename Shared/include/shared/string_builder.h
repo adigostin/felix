@@ -36,10 +36,6 @@ public:
 	uint32_t size() const { return _size; }
 	bool out_of_memory() const { return _capacity == -1; }
 
-#if __has_include(<string_view>)
-	//operator std::basic_string_view<elem_t, std::char_traits<elem_t>>() const { return { _buffer, _buffer + _size }; }
-#endif
-
 	basic_string_builder& operator<< (elem_t ch)
 	{
 		if (_capacity == -1)
@@ -64,6 +60,13 @@ public:
 		return *this;
 	}
 
+	void append (const elem_t* str, size_t len)
+	{
+		// TODO: optimize this
+		for (size_t i = 0; i < len; i++)
+			operator<<(str[i]);
+	}
+
 	template<typename from_elem_t>
 	basic_string_builder& operator<< (from_elem_t ch) requires (sizeof(from_elem_t) < sizeof(elem_t))
 	{
@@ -85,9 +88,6 @@ public:
 		return *this;
 	}
 
-#if __has_include(<string_view>)
-	//basic_string_builder& operator<< (std::basic_string_view<elem_t, std::char_traits<elem_t>> str);
-#endif
 	basic_string_builder& operator<< (uint64_t n)
 	{
 		char str[30];

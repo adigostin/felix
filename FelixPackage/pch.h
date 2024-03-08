@@ -63,6 +63,7 @@
 #include <vsshlids.h>
 
 // WIL
+#define RESULT_DIAGNOSTICS_LEVEL 4
 #include <wil/result_macros.h>
 #include <wil/com.h>
 #include <wil/win32_helpers.h>

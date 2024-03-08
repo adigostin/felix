@@ -10,10 +10,6 @@
 #include "DebugEngine/DebugEngine.h"
 #include "sentry.h"
 
-#include "comdef.h"
-#import "ExtensionManager.tlb"
-using namespace Microsoft_VisualStudio_ExtensionManager;
-
 const wchar_t Z80AsmLanguageName[]  = L"Z80Asm";
 const wchar_t SingleDebugPortName[] = L"Single Z80 Port";
 const GUID Z80AsmLanguageGuid = { 0x598BC226, 0x2E96, 0x43AD, { 0xAD, 0x42, 0x67, 0xD9, 0xCC, 0x6F, 0x75, 0xF6 } };
@@ -23,7 +19,7 @@ static const wchar_t BinaryFilename[] = L"ROMs/Spectrum48K.rom";
 
 // These must be kept in sync with the pkgdef line [$RootKey$\InstalledProducts\FelixPackage]
 //static const wchar_t InstalledProductRegPath[] = L"InstalledProducts\\FelixPackage";
-static const char SentryReleaseName[] = "FelixPackage@0.9";
+static const char SentryReleaseName[] = "FelixPackage@0.9.2";
 
 // {8F0D9E89-4C6C-4B63-83CF-1AA6B6E59BCB}
 GUID SID_Simulator = { 0x8f0d9e89, 0x4c6c, 0x4b63, { 0x83, 0xcf, 0x1a, 0xa6, 0xb6, 0xe5, 0x9b, 0xcb } };
@@ -188,7 +184,7 @@ public:
 				hr = uiShell->GetDialogOwnerHwnd(&parent);
 				if (SUCCEEDED(hr))
 				{
-					INT_PTR res = DialogBoxW (_uiLibrary, MAKEINTRESOURCE(IDD_REPORT_ERROR), parent, TelemetryDialogProc);
+					INT_PTR res = DialogBoxParamW (_uiLibrary, MAKEINTRESOURCE(IDD_REPORT_ERROR), parent, TelemetryDialogProc, (LPARAM)(void*)&failure);
 					if (res == IDYES)
 					{
 						if (SUCCEEDED(wss->CreateCollection(SettingsCollection)))
@@ -237,6 +233,14 @@ public:
 				HWND hwndOwner = GetParent(hwndDlg);
 				shell->CenterDialogOnWindow(hwndDlg, hwndOwner);
 			}
+
+			auto& failure = *(const wil::FailureInfo*)(void*)lParam;
+			wchar_t message[2048];
+			hr = wil::GetFailureLogString (message, ARRAYSIZE(message), failure);
+
+			HWND edit = GetDlgItem(hwndDlg, IDC_EDIT_ERROR_REPORT);
+			SetWindowText (edit, message);
+
 			/*
 			RECT rcOwner, rcDlg, rc;
 			GetWindowRect(hwndOwner, &rcOwner); 

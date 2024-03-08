@@ -81,13 +81,13 @@ EXSTYLE WS_EX_OVERLAPPEDWINDOW
 CAPTION "Unhandled Error"
 FONT 10, "Segoe UI", 400, 0, 0xEE
 BEGIN
+    DEFPUSHBUTTON   "Send This One",IDOK,96,136,68,20
+    PUSHBUTTON      "Send From Now On\r\nWithout Asking",IDYES,168,136,68,20,BS_MULTILINE
+    PUSHBUTTON      "Don't send",IDCANCEL,240,136,68,20
     LTEXT           "Sorry for the inconvenience.\r\nPlease help improve this software by sending the developers this anonymous error report:",IDC_STATIC,4,4,304,16
-    EDITTEXT        IDC_EDIT_ERROR_REPORT,4,24,304,84,ES_MULTILINE | ES_AUTOHSCROLL | ES_READONLY | WS_VSCROLL
+    EDITTEXT        IDC_EDIT_ERROR_REPORT,4,24,304,84,ES_MULTILINE | ES_AUTOHSCROLL | ES_READONLY | WS_VSCROLL | WS_HSCROLL
     LTEXT           "Optionally type your email address if you want to hear back regarding this particular issue:",IDC_STATIC,4,112,152,20
     EDITTEXT        IDC_EDIT_EMAIL_ADDRESS,160,116,148,12,ES_AUTOHSCROLL
-    DEFPUSHBUTTON   "Send This One",IDOK,96,136,68,20
-    PUSHBUTTON      "Don't send",IDCANCEL,240,136,68,20
-    PUSHBUTTON      "Send From Now On\r\nWithout Asking",IDYES,168,136,68,20,BS_MULTILINE
 END
 
 
