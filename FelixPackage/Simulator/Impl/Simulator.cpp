@@ -547,6 +547,12 @@ public:
 	{
 		auto hr = RunOnSimulatorThread ([this, startAddress]
 			{
+				if (_running_info)
+				{
+					_running_info.value().start_time = 0;
+					QueryPerformanceCounter(&_running_info.value().start_time_perf_counter);
+				}
+				
 				_cpu->Reset();
 				_cpu->SetPC(startAddress);
 				for (auto& d : _active_devices_)
@@ -749,7 +755,101 @@ public:
 		return S_OK;
 	}
 	*/
+	#pragma pack (push, 1)
+	// https://rk.nvg.ntnu.no/sinclair/faq/fileform.html#SNA
+	struct snapshot_file_header
+	{
+		uint8_t i;
+		uint16_t alt_hl;
+		uint16_t alt_de;
+		uint16_t alt_bc;
+		uint16_t alt_af;
+		uint16_t hl;
+		uint16_t de;
+		uint16_t bc;
+		uint16_t iy;
+		uint16_t ix;
+		uint8_t      : 1;
+		uint8_t ei   : 1;
+		uint8_t iff2 : 1;
+		uint8_t      : 5;
+		uint8_t r;
+		uint16_t af;
+		uint16_t sp;
+		uint8_t im;
+		uint8_t border;
+	};
+	#pragma pack (pop)
+	
+	virtual HRESULT STDMETHODCALLTYPE LoadSnapshot (IStream* stream) override
+	{
+		auto hr = stream->Seek ( { .QuadPart = 0 }, STREAM_SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
 
+		STATSTG stat;
+		hr = stream->Stat (&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
+		if (stat.cbSize.QuadPart != sizeof(snapshot_file_header) + 48 * 1024)
+			return SIM_E_SNAPSHOT_FILE_WRONG_SIZE;
+
+		hr = RunOnSimulatorThread ([this, stream]
+			{
+				HRESULT hr;
+
+				_cpu->Reset();
+				for (auto& d : _active_devices_)
+					d->Reset();
+
+				snapshot_file_header header;
+				ULONG read;
+				hr = stream->Read (&header, (ULONG)sizeof(header), &read); RETURN_IF_FAILED(hr);
+				if (read != sizeof(header))
+					return SIM_E_SNAPSHOT_FILE_WRONG_SIZE;
+
+				uint8_t buffer[128];
+				for (uint16_t i = 0; i < 48 * 1024; i += sizeof(buffer))
+				{
+					ULONG read;
+					hr = stream->Read (buffer, sizeof(buffer), &read); RETURN_IF_FAILED(hr);
+					if (read != sizeof(buffer))
+						return SIM_E_SNAPSHOT_FILE_WRONG_SIZE;
+					_ramDevice->WriteMemory(0x4000 + i, sizeof(buffer), buffer);
+				}
+
+				z80_register_set regs;
+				regs.halted = false;
+				regs.i       = header.i;
+				regs.alt.hl  = header.alt_hl;
+				regs.alt.bc  = header.alt_bc;
+				regs.alt.de  = header.alt_de;
+				regs.alt.af  = header.alt_af;
+				regs.main.hl = header.hl;
+				regs.main.de = header.de;
+				regs.main.bc = header.bc;
+				regs.ix      = header.ix;
+				regs.iy      = header.iy;
+				regs.iff1    = header.iff2;
+				regs.r       = header.r;
+				regs.main.af = header.af;
+				regs.sp      = header.sp;
+				regs.im      = header.im;
+				regs.pc = memoryBus.read_uint16(regs.sp);
+				regs.sp += 2;
+				_cpu->SetZ80Registers(&regs);
+
+				if (_running_info)
+				{
+					_running_info.value().start_time = 0;
+					QueryPerformanceCounter(&_running_info.value().start_time_perf_counter);
+				}
+				else
+					_screen->generate_all();
+
+				return S_OK;
+			});
+		RETURN_IF_FAILED(hr);
+
+		return S_OK;
+	}
+	
 	virtual HRESULT STDMETHODCALLTYPE LoadBinary (IStream* stream, uint16_t address) override
 	{
 		RETURN_HR_IF(SIM_E_NOT_SUPPORTED_WHILE_SIMULATION_RUNNING, _running);

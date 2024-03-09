@@ -12,6 +12,8 @@ extern GUID SID_Simulator;
 extern const wchar_t Z80AsmLanguageName[];
 extern const wchar_t SingleDebugPortName[];
 extern const GUID Z80AsmLanguageGuid;
+extern const wchar_t SettingsCollection[];
+extern const wchar_t SettingLoadSavePath[];
 
 const char* PropIDToString (VSHPROPID propid);
 void PrintProperty (const char* prefix, VSHPROPID propid, const VARIANT* pvar);

@@ -79,6 +79,7 @@ public:
 		)
 			return S_OK;
 
+		#ifdef _DEBUG
 		if (riid == IID_IManagedObject
 			|| riid == IID_IProvideClassInfo
 			|| riid == IID_IProvideClassInfo2
@@ -105,8 +106,9 @@ public:
 			|| riid == IID_IVsTextView
 		)
 			return E_NOINTERFACE;
+		#endif
 
-		RETURN_HR(E_NOINTERFACE);
+		return E_NOINTERFACE;
 	}
 	#pragma endregion
 
@@ -422,29 +424,19 @@ public:
 
 		hr = _simulator->AdviseScreenComplete(this); RETURN_IF_FAILED(hr);
 		_advisingScreenCompleteEvents = true;
-/*
-		wil::com_ptr_nothrow<IVsDebugger> debugger;
+
+		com_ptr<IVsDebugger> debugger;
 		hr = _sp->QueryService(SID_SVsShellDebugger, &debugger); RETURN_IF_FAILED(hr);
 		hr = debugger->AdviseDebuggerEvents(this, &_debugger_events_cookie); RETURN_IF_FAILED(hr);
 		auto unadvise_if_failed = wil::scope_exit([debugger, this]
 			{ debugger->UnadviseDebuggerEvents(_debugger_events_cookie); _debugger_events_cookie = 0; });
-
+/*
 		DBGMODE mode;
 		hr = debugger->GetMode(&mode); RETURN_IF_FAILED(hr);
 		if (mode == DBGMODE_Design)
 		{
 			hr = _simulator->Resume(false); RETURN_IF_FAILED(hr);
 		}
-
-		UINT screen_width, screen_height;
-		hr = _simulator->GetScreenSize(&screen_width, &screen_height); RETURN_IF_FAILED(hr);
-		constexpr D2D1_BITMAP_PROPERTIES bmprops = { { DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE }, 96, 96 };
-		hr = _d2d_dc->CreateBitmap({ screen_width, screen_height }, bmprops, &_screen_bitmap); RETURN_IF_FAILED(hr);
-
-		// Once we call Advise, we'll start getting calls to ScreenCompleteBackgroundThread.
-		hr = _simulator->AdviseScreenCompleteEvent(this); RETURN_IF_FAILED(hr);
-
-		hr = init_audio();
 */
 		wil::com_ptr_nothrow<IVsWindowFrame> windowFrame;
 		hr = _sp->QueryService (SID_SVsWindowFrame, &windowFrame); RETURN_IF_FAILED(hr);
@@ -467,7 +459,7 @@ public:
 
 
 		unadviseBroadcastIfFailed.release();
-///		unadvise_if_failed.release();
+		unadvise_if_failed.release();
 		destroyHwndIfFailed.release();
 		*hwnd = _hwnd;
 		return S_OK;
@@ -494,15 +486,14 @@ public:
 			}
 			_broadcastCookie = VSCOOKIE_NIL;
 		}
-		/*
-		wil::com_ptr_nothrow<IVsDebugger> debugger;
+
+		com_ptr<IVsDebugger> debugger;
 		hr = _sp->QueryService(SID_SVsShellDebugger, &debugger); LOG_IF_FAILED(hr);
 		if (SUCCEEDED(hr))
 		{
 			hr = debugger->UnadviseDebuggerEvents(_debugger_events_cookie); LOG_IF_FAILED(hr);
 			_debugger_events_cookie = 0;
 		}
-		*/
 
 		if (_advisingScreenCompleteEvents)
 		{
@@ -564,6 +555,147 @@ public:
 	}
 	#pragma endregion
 
+	BOOL AtlWaitWithMessageLoop(_In_ HANDLE hEvent)
+	{
+		DWORD dwRet;
+		MSG msg;
+
+		while(1)
+		{
+			dwRet = MsgWaitForMultipleObjectsEx(1, &hEvent, INFINITE, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+
+			if (dwRet == WAIT_OBJECT_0)
+				return TRUE;    // The event was signaled
+
+			if (dwRet != WAIT_OBJECT_0 + 1)
+				break;          // Something else happened
+
+			// There is one or more window message available. Dispatch them
+			while(PeekMessage(&msg,0,0,0,PM_NOREMOVE))
+			{
+				// check for unicode window so we call the appropriate functions
+				BOOL bUnicode = ::IsWindowUnicode(msg.hwnd);
+				BOOL bRet;
+
+				if (bUnicode)
+					bRet = ::GetMessageW(&msg, NULL, 0, 0);
+				else
+					bRet = ::GetMessageA(&msg, NULL, 0, 0);
+
+				if (bRet > 0)
+				{
+					::TranslateMessage(&msg);
+
+					if (bUnicode)
+						::DispatchMessageW(&msg);
+					else
+						::DispatchMessageA(&msg);
+				}
+
+				if (WaitForSingleObject(hEvent, 0) == WAIT_OBJECT_0)
+					return TRUE; // Event is now signaled.
+			}
+		}
+		return FALSE;
+	}
+
+	HRESULT LoadFile (bool start_debugging)
+	{
+		HRESULT hr;
+
+		com_ptr<IVsDebugger> debugger;
+		hr = _sp->QueryService(SID_SVsShellDebugger, &debugger); RETURN_IF_FAILED(hr);
+
+		com_ptr<IVsDebugger2> debugger2;
+		hr = _sp->QueryService(SID_SVsShellDebugger, &debugger2); RETURN_IF_FAILED(hr);
+
+		DBGMODE mode;
+		hr = debugger->GetMode(&mode); RETURN_IF_FAILED(hr);
+		if (mode != DBGMODE_Design)
+		{
+			hr = _design_mode_event.create(); RETURN_IF_FAILED(hr);
+			auto destroy_event = wil::scope_exit([this] { _design_mode_event.reset(); });
+
+			hr = debugger2->ConfirmStopDebugging(nullptr); RETURN_IF_FAILED(hr);
+			if (hr == S_FALSE)
+				return S_OK;
+
+			// It's not a good thing to hijack the message loop, I know.
+			// I'll look into this some other time.
+			BOOL bres = AtlWaitWithMessageLoop(_design_mode_event.get()); WI_ASSERT(bres);
+		}
+
+		wil::unique_bstr initial_directory;
+		com_ptr<IVsWritableSettingsStore> settings_store;
+		{
+			com_ptr<IVsSettingsManager> sm;
+			hr = _sp->QueryService(IID_SVsSettingsManager, &sm); LOG_IF_FAILED(hr);
+			if (SUCCEEDED(hr))
+			{
+				hr = sm->GetWritableSettingsStore (SettingsScope_UserSettings, &settings_store);
+				if (SUCCEEDED(hr))
+					settings_store->GetString (SettingsCollection, SettingLoadSavePath, &initial_directory); // no need to check for errors
+			}
+		}
+
+		wchar_t filename[MAX_PATH];
+		filename[0] = 0;
+		com_ptr<IVsUIShell> shell;
+		hr = _sp->QueryService (SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
+		HWND dialogOwner;
+		hr = shell->GetDialogOwnerHwnd(&dialogOwner); RETURN_IF_FAILED(hr);
+		VSOPENFILENAMEW of = { };
+		of.lStructSize = (DWORD)sizeof(of);
+		of.hwndOwner = dialogOwner;
+		of.pwzDlgTitle = L"ABC";
+		of.pwzFileName = filename;
+		of.nMaxFileName = (DWORD)ARRAYSIZE(filename);
+		of.pwzInitialDir = initial_directory.get();
+		of.pwzFilter = L"Snapshot Files (*.sna)\0*.sna\0All Files (*.*)\0*.*\0";
+		hr = shell->GetOpenFileNameViaDlg(&of);
+		if (hr == OLE_E_PROMPTSAVECANCELLED)
+			return S_OK;
+		RETURN_IF_FAILED(hr);
+
+		if (settings_store)
+		{
+			auto dir = wil::make_hlocal_string_nothrow(of.pwzFileName, of.nFileOffset);
+			if(dir)
+			{
+				hr = settings_store->SetString (SettingsCollection, SettingLoadSavePath, dir.get());
+				LOG_IF_FAILED(hr);
+			}
+		}
+
+		if (!start_debugging)
+		{
+			com_ptr<IStream> stream;
+			hr = SHCreateStreamOnFileEx (filename, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream); RETURN_IF_FAILED(hr);
+			hr = _simulator->LoadSnapshot(stream.get()); RETURN_IF_FAILED(hr);
+			if (_simulator->Running_HR() == S_FALSE)
+			{
+				hr = _simulator->Resume(false); RETURN_IF_FAILED(hr);
+			}
+			return S_OK;
+		}
+
+		VsDebugTargetInfo2 dti = { };
+		dti.cbSize = sizeof(dti);
+		dti.dlo = DLO_CreateProcess;
+		dti.LaunchFlags = DBGLAUNCH_StopAtEntryPoint;
+		dti.bstrExe = SysAllocString(of.pwzFileName); RETURN_IF_NULL_ALLOC(dti.bstrExe);
+		dti.guidLaunchDebugEngine = Engine_Id;
+		dti.guidPortSupplier = PortSupplier_Id;
+		dti.bstrPortName = SysAllocString(SingleDebugPortName); RETURN_IF_NULL_ALLOC(dti.bstrPortName);
+		dti.fSendToOutputWindow = TRUE;
+		hr = debugger2->LaunchDebugTargets2 (1, &dti);
+		if (hr == OLE_E_PROMPTSAVECANCELLED)
+			hr = E_ABORT;
+		RETURN_IF_FAILED(hr);
+
+		return S_OK;
+	}
+
 	#pragma region IOleCommandTarget
 	virtual HRESULT STDMETHODCALLTYPE QueryStatus (const GUID *pguidCmdGroup, ULONG cCmds, OLECMD prgCmds[], OLECMDTEXT* pCmdText) override
 	{
@@ -584,6 +716,21 @@ public:
 			{
 				auto hr = _simulator->Reset(0); RETURN_IF_FAILED(hr);
 				return hr;
+			}
+
+			if (nCmdID == cmdidOpenZ80File)
+				return LoadFile(false);
+
+			if (nCmdID == cmdidDebugZ80File)
+			{
+				//return LoadFile(true);
+				wil::com_ptr_nothrow<IVsUIShell> shell;
+				auto hr = _sp->QueryService (SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
+				LONG result;
+				hr = shell->ShowMessageBox (0, CLSID_NULL, (LPOLESTR)L"Debug File", (LPOLESTR)L"Not Yet Implemented",
+					nullptr, 0, OLEMSGBUTTON_OK, OLEMSGDEFBUTTON_FIRST, OLEMSGICON_INFO, FALSE, &result);
+				RETURN_IF_FAILED(hr);
+				return S_OK;
 			}
 
 			return OLECMDERR_E_NOTSUPPORTED;

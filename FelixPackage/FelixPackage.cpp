@@ -13,7 +13,8 @@
 const wchar_t Z80AsmLanguageName[]  = L"Z80Asm";
 const wchar_t SingleDebugPortName[] = L"Single Z80 Port";
 const GUID Z80AsmLanguageGuid = { 0x598BC226, 0x2E96, 0x43AD, { 0xAD, 0x42, 0x67, 0xD9, 0xCC, 0x6F, 0x75, 0xF6 } };
-static const wchar_t SettingsCollection[] = L"FelixSettings";
+const wchar_t SettingsCollection[] = L"FelixSettings";
+const wchar_t SettingLoadSavePath[] = L"LoadSavePath";
 static const wchar_t AlwaysReportSettingsName[] = L"AlwaysReportErrors";
 static const wchar_t BinaryFilename[] = L"ROMs/Spectrum48K.rom";
 
