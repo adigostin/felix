@@ -249,12 +249,13 @@ public:
 			// the same time _and_ the first is waiting for the second (we'd have an infinite loop with the code as it is now).
 			if (_running_info)
 			{
+				UINT64 rt = real_time();
+
 				#pragma region Catch up with real time
 				// Before we attempt simulation, let's check if some devices are lagging far behind the real time.
 				// This happens while debugging the VSIX, or it may happen when this thread is starved. 
 				// If we have any such device, we "erase" the same length of time from all of the devices.
 				{
-					UINT64 rt = real_time();
 					IDevice* slowest = _cpu.get();
 					INT64 slowest_offset_from_rt = (UINT64)(_cpu->Time() - rt);
 					for (auto& d : _active_devices_)
@@ -282,7 +283,7 @@ public:
 				// --------------------------------------------
 				// Let's find out how far we can simulate, and try to simulate to that point in time.
 				IDevice* device_to_sync_on = nullptr;
-				UINT64 time_to_sync_to_ = real_time() + milliseconds_to_ticks(1000);
+				UINT64 time_to_sync_to_ = rt + milliseconds_to_ticks(1000);
 				for (auto& d : _active_devices_)
 				{
 					UINT64 t;
@@ -341,8 +342,9 @@ public:
 						WI_ASSERT(device_to_sync_on);
 						timeout = 0;
 						duration_to_sleep.QuadPart = 0;
-						auto rt = real_time(); // read it again cause we might have simulated a lot
-						if ((int32_t)(time_to_sync_to_ - rt) > 0)
+						//auto rt = real_time(); // read it again cause we might have simulated a lot
+						// Later edit: the line above was causing a lot of trouble, and the benefit was just theoretical.
+						if (time_to_sync_to_ > rt)
 						{
 							uint64_t hundredsOfNs = ticks_to_hundreds_of_nanoseconds(time_to_sync_to_ - rt);
 							if (hundredsOfNs)
