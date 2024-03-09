@@ -47,6 +47,7 @@ public:
 		)
 			return S_OK;
 
+		#ifdef _DEBUG
 		if (riid == IID_IDebugEngine110)
 			return E_NOTIMPL;
 		if (riid == IID_IDebugEngine150)
@@ -82,8 +83,9 @@ public:
 		for (auto& i : HardcodedRundownIFsOfInterest)
 			if (*i == riid)
 				return E_NOINTERFACE;
+		#endif
 
-		RETURN_HR(E_NOINTERFACE);
+		return E_NOINTERFACE;
 	}
 
 	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
