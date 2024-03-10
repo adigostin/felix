@@ -184,7 +184,6 @@
     <ClCompile Include="Z80Xml.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="ExtensionManager.tlb" />
     <None Include="FelixPackage.def" />
   </ItemGroup>
   <ItemGroup>

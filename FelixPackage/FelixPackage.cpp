@@ -25,8 +25,6 @@ static const char SentryReleaseName[] = "FelixPackage@0.9.2";
 // {8F0D9E89-4C6C-4B63-83CF-1AA6B6E59BCB}
 GUID SID_Simulator = { 0x8f0d9e89, 0x4c6c, 0x4b63, { 0x83, 0xcf, 0x1a, 0xa6, 0xb6, 0xe5, 0x9b, 0xcb } };
 
-EXTERN_C const IID IID_SVsExtensionManager;
-
 // I know global variables are bad, but there are places in code where
 // it's impossible to reach the IServiceProvider received in IVsPackage::SetSite.
 // One such example is the implementation of IPropertyPage::GetPageInfo.
