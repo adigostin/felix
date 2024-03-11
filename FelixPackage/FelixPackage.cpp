@@ -79,6 +79,7 @@ public:
 		)
 			return S_OK;
 
+		#ifdef _DEBUG
 		if (riid == IID_IManagedObject
 			|| riid == IID_IConvertible
 			|| riid == IID_IDispatch
@@ -106,6 +107,7 @@ public:
 			|| riid == IID_IVsPersistSolutionOpts2
 		)
 			return E_NOINTERFACE;
+		#endif
 
 		return E_NOINTERFACE;
 	}
