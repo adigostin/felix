@@ -10,7 +10,7 @@
 "Package"="{768bc57b-42a8-42ab-b389-457946c4fc6a}"
 ; This is the one that goes to the list in Help -> About -> Installed products.
 ; Keep it in sync with the version number from source.extension.vsixmanifest.
-"PID"="0.9.2"
+"PID"="0.9.3"
 "ProductDetails"="#102"
 "LogoID"="#400"
 "UseInterface"=dword:00000000

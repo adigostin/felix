@@ -474,7 +474,6 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE StartBuildEx(DWORD dwBuildId, IVsOutputWindowPane * pIVsOutputWindowPane, DWORD dwOptions) override
 	{
 		HRESULT hr;
-		BOOL bRes;
 
 		for (auto& p : _buildStatusCallbacks)
 		{
@@ -496,6 +495,8 @@ public:
 		if (win32err != ERROR_SUCCESS && win32err != ERROR_ALREADY_EXISTS)
 			RETURN_WIN32(win32err);
 
+		const DWORD pathFlags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
+
 		wstring_builder cmdLine;
 
 		wil::unique_hlocal_string moduleFilename;
@@ -507,29 +508,31 @@ public:
 
 		cmdLine << " --fullpath";
 
-		{
-			// --raw=...
-			wil::unique_bstr output_filename;
-			hr = GetOutputFileName(&output_filename); RETURN_IF_FAILED(hr);
-			wil::unique_hlocal_string outputFilePath;
-			hr = PathAllocCombine (output_dir.get(), output_filename.get(),
-				PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS, &outputFilePath); RETURN_IF_FAILED(hr);
-			auto outputFilePathRelative = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(outputFilePathRelative);
-			BOOL bRes = PathRelativePathToW (outputFilePathRelative.get(), project_dir.bstrVal, FILE_ATTRIBUTE_DIRECTORY, outputFilePath.get(), 0); RETURN_HR_IF(CS_E_INVALID_PATH, !bRes);
-			cmdLine << " --raw=" << outputFilePathRelative.get();
-		}
+		auto addOutputPathParam = [&cmdLine, &output_dir, &project_dir](const char* paramName, const wchar_t* output_filename) -> HRESULT
+			{
+				wil::unique_hlocal_string outputFilePath;
+				auto hr = PathAllocCombine (output_dir.get(), output_filename, pathFlags, &outputFilePath); RETURN_IF_FAILED(hr);
+				auto outputFilePathRelativeUgly = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(outputFilePathRelativeUgly);
+				BOOL bRes = PathRelativePathToW (outputFilePathRelativeUgly.get(), project_dir.bstrVal, FILE_ATTRIBUTE_DIRECTORY, outputFilePath.get(), 0); RETURN_HR_IF(CS_E_INVALID_PATH, !bRes);
+				size_t len = wcslen(outputFilePathRelativeUgly.get());
+				auto outputFilePathRelative = wil::make_hlocal_string_nothrow(nullptr, len); RETURN_IF_NULL_ALLOC(outputFilePathRelative);
+				hr = PathCchCanonicalizeEx (outputFilePathRelative.get(), len + 1, outputFilePathRelativeUgly.get(), pathFlags); RETURN_IF_FAILED(hr);
+				cmdLine << paramName << outputFilePathRelative.get();
+				return S_OK;
+			};
 
-		{
-			// --sld=...
-			wil::unique_bstr sld_filename;
-			hr = GetSldFileName (&sld_filename); RETURN_IF_FAILED(hr);
-			wil::unique_hlocal_string sldFilePath;
-			hr = PathAllocCombine (output_dir.get(), sld_filename.get(),
-				PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS, &sldFilePath); RETURN_IF_FAILED(hr);
-			auto sldFilePathRelative = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(sldFilePathRelative);
-			bRes = PathRelativePathToW (sldFilePathRelative.get(), project_dir.bstrVal, FILE_ATTRIBUTE_DIRECTORY, sldFilePath.get(), 0); RETURN_HR_IF(CS_E_INVALID_PATH, !bRes);
-			cmdLine << " --sld=" << sldFilePathRelative.get();
-		}
+		// --raw=...
+		wil::unique_bstr output_filename;
+		hr = GetOutputFileName(&output_filename); RETURN_IF_FAILED(hr);
+		hr = addOutputPathParam (" --raw=", output_filename.get()); RETURN_IF_FAILED(hr);
+
+		// --sld=...
+		wil::unique_bstr sld_filename;
+		hr = GetSldFileName (&sld_filename); RETURN_IF_FAILED(hr);
+		hr = addOutputPathParam (" --sld=", sld_filename.get()); RETURN_IF_FAILED(hr);
+
+		// --outprefix
+		hr = addOutputPathParam (" --outprefix=", L""); RETURN_IF_FAILED(hr);
 
 		// input files
 		wil::unique_variant childItemId;
