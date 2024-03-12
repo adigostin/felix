@@ -89,6 +89,7 @@ public:
 
 		_hier = hier;
 		_threadId = GetCurrentThreadId();
+		_platformName = wil::make_bstr_nothrow(L"ZX Spectrum 48K"); RETURN_IF_NULL_ALLOC(_platformName);
 
 		if (!atom)
 		{
@@ -183,9 +184,9 @@ public:
 			return E_NOINTERFACE;
 		#endif
 
-		if (riid == __uuidof(IVsDeployableProjectCfg))
+		if (riid == IID_IVsDeployableProjectCfg)
 			return E_NOINTERFACE;
-		else if (riid == __uuidof(IVsPublishableProjectCfg))
+		else if (riid == IID_IVsPublishableProjectCfg)
 			return E_NOINTERFACE;
 		else if (riid == IID_IVsProjectCfg2)
 			return E_NOINTERFACE;
@@ -193,8 +194,9 @@ public:
 			return E_NOINTERFACE;
 		else if (riid == IID_IProvidePropertyBuilder)
 			return E_NOINTERFACE;
+		else if (riid == IID_IVsDebuggableProjectCfg2)
+			return E_NOINTERFACE;
 
-		//BreakIntoDebugger();
 		return E_NOINTERFACE;
 	}
 

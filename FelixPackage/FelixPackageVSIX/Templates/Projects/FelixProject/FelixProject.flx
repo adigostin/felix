@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <Z80Project>
 	<Configurations>
-		<Configuration ConfigName="Debug" PlatformName="ZX Spectrum 48K">
+		<Configuration ConfigName="Debug">
 			<GeneralProperties/>
 			<DebuggingProperties></DebuggingProperties>
 		</Configuration>

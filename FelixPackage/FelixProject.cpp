@@ -31,14 +31,13 @@ class Z80Project
 	//, IConnectionPointContainer
 	, IVsHierarchyDeleteHandler3
 	, IXmlParent
-///	, IXmlSerializePropertySelect
 	//, IVsProjectBuildSystem
 	//, IVsBuildPropertyStorage
 	//, IVsBuildPropertyStorage2
 	, IZ80ProjectItemParent
 {
-	static inline wil::com_ptr_nothrow<ITypeLib> _typeLib;
-	static inline wil::com_ptr_nothrow<ITypeInfo> _typeInfo;
+	static inline com_ptr<ITypeLib> _typeLib;
+	static inline com_ptr<ITypeInfo> _typeInfo;
 	wil::com_ptr_nothrow<IServiceProvider> _sp;
 	ULONG _refCount = 0;
 	GUID _projectInstanceGuid;
@@ -56,7 +55,7 @@ class Z80Project
 	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsCfgProviderEvents>> _cfgProviderEventSinks;
 	VSCOOKIE _nextCfgProviderEventCookie = 1;
 	VSCOOKIE _itemDocCookie = VSCOOKIE_NIL;
-	vector_nothrow<wil::com_ptr_nothrow<IZ80ProjectConfig>> _configs;
+	vector_nothrow<com_ptr<IZ80ProjectConfig>> _configs;
 
 	static HRESULT CreateProjectFilesFromTemplate (IServiceProvider* sp, const wchar_t* fromProjFilePath, const wchar_t* location, const wchar_t* filename)
 	{
@@ -600,7 +599,6 @@ public:
 			|| TryQI<IVsPersistHierarchyItem2>(this, riid, ppvObject)
 			|| TryQI<IPreferPropertyPagesWithTreeControl>(this, riid, ppvObject)
 			|| TryQI<IXmlParent>(this, riid, ppvObject)
-///			|| TryQI<IXmlSerializePropertySelect>(this, riid, ppvObject)
 			//|| TryQI<IVsProjectBuildSystem>(this, riid, ppvObject)
 			//|| TryQI<IVsBuildPropertyStorage>(this, riid, ppvObject)
 			//|| TryQI<IVsBuildPropertyStorage2>(this, riid, ppvObject)
@@ -608,6 +606,7 @@ public:
 		)
 			return S_OK;
 
+		#ifdef _DEBUG
 		// These will never be implemented.
 		if (   riid == IID_IMarshal
 			|| riid == IID_INoMarshal
@@ -624,12 +623,13 @@ public:
 			//|| riid == IID_VSProject2 // same
 			//|| riid == IID_VSProject3 // same
 			//|| riid == IID_VSProject4 // same
-///			|| riid == IID_IUseImmediateCommitPropertyPages // Some VS internal thing
+			|| riid == IID_IUseImmediateCommitPropertyPages // Some VS internal thing
 			|| riid == GUID{ 0xDBF177F2, 0x06DB, 0x4A47, { 0x8A, 0xAD, 0xC8, 0xE1, 0x2B, 0xFD, 0x6C, 0x86 } } // VCProject
 			|| riid == GUID{ 0xF70D3A58, 0x8522, 0x4D8B, { 0x81, 0x89, 0xFC, 0x0D, 0x25, 0x35, 0x46, 0x44 } } // no idea
 			|| riid == GUID{ 0xFC1E6B3F, 0x5123, 0x3042, { 0xBA, 0xEB, 0xEF, 0xBF, 0x10, 0x45, 0x54, 0x0A } } // something from Microsoft.VisualStudio.ProjectSystem.VS.Implementation.dll
 			|| riid == GUID{ 0x19893E06, 0x22DA, 0x4A7D, { 0xAD, 0x25, 0xDF, 0xED, 0x10, 0x40, 0x90, 0x3B } } // same
 			|| riid == GUID{ 0x779DC4EF, 0x2E1A, 0x4F3A, { 0xBA, 0x0B, 0x52, 0x96, 0xD2, 0x93, 0xE2, 0xB9 } } // something from Microsoft.VisualStudio.Project.VisualC.VCProjectEngine.dll
+			|| riid == GUID{ 0xE952CF02, 0xF120, 0x4119, { 0x8F, 0x94, 0x5D, 0x66, 0xF0, 0xC3, 0x8B, 0xF0 } } // no idea
 			|| riid == __uuidof(IVsParentProject)
 			|| riid == __uuidof(IVsAggregatableProject)
 			|| riid == IID_IVsParentProject3
@@ -642,6 +642,8 @@ public:
 			|| riid == IID_ICustomCast
 			|| riid == IID_IVsSccProjectProviderBinding
 			|| riid == IID_IVsSccProject2
+			|| riid == GUID{ 0x101d210d, 0x5b28, 0x4e02, { 0xb2, 0x20, 0x19, 0x94, 0x9f, 0xf4, 0x02, 0x3b } } // IID_IVsProjectAsyncOpen
+			|| riid == IID_SolutionProperties
 		)
 			return E_NOINTERFACE;
 
@@ -652,11 +654,7 @@ public:
 		)
 			return E_NOINTERFACE;
 
-
 		if (riid == IID_IVsFilterAddProjectItemDlg || riid == IID_IVsSolution)
-			return E_NOINTERFACE;
-
-		if (riid == IID_IConnectionPointContainer)
 			return E_NOINTERFACE;
 
 		if (riid == IID_IPersistFile)
@@ -664,8 +662,6 @@ public:
 		if (riid == IID_IVsPersistDocData)
 			return E_NOINTERFACE;
 		if (riid == IID_IVsPersistDocData2)
-			return E_NOINTERFACE;
-		if (riid == IID_SolutionProperties)
 			return E_NOINTERFACE;
 
 		if (riid == __uuidof(IVsSolution))
@@ -705,6 +701,7 @@ public:
 			|| riid == IID_IVsCurrentCfg
 		)
 			return E_NOINTERFACE;
+		#endif
 
 		return E_NOINTERFACE;
 	}
@@ -1697,7 +1694,47 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE AddCfgsOfCfgName(LPCOLESTR pszCfgName, LPCOLESTR pszCloneCfgName, BOOL fPrivate) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		com_ptr<IZ80ProjectConfig> newConfig;
+		auto hr = Z80ProjectConfig_CreateInstance (this, _typeLib, &newConfig); RETURN_IF_FAILED_EXPECTED(hr);
+
+		if (pszCloneCfgName)
+		{
+			uint32_t index = -1;
+			for (uint32_t i = 0; i < _configs.size(); i++)
+			{
+				wil::unique_bstr name;
+				hr = _configs[i]->get_ConfigName(&name); RETURN_IF_FAILED(hr);
+				if (wcscmp(name.get(), pszCloneCfgName) == 0)
+				{
+					if (index != -1)
+						RETURN_HR(E_NOTIMPL); // multiple config objects with same config name (probably different platforms)
+					index = i;
+				}
+			}
+
+			if (index == -1)
+				RETURN_HR(E_INVALIDARG);
+
+			auto stream = com_ptr(SHCreateMemStream(nullptr, 0)); RETURN_IF_NULL_ALLOC(stream);
+		
+			hr = SaveToXml(_configs[index], L"Temp", stream); RETURN_IF_FAILED_EXPECTED(hr);
+
+			hr = stream->Seek({ 0 }, STREAM_SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
+
+			hr = LoadFromXml(newConfig, L"Temp", stream); RETURN_IF_FAILED_EXPECTED(hr);
+		}
+
+		auto newConfigNameBstr = wil::make_bstr_nothrow(pszCfgName); RETURN_IF_NULL_ALLOC(newConfigNameBstr);
+		hr = newConfig->put_ConfigName(newConfigNameBstr.get()); RETURN_IF_FAILED(hr);
+
+		bool pushed = _configs.try_push_back(std::move(newConfig)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+
+		_isDirty = true;
+
+		for (auto& sink : _cfgProviderEventSinks)
+			sink.second->OnCfgNameAdded(pszCfgName);
+
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE DeleteCfgsOfCfgName(LPCOLESTR pszCfgName) override
@@ -1728,11 +1765,11 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE GetCfgProviderProperty(VSCFGPROPID propid, VARIANT* pvar) override
 	{
 		if (propid == VSCFGPROPID_SupportsCfgAdd)
-			return InitVariantFromBoolean(FALSE, pvar);
+			return InitVariantFromBoolean(TRUE, pvar);
 		if (propid == VSCFGPROPID_SupportsCfgDelete)
-			return InitVariantFromBoolean(FALSE, pvar);
+			return InitVariantFromBoolean(TRUE, pvar);
 		if (propid == VSCFGPROPID_SupportsCfgRename)
-			return InitVariantFromBoolean(FALSE, pvar);
+			return InitVariantFromBoolean(TRUE, pvar);
 		if (propid == VSCFGPROPID_SupportsPlatformAdd)
 			return InitVariantFromBoolean(FALSE, pvar);
 		if (propid == VSCFGPROPID_SupportsPlatformDelete)
@@ -2049,7 +2086,7 @@ public:
 		LONG ubound;
 		hr = SafeArrayGetUBound(sa, 1, &ubound); RETURN_IF_FAILED(hr);
 
-		vector_nothrow<wil::com_ptr_nothrow<IZ80ProjectConfig>> configs;
+		vector_nothrow<com_ptr<IZ80ProjectConfig>> configs;
 		bool resized = configs.try_resize(ubound + 1); RETURN_HR_IF(E_OUTOFMEMORY, !resized);
 
 		for (LONG i = 0; i <= ubound; i++)
@@ -2060,7 +2097,9 @@ public:
 		}
 
 		_configs = std::move(configs);
-		// TODO: notifications
+
+		// This is called only from LoadXml, no need to set dirty flag or send notifications.
+
 		return S_OK;
 	}
 
@@ -2120,7 +2159,8 @@ public:
 			}
 		}
 
-		// TODO: notifications
+		// This is called only from LoadXml, no need to set dirty flag or send notifications.
+
 		return S_OK;
 	}
 
@@ -2140,7 +2180,7 @@ public:
 		if (_projectInstanceGuid != guid)
 		{
 			_projectInstanceGuid = guid;
-			// TODO: notifications
+			// This is called only from LoadXml, no need to set dirty flag or send notifications.
 		}
 
 		return S_OK;

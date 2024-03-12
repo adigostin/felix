@@ -8,3 +8,4 @@
 #include <vsdebugguids.h>
 #include <venuscmddef.h>
 #include <sccmnid.h>
+#include <ocdesign.h>
