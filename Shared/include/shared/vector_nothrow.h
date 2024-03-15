@@ -108,6 +108,15 @@ public:
 		return res;
 	}
 
+	T remove_back()
+	{
+		WI_ASSERT(_size);
+		T res = std::move(_ptr[_size - 1]);
+		_ptr[_size - 1].~T();
+		_size--;
+		return res;
+	}
+
 	void erase (iterator it)
 	{
 		remove(it);

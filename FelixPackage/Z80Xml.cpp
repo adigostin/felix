@@ -214,6 +214,14 @@ static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, IXmlWriterL
 								break;
 							}
 
+							case VT_BOOL:
+							{
+								bool val = (V_BOOL(&result) == VARIANT_TRUE);
+								auto value = wil::make_bstr_nothrow(val ? L"True" : L"False"); RETURN_IF_NULL_ALLOC(value);
+								bool pushed = attributes.try_push_back(ValueProperty{ fd->memid, std::move(name), std::move(value) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+								break;
+							}
+
 							default:
 								RETURN_HR(E_NOTIMPL);
 						}
@@ -385,23 +393,27 @@ static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDis
 		VARTYPE vt;
 		hr = FindPutFunction(memid, typeInfo.get(), typeAttr, &vt); RETURN_IF_FAILED(hr);
 		wil::unique_variant valueVariant;
-		hr = InitVariantFromString(attrValue, &valueVariant); RETURN_IF_FAILED(hr);
+
+		switch (vt)
+		{
+			case VT_BSTR:
+				hr = InitVariantFromString(attrValue, &valueVariant); RETURN_IF_FAILED(hr);
+				break;
+
+			case VT_BOOL:
+				hr = InitVariantFromBoolean(!wcscmp(attrValue, L"True"), &valueVariant); RETURN_IF_FAILED(hr);
+				break;
+
+			default:
+				RETURN_HR(E_NOTIMPL);
+		}
 
 		DISPID named = DISPID_PROPERTYPUT;
 		DISPPARAMS params = { .rgvarg = &valueVariant, .rgdispidNamedArgs=&named, .cArgs = 1, .cNamedArgs = 1 };
 		wil::unique_variant result; // TODO: get rid of this
 		EXCEPINFO exception;
 		UINT uArgErr;
-
-		switch (vt)
-		{
-			case VT_BSTR:
-				hr = typeInfo->Invoke(obj, memid, DISPATCH_PROPERTYPUT, &params, &result, &exception, &uArgErr); RETURN_IF_FAILED(hr);
-				break;
-
-			default:
-				RETURN_HR(E_NOTIMPL);
-		}
+		hr = typeInfo->Invoke(obj, memid, DISPATCH_PROPERTYPUT, &params, &result, &exception, &uArgErr); RETURN_IF_FAILED(hr);
 
 		hr = reader->MoveToNextAttribute(); RETURN_IF_FAILED(hr);
 	}

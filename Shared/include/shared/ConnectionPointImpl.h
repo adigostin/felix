@@ -13,7 +13,7 @@ class ConnectionPointImpl : public IConnectionPoint
 	DWORD _nextCookie = 1;
 
 public:
-	static HRESULT CreateInstance (IConnectionPointContainer* cont, IConnectionPoint** cp)
+	static HRESULT CreateInstance (IConnectionPointContainer* cont, ConnectionPointImpl<iid>** cp)
 	{
 		com_ptr<ConnectionPointImpl> p = new (std::nothrow) ConnectionPointImpl(); RETURN_IF_NULL_ALLOC(p);
 		p->_cont = cont;
@@ -47,7 +47,7 @@ public:
 		}
 
 		*ppvObject = nullptr;
-		RETURN_HR(E_NOINTERFACE);
+		return E_NOINTERFACE;
 	}
 
 	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
@@ -91,6 +91,8 @@ public:
 		return MakeConnectionPointEnumerator(_cps.data(), _cps.size(), ppEnum);
 	}
 	#pragma endregion
+
+	const vector_nothrow<CONNECTDATA>& GetConnections() const { return _cps; }
 };
 
 class EnumConnectionsImpl : public IEnumConnections

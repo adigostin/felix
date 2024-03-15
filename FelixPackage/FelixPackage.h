@@ -8,7 +8,6 @@ using unique_safearray = wil::unique_any<SAFEARRAY*, decltype(SafeArrayDestroy),
 extern wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 
 extern GUID SID_Simulator;
-
 extern const wchar_t Z80AsmLanguageName[];
 extern const wchar_t SingleDebugPortName[];
 extern const GUID Z80AsmLanguageGuid;
@@ -33,7 +32,7 @@ HRESULT MakeFelixProject (IServiceProvider* sp, LPCOLESTR pszFilename, LPCOLESTR
 HRESULT MakeZ80AsmFile (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentItemId, ITypeLib* typeLib, IZ80AsmFile** file);
 HRESULT Z80ProjectConfig_CreateInstance (IVsUIHierarchy* hier, ITypeLib* typeLib, IZ80ProjectConfig** to);
 HRESULT Z80ProjectFactory_CreateInstance (IServiceProvider* sp, IVsProjectFactory** to);
-HRESULT MakePGPropertyPage (UINT titleStringResId, REFGUID pageGuid, IPropertyPage** to);
+HRESULT MakePGPropertyPage (UINT titleStringResId, REFGUID pageGuid, DISPID dispidChildObj, IPropertyPage** to);
 HRESULT SimulatorWindowPane_CreateInstance (IVsWindowPane** to);
 HRESULT Z80AsmLanguageInfo_CreateInstance (IVsLanguageInfo** to);
 HRESULT MakeDebugPortSupplier (IDebugPortSupplier2** to);

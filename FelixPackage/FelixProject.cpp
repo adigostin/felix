@@ -35,6 +35,7 @@ class Z80Project
 	//, IVsBuildPropertyStorage
 	//, IVsBuildPropertyStorage2
 	, IZ80ProjectItemParent
+	, IPropertyNotifySink
 {
 	static inline com_ptr<ITypeLib> _typeLib;
 	static inline com_ptr<ITypeInfo> _typeInfo;
@@ -190,6 +191,7 @@ public:
 			hr = SHCreateStreamOnFileEx (projFilePath.get(), STGM_CREATE | STGM_WRITE | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, 0, nullptr, &stream); RETURN_IF_FAILED(hr);
 			hr = SaveToXml(this, ProjectElementName, stream.get()); RETURN_IF_FAILED(hr);
 
+			_isDirty = false;
 			return S_OK;
 		}
 		else if (grfCreateFlags & CPF_OPENFILE)
@@ -207,6 +209,8 @@ public:
 			com_ptr<IStream> stream;
 			auto hr = SHCreateStreamOnFileEx(pszFilename, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, 0, nullptr, &stream); RETURN_IF_FAILED(hr);
 			hr = LoadFromXml (this, ProjectElementName, stream.get()); RETURN_IF_FAILED(hr);
+
+			_isDirty = false;
 			return S_OK;
 		}
 		else
@@ -603,6 +607,7 @@ public:
 			//|| TryQI<IVsBuildPropertyStorage>(this, riid, ppvObject)
 			//|| TryQI<IVsBuildPropertyStorage2>(this, riid, ppvObject)
 			|| TryQI<IZ80ProjectItemParent>(this, riid, ppvObject)
+			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -764,7 +769,13 @@ public:
 		_parentHierarchy = nullptr;
 		_parentHierarchyItemId = VSITEMID_NIL;
 		_firstChild = nullptr;
-		_configs.clear();
+
+		while (_configs.size())
+		{
+			auto hr = _configs.back()->UnadvisePropertyNotify(this); LOG_IF_FAILED(hr);
+			_configs.remove_back();
+		}
+
 		return S_OK;
 	}
 
@@ -1699,25 +1710,23 @@ public:
 
 		if (pszCloneCfgName)
 		{
-			uint32_t index = -1;
-			for (uint32_t i = 0; i < _configs.size(); i++)
+			com_ptr<IZ80ProjectConfig> existing;
+			for (auto& c : _configs)
 			{
 				wil::unique_bstr name;
-				hr = _configs[i]->get_ConfigName(&name); RETURN_IF_FAILED(hr);
-				if (wcscmp(name.get(), pszCloneCfgName) == 0)
+				hr = c->get_ConfigName(&name); RETURN_IF_FAILED(hr);
+				if (wcscmp(name ? name.get() : L"", pszCloneCfgName) == 0)
 				{
-					if (index != -1)
-						RETURN_HR(E_NOTIMPL); // multiple config objects with same config name (probably different platforms)
-					index = i;
+					existing = c;
+					break;
 				}
 			}
 
-			if (index == -1)
-				RETURN_HR(E_INVALIDARG);
+			RETURN_HR_IF(E_INVALIDARG, !existing);
 
 			auto stream = com_ptr(SHCreateMemStream(nullptr, 0)); RETURN_IF_NULL_ALLOC(stream);
 		
-			hr = SaveToXml(_configs[index], L"Temp", stream); RETURN_IF_FAILED_EXPECTED(hr);
+			hr = SaveToXml(existing, L"Temp", stream); RETURN_IF_FAILED_EXPECTED(hr);
 
 			hr = stream->Seek({ 0 }, STREAM_SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
 
@@ -1728,18 +1737,49 @@ public:
 		hr = newConfig->put_ConfigName(newConfigNameBstr.get()); RETURN_IF_FAILED(hr);
 
 		bool pushed = _configs.try_push_back(std::move(newConfig)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		auto removeBack = wil::scope_exit([this] { _configs.remove_back(); });
+
+		hr = _configs.back()->AdvisePropertyNotify(this); RETURN_IF_FAILED(hr);
 
 		_isDirty = true;
 
 		for (auto& sink : _cfgProviderEventSinks)
 			sink.second->OnCfgNameAdded(pszCfgName);
 
+		removeBack.release();
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE DeleteCfgsOfCfgName(LPCOLESTR pszCfgName) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		HRESULT hr;
+
+		auto it = _configs.begin();
+		while (it != _configs.end())
+		{
+			wil::unique_bstr name;
+			hr = it->get()->get_ConfigName(&name); RETURN_IF_FAILED(hr);
+			if (wcscmp(name ? name.get() : L"", pszCfgName) == 0)
+				break;
+			it++;
+		}
+
+		if (it == _configs.end())
+		{
+			// When the user deletes a solution configuration, VS asks us to delete
+			// all project configs with that name, even if we have no such project config.
+			return E_INVALIDARG;
+		}
+
+		hr = it->get()->UnadvisePropertyNotify(this); LOG_IF_FAILED(hr);
+		_configs.erase(it);
+
+		_isDirty = true;
+
+		for (auto& sink : _cfgProviderEventSinks)
+			sink.second->OnCfgNameDeleted(pszCfgName);
+
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE RenameCfgsOfCfgName(LPCOLESTR pszOldName, LPCOLESTR pszNewName) override
@@ -2086,19 +2126,29 @@ public:
 		LONG ubound;
 		hr = SafeArrayGetUBound(sa, 1, &ubound); RETURN_IF_FAILED(hr);
 
-		vector_nothrow<com_ptr<IZ80ProjectConfig>> configs;
-		bool resized = configs.try_resize(ubound + 1); RETURN_HR_IF(E_OUTOFMEMORY, !resized);
-
+		vector_nothrow<com_ptr<IZ80ProjectConfig>> newConfigs;
 		for (LONG i = 0; i <= ubound; i++)
 		{
 			wil::com_ptr_nothrow<IUnknown> child;
 			hr = SafeArrayGetElement (sa, &i, child.addressof()); RETURN_IF_FAILED(hr);
-			hr = child->QueryInterface(&configs[i]); RETURN_IF_FAILED(hr);
+			com_ptr<IZ80ProjectConfig> config;
+			hr = child->QueryInterface(&config); RETURN_IF_FAILED(hr);
+			bool pushed = newConfigs.try_push_back(std::move(config)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 		}
 
-		_configs = std::move(configs);
+		while(_configs.size())
+		{
+			_configs.back()->UnadvisePropertyNotify(this);
+			_configs.remove_back();
+		}
 
-		// This is called only from LoadXml, no need to set dirty flag or send notifications.
+		_configs = std::move(newConfigs);
+		for (uint32_t i = 0; i < _configs.size(); i++)
+		{
+			hr = _configs[i]->AdvisePropertyNotify(this); LOG_IF_FAILED(hr);
+		}
+
+		_isDirty = true;
 
 		return S_OK;
 	}
@@ -2256,6 +2306,19 @@ public:
 	virtual void STDMETHODCALLTYPE SetFirstChild (IZ80ProjectItem *next) override
 	{
 		_firstChild = next;
+	}
+	#pragma endregion
+
+	#pragma region IPropertyNotifySink
+	virtual HRESULT STDMETHODCALLTYPE OnChanged (DISPID dispID) override
+	{
+		_isDirty = true;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnRequestEdit (DISPID dispID) override
+	{
+		RETURN_HR(E_NOTIMPL);
 	}
 	#pragma endregion
 };

@@ -5,6 +5,7 @@
 #include "shared/unordered_map_nothrow.h"
 #include "shared/TryQI.h"
 #include "shared/string_builder.h"
+#include "shared/ConnectionPointImpl.h"
 #include "dispids.h"
 #include "guids.h"
 #include "Z80Xml.h"
@@ -24,7 +25,6 @@ struct Z80ProjectConfig
 	, IVsBuildableProjectCfg
 	, IVsBuildableProjectCfg2
 	, ISpecifyPropertyPages
-	, IPropertyGridObjectSelector
 	, IXmlParent
 	//, public IVsProjectCfgDebugTargetSelection
 	//, public IVsProjectCfgDebugTypeSelection
@@ -36,9 +36,10 @@ struct Z80ProjectConfig
 	wil::unique_bstr _platformName;
 	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsBuildStatusCallback>> _buildStatusCallbacks;
 	VSCOOKIE _buildStatusNextCookie = VSCOOKIE_NIL + 1;
+	vector_nothrow<com_ptr<IPropertyNotifySink>> _propNotifySinks;
 
-	static inline wil::com_ptr_nothrow<ITypeLib> _typeLib;
-	static inline wil::com_ptr_nothrow<ITypeInfo> _typeInfo;
+	static inline com_ptr<ITypeLib> _typeLib;
+	static inline com_ptr<ITypeInfo> _typeInfo;
 
 	static constexpr OutputFileType OutputFileTypeDefaultValue = OutputFileType::Binary;
 	OutputFileType _outputFileType = OutputFileTypeDefaultValue;
@@ -51,6 +52,9 @@ struct Z80ProjectConfig
 
 	static constexpr LaunchType LaunchTypeDefaultValue = LaunchType::PrintUsr;
 	LaunchType _launchType = LaunchTypeDefaultValue;
+
+	bool _saveListing = false;
+	wil::unique_bstr _listingFilename;
 
 	static constexpr wchar_t wnd_class_name[] = L"ProjectConfig-{9838F078-469A-4F89-B08E-881AF33AE76D}";
 	using unique_atom = wil::unique_any<ATOM, void(ATOM), [](ATOM a) { BOOL bres = UnregisterClassW((LPCWSTR)a, hinstance); LOG_IF_WIN32_BOOL_FALSE(bres); }>;
@@ -157,7 +161,6 @@ public:
 			|| TryQI<IVsBuildableProjectCfg>(this, riid, ppvObject)
 			|| TryQI<IVsBuildableProjectCfg2>(this, riid, ppvObject)
 			|| TryQI<ISpecifyPropertyPages>(this, riid, ppvObject)
-			|| TryQI<IPropertyGridObjectSelector>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -182,20 +185,18 @@ public:
 			|| riid == IID_ICustomCast
 		)
 			return E_NOINTERFACE;
-		#endif
 
-		if (riid == IID_IVsDeployableProjectCfg)
+		// These may be implemented at a later time.
+		if (   riid == IID_IVsDeployableProjectCfg
+			|| riid == IID_IVsPublishableProjectCfg
+			|| riid == IID_IVsProjectCfg2
+			|| riid == IID_ICategorizeProperties
+			|| riid == IID_IProvidePropertyBuilder
+			|| riid == IID_IVsDebuggableProjectCfg2
+			|| riid == IID_IVsPerPropertyBrowsing
+		)
 			return E_NOINTERFACE;
-		else if (riid == IID_IVsPublishableProjectCfg)
-			return E_NOINTERFACE;
-		else if (riid == IID_IVsProjectCfg2)
-			return E_NOINTERFACE;
-		else if (riid == IID_ICategorizeProperties)
-			return E_NOINTERFACE;
-		else if (riid == IID_IProvidePropertyBuilder)
-			return E_NOINTERFACE;
-		else if (riid == IID_IVsDebuggableProjectCfg2)
-			return E_NOINTERFACE;
+		#endif
 
 		return E_NOINTERFACE;
 	}
@@ -714,32 +715,6 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region IPropertyGridObjectSelector
-	HRESULT STDMETHODCALLTYPE GetObjectForPropertyGrid (REFGUID pageGuid, IUnknown** ppUnkOut) override
-	{
-		HRESULT hr;
-		*ppUnkOut = nullptr;
-
-		if (pageGuid == GeneralPropertyPage_CLSID)
-		{
-			wil::com_ptr_nothrow<IDispatch> props;
-			hr = GeneralPageProperties_CreateInstance(this, _typeLib.get(), &props); RETURN_IF_FAILED(hr);
-			*ppUnkOut = props.detach();
-			return S_OK;
-		}
-
-		if (pageGuid == DebugPropertyPage_CLSID)
-		{
-			wil::com_ptr_nothrow<IDispatch> props;
-			hr = DebuggingPageProperties_CreateInstance(this, _typeLib.get(), &props); RETURN_IF_FAILED(hr);
-			*ppUnkOut = props.detach();
-			return S_OK;
-		}
-
-		RETURN_HR(E_NOTIMPL);
-	}
-	#pragma endregion
-
 	#pragma region IZ80ProjectConfig
 	virtual HRESULT STDMETHODCALLTYPE get___id(BSTR *value) override
 	{
@@ -748,34 +723,57 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_GeneralProperties (IDispatch **ppDispatch) override
+	virtual HRESULT STDMETHODCALLTYPE get_GeneralProperties (IDispatch** ppDispatch) override
 	{
-		auto hr = GeneralPageProperties_CreateInstance (this, _typeLib.get(), ppDispatch); RETURN_IF_FAILED(hr);
-		return S_OK;
+		return GeneralPageProperties_CreateInstance (this, _typeLib.get(), ppDispatch);
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_GeneralProperties (IDispatch *pDispatch) override
+	virtual HRESULT STDMETHODCALLTYPE put_GeneralProperties (IDispatch* pDispatch) override
 	{
 		wil::com_ptr_nothrow<IZ80ProjectConfigGeneralProperties> gp;
 		auto hr = pDispatch->QueryInterface(&gp); RETURN_IF_FAILED(hr);
+
+		bool changed = false;
+
 		enum OutputFileType newValue;
 		hr = gp->get_OutputFileType(&newValue); RETURN_IF_FAILED(hr);
 		if (_outputFileType != newValue)
 		{
 			_outputFileType = newValue;
-			// TODO: notifications
+			changed = true;
+		}
+
+		VARIANT_BOOL saveListing;
+		hr = gp->get_SaveListing(&saveListing); RETURN_IF_FAILED(hr);
+		if (_saveListing != (saveListing == VARIANT_TRUE))
+		{
+			_saveListing = (saveListing == VARIANT_TRUE);
+			changed = true;
+		}
+
+		wil::unique_bstr listingFilename;
+		hr = gp->get_SaveListingFilename(&listingFilename);
+		if (VarBstrCmp(_listingFilename.get(), listingFilename.get(), 0, 0) != VARCMP_EQ)
+		{
+			_listingFilename = std::move(listingFilename);
+			changed = true;
+		}
+
+		if (changed)
+		{
+			for (auto& sink : _propNotifySinks)
+				sink->OnChanged(dispidGeneralProperties);
 		}
 
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_DebuggingProperties (IDispatch **ppDispatch) override
+	virtual HRESULT STDMETHODCALLTYPE get_DebuggingProperties (IDispatch** ppDispatch) override
 	{
-		auto hr = DebuggingPageProperties_CreateInstance (this, _typeLib.get(), ppDispatch); RETURN_IF_FAILED(hr);
-		return S_OK;
+		return DebuggingPageProperties_CreateInstance (this, _typeLib.get(), ppDispatch);
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_DebuggingProperties (IDispatch *pDispatch) override
+	virtual HRESULT STDMETHODCALLTYPE put_DebuggingProperties (IDispatch* pDispatch) override
 	{
 		wil::com_ptr_nothrow<IZ80ProjectConfigDebugProperties> dp;
 		auto hr = pDispatch->QueryInterface(&dp); RETURN_IF_FAILED(hr);
@@ -864,6 +862,22 @@ public:
 		*pbstr = SysAllocString(L"output.sld"); RETURN_IF_NULL_ALLOC(*pbstr);
 		return S_OK;
 	}
+
+	virtual HRESULT STDMETHODCALLTYPE AdvisePropertyNotify (IPropertyNotifySink *sink) override
+	{
+		auto it = _propNotifySinks.find(sink);
+		RETURN_HR_IF(E_INVALIDARG, it != _propNotifySinks.end());
+		_propNotifySinks.try_push_back(sink);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE UnadvisePropertyNotify (IPropertyNotifySink *sink) override
+	{
+		auto it = _propNotifySinks.find(sink);
+		RETURN_HR_IF(E_INVALIDARG, it == _propNotifySinks.end());
+		_propNotifySinks.erase(it);
+		return S_OK;
+	}
 	#pragma endregion
 
 	#pragma region IXmlParent
@@ -887,7 +901,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE CreateChild (DISPID dispidProperty, PCWSTR xmlElementName, IDispatch** childOut) override
 	{
 		if (dispidProperty == dispidGeneralProperties)
-			return GeneralPageProperties_CreateInstance(this, _typeLib.get(), childOut);
+			return GeneralPageProperties_CreateInstance (this, _typeLib.get(), childOut);
 
 		if (dispidProperty == dispidDebuggingProperties)
 			return DebuggingPageProperties_CreateInstance(this, _typeLib.get(), childOut);
@@ -907,21 +921,37 @@ HRESULT Z80ProjectConfig_CreateInstance (IVsUIHierarchy* hier, ITypeLib* typeLib
 	return S_OK;
 }
 
-struct GeneralPageProperties : IZ80ProjectConfigGeneralProperties, IProvideClassInfo, IVsPerPropertyBrowsing
+struct GeneralPageProperties : IZ80ProjectConfigGeneralProperties, IProvideClassInfo, IVsPerPropertyBrowsing, IConnectionPointContainer
 {
 	ULONG _refCount = 0;
 	wil::com_ptr_nothrow<Z80ProjectConfig> _config;
 	static inline wil::com_ptr_nothrow<ITypeInfo> _typeInfo;
+	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
+	OutputFileType _outputFileType;
+	bool _saveListing;
+	wil::unique_bstr _listingFilename;
 
 	static HRESULT CreateInstance (Z80ProjectConfig* config, ITypeLib* typeLib, IDispatch** to)
 	{
+		HRESULT hr;
+
 		if (!_typeInfo)
 		{
-			auto hr = typeLib->GetTypeInfoOfGuid(IID_IZ80ProjectConfigGeneralProperties, &_typeInfo); RETURN_IF_FAILED(hr);
+			hr = typeLib->GetTypeInfoOfGuid(IID_IZ80ProjectConfigGeneralProperties, &_typeInfo); RETURN_IF_FAILED(hr);
 		}
 
-		wil::com_ptr_nothrow<GeneralPageProperties> p = new (std::nothrow) GeneralPageProperties(); RETURN_IF_NULL_ALLOC(p);
+		auto p = com_ptr(new (std::nothrow) GeneralPageProperties()); RETURN_IF_NULL_ALLOC(p);
 		p->_config = config;
+		p->_outputFileType = config->_outputFileType;
+		p->_saveListing = config->_saveListing;
+
+		if (config->_listingFilename)
+		{
+			p->_listingFilename = wil::make_bstr_nothrow(config->_listingFilename.get()); RETURN_IF_NULL_ALLOC(p->_listingFilename);
+		}
+
+		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(p, &p->_propNotifyCP); RETURN_IF_FAILED(hr);
+
 		*to = p.detach();
 		return S_OK;
 	}
@@ -939,9 +969,11 @@ struct GeneralPageProperties : IZ80ProjectConfigGeneralProperties, IProvideClass
 			|| TryQI<IZ80ProjectConfigGeneralProperties>(this, riid, ppvObject)
 			|| TryQI<IProvideClassInfo>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
+			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
 		)
 			return S_OK;
 
+		#ifdef _DEBUG
 		// These will never be implemented.
 		if (   riid == IID_IManagedObject
 			|| riid == IID_IInspectable
@@ -960,13 +992,15 @@ struct GeneralPageProperties : IZ80ProjectConfigGeneralProperties, IProvideClass
 			)
 			return E_NOINTERFACE;
 
-		else if (riid == IID_ICategorizeProperties)
-			return E_NOINTERFACE;
-		else if (riid == IID_IProvidePropertyBuilder)
-			return E_NOINTERFACE;
-		else if (riid == IID_IConnectionPointContainer)
+		if (riid == IID_ICategorizeProperties)
 			return E_NOINTERFACE;
 
+		if (riid == IID_IProvidePropertyBuilder)
+			return E_NOINTERFACE;
+
+		if (riid == IID_ISpecifyPropertyPages)
+			return E_NOINTERFACE;
+		#endif
 
 		return E_NOINTERFACE;
 	}
@@ -1024,7 +1058,19 @@ struct GeneralPageProperties : IZ80ProjectConfigGeneralProperties, IProvideClass
 	{
 		if (dispid == dispidOutputFileType)
 		{
-			*fDefault = (_config->_outputFileType == Z80ProjectConfig::OutputFileTypeDefaultValue);
+			*fDefault = (_outputFileType == Z80ProjectConfig::OutputFileTypeDefaultValue);
+			return S_OK;
+		}
+
+		if (dispid == dispidSaveListing)
+		{
+			*fDefault = (_saveListing == false);
+			return S_OK;
+		}
+
+		if (dispid == dispidListingFilename)
+		{
+			*fDefault = !_listingFilename || !_listingFilename.get()[0];
 			return S_OK;
 		}
 
@@ -1037,13 +1083,16 @@ struct GeneralPageProperties : IZ80ProjectConfigGeneralProperties, IProvideClass
 
 	virtual HRESULT STDMETHODCALLTYPE CanResetPropertyValue (DISPID dispid, BOOL *pfCanReset) override
 	{
-		if (dispid == dispidOutputFileType)
+		switch (dispid)
 		{
-			*pfCanReset = TRUE;
-			return S_OK;
+			case dispidOutputFileType:
+			case dispidSaveListing:
+			case dispidListingFilename:
+				*pfCanReset = TRUE;
+				return S_OK;
+			default:
+				return E_NOTIMPL;
 		}
-
-		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE ResetPropertyValue (DISPID dispid) override
@@ -1051,9 +1100,40 @@ struct GeneralPageProperties : IZ80ProjectConfigGeneralProperties, IProvideClass
 		if (dispid == dispidOutputFileType)
 			return put_OutputFileType(Z80ProjectConfig::OutputFileTypeDefaultValue);
 
+		if (dispid == dispidSaveListing)
+			return put_SaveListing(VARIANT_FALSE);
+
 		return E_NOTIMPL;
 	}
 	#pragma endregion
+
+	#pragma region IConnectionPointContainer
+	virtual HRESULT STDMETHODCALLTYPE EnumConnectionPoints (IEnumConnectionPoints **ppEnum) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE FindConnectionPoint (REFIID riid, IConnectionPoint **ppCP) override
+	{
+		if (riid == IID_IPropertyNotifySink)
+		{
+			*ppCP = _propNotifyCP;
+			_propNotifyCP->AddRef();
+			return S_OK;
+		}
+
+		RETURN_HR(E_NOTIMPL);
+	}
+	#pragma endregion
+
+	void NotifyPropertyChanged (DISPID dispID)
+	{
+		for (auto& c : _propNotifyCP->GetConnections())
+		{
+			if (auto sink = wil::try_com_query_nothrow<IPropertyNotifySink>(c.pUnk))
+				sink->OnChanged(dispID);
+		}
+	}
 
 	#pragma region IZ80ProjectConfigGeneralProperties
 	virtual HRESULT STDMETHODCALLTYPE get___id(BSTR *value) override
@@ -1065,16 +1145,57 @@ struct GeneralPageProperties : IZ80ProjectConfigGeneralProperties, IProvideClass
 
 	virtual HRESULT STDMETHODCALLTYPE get_OutputFileType (enum OutputFileType* value) override
 	{
-		*value = _config->_outputFileType;
+		*value = _outputFileType;
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_OutputFileType (enum OutputFileType value) override
 	{
-		if (_config->_outputFileType != value)
+		if (_outputFileType != value)
 		{
-			// TODO: notification
-			_config->_outputFileType = value;
+			_outputFileType = value;
+			NotifyPropertyChanged(dispidOutputFileType);
+		}
+
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_SaveListing (VARIANT_BOOL* save) override
+	{
+		*save = _saveListing ? VARIANT_TRUE: VARIANT_FALSE;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_SaveListing (VARIANT_BOOL save) override
+	{
+		bool s = (save == VARIANT_TRUE);
+		if (_saveListing != s)
+		{
+			_saveListing = s;
+			NotifyPropertyChanged(dispidSaveListing);
+		}
+
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_SaveListingFilename (BSTR* pFilename) override
+	{
+		if (_listingFilename)
+		{
+			*pFilename = SysAllocString(_listingFilename.get()); RETURN_IF_NULL_ALLOC(*pFilename);
+		}
+		else
+			*pFilename = nullptr;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_SaveListingFilename (BSTR filename) override
+	{
+		if (VarBstrCmp(_listingFilename.get(), filename, 0, 0) != VARCMP_EQ)
+		{
+			auto fn = wil::make_bstr_nothrow(filename); RETURN_IF_NULL_ALLOC(fn);
+			_listingFilename = std::move(fn);
+			NotifyPropertyChanged(dispidListingFilename);
 		}
 
 		return S_OK;

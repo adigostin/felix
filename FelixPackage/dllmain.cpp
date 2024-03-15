@@ -4,6 +4,7 @@
 #include "shared/ClassFactory.h"
 #include "Guids.h"
 #include "../FelixPackageUi/Resource.h"
+#include "dispids.h"
 
 HRESULT FelixPackage_CreateInstance (IVsPackage** out);
 
@@ -37,13 +38,13 @@ extern "C" HRESULT __stdcall DllGetClassObject (REFCLSID rclsid, REFIID riid, LP
 	else if (rclsid == GeneralPropertyPage_CLSID)
 	{
 		static const auto make = [](IPropertyPage** to)
-			{ return MakePGPropertyPage(IDS_GENERAL_PROP_PAGE_TITLE, GeneralPropertyPage_CLSID, to); };
+			{ return MakePGPropertyPage(IDS_GENERAL_PROP_PAGE_TITLE, GeneralPropertyPage_CLSID, dispidGeneralProperties, to); };
 		p = new (std::nothrow) Z80ClassFactory<IPropertyPage>(make); RETURN_IF_NULL_ALLOC(p);
 	}
 	else if (rclsid == DebugPropertyPage_CLSID)
 	{
 		static const auto make = [](IPropertyPage** to)
-			{ return MakePGPropertyPage(IDS_DEBUGGING_PROP_PAGE_TITLE, DebugPropertyPage_CLSID, to); };
+			{ return MakePGPropertyPage(IDS_DEBUGGING_PROP_PAGE_TITLE, DebugPropertyPage_CLSID, dispidDebuggingProperties, to); };
 		p = new (std::nothrow) Z80ClassFactory<IPropertyPage>(make); RETURN_IF_NULL_ALLOC(p);
 	}
 	else if (rclsid == PortSupplier_CLSID)

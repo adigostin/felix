@@ -2,6 +2,7 @@
 #include "dispids.h"
 
 import "servprov.idl";
+import "ocidl.idl";
 
 //cpp_quote("#ifdef __midl")
 typedef DWORD VSITEMID;
@@ -36,17 +37,8 @@ library ATLProject1Lib
 		HRESULT GetOutputDirectory ([out, retval] BSTR* pbstr);
 		HRESULT GetOutputFileName ([out, retval] BSTR* pbstr);
 		HRESULT GetSldFileName ([out, retval] BSTR* pbstr);
-	};
-
-	// This interface is used by our property pages that contain a Property grid.
-	// It is used to get an object to be displayed in the property grid, out of the 
-	// hierarchy node (IVsHierarchy+VSITEMID) selected by the user.
-	// Must be implemented by every object that is potentially passed to our PGPropertyPage.
-	[object, uuid(D7FCC91A-8E86-4DDD-94B8-166A84DC4599), nonextensible, pointer_default(unique)]
-	interface IPropertyGridObjectSelector : IUnknown
-	{
-		// The returned object should implement IDispatch and have rich type info, as it is shown in a property grid.
-		HRESULT GetObjectForPropertyGrid (REFGUID pageGuid, IUnknown** ppUnkOut) = 0;
+		HRESULT AdvisePropertyNotify (IPropertyNotifySink* sink);
+		HRESULT UnadvisePropertyNotify (IPropertyNotifySink* sink);
 	};
 
 	[object, uuid(6109C4FD-C067-4120-9853-6A2D6682BCB0), dual, nonextensible, pointer_default(unique)]
@@ -54,12 +46,19 @@ library ATLProject1Lib
 	{
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
 
-		[id(dispidOutputFileType), propget] HRESULT OutputFileType ([out, retval] enum OutputFileType* value);
-		[id(dispidOutputFileType), propput] HRESULT OutputFileType (enum OutputFileType value);
+		[id(dispidOutputFileType), bindable, propget] HRESULT OutputFileType ([out, retval] enum OutputFileType* value);
+		[id(dispidOutputFileType), bindable, propput] HRESULT OutputFileType (enum OutputFileType value);
+
+		[id(dispidSaveListing), bindable, propget] HRESULT SaveListing ([out, retval] VARIANT_BOOL* save);
+		[id(dispidSaveListing), bindable, propput] HRESULT SaveListing (VARIANT_BOOL save);
+
+		// It's called SaveListingFilename (as opposed to ListingFilename) so it appears in the property grid right after SaveListing.
+		[id(dispidListingFilename), bindable, propget] HRESULT SaveListingFilename ([out, retval] BSTR* pFilename);
+		[id(dispidListingFilename), bindable, propput] HRESULT SaveListingFilename (BSTR filename);
 	};
 
 	[uuid(A6C45AD3-6F11-4116-A65D-9083381843D8)]
-	enum LaunchType {PrintUsr, RandomizeUsr, ResetAndJump };
+	enum LaunchType { PrintUsr, RandomizeUsr, ResetAndJump };
 
 	[object, uuid(D529C72D-D7B3-40EF-9FF9-31595F4518D2), dual, nonextensible, pointer_default(unique)]
 	interface IZ80ProjectConfigDebugProperties : IDispatch
@@ -67,15 +66,15 @@ library ATLProject1Lib
 		[id(dispid__name), propget]
 		HRESULT __id ([out, retval] BSTR* value);
 
-		[id(dispidLoadAddress), propget] HRESULT LoadAddress ([out, retval] unsigned int* value);
-		[id(dispidLoadAddress), propput] HRESULT LoadAddress (unsigned int value);
+		[id(dispidLoadAddress), bindable, propget] HRESULT LoadAddress ([out, retval] unsigned int* value);
+		[id(dispidLoadAddress), bindable, propput] HRESULT LoadAddress (unsigned int value);
 
-		[id(dispidEntryPointAddress), propget] HRESULT EntryPointAddress ([out, retval] unsigned short* value);
-		[id(dispidEntryPointAddress), propput] HRESULT EntryPointAddress (unsigned short value);
+		[id(dispidEntryPointAddress), bindable, propget] HRESULT EntryPointAddress ([out, retval] unsigned short* value);
+		[id(dispidEntryPointAddress), bindable, propput] HRESULT EntryPointAddress (unsigned short value);
 
-		[id(dispidLaunchType), propget, helpstring("Selects the launch method: PRINT USR from Basic, RANDOMIZE USR from Basic, or jump right after reset.")]
+		[id(dispidLaunchType), bindable, propget, helpstring("Selects the launch method: PRINT USR from Basic, RANDOMIZE USR from Basic, or jump right after reset.")]
 		HRESULT LaunchType ([out, retval] enum LaunchType* value);
-		[id(dispidLaunchType), propput] HRESULT LaunchType (enum LaunchType value);
+		[id(dispidLaunchType), bindable, propput] HRESULT LaunchType (enum LaunchType value);
 	};
 
 	[object, uuid(A2EE7852-34B1-49A9-A3DB-36232AC6680C), dual, nonextensible, pointer_default(unique)]
