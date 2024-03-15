@@ -537,6 +537,14 @@ public:
 		// --outprefix
 		hr = addOutputPathParam (" --outprefix=", L""); RETURN_IF_FAILED(hr);
 
+		// --lst
+		if (_saveListing)
+		{
+			cmdLine << " --lst";
+			if (_listingFilename && _listingFilename.get()[0])
+				cmdLine << "=" << _listingFilename.get();
+		}
+
 		// input files
 		wil::unique_variant childItemId;
 		hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &childItemId); RETURN_IF_FAILED(hr);
