@@ -284,17 +284,9 @@ public:
 		return FALSE;
 	}
 
-	#pragma region IVsPackage
-	virtual HRESULT STDMETHODCALLTYPE SetSite (IServiceProvider *pSP) override
+	void InitSentry()
 	{
 		HRESULT hr;
-		WI_ASSERT(!_sp);
-		WI_ASSERT(!serviceProvider);
-		
-		_sp = pSP;
-		serviceProvider = pSP;
-
-		#pragma region set up sentry
 		/*
 		com_ptr<ILocalRegistry4> lr;
 		hr = _sp->QueryService(SID_SLocalRegistry, &lr); RETURN_IF_FAILED(hr);
@@ -315,14 +307,40 @@ public:
 		DWORD valueSize = sizeof(value);
 		lresult = RegGetValue (key.get(), NULL, L"PID", RRF_RT_REG_SZ, nullptr, value, &valueSize); RETURN_IF_WIN32_ERROR(lresult);
 		*/
+		char dbpath[MAX_PATH];
+		hr = SHGetFolderPathA (nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, dbpath); LOG_IF_FAILED(hr);
+		if (FAILED(hr))
+			return;
+
+		#pragma warning (push)
+		#pragma warning (disable: 4995)
+		LPSTR combineRes = PathCombineA (dbpath, dbpath, "sentry-native"); LOG_HR_IF_NULL(E_FAIL, combineRes);
+		if (!combineRes)
+			return;
+		#pragma warning (pop)
+
 		wil::SetResultTelemetryFallback(&TelemetryCallback);
-		_sentryOptions = sentry_options_new(); RETURN_IF_NULL_ALLOC(_sentryOptions);
+		_sentryOptions = sentry_options_new(); LOG_IF_NULL_ALLOC(_sentryOptions);
+		if (!_sentryOptions)
+			return;
 		sentry_options_set_dsn(_sentryOptions, "https://042ccb2ce64bea0c9e97e5f515153f35@o4506847414714368.ingest.us.sentry.io/4506849315127296");
-		sentry_options_set_database_path(_sentryOptions, ".sentry-native");
+		sentry_options_set_database_path(_sentryOptions, dbpath);
 		sentry_options_set_release(_sentryOptions, SentryReleaseName);
 		sentry_options_set_debug(_sentryOptions, 1);
 		int res = sentry_init(_sentryOptions);
-		#pragma endregion
+	}
+
+	#pragma region IVsPackage
+	virtual HRESULT STDMETHODCALLTYPE SetSite (IServiceProvider *pSP) override
+	{
+		HRESULT hr;
+		WI_ASSERT(!_sp);
+		WI_ASSERT(!serviceProvider);
+		
+		_sp = pSP;
+		serviceProvider = pSP;
+
+		InitSentry();
 
 		com_ptr<IVsShell> shell;
 		hr = serviceProvider->QueryService(SID_SVsShell, &shell);
