@@ -132,9 +132,7 @@ public:
 		)
 			return S_OK;
 
-		if (riid == IID_IVsColorizer2)
-			return E_NOINTERFACE;
-
+		#ifdef _DEBUG
 		if (   riid == IID_IManagedObject
 			|| riid == IID_IProvideClassInfo
 			|| riid == IID_IInspectable
@@ -145,6 +143,10 @@ public:
 			|| riid == IID_IRpcOptions)
 			return E_NOINTERFACE;
 
+		if (riid == IID_IVsColorizer2)
+			return E_NOINTERFACE;
+		#endif
+
 		return E_NOINTERFACE;
 	}
 
@@ -152,6 +154,194 @@ public:
 
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
+
+	struct S
+	{
+		const wchar_t* p;
+		long len;
+		ULONG* attrs;
+		long i;
+
+		bool IsLetter()
+		{
+			return isalpha(p[i]);
+		}
+
+		static bool IsIdStartChar (wchar_t ch)
+		{
+			return (ch >= '0') && (ch <= '9')
+				|| (ch >= 'A') && (ch <= 'Z')
+				|| (ch >= 'a') && (ch <= 'z');
+		}
+
+		static bool IsIdChar (wchar_t ch)
+		{
+			return IsIdStartChar(ch) || (ch == '_');
+		}
+
+		bool TryParseWhitespacesAndComments()
+		{
+			bool result = false;
+			while (i < len)
+			{
+				if (p[i] == ';')
+				{
+					while (i < len)
+						attrs[i++] = COLITEM_COMMENT;
+					result = true;
+					break;
+				}
+				else if (p[i] == ' ' || p[i] == 9)
+				{
+					attrs[i++] = COLITEM_TEXT;
+					result = true;
+				}
+				else
+					break;
+			}
+
+			return result;
+		}
+
+		bool TryParseString()
+		{
+			if (p[i] == '\'' || p[i] == '\"')
+			{
+				wchar_t startChar = p[i];
+				attrs[i++] = COLITEM_STRING;
+				while (i < len)
+				{
+					if (p[i] == startChar)
+					{
+						attrs[i++] = COLITEM_STRING;
+						return true;
+					}
+					else if (p[i] == '\\')
+					{
+						attrs[i++] = COLITEM_STRING;
+						if (i < len)
+							attrs[i++] = COLITEM_STRING;
+					}
+					else
+						attrs[i++] = COLITEM_STRING;
+				}
+			}
+
+			return false;
+		}
+
+		static bool TryParseConditionCode (const WCHAR* p, long len, long* pii)
+		{
+			long ii = *pii;
+			if ((ii + 1 <= len) && (ii + 1 == len || !IsIdChar(p[ii + 1])))
+			{
+				if (   p[ii] == 'Z' || p[ii] == 'z' || p[ii] == 'C' || p[ii] == 'c'
+					|| p[ii] == 'P' || p[ii] == 'p' || p[ii] == 'M' || p[ii] == 'm')
+				{
+					(*pii)++;
+					return true;
+				}
+			}
+
+			if ((ii + 2 <= len) && (ii + 2 == len || !IsIdChar(p[ii + 2])))
+			{
+				if (( p[ii] == 'N' || p[ii] == 'n')
+					&& (p[ii+1] == 'Z' || p[ii+1] == 'z' || p[ii+1] == 'C' || p[ii+1] == 'c'))
+				{
+					(*pii) += 2;
+					return true;
+				}
+
+				if (( p[ii] == 'P' || p[ii] == 'p')
+					&& (p[ii+1] == 'O' || p[ii+1] == 'o' || p[ii+1] == 'E' || p[ii+1] == 'e'))
+				{
+					(*pii) += 2;
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		// A lowercase 'c' is a match for a whitespace followed by a condition code.
+		// Instructions with a condition code must come in this list before their simple version,
+		// for example "JRc" must come before "JR".
+		static inline const char* const Instructions[] = {
+			"ADC", "ADD", "AND", "BIT", "CALL", "CCF", "CP", "CPD", "CPDR", "CPI", "CPIR", "CPL",
+			"DAA", "DB", "DEC", "DI", "DJNZ", "EI", "EX", "EXX", "HALT", "IM", "IN",
+			"INC", "IND", "INDR", "INI", "INIR", "JPc", "JP", "JRc", "JR",
+			"LD", "LDD", "LDDR", "LDI", "LDIR", "NEG", "NOP",
+			"OR", "OTDR", "OTIR", "OUT", "OUTD", "OUTI", "POP", "PUSH",
+			"RES", "RETc", "RET", "RETI", "RETN", "RL", "RLA", "RLC", "RLCA", "RLD", "RR", "RRA", "RRC", "RRCA", "RRD", "RST",
+			"SBC", "SCF", "SET", "SLA", "SLL", "SRA", "SRL", "SUB", "XOR" };
+
+		bool TryParseInstruction()
+		{
+			// TODO: split in two lists, first one containing the most common instructions;
+			// within each list, do binary search.
+			for (const char* instr : Instructions)
+			{
+				long ii = i;
+				bool match = true;
+				while (*instr >= 'A' && *instr <= 'Z')
+				{
+					if (ii == len || (toupper(p[ii]) != *instr))
+					{
+						match = false;
+						break;
+					}
+					ii++;
+					instr++;
+				}
+
+				if (!match)
+					continue;
+				
+				if (*instr == 0)
+				{
+					// Instruction without condition code.
+					if (ii < len && IsIdChar(p[ii]))
+						continue;
+
+					while (i < ii)
+						attrs[i++] = COLITEM_KEYWORD;
+					return true;
+				}
+
+				if (*instr == 'c')
+				{
+					if (ii == len || (p[ii] != 32 && p[ii] != 9))
+						continue;
+
+					long instrTo = ii;
+					while (ii < len && (p[ii] == 32 || p[ii] == 9))
+						ii++;
+					long whitespaceTo = ii;
+
+					if (!TryParseConditionCode(p, len, &ii))
+						continue;
+
+					while (i < instrTo)
+						attrs[i++] = COLITEM_KEYWORD;
+					while (i < whitespaceTo)
+						attrs[i++] = COLITEM_TEXT;
+					while (i < ii)
+						attrs[i++] = COLITEM_KEYWORD;
+					return true;
+				}
+				else
+					WI_ASSERT(false);
+			}
+
+			return false;
+		}
+
+		void ParseUnknownIdentifier()
+		{
+			while (isalnum(p[i]) || (p[i] == '_'))
+				attrs[i++] = COLITEM_TEXT;
+		}
+	};
 
 	#pragma region IVsColorizer
 	virtual HRESULT STDMETHODCALLTYPE GetStateMaintenanceFlag (BOOL *pfFlag) override
@@ -168,63 +358,37 @@ public:
 
 	virtual long STDMETHODCALLTYPE ColorizeLine (long iLine, long iLength, const WCHAR *pszText, long iState, ULONG *pAttributes) override
 	{
-		// Let's implement a simple parser that looks for strings and comments.
-		// We'll implement a full-fledged parser later as part of an assembler.
-
-		long i = 0;
-		while (i < iLength)
+		S s = { .p = pszText, .len = iLength, .attrs = pAttributes, .i = 0 };
+		bool parsedInstruction = false;
+		while (s.i < iLength)
 		{
-			if (pszText[i] == ';')
+			if (s.TryParseWhitespacesAndComments())
 			{
-				do
-				{
-					pAttributes[i] = COLITEM_COMMENT;
-					i++;
-				} while (i < iLength);
 			}
-			else if (pszText[i] == '\'' || pszText[i] == '\"')
+			else if (s.TryParseString())
 			{
-				wchar_t startChar = pszText[i];
-				pAttributes[i] = COLITEM_STRING;
-				i++;
-				while (i < iLength)
+			}
+			else if (s.IsLetter())
+			{
+				if (!parsedInstruction && s.TryParseInstruction())
 				{
-					if (pszText[i] == startChar)
-					{
-						pAttributes[i] = COLITEM_STRING;
-						i++;
-						break;
-					}
-					else if (pszText[i] == '\\')
-					{
-						pAttributes[i] = COLITEM_STRING;
-						i++;
-						if (i < iLength)
-						{
-							pAttributes[i] = COLITEM_STRING;
-							i++;
-						}
-					}
-					else
-					{
-						pAttributes[i] = COLITEM_STRING;
-						i++;
-					}
+					parsedInstruction = true;
 				}
+				else
+					s.ParseUnknownIdentifier();
 			}
 			else
-			{
-				pAttributes[i] = COLITEM_TEXT;
-				i++;
-			}
+				pAttributes[s.i++] = COLITEM_TEXT;
 		}
 
-		return StateNone; // We must return the colorizer's state at the end of the line.
+		// TODO: after a // or ; comment, we must return StateNone. Currently we return StateComment
+
+		return (iLength == 0) ? iState : (long)pAttributes[iLength - 1]; // We must return the colorizer's state at the end of the line.
 	}
 
 	virtual long STDMETHODCALLTYPE GetStateAtEndOfLine (long iLine, long iLength, const WCHAR *pText, long iState) override
 	{
-		return 0;
+		return StateNone;
 	}
 
 	virtual void STDMETHODCALLTYPE CloseColorizer() override
