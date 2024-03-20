@@ -105,18 +105,31 @@ public:
 	#pragma endregion
 };
 */
-class Colorizer : IVsColorizer
+class Colorizer : IVsColorizer, IVsColorizer2, IVsTextLinesEvents
 {
 	ULONG _refCount = 0;
 	wil::com_ptr_nothrow<IVsTextLines> _buffer;
+	DWORD _textLinesEventsCookie = 0;
 
-	enum State { StateNone, StateStringSingleQuoted, StateStringDoubleQuoted, StateComment };
+	enum State
+	{
+		StateNormal,
+		StateStringSingleQuoted,
+		StateStringDoubleQuoted,
+		StateSingleLineComment,
+		StateMultiLineComment,
+	};
 
 public:
 	static HRESULT CreateInstance (IVsTextLines *pBuffer, IVsColorizer** ppColorizer)
 	{
-		wil::com_ptr_nothrow<Colorizer> p = new (std::nothrow) Colorizer(); RETURN_IF_NULL_ALLOC(p);
+		com_ptr<Colorizer> p = new (std::nothrow) Colorizer(); RETURN_IF_NULL_ALLOC(p);
 		p->_buffer = pBuffer;
+		com_ptr<IConnectionPointContainer> cpc;
+		auto hr = pBuffer->QueryInterface(&cpc); RETURN_IF_FAILED(hr);
+		com_ptr<IConnectionPoint> cp;
+		hr = cpc->FindConnectionPoint(IID_IVsTextLinesEvents, &cp); RETURN_IF_FAILED(hr);
+		hr = cp->Advise(static_cast<IVsTextLinesEvents*>(p), &p->_textLinesEventsCookie); RETURN_IF_FAILED(hr);
 		*ppColorizer = p.detach();
 		return S_OK;
 	}
@@ -127,8 +140,10 @@ public:
 		RETURN_HR_IF(E_POINTER, !ppvObject);
 		*ppvObject = nullptr;
 
-		if (   TryQI<IUnknown>(static_cast<Colorizer*>(this), riid, ppvObject)
+		if (   TryQI<IUnknown>(static_cast<IVsColorizer*>(this), riid, ppvObject)
 			|| TryQI<IVsColorizer>(this, riid, ppvObject)
+			|| TryQI<IVsColorizer2>(this, riid, ppvObject)
+			|| TryQI<IVsTextLinesEvents>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -157,15 +172,11 @@ public:
 
 	struct S
 	{
+		State state;
 		const wchar_t* p;
 		long len;
 		ULONG* attrs;
 		long i;
-
-		bool IsLetter()
-		{
-			return isalpha(p[i]);
-		}
 
 		static bool IsIdStartChar (wchar_t ch)
 		{
@@ -179,28 +190,66 @@ public:
 			return IsIdStartChar(ch) || (ch == '_');
 		}
 
-		bool TryParseWhitespacesAndComments()
+		void ParseMultilineComment()
 		{
-			bool result = false;
+			WI_ASSERT(state == StateMultiLineComment);
+
 			while (i < len)
 			{
-				if (p[i] == ';')
+				if (i + 1 < len && p[i] == '*' && p[i+1] == '/')
 				{
-					while (i < len)
-						attrs[i++] = COLITEM_COMMENT;
-					result = true;
-					break;
+					if (attrs)
+					{
+						attrs[i] = COLITEM_COMMENT;
+						attrs[i+1] = COLITEM_COMMENT;
+					}
+					i += 2;
+					state = StateNormal;
+					return;
 				}
-				else if (p[i] == ' ' || p[i] == 9)
+
+				if (attrs)
+					attrs[i] = COLITEM_COMMENT;
+				i++;
+			}
+		}
+
+		bool TryParseWhitespacesAndComments()
+		{
+			bool parsed = false;
+			while (i < len)
+			{
+				if (p[i] == ' ' || p[i] == 9)
 				{
-					attrs[i++] = COLITEM_TEXT;
-					result = true;
+					if (attrs)
+						attrs[i] = COLITEM_TEXT;
+					i++;
+					state = StateNormal;
+					parsed = true;
+				}
+				else if (p[i] == ';' || (i + 1 < len && p[i] == '/' && p[i+1] == '/'))
+				{
+					if (attrs)
+					{
+						while (i < len)
+							attrs[i++] = COLITEM_COMMENT;
+					}
+					else
+						i = len;
+					state = StateNormal;
+					parsed = true;
+				}
+				else if (i + 1 < len && p[i] == '/' && p[i+1] == '*')
+				{
+					state = StateMultiLineComment;
+					ParseMultilineComment();
+					parsed = true;
 				}
 				else
 					break;
 			}
 
-			return result;
+			return parsed;
 		}
 
 		bool TryParseString()
@@ -208,22 +257,35 @@ public:
 			if (p[i] == '\'' || p[i] == '\"')
 			{
 				wchar_t startChar = p[i];
-				attrs[i++] = COLITEM_STRING;
+				if (attrs)
+					attrs[i] = COLITEM_STRING;
+				i++;
 				while (i < len)
 				{
 					if (p[i] == startChar)
 					{
-						attrs[i++] = COLITEM_STRING;
+						if (attrs)
+							attrs[i] = COLITEM_STRING;
+						i++;
 						return true;
 					}
 					else if (p[i] == '\\')
 					{
-						attrs[i++] = COLITEM_STRING;
-						if (i < len)
+						if (attrs)
+						{
 							attrs[i++] = COLITEM_STRING;
+							if (i < len)
+								attrs[i++] = COLITEM_STRING;
+						}
+						else
+							i = len;
 					}
 					else
-						attrs[i++] = COLITEM_STRING;
+					{
+						if (attrs)
+							attrs[i] = COLITEM_STRING;
+						i++;
+					}
 				}
 			}
 
@@ -303,8 +365,13 @@ public:
 					if (ii < len && IsIdChar(p[ii]))
 						continue;
 
-					while (i < ii)
-						attrs[i++] = COLITEM_KEYWORD;
+					if (attrs)
+					{
+						while (i < ii)
+							attrs[i++] = COLITEM_KEYWORD;
+					}
+					else
+						i = ii;
 					return true;
 				}
 
@@ -321,12 +388,17 @@ public:
 					if (!TryParseConditionCode(p, len, &ii))
 						continue;
 
-					while (i < instrTo)
-						attrs[i++] = COLITEM_KEYWORD;
-					while (i < whitespaceTo)
-						attrs[i++] = COLITEM_TEXT;
-					while (i < ii)
-						attrs[i++] = COLITEM_KEYWORD;
+					if (attrs)
+					{
+						while (i < instrTo)
+							attrs[i++] = COLITEM_KEYWORD;
+						while (i < whitespaceTo)
+							attrs[i++] = COLITEM_TEXT;
+						while (i < ii)
+							attrs[i++] = COLITEM_KEYWORD;
+					}
+					else
+						i = ii;
 					return true;
 				}
 				else
@@ -339,7 +411,47 @@ public:
 		void ParseUnknownIdentifier()
 		{
 			while (isalnum(p[i]) || (p[i] == '_'))
-				attrs[i++] = COLITEM_TEXT;
+			{
+				if (attrs)
+					attrs[i] = COLITEM_TEXT;
+				i++;
+			}
+		}
+
+		void ParseLine()
+		{
+			if (state == StateMultiLineComment)
+			{
+				ParseMultilineComment();
+				if (i == len)
+					return;
+			}
+
+			bool parsedInstruction = false;
+			while (i < len)
+			{
+				if (TryParseWhitespacesAndComments())
+				{
+				}
+				else if (TryParseString())
+				{
+				}
+				else if (isalpha(p[i]))
+				{
+					if (!parsedInstruction && TryParseInstruction())
+					{
+						parsedInstruction = true;
+					}
+					else
+						ParseUnknownIdentifier();
+				}
+				else
+				{
+					if (attrs)
+						attrs[i] = COLITEM_TEXT;
+					i++;
+				}
+			}
 		}
 	};
 
@@ -352,48 +464,106 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetStartState (long *piStartState) override
 	{
-		*piStartState = StateNone;
+		*piStartState = StateNormal;
 		return S_OK;
 	}
 
 	virtual long STDMETHODCALLTYPE ColorizeLine (long iLine, long iLength, const WCHAR *pszText, long iState, ULONG *pAttributes) override
 	{
-		S s = { .p = pszText, .len = iLength, .attrs = pAttributes, .i = 0 };
-		bool parsedInstruction = false;
-		while (s.i < iLength)
-		{
-			if (s.TryParseWhitespacesAndComments())
-			{
-			}
-			else if (s.TryParseString())
-			{
-			}
-			else if (s.IsLetter())
-			{
-				if (!parsedInstruction && s.TryParseInstruction())
-				{
-					parsedInstruction = true;
-				}
-				else
-					s.ParseUnknownIdentifier();
-			}
-			else
-				pAttributes[s.i++] = COLITEM_TEXT;
-		}
-
-		// TODO: after a // or ; comment, we must return StateNone. Currently we return StateComment
-
-		return (iLength == 0) ? iState : (long)pAttributes[iLength - 1]; // We must return the colorizer's state at the end of the line.
+		S s = { .state = (State)iState, .p = pszText, .len = iLength, .attrs = pAttributes, .i = 0 };
+		s.ParseLine();
+		pAttributes[iLength] = COLITEM_TEXT;
+		return (long)s.state;
 	}
 
 	virtual long STDMETHODCALLTYPE GetStateAtEndOfLine (long iLine, long iLength, const WCHAR *pText, long iState) override
 	{
-		return StateNone;
+		S s = { .state = (State)iState, .p = pText, .len = iLength, .attrs = nullptr, .i = 0 };
+		s.ParseLine();
+		return (long)s.state;
 	}
 
 	virtual void STDMETHODCALLTYPE CloseColorizer() override
 	{
+		if (_textLinesEventsCookie)
+		{
+			com_ptr<IConnectionPointContainer> cpc;
+			auto hr = _buffer->QueryInterface(&cpc);
+			if (SUCCEEDED(hr))
+			{
+				com_ptr<IConnectionPoint> cp;
+				hr = cpc->FindConnectionPoint(IID_IVsTextLinesEvents, &cp);
+				if (SUCCEEDED(hr))
+				{
+					cp->Unadvise(_textLinesEventsCookie);
+					_textLinesEventsCookie = 0;
+				}
+			}
+		}
+
 		_buffer = nullptr;
+	}
+	#pragma endregion
+
+	#pragma region IVsColorizer2
+	virtual HRESULT STDMETHODCALLTYPE BeginColorization() override
+	{
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE EndColorization() override
+	{
+		return E_NOTIMPL;
+	}
+	#pragma endregion
+
+	// Note AGO: I had the problem that when the user was typing the beginning of
+	// a multiline comment "/*", Visual Studio 2022 was calling ColorizeLine/GetStateAtEndOfLine for the
+	// changed line (as expected), but not also for the following lines (unexpected).
+	// The expected behavior was for VS to call ColorizeLine/GetStateAtEndOfLine also for
+	// the subsequent lines, because (1) we return a new state value from ColorizeLine
+	// and (2) we return TRUE in GetStateMaintenanceFlag.
+	// 
+	// I debugged through the decompiled code of VS2022 and found that VS does have code
+	// that is meant to call ColorizeLine/GetStateAtEndOfLine for all subsequent lines
+	// until a line is encountered for which our ColorizeLine/GetStateAtEndOfLine no longer
+	// return a new state value (that's the end of the multiline comment).
+	// That code, however, is not called by VS; it looks like it used to be called
+	// at some point in past versions of VS, but then something changed and that code is now dead.
+	// 
+	// The code that seems to have introduced this bug is in Microsoft.VisualStudio.Editor.
+	// Implementation.LanguageServiceClassificationTagger.ClassifyLine(). This function
+	// modifies a variable called cachedStartLineStates to the state we return _after_
+	// the text edit happens; if I skip in the debugger the code in this function that
+	// modifies this variable, then everything appears to work as expected, and all subsequent
+	// lines are colorized correctly by a function called FixForwardStateCache().
+	//
+	// As workaround, I listen for IVsTextLinesEvents and in OnChangeLineText I call ReColorizeLines
+	// for many lines after the edited point. This should be enough for the vast majority of cases.
+	// This worsens the editor performance, but so far it doesn't seem to be noticeable.
+
+	#pragma region IVsTextLinesEvents
+	virtual void STDMETHODCALLTYPE OnChangeLineText (const TextLineChange *pTextLineChange, BOOL fLast) override
+	{
+		long lineCount;
+		auto hr = _buffer->GetLineCount(&lineCount);
+		if(FAILED(hr))
+			return;
+		if (pTextLineChange->iNewEndLine + 1 < lineCount)
+		{
+			// Recolorize the line just after what was inserted
+			com_ptr<IVsTextColorState> tcs;
+			auto hr = _buffer->QueryInterface(&tcs);
+			if (SUCCEEDED(hr))
+			{
+				tcs->ReColorizeLines(pTextLineChange->iNewEndLine + 1,
+					std::min(pTextLineChange->iNewEndLine + 100, lineCount - 1));
+			}
+		}
+	}
+
+	virtual void STDMETHODCALLTYPE OnChangeLineAttributes (long iFirstLine, long iLastLine) override
+	{
 	}
 	#pragma endregion
 };
