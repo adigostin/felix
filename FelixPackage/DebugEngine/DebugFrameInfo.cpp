@@ -27,24 +27,16 @@ public:
 	#pragma region IUnknown
 	virtual HRESULT __stdcall QueryInterface(REFIID riid, void** ppvObject) override
 	{
-		if (!ppvObject)
-			return E_INVALIDARG;
+		RETURN_HR_IF_NULL(E_POINTER, ppvObject);
+		*ppvObject = nullptr;
 
-		*ppvObject = NULL;
+		if (   TryQI<IUnknown>(static_cast<IDebugStackFrame2*>(this), riid, ppvObject)
+			|| TryQI<IDebugStackFrame2>(this, riid, ppvObject)
+		)
+			return S_OK;
 
-		if (riid == __uuidof(IUnknown))
-		{
-			*ppvObject = static_cast<IUnknown*>(this);
-			AddRef();
-			return S_OK;
-		}
-		else if (riid == __uuidof(IDebugStackFrame2))
-		{
-			*ppvObject = static_cast<IDebugStackFrame2*>(this);
-			AddRef();
-			return S_OK;
-		}
-		else if (riid == __uuidof(IDebugStackFrame110)
+		#ifdef _DEBUG
+		if (riid == __uuidof(IDebugStackFrame110)
 			//|| riid == __uuidof(Microsoft::VisualStudio::Debugger::CallStack::IVsWrappedDkmStackFrame)
 			|| riid == IID_IManagedObject
 			|| riid == IID_IProvideClassInfo
@@ -57,6 +49,7 @@ public:
 			|| riid == GUID{ 0x7365A6C9, 0x96A6, 0x45A5, { 0x9B, 0x01, 0xFF, 0x6D, 0xF3, 0x85, 0x80, 0xD2 } }
 		)
 			return E_NOINTERFACE;
+		#endif
 
 		return E_NOINTERFACE;
 	}
@@ -178,9 +171,7 @@ public:
 
 	virtual HRESULT __stdcall GetExpressionContext(IDebugExpressionContext2** ppExprCxt) override
 	{
-		return E_NOTIMPL;
-		//auto hr = ExpressionContextNoSource_CreateInstance (_thread.get(), ppExprCxt); RETURN_IF_FAILED(hr);
-		//return S_OK;
+		return MakeExpressionContextNoSource (_thread.get(), ppExprCxt);
 	}
 
 	virtual HRESULT __stdcall GetLanguageInfo(BSTR* pbstrLanguage, GUID* pguidLanguage) override

@@ -2,7 +2,10 @@
 #pragma once
 
 enum class z80_reg16 { bc, de, hl, alt_bc, alt_de, alt_hl, sp, pc, ix, iy, count };
+static inline const char* const z80_reg16_names[] = { "BC", "DE", "HL", "BC'", "DE'", "HL'", "SP", "PC", "IX", "IY" };
+
 enum class z80_reg8 { b, c, d, e, h, l, a, f, alt_b, alt_c, alt_d, alt_e, alt_h, alt_l, alt_a, alt_f, i, r, count };
+static inline const char* const z80_reg8_names[] = { "B", "C", "D", "E", "H", "L", "A", "F", "B'", "C'", "D'", "E'", "H'", "L'", "A'", "F'", "I", "R" };
 
 enum class hl_ix_iy { hl, ix, iy };
 
@@ -177,13 +180,3 @@ struct z80_register_set
 		}
 	}
 };
-
-static inline const char* const z80_reg16_names[] = { "BC", "DE", "HL", "BC'", "DE'", "HL'", "SP", "PC", "IX", "IY" };
-static inline const char* const z80_reg8_names[] = { "B", "C", "D", "E", "H", "L", "A", "F", "B'", "C'", "D'", "E'", "H'", "L'", "A'", "F'", "I", "R" };
-/*
-struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{5FC67440-01E8-48ED-A6C1-EFC77D7BAE5A}") IZ80RegisterGroup : IRegisterGroup
-{
-	virtual UINT16 GetPC() = 0;
-	virtual UINT16 GetSP() = 0;
-};
-*/

@@ -144,7 +144,10 @@
     <ClCompile Include="DebugEngine\DebugDisasmStream.cpp" />
     <ClCompile Include="DebugEngine\DebugDocumentContext.cpp" />
     <ClCompile Include="DebugEngine\DebugEngine.cpp" />
+    <ClCompile Include="DebugEngine\DebugExpressionContexts.cpp" />
+    <ClCompile Include="DebugEngine\DebugExpressions.cpp" />
     <ClCompile Include="DebugEngine\DebugFrameInfo.cpp" />
+    <ClCompile Include="DebugEngine\DebugMemoryBytes.cpp" />
     <ClCompile Include="DebugEngine\DebugModule.cpp" />
     <ClCompile Include="DebugEngine\DebugPort.cpp" />
     <ClCompile Include="DebugEngine\DebugPortSupplier.cpp" />

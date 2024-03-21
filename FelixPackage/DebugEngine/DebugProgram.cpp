@@ -319,7 +319,7 @@ public:
 
 	HRESULT STDMETHODCALLTYPE GetMemoryBytes(IDebugMemoryBytes2** ppMemoryBytes) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return MakeMemoryBytes (ppMemoryBytes);
 	}
 
 	HRESULT STDMETHODCALLTYPE GetDisassemblyStream(DISASSEMBLY_STREAM_SCOPE dwScope, IDebugCodeContext2* pCodeContext, IDebugDisassemblyStream2** ppDisassemblyStream) override

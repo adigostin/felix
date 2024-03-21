@@ -738,7 +738,7 @@ struct SimplePendingBreakpoint : IDebugPendingBreakpoint2
 	#pragma endregion
 };
 
-HRESULT SimplePendingBreakpoint_CreateInstance (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program,
+HRESULT MakeSimplePendingBreakpoint (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program,
 	IBreakpointManager* bpman, bool physicalMemorySpace, UINT64 address, IDebugPendingBreakpoint2** to)
 {
 	return SimplePendingBreakpoint::CreateInstance (callback, engine, program, bpman, physicalMemorySpace, address, to);

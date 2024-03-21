@@ -601,7 +601,6 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE ReadMemoryBus (uint16_t address, uint16_t size, void* to) override
 	{
 		RETURN_HR_IF(SIM_E_NOT_SUPPORTED_WHILE_RUNNING, _running);
-		RETURN_HR_IF(E_BOUNDS, (uint32_t)address + size > 0x10000);
 		for (uint32_t i = 0; i < size; i++)
 			((uint8_t*)to)[i] = memoryBus.read(address + i);
 		return S_OK;
@@ -610,7 +609,6 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE WriteMemoryBus (uint16_t address, uint16_t size, const void* from) override
 	{
 		RETURN_HR_IF(SIM_E_NOT_SUPPORTED_WHILE_RUNNING, _running);
-		RETURN_HR_IF(E_BOUNDS, (uint32_t)address + size > 0x10000);
 		for (uint32_t i = 0; i < size; i++)
 			memoryBus.write (address + i, ((uint8_t*)from)[i]);
 		return S_OK;

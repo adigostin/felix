@@ -138,7 +138,7 @@ public:
 ///					hr = cc->QueryInterface(&z80cc); RETURN_IF_FAILED(hr);
 ///					if (z80cc->PhysicalMemorySpace())
 ///						RETURN_HR(E_FAIL);
-///					hr = SimplePendingBreakpoint_CreateInstance (_program.get(), (uint16_t)z80cc->Address(), ppPendingBP); RETURN_IF_FAILED(hr);
+///					hr = MakeSimplePendingBreakpoint (_program.get(), (uint16_t)z80cc->Address(), ppPendingBP); RETURN_IF_FAILED(hr);
 ///					return S_OK;
 				}
 
@@ -179,7 +179,7 @@ public:
 						RETURN_HR(E_FAIL);
 
 					RETURN_HR(E_NOTIMPL);
-					//hr = SimplePendingBreakpoint_CreateInstance (_program.get(), (uint16_t)address, ppPendingBP); RETURN_IF_FAILED(hr);
+					//hr = MakeSimplePendingBreakpoint (_program.get(), (uint16_t)address, ppPendingBP); RETURN_IF_FAILED(hr);
 					//return S_OK;
 				}
 
