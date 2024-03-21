@@ -1,7 +1,7 @@
 
 #include "pch.h"
 #include "FelixPackage_h.h"
-#include "shared/TryQI.h"
+#include "shared/com.h"
 #include "Z80Xml.h"
 
 class LaunchOptionsImpl : public IFelixLaunchOptions

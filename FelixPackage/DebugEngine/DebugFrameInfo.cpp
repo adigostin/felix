@@ -6,7 +6,7 @@
 #include "shared/z80_register_set.h"
 #include "shared/vector_nothrow.h"
 #include "shared/string_builder.h"
-#include "shared/TryQI.h"
+#include "shared/com.h"
 
 class Z80StackFrame : public IDebugStackFrame2
 {

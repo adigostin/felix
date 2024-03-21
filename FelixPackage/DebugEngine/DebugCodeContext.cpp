@@ -4,7 +4,7 @@
 #include "../FelixPackage.h"
 #include "shared/string_builder.h"
 #include "shared/OtherGuids.h"
-#include "shared/TryQI.h"
+#include "shared/com.h"
 
 struct Z80CodeContext : public IDebugCodeContext2, IFelixCodeContext
 {

@@ -5,7 +5,7 @@
 #include "shared/string_builder.h"
 #include "shared/OtherGuids.h"
 #include "shared/z80_register_set.h"
-#include "shared/TryQI.h"
+#include "shared/com.h"
 
 struct reg8
 {

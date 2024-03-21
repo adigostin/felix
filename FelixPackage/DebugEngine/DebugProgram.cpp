@@ -1,9 +1,8 @@
 
 #include "pch.h"
-#include "shared/TryQI.h"
+#include "shared/com.h"
 #include "shared/OtherGuids.h"
 #include "shared/vector_nothrow.h"
-#include "shared/enumerator.h"
 #include "../guids.h"
 #include "DebugEngine.h"
 #include "DebugEventBase.h"

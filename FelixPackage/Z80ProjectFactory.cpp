@@ -1,7 +1,7 @@
 
 #include "pch.h"
 #include "FelixPackage.h"
-#include "shared/TryQI.h"
+#include "shared/com.h"
 
 class Z80ProjectFactory : public IVsProjectFactory
 {

@@ -4,7 +4,7 @@
 #include "../FelixPackage.h"
 #include "shared/z80_register_set.h"
 #include "shared/ula_register_set.h"
-#include "shared/TryQI.h"
+#include "shared/com.h"
 
 enum class Reg { A, F, BC, DE, HL, SP, PC, IX, IY, I, R, IM, count };
 static const wchar_t* const RegNames[] = { L"A", L"F", L"BC", L"DE", L"HL", L"SP", L"PC", L"IX", L"IY", L"I", L"R", L"IM" };

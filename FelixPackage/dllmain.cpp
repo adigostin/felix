@@ -1,7 +1,7 @@
 
 #include "pch.h"
 #include "FelixPackage.h"
-#include "shared/ClassFactory.h"
+#include "shared/com.h"
 #include "Guids.h"
 #include "../FelixPackageUi/Resource.h"
 #include "dispids.h"

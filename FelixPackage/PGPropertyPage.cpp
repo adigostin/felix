@@ -3,7 +3,7 @@
 #include "FelixPackage.h"
 #include "guids.h"
 #include "shared/vector_nothrow.h"
-#include "shared/TryQI.h"
+#include "shared/com.h"
 #include <vsmanaged.h>
 
 class ObjInfo

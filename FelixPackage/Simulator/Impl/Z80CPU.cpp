@@ -2,7 +2,7 @@
 #include "pch.h"
 #include "Z80CPU.h"
 #include "shared/unordered_map_nothrow.h"
-#include "shared/TryQI.h"
+#include "shared/com.h"
 #include <optional>
 
 // For the P/V flag calculation, the "Parity/Overflow Flag" paragraph in the Z80 pdf has a good explanation.

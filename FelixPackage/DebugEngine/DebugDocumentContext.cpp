@@ -1,7 +1,7 @@
 
 #include "pch.h"
 #include "DebugEngine.h"
-#include "shared/TryQI.h"
+#include "shared/com.h"
 
 class DocumentContext : public IDebugDocumentContext2
 {

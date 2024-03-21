@@ -4,7 +4,7 @@
 #include "Bus.h"
 #include "Z80CPU.h"
 #include "shared/unordered_map_nothrow.h"
-#include "shared/TryQI.h"
+#include "shared/com.h"
 #include "shared/inplace_function.h"
 #include <optional>
 

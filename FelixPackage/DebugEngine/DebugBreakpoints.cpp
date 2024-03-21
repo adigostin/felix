@@ -3,7 +3,7 @@
 #include "DebugEngine.h"
 #include "DebugEventBase.h"
 #include "../FelixPackage.h"
-#include "shared/enumerator.h"
+#include "shared/com.h"
 #include "shared/unordered_map_nothrow.h"
 
 // https://docs.microsoft.com/en-us/visualstudio/extensibility/debugger/binding-breakpoints?view=vs-2022

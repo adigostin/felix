@@ -2,7 +2,7 @@
 #include "pch.h"
 #include "FelixPackage.h"
 #include "shared/OtherGuids.h"
-#include "shared/TryQI.h"
+#include "shared/com.h"
 
 struct Z80AsmFile : IZ80AsmFile, IProvideClassInfo, IOleCommandTarget, IVsGetCfgProvider
 {

@@ -2,7 +2,7 @@
 #include "pch.h"
 #include "DebugEngine.h"
 #include "../FelixPackage.h"
-#include "shared/TryQI.h"
+#include "shared/com.h"
 
 struct Z80SymSymbols : IZ80Symbols
 {

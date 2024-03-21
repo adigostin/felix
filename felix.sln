@@ -24,13 +24,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "shared", "shared", "{9141C06A-BBA8-483D-BB85-18D7658C24D9}"
 	ProjectSection(SolutionItems) = preProject
-		Shared\include\shared\ClassFactory.h = Shared\include\shared\ClassFactory.h
-		Shared\include\shared\ConnectionPointImpl.h = Shared\include\shared\ConnectionPointImpl.h
-		Shared\include\shared\enumerator.h = Shared\include\shared\enumerator.h
+		Shared\include\shared\com.h = Shared\include\shared\com.h
 		Shared\include\shared\inplace_function.h = Shared\include\shared\inplace_function.h
 		Shared\include\shared\OtherGuids.h = Shared\include\shared\OtherGuids.h
 		Shared\include\shared\string_builder.h = Shared\include\shared\string_builder.h
-		Shared\include\shared\TryQI.h = Shared\include\shared\TryQI.h
 		Shared\include\shared\ula_register_set.h = Shared\include\shared\ula_register_set.h
 		Shared\include\shared\unordered_map_nothrow.h = Shared\include\shared\unordered_map_nothrow.h
 		Shared\include\shared\vector_nothrow.h = Shared\include\shared\vector_nothrow.h

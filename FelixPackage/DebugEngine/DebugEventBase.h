@@ -1,6 +1,6 @@
 
 #pragma once
-#include "shared/TryQI.h"
+#include "shared/com.h"
 
 template<typename ISpecific, EVENTATTRIBUTES attributes>
 class EventBase : public IDebugEvent2, public ISpecific

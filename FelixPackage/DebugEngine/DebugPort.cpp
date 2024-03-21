@@ -2,7 +2,7 @@
 #include "pch.h"
 #include "DebugEngine.h"
 #include "DebugEventBase.h"
-#include "shared/enumerator.h"
+#include "shared/com.h"
 #include "shared/unordered_map_nothrow.h"
 #include <OleCtl.h>
 

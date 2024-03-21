@@ -1,6 +1,6 @@
 
 #include "pch.h"
-#include "shared/TryQI.h"
+#include "shared/com.h"
 #include "shared/OtherGuids.h"
 #include "DebugEngine.h"
 

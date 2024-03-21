@@ -4,7 +4,7 @@
 #include "shared/OtherGuids.h"
 #include "shared/unordered_map_nothrow.h"
 #include "shared/inplace_function.h"
-#include "shared/TryQI.h"
+#include "shared/com.h"
 #include "Z80Xml.h"
 #include "dispids.h"
 #include "guids.h"

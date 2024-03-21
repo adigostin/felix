@@ -1,8 +1,7 @@
 
 #include "pch.h"
 #include "DebugEngine.h"
-#include "shared/enumerator.h"
-#include "shared/TryQI.h"
+#include "shared/com.h"
 #include "../guids.h"
 #include "../FelixPackage.h"
 

@@ -4,7 +4,7 @@
 #include "Guids.h"
 #include "../FelixPackageUi/CommandIds.h"
 #include "../FelixPackageUi/Resource.h"
-#include "shared/TryQI.h"
+#include "shared/com.h"
 #include "shared/OtherGuids.h"
 #include "Simulator/Simulator.h"
 #include "DebugEngine/DebugEngine.h"
