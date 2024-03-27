@@ -69,14 +69,4 @@
 #include <wil/win32_helpers.h>
 #include <wil/wistd_type_traits.h>
 
-// Purpose of this wrapper is to allow implicit casting to the raw pointer.
-// (Without this we'd have to write ".get()" all over the place.)
-template <typename T>
-struct com_ptr : wil::com_ptr_nothrow<T>
-{
-	com_ptr(T* x) noexcept : wil::com_ptr_nothrow<T>(x) { }
-	using wil::com_ptr_nothrow<T>::com_ptr_nothrow;
-	operator T*() { return wil::com_ptr_nothrow<T>::get(); }
-};
-
 extern "C" IMAGE_DOS_HEADER __ImageBase;

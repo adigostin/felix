@@ -1,7 +1,6 @@
 
-#pragma once
 #include "pch.h"
-#include "shared/vector_nothrow.h"
+#include "shared/com.h"
 #include "Z80Xml.h"
 
 using unique_safearray = wil::unique_any<SAFEARRAY*, decltype(SafeArrayDestroy), &SafeArrayDestroy>;

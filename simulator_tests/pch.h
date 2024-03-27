@@ -7,13 +7,7 @@
 #ifndef PCH_H
 #define PCH_H
 
-#include <memory>
-#include <optional>
-#include <span>
-#include <utility>
-#include <variant>
-
-#include <Unknwn.h>
+#include <OCIdl.h>
 #include <wil/com.h>
 
 #endif //PCH_H

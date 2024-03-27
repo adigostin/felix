@@ -3,7 +3,7 @@
   <ItemGroup>
     <ClCompile Include="pch.cpp" />
     <ClCompile Include="Z80SimulatorTests.cpp" />
-    <ClCompile Include="..\Z80Simulator\hw\cpu.cpp" />
+    <ClCompile Include="..\FelixPackage\Simulator\Impl\Z80CPU.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />

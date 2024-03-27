@@ -204,7 +204,7 @@ public:
 			for (auto& d : _active_devices_)
 			{
 				if (d->Time() < time)
-					advanced |= (d->SimulateTo(time, this) == S_OK);
+					advanced |= (d->SimulateTo(time) == S_OK);
 			}
 
 			if (!advanced)
@@ -385,7 +385,7 @@ public:
 					// Let's unblock the device that was waiting for this time point.
 					if (device_to_sync_on->Time() < time_to_sync_to_ + 1)
 					{
-						bool res = device_to_sync_on->SimulateTo(time_to_sync_to_ + 1, this);
+						bool res = device_to_sync_on->SimulateTo(time_to_sync_to_ + 1);
 						WI_ASSERT(res);
 					}
 				}

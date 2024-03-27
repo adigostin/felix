@@ -1964,20 +1964,20 @@ public:
 		return cpu_time;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE SkipTime (UINT64 offset) override
+	virtual HRESULT SkipTime (UINT64 offset) override
 	{
 		cpu_time += offset;
 		return S_OK;
 	}
 
-	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { return false; }
+	virtual BOOL NeedSyncWithRealTime (UINT64* sync_time) override { return false; }
 
-	virtual HRESULT SimulateTo (UINT64 requested_time, IDeviceEventHandler* eh) override
+	virtual bool SimulateTo (UINT64 requested_time) override
 	{
 		WI_ASSERT(false); return { };
 	}
 
-	virtual void STDMETHODCALLTYPE Reset() override
+	virtual void Reset() override
 	{
 		memset (&regs, 0, sizeof(regs));
 		_start_of_stack = 0;
@@ -2003,19 +2003,23 @@ public:
 		regs = *pRegs;
 	}
 	
+	#ifdef SIM_TESTS
+	virtual z80_register_set* GetRegsPtr() override { return &regs; }
+	#endif
+
 	virtual UINT16 GetStackStartAddress() const override { return _start_of_stack; }
 	
 	virtual BOOL STDMETHODCALLTYPE Halted() override { return regs.halted; }
 	
-	virtual UINT16 STDMETHODCALLTYPE GetPC() const override { return regs.pc; }
+	virtual UINT16 GetPC() const override { return regs.pc; }
 
-	virtual HRESULT STDMETHODCALLTYPE SetPC (UINT16 pc) override
+	virtual HRESULT SetPC (UINT16 pc) override
 	{
 		regs.pc = pc;
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE AddBreakpoint (BreakpointType type, uint16_t address, SIM_BP_COOKIE* pCookie) override
+	virtual HRESULT AddBreakpoint (BreakpointType type, uint16_t address, SIM_BP_COOKIE* pCookie) override
 	{
 		if (type == BreakpointType::Code)
 		{
@@ -2049,7 +2053,7 @@ public:
 			RETURN_HR(E_NOTIMPL);
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE RemoveBreakpoint (SIM_BP_COOKIE cookie) override
+	virtual HRESULT RemoveBreakpoint (SIM_BP_COOKIE cookie) override
 	{
 		for (auto it = code_bps.begin(); it != code_bps.end(); it++)
 		{
@@ -2067,7 +2071,7 @@ public:
 		RETURN_HR(E_INVALIDARG);
 	}
 
-	virtual BOOL STDMETHODCALLTYPE HasBreakpoints() override
+	virtual BOOL HasBreakpoints() override
 	{
 		return code_bps.size();
 	}

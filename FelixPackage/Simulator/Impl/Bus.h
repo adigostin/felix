@@ -19,7 +19,11 @@ struct DECLSPEC_NOVTABLE IDevice
 	virtual uint64_t Time() = 0;
 	virtual HRESULT SkipTime (UINT64 offset) = 0;
 	virtual BOOL NeedSyncWithRealTime (UINT64* sync_time) = 0;
-	virtual HRESULT SimulateTo (UINT64 requested_time, IDeviceEventHandler* eh) = 0;
+
+	// Returns true if it simulated something (thus advancing the device's time),
+	// even if it couldn't simulate to the "requested_time".
+	// Returs false if it couldn't simulate anything (thus the device's time didn't change).
+	virtual bool SimulateTo (UINT64 requested_time) = 0;
 };
 
 #define SIM_E_BREAKPOINT_HIT              MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x201)
@@ -81,6 +85,11 @@ static constexpr UINT64 ticks_to_hundreds_of_nanoseconds (UINT64 ticks)
 	return ticks * 10000 / 3500;
 }
 
+// ReadResponder and WriteResponder are implemented as pairs of device + handler
+// (rather than as interface classes with virtual functions) because some devices
+// are present on both buses (memory and IO) and we'd get a conflict when overriding
+// once for the memory and once for the IO. We also want to stay away from dynamic_cast.
+
 struct ReadResponder
 {
 	IDevice* Device;
@@ -124,6 +133,16 @@ struct DECLSPEC_NOVTABLE Bus
 			d.ProcessWriteRequest(d.Device, address, value);
 	}
 
+	void write (uint16_t address, std::initializer_list<uint8_t> values)
+	{
+		for (size_t i = 0; i < values.size(); i++)
+		{
+			uint8_t value = *(values.begin() + i);
+			for (auto& d : write_responders)
+				d.ProcessWriteRequest(d.Device, address + (uint16_t)i, value);
+		}
+	}
+
 	uint16_t read_uint16 (uint16_t address)
 	{
 		uint16_t val = 0xFFFF;
@@ -148,8 +167,9 @@ struct DECLSPEC_NOVTABLE Bus
 	}
 
 	// Tries to performs a read request on the bus.
-	// The function first checks to see if the devices that respond to read requests at the specified
+	// The function checks to see if the devices that respond to read requests at the specified
 	// address have simulated themselves at least up to the requested time.
+	// If no, it returns false. If yes, it sets the 'value' variable and returns true.
 	bool try_read_request (uint16_t address, uint8_t& value, UINT64 requested_time)
 	{
 		uint8_t temp = 0xFF;
@@ -157,8 +177,17 @@ struct DECLSPEC_NOVTABLE Bus
 		{
 			if (d.Device->Time() < requested_time)
 			{
-				//d->simulate_to(requested_time);
-				//if (d->behind_of(requested_time))
+				// A read responder is at an earlier time point. Let's try to simulate it
+				// up to the requested time. In the vast majority of cases our caller is
+				// the CPU and the read responder is a memory, so simulation is possible
+				// and is faster when done here.
+				// 
+				// We don't attempt here anything fancy such as simulating repeatedly
+				// in case the device is blocked on some other device that's also blocked.
+				// This kind of scenario is taken care of in the simulator class.
+
+				d.Device->SimulateTo(requested_time);
+				if (d.Device->Time() < requested_time)
 					return false;
 			}
 

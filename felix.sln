@@ -34,6 +34,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "shared", "shared", "{9141C0
 		Shared\include\shared\z80_register_set.h = Shared\include\shared\z80_register_set.h
 	EndProjectSection
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Z80SimulatorTests", "simulator_tests\Z80SimulatorTests.vcxproj", "{30A82360-4840-4562-A8B2-E020D0790EA6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -56,6 +58,10 @@ Global
 		{7FA13D72-C30A-4D1D-B391-689468607B35}.Debug|x64.Build.0 = Debug|x64
 		{7FA13D72-C30A-4D1D-B391-689468607B35}.Release|x64.ActiveCfg = Release|x64
 		{7FA13D72-C30A-4D1D-B391-689468607B35}.Release|x64.Build.0 = Release|x64
+		{30A82360-4840-4562-A8B2-E020D0790EA6}.Debug|x64.ActiveCfg = Debug|x64
+		{30A82360-4840-4562-A8B2-E020D0790EA6}.Debug|x64.Build.0 = Debug|x64
+		{30A82360-4840-4562-A8B2-E020D0790EA6}.Release|x64.ActiveCfg = Release|x64
+		{30A82360-4840-4562-A8B2-E020D0790EA6}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

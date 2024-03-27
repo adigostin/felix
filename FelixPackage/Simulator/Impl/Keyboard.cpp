@@ -28,7 +28,7 @@ struct keyboard : IKeyboardDevice
 		memset (keys_down, 0, sizeof(keys_down));
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE SimulateTo (UINT64 requested_time, IDeviceEventHandler* eh) override
+	virtual bool SimulateTo (UINT64 requested_time) override
 	{
 		WI_ASSERT (_time < requested_time);
 		_time = requested_time;

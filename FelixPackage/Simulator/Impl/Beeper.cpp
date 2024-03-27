@@ -1,6 +1,7 @@
 
 #include "pch.h"
 #include "Bus.h"
+#include "shared/com.h"
 #include <xaudio2.h>
 
 class Beeper : public IDevice, IXAudio2VoiceCallback
@@ -98,7 +99,7 @@ public:
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { return FALSE; }
 
-	virtual HRESULT STDMETHODCALLTYPE SimulateTo (UINT64 requested_time, IDeviceEventHandler* eh) override
+	virtual bool SimulateTo (UINT64 requested_time) override
 	{
 		WI_ASSERT (_time < requested_time);
 

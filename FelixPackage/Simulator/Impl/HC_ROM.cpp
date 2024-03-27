@@ -1,6 +1,7 @@
 
 #include "pch.h"
 #include "Bus.h"
+#include "shared/com.h"
 
 class HC_ROM : public IMemoryDevice
 {
@@ -63,7 +64,7 @@ public:
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { return FALSE; }
 
-	virtual HRESULT STDMETHODCALLTYPE SimulateTo (UINT64 requested_time, IDeviceEventHandler* eh) override
+	virtual bool SimulateTo (UINT64 requested_time) override
 	{
 		// Only a bus write can change the state of this device. If there are still write-capable devices
 		// whose timepoint is in the timespan we want to jump over (_time to requested_time), we can't jump.

@@ -129,7 +129,7 @@ public:
 		return (uint32_t*)_screenData->bmiColors + (screen_height - 1 - row) * screen_width + col;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE SimulateTo (UINT64 requested_time, IDeviceEventHandler* eh) override
+	virtual bool SimulateTo (UINT64 requested_time) override
 	{
 		WI_ASSERT (_time < requested_time);
 
