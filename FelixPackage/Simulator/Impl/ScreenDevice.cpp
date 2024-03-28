@@ -92,10 +92,9 @@ public:
 		return _time;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE SkipTime (UINT64 offset) override
+	virtual void SkipTime (uint64_t offset) override
 	{
 		_time += offset;
-		return S_OK;
 	}
 
 	static constexpr uint32_t low_brightness_colors[] = 

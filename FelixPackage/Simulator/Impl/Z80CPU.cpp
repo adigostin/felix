@@ -1964,10 +1964,9 @@ public:
 		return cpu_time;
 	}
 
-	virtual HRESULT SkipTime (UINT64 offset) override
+	virtual void SkipTime (uint64_t offset) override
 	{
 		cpu_time += offset;
-		return S_OK;
 	}
 
 	virtual BOOL NeedSyncWithRealTime (UINT64* sync_time) override { return false; }

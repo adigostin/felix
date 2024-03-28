@@ -17,7 +17,7 @@ struct DECLSPEC_NOVTABLE IDevice
 	virtual ~IDevice() = default;
 	virtual void Reset() = 0;
 	virtual uint64_t Time() = 0;
-	virtual HRESULT SkipTime (UINT64 offset) = 0;
+	virtual void SkipTime (uint64_t offset) = 0;
 	virtual BOOL NeedSyncWithRealTime (UINT64* sync_time) = 0;
 
 	// Returns true if it simulated something (thus advancing the device's time),

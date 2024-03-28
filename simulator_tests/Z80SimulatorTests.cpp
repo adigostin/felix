@@ -11,7 +11,7 @@ struct dummy_irq_line : irq_line_i
 };
 
 
-class TestRAM : public IMemoryDevice
+class TestRAM : public IDevice
 {
 	Bus* _memory_bus;
 	UINT64 _time = 0;
@@ -41,10 +41,9 @@ public:
 
 	virtual UINT64 STDMETHODCALLTYPE Time() override { return _time; }
 
-	virtual HRESULT STDMETHODCALLTYPE SkipTime (UINT64 offset) override
+	virtual void SkipTime (uint64_t offset) override
 	{
 		_time += offset;
-		return S_OK;
 	}
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { return false; }
@@ -70,21 +69,6 @@ public:
 		auto* ram = static_cast<TestRAM*>(d);
 		ram->_data[address] = value;
 	}
-
-	#pragma region IMemoryDevice
-	virtual HRESULT ReadMemory (uint32_t address, uint32_t size, void* dest) override
-	{
-		RETURN_HR(E_NOTIMPL);
-	}
-
-	virtual HRESULT WriteMemory (uint32_t address, uint32_t size, const void* bytes) override
-	{
-		RETURN_HR_IF(E_BOUNDS, address >= sizeof(_data));
-		RETURN_HR_IF(E_BOUNDS, address + size > sizeof(_data));
-		memcpy (&_data[address], bytes, size);
-		return S_OK;
-	}
-	#pragma endregion
 };
 
 namespace Z80SimulatorTests
@@ -95,7 +79,7 @@ namespace Z80SimulatorTests
 		Bus io_bus;
 		dummy_irq_line irq_line;
 		wistd::unique_ptr<IZ80CPU> cpu;
-		wistd::unique_ptr<IMemoryDevice> ram;
+		wistd::unique_ptr<IDevice> ram;
 		z80_register_set* regs;
 
 	public:

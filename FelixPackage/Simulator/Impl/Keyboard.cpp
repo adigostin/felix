@@ -40,10 +40,9 @@ struct keyboard : IKeyboardDevice
 		return _time;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE SkipTime (UINT64 offset) override
+	virtual void SkipTime (uint64_t offset) override
 	{
 		_time += offset;
-		return S_OK;
 	}
 
 	static uint8_t process_read_request (IDevice* d, uint16_t address)
