@@ -33,7 +33,6 @@ wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 class FelixPackageImpl : public IVsPackage, IVsSolutionEvents, IOleCommandTarget, IDebugEventCallback2, IServiceProvider
 {
 	ULONG _refCount = 0;
-	static inline FelixPackageImpl* _instance = nullptr;
 	wil::unique_hlocal_string _packageDir;
 	wil::com_ptr_nothrow<IVsLanguageInfo> _z80AsmLanguageInfo;
 	wil::com_ptr_nothrow<IServiceProvider> _sp;
@@ -52,15 +51,12 @@ class FelixPackageImpl : public IVsPackage, IVsSolutionEvents, IOleCommandTarget
 public:
 	HRESULT InitInstance()
 	{
-		RETURN_HR_IF(E_UNEXPECTED, !!_instance);
-
 		wil::unique_hlocal_string moduleFilename;
 		auto hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, moduleFilename); RETURN_IF_FAILED(hr);
 		auto fnres = PathFindFileName(moduleFilename.get()); RETURN_HR_IF(CO_E_BAD_PATH, fnres == moduleFilename.get());
 		_packageDir = wil::make_hlocal_string_nothrow(moduleFilename.get(), fnres - moduleFilename.get()); RETURN_IF_NULL_ALLOC(_packageDir);
 
 		hr = Z80AsmLanguageInfo_CreateInstance(&_z80AsmLanguageInfo); RETURN_IF_FAILED(hr);
-		_instance = this;
 		return S_OK;
 	}
 
@@ -112,19 +108,9 @@ public:
 		return E_NOINTERFACE;
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return ++_refCount;
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_refCount);
-		if (_refCount > 1)
-			return --_refCount;
-		delete this;
-		return 0;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	HRESULT CreateZxSpectrumSimulator()
