@@ -151,6 +151,7 @@
     <ClCompile Include="DebugEngine\DebugModule.cpp" />
     <ClCompile Include="DebugEngine\DebugPort.cpp" />
     <ClCompile Include="DebugEngine\DebugPortSupplier.cpp" />
+    <ClCompile Include="DebugEngine\DebugProcess.cpp" />
     <ClCompile Include="DebugEngine\DebugProgram.cpp" />
     <ClCompile Include="DebugEngine\DebugThread.cpp" />
     <ClCompile Include="DebugEngine\DebugProperties.cpp" />

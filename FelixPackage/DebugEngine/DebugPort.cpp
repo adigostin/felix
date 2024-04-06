@@ -193,12 +193,9 @@ public:
 		wil::com_ptr_nothrow<ProgramDestroyEvent> pde = new (std::nothrow) ProgramDestroyEvent(); RETURN_IF_NULL_ALLOC(pde);
 		pde->_exitCode = exitCode;
 		
-		com_ptr<IDebugProcess2> process;
-		auto hr = pProgram->GetProcess(&process); RETURN_IF_FAILED(hr);
-
 		for (auto& c : _callbacks)
 		{
-			auto hr = c.second->Event (nullptr, this, process.get(), pProgram, pde.get(), IID_IDebugProgramDestroyEvent2); LOG_IF_FAILED(hr);
+			auto hr = c.second->Event (nullptr, this, nullptr, pProgram, pde.get(), IID_IDebugProgramDestroyEvent2); LOG_IF_FAILED(hr);
 		}
 
 		return S_OK;

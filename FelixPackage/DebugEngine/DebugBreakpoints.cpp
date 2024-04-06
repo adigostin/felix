@@ -766,6 +766,8 @@ public:
 	static HRESULT CreateInstance (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program, 
 		IBreakpointManager* bpman, IDebugBreakpointRequest2* bp_request, const wchar_t* file, uint32_t line_index, IDebugPendingBreakpoint2** to)
 	{
+		RETURN_HR_IF_NULL(E_INVALIDARG, program);
+
 		wil::com_ptr_nothrow<SourceLinePendingBreakpoint> p = new (std::nothrow) SourceLinePendingBreakpoint(); RETURN_IF_NULL_ALLOC(p);
 
 		p->_callback = callback;

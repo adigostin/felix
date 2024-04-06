@@ -16,6 +16,7 @@ class Z80DebugEngine : public IDebugEngine2, IDebugEngineLaunch2, ISimulatorEven
 	bool _attachCalled = false;
 	com_ptr<IDebugEventCallback2> _callback;
 	com_ptr<ISimulator> _simulator;
+	com_ptr<IDebugPort2> _port;
 	com_ptr<IDebugProgram2> _program;
 	com_ptr<IFelixLaunchOptions> _launchOptions;
 	com_ptr<IBreakpointManager> _bpman;
@@ -259,14 +260,8 @@ public:
 			// Now that we told the SDM that we destroyed the program and the SDM is done acting on the event,
 			// we tell also the port about the program being gone. This should release even more references.
 
-			com_ptr<IDebugProcess2> process;
-			auto hr = _program->GetProcess(&process); RETURN_IF_FAILED(hr);
-
-			wil::com_ptr_nothrow<IDebugPort2> port;
-			hr = process->GetPort(&port); RETURN_IF_FAILED(hr);
-
 			wil::com_ptr_nothrow<IZ80DebugPort> z80Port;
-			hr = port->QueryInterface(&z80Port); RETURN_IF_FAILED(hr);
+			auto hr = _port->QueryInterface(&z80Port); RETURN_IF_FAILED(hr);
 			
 			hr = z80Port->SendProgramDestroyEventToSinks (_program.get(), 0); RETURN_IF_FAILED(hr);
 			
@@ -287,6 +282,7 @@ public:
 			_program = nullptr;
 			_launchOptions = nullptr;
 			_bpman = nullptr;
+			_port = nullptr;
 
 			return S_OK;
 		}
@@ -386,7 +382,7 @@ public:
 		hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
 
 		com_ptr<IDebugProcess2> process;
-		hr = MakeDebugProgramProcess (pPort, pszExe, this, simulator.get(), pCallback, &process); RETURN_IF_FAILED(hr);
+		hr = MakeDebugProcess (pPort, pszExe, this, simulator.get(), pCallback, &process); RETURN_IF_FAILED(hr);
 
 		struct EngineCreateEvent : public EventBase<IDebugEngineCreateEvent2, EVENT_ASYNCHRONOUS>
 		{
@@ -406,6 +402,7 @@ public:
 
 		_callback = pCallback;
 		_simulator = std::move(simulator);
+		_port = pPort;
 
 		*ppProcess = process.detach();
 		return S_OK;
@@ -417,7 +414,10 @@ public:
 	{
 		// TODO: cleanup member variables in case of failure in this function.
 
-		auto hr = pProcess->QueryInterface(&_program); RETURN_IF_FAILED(hr);
+		com_ptr<IEnumDebugPrograms2> programs;
+		auto hr = pProcess->EnumPrograms(&programs); RETURN_IF_FAILED(hr);
+		hr = programs->Next(1, &_program, nullptr); RETURN_IF_FAILED(hr);
+		auto resetProgram = wil::scope_exit([this] { _program = nullptr; });
 
 		hr = MakeBreakpointManager(_callback, this, _program, _simulator, &_bpman); RETURN_IF_FAILED(hr);
 
@@ -502,6 +502,7 @@ public:
 		// in the design mode layout. It will switch to the debug mode layout - with the simulator window
 		// hidden - after this function returns.
 
+		resetProgram.release();
 		return S_OK;
 	}
 

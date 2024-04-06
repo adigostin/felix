@@ -8,18 +8,13 @@
 #include "DebugEventBase.h"
 #include "../FelixPackage.h"
 
-static const wchar_t SingleDebugProcessName[] = L"Z80 Process";
 static const wchar_t SingleDebugProgramName[] = L"Z80 Program";
 
-class DebugProgramProcessImpl : public IDebugProcess2, IDebugProgram2, IDebugModuleCollection, ISimulatorEventHandler
+class DebugProgramProcessImpl : public IDebugProgram2, IDebugModuleCollection, ISimulatorEventHandler
 {
 	ULONG _refCount = 0;
-	wil::unique_hlocal_string _exe_path;
-	AD_PROCESS_ID _pid;
-	GUID _processGuid;
-	wil::com_ptr_nothrow<IDebugPort2> _parentPort;
-	FILETIME _creationTime;
 	GUID _programId;
+	com_ptr<IDebugProcess2> _process;
 	vector_nothrow<com_ptr<IDebugModule2>> _modules;
 	wil::com_ptr_nothrow<IDebugEngine2> _engine;
 	wil::com_ptr_nothrow<IDebugEventCallback2> _callback;
@@ -29,17 +24,13 @@ class DebugProgramProcessImpl : public IDebugProcess2, IDebugProgram2, IDebugMod
 	SIM_BP_COOKIE _stepOverOrOutBreakpoint = 0;
 
 public:
-	HRESULT InitInstance (IDebugPort2* pPort, LPCOLESTR pszExe, IDebugEngine2* engine, ISimulator* simulator, IDebugEventCallback2* callback)
+	HRESULT InitInstance (IDebugProcess2* process, IDebugEngine2* engine, ISimulator* simulator, IDebugEventCallback2* callback)
 	{
-		_pid.ProcessIdType = AD_PROCESS_ID_GUID;
-		if (pszExe)
-		{
-			_exe_path = wil::make_hlocal_string_nothrow(pszExe); RETURN_IF_NULL_ALLOC(_exe_path);
-		}
-		auto hr = CoCreateGuid (&_pid.ProcessId.guidProcessId); RETURN_IF_FAILED(hr);
-		hr = CoCreateGuid (&_processGuid); RETURN_IF_FAILED(hr);
-		_parentPort = pPort;
-		::GetSystemTimeAsFileTime (&_creationTime);
+		HRESULT hr;
+
+		RETURN_HR_IF_NULL(E_INVALIDARG, process);
+
+		_process = process;
 
 		hr = CoCreateGuid (&_programId); RETURN_IF_FAILED(hr);
 
@@ -61,14 +52,14 @@ public:
 		RETURN_HR_IF(E_POINTER, !ppvObject);
 		*ppvObject = nullptr;
 
-		if (   TryQI<IUnknown>(static_cast<IDebugProcess2*>(this), riid, ppvObject)
-			|| TryQI<IDebugProcess2>(this, riid, ppvObject)
+		if (   TryQI<IUnknown>(static_cast<IDebugProgram2*>(this), riid, ppvObject)
 			|| TryQI<IDebugProgram2>(this, riid, ppvObject)
 			|| TryQI<IDebugModuleCollection>(this, riid, ppvObject)
 			|| TryQI<ISimulatorEventHandler>(this, riid, ppvObject)
 		)
 			return S_OK;
-
+		
+		#ifdef _DEBUG
 		if (   riid == IID_IDebugProgramEngines2
 			|| riid == IID_IDebugProgramEx2
 			|| riid == IID_IDebugProgram3
@@ -78,8 +69,6 @@ public:
 			|| riid == IID_IClientSecurity
 			|| riid == IID_IMarshal
 			|| riid == IID_INoMarshal
-			|| riid == GUID{0xDE34E4B4, 0x500B, 0x487F, { 0xB6, 0x43, 0xCE, 0xE1, 0x43, 0xF4, 0x23, 0xFF } }
-			|| riid == IID_IDebugProcessEx2
 			|| riid == IID_IAgileObject
 			|| riid == IID_IdentityUnmarshal
 			|| riid == IID_IStdMarshalInfo
@@ -92,7 +81,7 @@ public:
 			|| riid == IID_INoIdea12
 			|| riid == IID_INoIdea14
 			|| riid == IID_INoIdea15
-			|| riid == IID_INoIdea16
+			|| riid == IID_INoIdea20
 			|| riid == IID_IExternalConnection
 			|| riid == IID_IDebugHistoricalProgram156
 			|| riid == IID_IDebugReversibleEngineProgram160
@@ -102,8 +91,9 @@ public:
 		for (auto& i : HardcodedRundownIFsOfInterest)
 			if (*i == riid)
 				return E_NOINTERFACE;
+		#endif
 
-		RETURN_HR(E_NOINTERFACE);
+		return E_NOINTERFACE;
 	}
 
 	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
@@ -125,8 +115,8 @@ public:
 
 	HRESULT STDMETHODCALLTYPE GetProcess(IDebugProcess2** ppProcess) override
 	{
-		*ppProcess = this;
-		AddRef();
+		*ppProcess = _process;
+		_process->AddRef();
 		return S_OK;
 	}
 
@@ -149,6 +139,7 @@ public:
 		_simulator = nullptr;
 		_thread = nullptr;
 		_modules.clear();
+		_process = nullptr;
 		return S_OK;
 	}
 
@@ -337,139 +328,11 @@ public:
 	}
 	HRESULT STDMETHODCALLTYPE EnumCodePaths(LPCOLESTR pszHint, IDebugCodeContext2* pStart, IDebugStackFrame2* pFrame, BOOL fSource, IEnumCodePaths2** ppEnum, IDebugCodeContext2** ppSafety) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 	HRESULT STDMETHODCALLTYPE WriteDump(DUMPTYPE DumpType, LPCOLESTR pszDumpUrl) override
 	{
 		RETURN_HR(E_NOTIMPL);
-	}
-	#pragma endregion
-
-	#pragma region IDebugProcess2
-	HRESULT STDMETHODCALLTYPE GetInfo(PROCESS_INFO_FIELDS Fields, PROCESS_INFO* pProcessInfo) override
-	{
-		pProcessInfo->Fields = 0;
-
-		if (Fields & PIF_FILE_NAME)
-		{
-			if (_exe_path)
-			{
-				pProcessInfo->bstrFileName = SysAllocString(_exe_path.get()); RETURN_IF_NULL_ALLOC(pProcessInfo->bstrFileName);
-			}
-			else
-				pProcessInfo->bstrFileName = nullptr;
-			pProcessInfo->Fields |= PIF_FILE_NAME;
-		}
-
-		if (Fields & PIF_BASE_NAME)
-		{
-			pProcessInfo->bstrBaseName = SysAllocString(SingleDebugProcessName);
-			pProcessInfo->Fields |= PIF_BASE_NAME;
-		}
-
-		if (Fields & PIF_TITLE)
-		{
-			pProcessInfo->bstrTitle = SysAllocString(L"<TITLE>");
-			pProcessInfo->Fields |= PIF_TITLE;
-		}
-
-		if (Fields & PIF_PROCESS_ID)
-		{
-			pProcessInfo->ProcessId = _pid;
-			pProcessInfo->Fields |= PIF_PROCESS_ID;
-		}
-
-		if (Fields & PIF_SESSION_ID)
-		{
-			pProcessInfo->dwSessionId = 0;
-			pProcessInfo->Fields |= PIF_SESSION_ID;
-		}
-
-		if (Fields & PIF_ATTACHED_SESSION_NAME)
-		{
-			pProcessInfo->bstrAttachedSessionName = SysAllocString(L"<session name>");
-			pProcessInfo->Fields |= PIF_ATTACHED_SESSION_NAME;
-		}
-
-		if (Fields & PIF_CREATION_TIME)
-		{
-			pProcessInfo->CreationTime = _creationTime;
-			pProcessInfo->Fields |= PIF_CREATION_TIME;
-		}
-
-		if (Fields & PIF_FLAGS)
-		{
-			pProcessInfo->Flags = 0;
-			//if (_engineAttached)
-			{
-				pProcessInfo->Flags |= PIFLAG_DEBUGGER_ATTACHED;
-				//if (_running)
-				pProcessInfo->Flags |= PIFLAG_PROCESS_RUNNING;
-				//else
-				//	pProcessInfo->Flags |= PIFLAG_PROCESS_STOPPED;
-			}
-			pProcessInfo->Fields |= PIF_FLAGS;
-		}
-
-		return S_OK;
-	}
-
-	HRESULT STDMETHODCALLTYPE EnumPrograms(IEnumDebugPrograms2** ppEnum) override
-	{
-		RETURN_HR(E_NOTIMPL);
-	}
-	HRESULT STDMETHODCALLTYPE GetName(GETNAME_TYPE gnType, BSTR* pbstrName) override
-	{
-		switch (gnType)
-		{
-		case GN_NAME:
-		case GN_BASENAME:
-			*pbstrName = SysAllocString(SingleDebugProcessName); RETURN_IF_NULL_ALLOC(*pbstrName);
-			return S_OK;
-
-		case GN_FILENAME:
-			if (_exe_path)
-			{
-				*pbstrName = SysAllocString(_exe_path.get()); RETURN_IF_NULL_ALLOC(*pbstrName);
-			}
-			else
-				*pbstrName = nullptr;
-			return S_OK;
-
-		default:
-			*pbstrName = nullptr;
-			RETURN_HR(E_NOTIMPL);
-		}
-	}
-
-	HRESULT STDMETHODCALLTYPE GetServer(IDebugCoreServer2** ppServer) override
-	{
-		RETURN_HR(E_NOTIMPL);
-	}
-	HRESULT STDMETHODCALLTYPE Attach(IDebugEventCallback2* pCallback, GUID* rgguidSpecificEngines, DWORD celtSpecificEngines, HRESULT* rghrEngineAttach) override
-	{
-		RETURN_HR(E_NOTIMPL);
-	}
-	HRESULT STDMETHODCALLTYPE GetPhysicalProcessId(AD_PROCESS_ID* pProcessId) override
-	{
-		// https://blogs.msdn.microsoft.com/jacdavis/2008/05/01/what-to-do-if-your-debug-engine-doesnt-create-real-processes/
-		*pProcessId = _pid;
-		return S_OK;
-	}
-	HRESULT STDMETHODCALLTYPE GetProcessId(GUID* pguidProcessId) override
-	{
-		*pguidProcessId = _processGuid;
-		return S_OK;
-	}
-	HRESULT STDMETHODCALLTYPE GetAttachedSessionName(BSTR* pbstrSessionName) override
-	{
-		RETURN_HR(E_NOTIMPL);
-	}
-	HRESULT STDMETHODCALLTYPE GetPort(IDebugPort2** ppPort) override
-	{
-		*ppPort = _parentPort.get();
-		(*ppPort)->AddRef();
-		return S_OK;
 	}
 	#pragma endregion
 
@@ -571,10 +434,10 @@ public:
 	#pragma endregion
 };
 
-HRESULT MakeDebugProgramProcess (IDebugPort2* pPort, LPCOLESTR pszExe, IDebugEngine2* engine, ISimulator* simulator, IDebugEventCallback2* callback, IDebugProcess2** ppProcess)
+HRESULT MakeDebugProgram (IDebugProcess2* process, IDebugEngine2* engine, ISimulator* simulator, IDebugEventCallback2* callback, IDebugProgram2** ppProgram)
 {
 	auto p = com_ptr(new (std::nothrow) DebugProgramProcessImpl()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance(pPort, pszExe, engine, simulator, callback); RETURN_IF_FAILED(hr);
-	*ppProcess = p.detach();
+	auto hr = p->InitInstance (process, engine, simulator, callback); RETURN_IF_FAILED(hr);
+	*ppProgram = p.detach();
 	return S_OK;
 }

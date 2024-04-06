@@ -262,7 +262,7 @@ public:
 			wil::unique_bstr symbol;
 			uint16_t offset = 0;
 			com_ptr<IDebugModule2> pcModule;
-			hr = ::GetModuleAtAddress(program.get(), pc, &pcModule); LOG_IF_FAILED(hr);
+			hr = ::GetModuleAtAddress(program.get(), pc, &pcModule);
 			if (hr == S_OK)
 			{
 				if (auto z80m = wil::try_com_query_nothrow<IZ80Module>(pcModule))

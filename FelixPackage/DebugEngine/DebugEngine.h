@@ -105,7 +105,9 @@ HRESULT MakeSourceLinePendingBreakpoint (IDebugEventCallback2* callback, IDebugE
 	IBreakpointManager* bpman,
 	IDebugBreakpointRequest2* bp_request, const wchar_t* file, uint32_t line_index, IDebugPendingBreakpoint2** to);
 HRESULT MakeDebugPort (const wchar_t* portName, const GUID& portId, IDebugPort2** port);
-HRESULT MakeDebugProgramProcess (IDebugPort2* pPort, LPCOLESTR pszExe, IDebugEngine2* engine, ISimulator* simulator, IDebugEventCallback2* callback, IDebugProcess2** ppProcess);
+HRESULT MakeDebugProgram (IDebugProcess2* process, IDebugEngine2* engine, ISimulator* simulator, IDebugEventCallback2* callback, IDebugProgram2** ppProgram);
+HRESULT MakeDebugProcess (IDebugPort2* pPort, LPCOLESTR pszExe, IDebugEngine2* engine,
+	ISimulator* simulator, IDebugEventCallback2* callback, IDebugProcess2** ppProcess);
 HRESULT MakeModule (UINT64 address, DWORD size, const wchar_t* path, const wchar_t* debug_info_path, bool user_code,
 	IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback, IDebugModule2** to);
 HRESULT MakeSldSymbols (IDebugModule2* module, IZ80Symbols** to);
