@@ -15,7 +15,7 @@ static constexpr uint32_t border_size_right_px = 48;
 static constexpr uint32_t border_size_left_ticks = 24;
 static constexpr uint32_t border_size_right_ticks = 24;
 static constexpr uint32_t vsync_row_count = 16;
-static constexpr uint32_t hsync_col_count = 48;
+static constexpr uint32_t hsync_col_count = 48; // in clock cycles
 static constexpr uint32_t ticks_per_row = hsync_col_count + border_size_left_ticks + 128 + border_size_right_ticks;
 static constexpr uint32_t rows_per_frame = vsync_row_count + border_size_top + 192 + border_size_bottom;
 static constexpr uint32_t irq_offset_from_frame_start = hsync_col_count + border_size_left_ticks;
@@ -143,6 +143,7 @@ public:
 
 		uint64_t frame_number = _time / (ticks_per_row * rows_per_frame);
 
+		// TODO: optimize this to work as a state machine with "row" as state.
 		while (true)
 		{
 			if (row < vsync_row_count)
@@ -169,7 +170,7 @@ public:
 				// jump to the end of line, then jump over all V-Sync rows
 				UINT64 requested_offset = requested_time - _time;
 				WI_ASSERT(requested_offset < max_time_offset);
-				uint32_t offset_to_border_row_0 = (ticks_per_row - col) + (ticks_per_row * (vsync_row_count - row));
+				uint32_t offset_to_border_row_0 = (ticks_per_row - col) + (ticks_per_row * (vsync_row_count - row - 1));
 				if (requested_offset <= offset_to_border_row_0)
 				{
 					_time = requested_time;
