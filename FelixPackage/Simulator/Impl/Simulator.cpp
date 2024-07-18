@@ -31,7 +31,7 @@ class SimulatorImpl : public ISimulator, IDeviceEventHandler, IScreenDeviceCompl
 
 	struct running_info
 	{
-		UINT64 start_time;
+		UINT64 start_time; // tick count of the simulated clock
 		LARGE_INTEGER start_time_perf_counter;
 	};
 
@@ -254,7 +254,8 @@ public:
 				#pragma region Catch up with real time
 				// Before we attempt simulation, let's check if some devices are lagging far behind the real time.
 				// This happens while debugging the VSIX, or it may happen when this thread is starved. 
-				// If we have any such device, we "erase" the same length of time from all of the devices.
+				// If we have any such device, we "erase" the same length of time from all of the devices;
+				// we do this by rebasing the simulation startup time held in the _running_info variable.
 				{
 					IDevice* slowest = _cpu.get();
 					INT64 slowest_offset_from_rt = (UINT64)(_cpu->Time() - rt);
@@ -272,10 +273,10 @@ public:
 					{
 						// Slowest device is more than 50 ms behind real time. Let's see what time offset
 						// it would need to be 50 ms _ahead_ of real time, and add that offset to all devices.
-						UINT64 offset = rt + milliseconds_to_ticks(50) - slowest->Time();
-						_cpu->SkipTime(offset);
-						for (auto& d : _active_devices_)
-							d->SkipTime(offset);
+						UINT64 tick_offset = rt + milliseconds_to_ticks(50) - slowest->Time();
+						UINT64 perf_counter_offset = tick_offset * (qpFrequency.QuadPart / 1000) / 3500;
+						_running_info->start_time += tick_offset;
+						_running_info->start_time_perf_counter.QuadPart += perf_counter_offset;
 					}
 				}
 				#pragma endregion

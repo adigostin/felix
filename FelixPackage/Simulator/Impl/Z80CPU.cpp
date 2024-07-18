@@ -1964,11 +1964,6 @@ public:
 		return cpu_time;
 	}
 
-	virtual void SkipTime (uint64_t offset) override
-	{
-		cpu_time += offset;
-	}
-
 	virtual BOOL NeedSyncWithRealTime (UINT64* sync_time) override { return false; }
 
 	virtual bool SimulateTo (UINT64 requested_time) override

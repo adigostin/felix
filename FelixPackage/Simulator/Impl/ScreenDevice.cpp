@@ -92,11 +92,6 @@ public:
 		return _time;
 	}
 
-	virtual void SkipTime (uint64_t offset) override
-	{
-		_time += offset;
-	}
-
 	static constexpr uint32_t low_brightness_colors[] = 
 		{ 0xFF000000, 0xFF0000C0, 0xFFC00000, 0xFFC000C0, 0xFF00C000, 0xFF00C0C0, 0xFFC0C000, 0xFFC0C0C0 };
 

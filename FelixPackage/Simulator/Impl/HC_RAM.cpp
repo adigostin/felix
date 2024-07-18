@@ -45,11 +45,6 @@ public:
 
 	virtual UINT64 STDMETHODCALLTYPE Time() override { return _time; }
 
-	virtual void SkipTime (uint64_t offset) override
-	{
-		_time += offset;
-	}
-
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { return false; }
 
 	virtual bool SimulateTo (UINT64 requested_time) override
