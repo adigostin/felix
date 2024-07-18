@@ -124,6 +124,14 @@
 					<ButtonText>Save Memory</ButtonText>
 				</Strings>
 			</Button>
+
+			<Button guid="guidFelixPackageCmdSet" id="cmdidScreenWindowDebug" priority="0x01FF">
+				<Parent guid="guidFelixPackageCmdSet" id="TWToolbarGroup" />
+				<Icon guid="guidImages" id="7" />
+				<Strings>
+					<ButtonText>Show Debug Aids</ButtonText>
+				</Strings>
+			</Button>
 		</Buttons>
 
 		<!--The bitmaps section is used to define the bitmaps that are used for the commands.-->
@@ -134,7 +142,7 @@
             inside a button definition. An important aspect of this declaration is that the element id 
             must be the actual index (1-based) of the bitmap inside the bitmap strip. -->
 
-			<Bitmap guid="guidImages" href="Z80Images.png" usedList="1,2,3,4,5,6" />
+			<Bitmap guid="guidImages" href="Z80Images.png" usedList="1,2,3,4,5,6,7" />
 		</Bitmaps>
 
 		<Menus>
@@ -146,7 +154,7 @@
 				</Strings>
 			</Menu>
 
-			<Menu guid="guidFelixPackageCmdSet" id="cmdidSaveFileSubMenu" type="MenuController" priority="0x0107">
+			<Menu guid="guidFelixPackageCmdSet" id="cmdidSaveFileSubMenu" type="MenuController" priority="0x0106">
 				<Parent guid="guidFelixPackageCmdSet" id="TWToolbarGroup" />
 				<CommandFlag>IconAndText</CommandFlag>
 				<CommandFlag>AlwaysCreate</CommandFlag>

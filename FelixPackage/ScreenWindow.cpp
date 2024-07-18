@@ -5,6 +5,8 @@
 #include "FelixPackage.h"
 #include "../FelixPackageUi/CommandIds.h"
 #include "guids.h"
+#include <queue>
+
 
 class ScreenWindowImpl 
 	: public IVsWindowPane
@@ -33,6 +35,7 @@ class ScreenWindowImpl
 	wil::unique_hfont _beamFont;
 	wil::unique_hgdiobj _beamPen;
 	LONG _debugFontLineHeight;
+	bool _debugFlagFpsAndDuration = false;
 
 	struct render_perf_info
 	{
@@ -41,7 +44,7 @@ class ScreenWindowImpl
 	};
 
 	LARGE_INTEGER _performance_counter_frequency;
-//	std::deque<render_perf_info> perf_info_queue;
+	std::deque<render_perf_info> perf_info_queue;
 
 public:
 	HRESULT InitInstance()
@@ -147,6 +150,13 @@ public:
 
 		if (msg == WM_KEYDOWN)
 		{
+			if (wParam == VK_F1)
+			{
+				_debugFlagFpsAndDuration = !_debugFlagFpsAndDuration;
+				InvalidateRect(hWnd, NULL, FALSE);
+				return 0;
+			}
+			
 			UINT modifiers = (GetKeyState(VK_SHIFT) >> 15) ? MK_SHIFT : 0;
 			_simulator->ProcessKeyDown((UINT)wParam, modifiers);
 			return 0;
@@ -233,14 +243,15 @@ public:
 		LARGE_INTEGER start_time;
 		BOOL bRes = QueryPerformanceCounter(&start_time); WI_ASSERT(bRes);
 
-		#ifdef PAINT_PERF_INFO
 		RECT frameDurationAndFpsRect;
-		frameDurationAndFpsRect.left = clientRect.right - 100;
-		frameDurationAndFpsRect.top = clientRect.bottom - 2 * _debugFontLineHeight - 2 * 5;
-		frameDurationAndFpsRect.right = clientRect.right;
-		frameDurationAndFpsRect.bottom = clientRect.bottom;
-		InvalidateRect (_hwnd, &frameDurationAndFpsRect, FALSE);
-		#endif
+		if (_debugFlagFpsAndDuration)
+		{
+			frameDurationAndFpsRect.left = clientRect.right - 100;
+			frameDurationAndFpsRect.top = clientRect.bottom - 2 * _debugFontLineHeight - 2 * 5;
+			frameDurationAndFpsRect.right = clientRect.right;
+			frameDurationAndFpsRect.bottom = clientRect.bottom;
+			InvalidateRect (_hwnd, &frameDurationAndFpsRect, FALSE);
+		}
 
 		PAINTSTRUCT ps;
 		HDC hdc = BeginPaint(_hwnd, &ps);
@@ -305,41 +316,47 @@ public:
 			}
 		}
 
-		#ifdef PAINT_PERF_INFO
-		GdiFlush();
-		#pragma region Calculate performance data.
-		LARGE_INTEGER timeNow;
-		bRes = QueryPerformanceCounter(&timeNow); WI_ASSERT(bRes);
+		if (_debugFlagFpsAndDuration)
+		{
+			GdiFlush();
+			#pragma region Calculate performance data.
+			LARGE_INTEGER timeNow;
+			bRes = QueryPerformanceCounter(&timeNow); WI_ASSERT(bRes);
 
-		render_perf_info perfInfo;
-		perfInfo.start_time = start_time;
-		perfInfo.duration = (float)(timeNow.QuadPart - start_time.QuadPart) / (float)_performance_counter_frequency.QuadPart * 1000.0f;
+			render_perf_info perfInfo;
+			perfInfo.start_time = start_time;
+			perfInfo.duration = (float)(timeNow.QuadPart - start_time.QuadPart) / (float)_performance_counter_frequency.QuadPart * 1000.0f;
 
-		perf_info_queue.push_back(perfInfo);
-		if (perf_info_queue.size() > 100)
-			perf_info_queue.pop_front();
-		#pragma endregion
+			perf_info_queue.push_back(perfInfo);
+			if (perf_info_queue.size() > 100)
+				perf_info_queue.pop_front();
+			#pragma endregion
 
-		#pragma region Draw performance data.
-		wchar_t ss[50];
-		int sslen = swprintf_s(ss, L"%4u FPS\r\n%3u ms", (unsigned)round(fps()), (unsigned)round(average_render_duration()));
-		SetBkColor(ps.hdc, 0xFFFF00);
-		auto oldFont = SelectObject (ps.hdc, _debugFont.get());
-		RECT ssrect;
-		ssrect.left = frameDurationAndFpsRect.right - 4 - 100;// - tl.width();
-		ssrect.top = frameDurationAndFpsRect.top + 5;
-		ssrect.right = clientRect.right;
-		ssrect.bottom = clientRect.bottom;
-		DrawTextW (ps.hdc, ss, sslen, &ssrect, DT_RIGHT | DT_NOCLIP);
-		SelectObject (ps.hdc, oldFont);
-		#pragma endregion
-		#endif
+			#pragma region Draw performance data.
+			wchar_t ss[50];
+			unsigned dur = (unsigned)round(average_render_duration() * 100);
+			int sslen = swprintf_s(ss, L"%4u FPS\r\n%3u.%02u ms", (unsigned)round(fps()), dur / 100, dur % 100);
+			SetBkColor(ps.hdc, 0xFFFF00);
+			auto oldFont = SelectObject (ps.hdc, _debugFont.get());
+			RECT ssrect;
+			ssrect.left = frameDurationAndFpsRect.right - 4 - 100;// - tl.width();
+			ssrect.top = frameDurationAndFpsRect.top + 5;
+			ssrect.right = clientRect.right;
+			ssrect.bottom = clientRect.bottom;
+			DrawTextW (ps.hdc, ss, sslen, &ssrect, DT_RIGHT | DT_NOCLIP);
+			SelectObject (ps.hdc, oldFont);
+			ssrect = { 0, 0, 100, 100 };
+			HBRUSH hb = CreateSolidBrush ((rand() % 256) << 16 | 0x8080);
+			FillRect(ps.hdc, &ssrect, hb);
+			DeleteObject(hb);
+			#pragma endregion
+		}
+
 		EndPaint(_hwnd, &ps);
 
 		return 0;
 	}
 
-	#ifdef PAINT_PERF_INFO
 	float fps() const
 	{
 		if (perf_info_queue.size() < 2)
@@ -370,7 +387,6 @@ public:
 
 		return avg;
 	}
-	#endif
 
 	HRESULT InitVSColors()
 	{
@@ -699,7 +715,20 @@ public:
 	#pragma region IOleCommandTarget
 	virtual HRESULT STDMETHODCALLTYPE QueryStatus (const GUID *pguidCmdGroup, ULONG cCmds, OLECMD prgCmds[], OLECMDTEXT* pCmdText) override
 	{
-		return E_NOTIMPL;
+		if (*pguidCmdGroup == CLSID_FelixPackageCmdSet)
+		{
+			RETURN_HR_IF(E_NOTIMPL, cCmds != 1);
+			if (prgCmds[0].cmdID == cmdidScreenWindowDebug)
+			{
+				prgCmds[0].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED
+					| (_debugFlagFpsAndDuration ? OLECMDF_LATCHED : 0);
+				return S_OK;
+			}
+
+			return OLECMDERR_E_NOTSUPPORTED;
+		}
+
+		return OLECMDERR_E_UNKNOWNGROUP;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE Exec (const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT* pvaIn, VARIANT* pvaOut) override
@@ -730,6 +759,13 @@ public:
 				hr = shell->ShowMessageBox (0, CLSID_NULL, (LPOLESTR)L"Debug File", (LPOLESTR)L"Not Yet Implemented",
 					nullptr, 0, OLEMSGBUTTON_OK, OLEMSGDEFBUTTON_FIRST, OLEMSGICON_INFO, FALSE, &result);
 				RETURN_IF_FAILED(hr);
+				return S_OK;
+			}
+
+			if (nCmdID == cmdidScreenWindowDebug)
+			{
+				_debugFlagFpsAndDuration = !_debugFlagFpsAndDuration;
+				InvalidateRect(_hwnd, nullptr, true);
 				return S_OK;
 			}
 

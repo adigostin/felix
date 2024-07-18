@@ -30,5 +30,6 @@
 #define cmdidSaveFileGroup 0x109
 #define cmdidSaveFile 0x10A
 #define cmdidSaveMemory 0x10B
+#define cmdidScreenWindowDebug 0x109
 
 #endif // __COMMANDIDS_H_
