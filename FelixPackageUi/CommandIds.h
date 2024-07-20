@@ -26,6 +26,7 @@
 #define cmdidOpenZ80File 0x104
 #define cmdidDebugZ80File 0x105
 #define cmdidResetSimulator 0x106
+#define cmdidShowCRTSnapshot 0x107
 #define cmdidSaveFileSubMenu 0x108
 #define cmdidSaveFileGroup 0x109
 #define cmdidSaveFile 0x10A

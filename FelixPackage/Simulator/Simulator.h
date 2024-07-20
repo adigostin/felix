@@ -15,7 +15,9 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{A8DC31F4-2BFD-4BCF-BBA0-7DA0DE6C9F71}")
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("F578EBE3-7596-4FC7-A976-56C9B0AAD856") IScreenCompleteEventHandler : IUnknown
 {
-	virtual HRESULT STDMETHODCALLTYPE OnScreenComplete() = 0;
+	// If the implementation returns a SUCCEEDED error code, it takes ownership of "bi" and must release it with CoTaskMemFree when no longer needed.
+	// If the implementation returns a FAILED error code, the caller retains ownership of "bi".
+	virtual HRESULT STDMETHODCALLTYPE OnScreenComplete (BITMAPINFO* bi, POINT beamLocation) = 0;
 };
 
 enum class BreakpointType { Code, Data };
@@ -58,7 +60,6 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{56344845-3DDA-4BC0-9645-7EBA3FE94A93}")
 	virtual HRESULT STDMETHODCALLTYPE UnadviseScreenComplete (IScreenCompleteEventHandler* handler) = 0;
 	virtual HRESULT STDMETHODCALLTYPE ProcessKeyDown (uint32_t vkey, uint32_t modifiers) = 0;
 	virtual HRESULT STDMETHODCALLTYPE ProcessKeyUp   (uint32_t vkey, uint32_t modifiers) = 0;
-	virtual HRESULT STDMETHODCALLTYPE GetScreenData  (BITMAPINFO** ppBitmapInfo, POINT* pBeamLocation) = 0;
 	virtual HRESULT STDMETHODCALLTYPE AddBreakpoint (BreakpointType type, bool physicalMemorySpace, UINT64 address, SIM_BP_COOKIE* pCookie) = 0;
 	virtual HRESULT STDMETHODCALLTYPE RemoveBreakpoint (SIM_BP_COOKIE cookie) = 0;
 	virtual HRESULT STDMETHODCALLTYPE HasBreakpoints_HR() = 0;
@@ -69,6 +70,8 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{56344845-3DDA-4BC0-9645-7EBA3FE94A93}")
 	virtual HRESULT STDMETHODCALLTYPE GetStackStartAddress (UINT16* stackStartAddress) = 0;
 	virtual HRESULT STDMETHODCALLTYPE GetRegisters (z80_register_set* buffer, uint32_t size) = 0;
 	virtual HRESULT STDMETHODCALLTYPE SetRegisters (const z80_register_set* buffer, uint32_t size) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetShowCRTSnapshot() = 0; // returns S_OK or S_FALSE
+	virtual HRESULT STDMETHODCALLTYPE SetShowCRTSnapshot(BOOL val) = 0;
 };
 
 HRESULT MakeSimulator (LPCWSTR dir, LPCWSTR romFilename, ISimulator** to);

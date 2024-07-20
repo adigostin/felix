@@ -7,6 +7,7 @@
 #include "guids.h"
 #include <queue>
 
+using unique_cotaskmem_bitmapinfo = wil::unique_any<BITMAPINFO*, decltype(&::CoTaskMemFree), ::CoTaskMemFree>;
 
 class ScreenWindowImpl 
 	: public IVsWindowPane
@@ -45,6 +46,8 @@ class ScreenWindowImpl
 
 	LARGE_INTEGER _performance_counter_frequency;
 	std::deque<render_perf_info> perf_info_queue;
+	unique_cotaskmem_bitmapinfo _bitmap;
+	POINT beamLocation;
 
 public:
 	HRESULT InitInstance()
@@ -180,11 +183,9 @@ public:
 
 	void ProcessWmSize (HWND hwnd, WPARAM wParam, LONG w, LONG h)
 	{
-		BITMAPINFO* bi;
-		auto hr = _simulator->GetScreenData(&bi, nullptr); LOG_IF_FAILED(hr);
-		if (SUCCEEDED(hr))
+		if (_bitmap)
 		{
-			SIZE ss = { bi->bmiHeader.biWidth, bi->bmiHeader.biHeight };
+			SIZE ss = { _bitmap.get()->bmiHeader.biWidth, _bitmap.get()->bmiHeader.biHeight };
 			if (w >= ss.cx && h >= ss.cy)
 			{
 				// zoom >= 1
@@ -212,14 +213,12 @@ public:
 
 		auto b = wil::unique_hbrush(CreateSolidBrush(_windowColor & 0xFFFFFF));
 
-		BITMAPINFO* bitmapInfo;
-		auto hr = _simulator->GetScreenData(&bitmapInfo, nullptr);
-		if (FAILED(hr))
+		if (!_bitmap)
 			FillRect(hdc, &clientRect, b.get());
 		else
 		{
-			LONG w = bitmapInfo->bmiHeader.biWidth * _zoomNumerator / _zoomDenominator;
-			LONG h = bitmapInfo->bmiHeader.biHeight * _zoomNumerator / _zoomDenominator;
+			LONG w = _bitmap.get()->bmiHeader.biWidth * _zoomNumerator / _zoomDenominator;
+			LONG h = _bitmap.get()->bmiHeader.biHeight * _zoomNumerator / _zoomDenominator;
 			LONG xDest = (clientRect.right - w) / 2;
 			LONG yDest = (clientRect.bottom - h) / 2;
 			RECT rc = { 0, 0, clientRect.right, yDest };
@@ -256,10 +255,7 @@ public:
 		PAINTSTRUCT ps;
 		HDC hdc = BeginPaint(_hwnd, &ps);
 		
-		BITMAPINFO* bitmapInfo;
-		POINT beamLocation;
-		auto hr = _simulator->GetScreenData (&bitmapInfo, &beamLocation);
-		if (SUCCEEDED(hr))
+		if (auto bitmapInfo = _bitmap.get())
 		{
 			int w = bitmapInfo->bmiHeader.biWidth;
 			int h = bitmapInfo->bmiHeader.biHeight;
@@ -563,8 +559,10 @@ public:
 	#pragma endregion
 
 	#pragma region IScreenCompleteEventHandler
-	virtual HRESULT STDMETHODCALLTYPE OnScreenComplete() override
+	virtual HRESULT STDMETHODCALLTYPE OnScreenComplete (BITMAPINFO* bi, POINT beamLocation) override
 	{
+		_bitmap = unique_cotaskmem_bitmapinfo(bi);
+		this->beamLocation = beamLocation;
 		BOOL erase = _simulator->Running_HR() == S_FALSE;
 		InvalidateRect(_hwnd, 0, erase);
 		return S_OK;
@@ -687,7 +685,18 @@ public:
 		{
 			com_ptr<IStream> stream;
 			hr = SHCreateStreamOnFileEx (filename, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream); RETURN_IF_FAILED(hr);
-			hr = _simulator->LoadSnapshot(stream.get()); RETURN_IF_FAILED(hr);
+
+			hr = _simulator->LoadSnapshot(stream.get());
+			if (hr == SIM_E_SNAPSHOT_FILE_WRONG_SIZE)
+			{
+				LONG result;
+				hr = shell->ShowMessageBox (0, CLSID_NULL, (LPOLESTR)L"Wrong file size",
+					(LPOLESTR)L"The file has an unrecognized size.\r\n(Only ZX Spectrum 48K snapshot files are supported for now.)",
+					nullptr, 0, OLEMSGBUTTON_OK, OLEMSGDEFBUTTON_FIRST, OLEMSGICON_WARNING, FALSE, &result);
+				return S_OK;
+			}
+			RETURN_IF_FAILED(hr);
+
 			if (_simulator->Running_HR() == S_FALSE)
 			{
 				hr = _simulator->Resume(false); RETURN_IF_FAILED(hr);
@@ -722,6 +731,14 @@ public:
 			{
 				prgCmds[0].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED
 					| (_debugFlagFpsAndDuration ? OLECMDF_LATCHED : 0);
+				return S_OK;
+			}
+
+			if (prgCmds[0].cmdID == cmdidShowCRTSnapshot)
+			{
+				BOOL show = _simulator->GetShowCRTSnapshot() == S_OK;
+				prgCmds[0].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED
+					| (show ? OLECMDF_LATCHED : 0);
 				return S_OK;
 			}
 
@@ -766,6 +783,13 @@ public:
 			{
 				_debugFlagFpsAndDuration = !_debugFlagFpsAndDuration;
 				InvalidateRect(_hwnd, nullptr, true);
+				return S_OK;
+			}
+
+			if (nCmdID == cmdidShowCRTSnapshot)
+			{
+				BOOL show = _simulator->GetShowCRTSnapshot() == S_OK;
+				auto hr = _simulator->SetShowCRTSnapshot(!show); RETURN_IF_FAILED(hr);
 				return S_OK;
 			}
 

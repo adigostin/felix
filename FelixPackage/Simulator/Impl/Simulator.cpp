@@ -17,6 +17,8 @@ HRESULT STDMETHODCALLTYPE MakeHC91ROM (Bus* memory_bus, Bus* io_bus, const wchar
 HRESULT STDMETHODCALLTYPE MakeHC91RAM (Bus* memory_bus, Bus* io_bus, wistd::unique_ptr<IMemoryDevice>* ppDevice);
 HRESULT STDMETHODCALLTYPE MakeBeeper (Bus* io_bus, wistd::unique_ptr<IDevice>* ppDevice);
 
+using unique_cotaskmem_bitmapinfo = wil::unique_any<BITMAPINFO*, decltype(&::CoTaskMemFree), ::CoTaskMemFree>;
+
 // ============================================================================
 
 class SimulatorImpl : public ISimulator, IDeviceEventHandler, IScreenDeviceCompleteEventHandler
@@ -40,7 +42,7 @@ class SimulatorImpl : public ISimulator, IDeviceEventHandler, IScreenDeviceCompl
 	wil::unique_handle _cpuThread;
 	wil::unique_handle _cpu_thread_exit_request;
 	vector_nothrow<com_ptr<ISimulatorEventHandler>> _eventHandlers;
-	vector_nothrow<com_ptr<IScreenCompleteEventHandler>> _screenCompleteHandlers;
+	com_ptr<IScreenCompleteEventHandler> _screenCompleteHandler;
 
 	using RunOnSimulatorThreadFunction = HRESULT(*)(void*);
 	stdext::inplace_function<HRESULT()> _runOnSimulatorThreadFunction;
@@ -49,7 +51,7 @@ class SimulatorImpl : public ISimulator, IDeviceEventHandler, IScreenDeviceCompl
 	wil::unique_handle _runOnSimulatorThreadComplete;
 	wil::unique_handle _waitableTimer;
 
-	vector_nothrow<stdext::inplace_function<HRESULT()>> _mainThreadWorkQueue;
+	vector_nothrow<stdext::inplace_function<void()>> _mainThreadWorkQueue;
 	wil::srwlock _mainThreadQueueLock;
 
 	Bus memoryBus;
@@ -62,6 +64,7 @@ class SimulatorImpl : public ISimulator, IDeviceEventHandler, IScreenDeviceCompl
 	wistd::unique_ptr<IMemoryDevice> _ramDevice;
 	wistd::unique_ptr<IDevice> _beeper;
 	vector_nothrow<IDevice*> _active_devices_;
+	bool _showCRTSnapshot = false;
 
 public:
 	HRESULT InitInstance (LPCWSTR dir, LPCWSTR romFilename)
@@ -111,7 +114,7 @@ public:
 	~SimulatorImpl()
 	{
 		WI_ASSERT (_eventHandlers.empty());
-		WI_ASSERT (_screenCompleteHandlers.empty());
+		WI_ASSERT (!_screenCompleteHandler);
 
 		if (_cpu)
 			WI_ASSERT(!_cpu->HasBreakpoints());
@@ -144,19 +147,9 @@ public:
 		RETURN_HR(E_NOINTERFACE);
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return InterlockedIncrement(&_refCount);
-	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_refCount);
-		if (_refCount > 1)
-			return InterlockedDecrement(&_refCount);
-		delete this;
-		return 0;
-	}
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
 	static LRESULT CALLBACK window_proc (HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
@@ -169,8 +162,7 @@ public:
 			auto lock = p->_mainThreadQueueLock.lock_exclusive();
 			auto work = p->_mainThreadWorkQueue.remove(p->_mainThreadWorkQueue.begin());
 			lock.reset();
-			auto hr = work(); LOG_IF_FAILED(hr);
-			return hr;
+			work();
 		}
 
 		return DefWindowProc (hwnd, msg, wparam, lparam);
@@ -423,7 +415,7 @@ public:
 		return 0;
 	}
 
-	HRESULT STDMETHODCALLTYPE PostWorkToMainThread (stdext::inplace_function<HRESULT()> work) 
+	HRESULT STDMETHODCALLTYPE PostWorkToMainThread (stdext::inplace_function<void()> work) 
 	{
 		WI_ASSERT(::GetCurrentThreadId() == GetThreadId(_cpuThread.get()));
 		auto lock = _mainThreadQueueLock.lock_exclusive();
@@ -446,21 +438,25 @@ public:
 	{
 		_running_info.reset();
 
-		auto work = [this, bbps=com_ptr(bps)]() -> HRESULT
+		unique_cotaskmem_bitmapinfo screen;
+		POINT beam;
+		auto hr = _screen->CopyBuffer (_showCRTSnapshot, screen.addressof(), &beam); LOG_IF_FAILED(hr);
+
+		auto work = [this, bbps=com_ptr(bps), screen=std::move(screen), beam]() mutable
 		{
 			WI_ASSERT(_running);
 			_running = false;
 			for (uint32_t i = 0; i < _eventHandlers.size(); i++)
+				_eventHandlers[i]->ProcessSimulatorEvent(bbps.get(), __uuidof(bbps));
+			if (_screenCompleteHandler)
 			{
-				auto hr = _eventHandlers[i]->ProcessSimulatorEvent(bbps.get(), __uuidof(bbps)); LOG_IF_FAILED(hr);
+				auto hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
+				if (SUCCEEDED(hr))
+					screen.release();
 			}
-
-			return S_OK;
 		};
 
-		auto hr = PostWorkToMainThread (std::move(work)); RETURN_IF_FAILED(hr);
-		
-		_screen->generate_all();
+		hr = PostWorkToMainThread (std::move(work)); RETURN_IF_FAILED(hr);
 		
 		return S_OK;
 	}
@@ -470,7 +466,11 @@ public:
 	{
 		_running_info.reset();
 
-		auto work = [this, address]() -> HRESULT
+		unique_cotaskmem_bitmapinfo screen;
+		POINT beam;
+		auto hr = _screen->CopyBuffer(_showCRTSnapshot, screen.addressof(), &beam); LOG_IF_FAILED(hr);
+
+		auto work = [this, address, screen=std::move(screen), beam]()
 		{
 			WI_ASSERT(_running);
 			_running = false;
@@ -483,15 +483,18 @@ public:
 				auto hr = p->Resolve(&h); LOG_IF_FAILED(hr);
 				if (SUCCEEDED(hr))
 					h->OnUndefinedInstruction(address);
-					*/
+
+				if (_screenCompleteHandler)
+				{
+					hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
+					if (SUCCEEDED(hr))
+						screen.release();
+				}
+				*/
 			}
-	
-			return S_OK;
 		};
 
-		auto hr = PostWorkToMainThread (std::move(work)); RETURN_IF_FAILED(hr);
-		
-		_screen->generate_all();
+		hr = PostWorkToMainThread (std::move(work)); RETURN_IF_FAILED(hr);
 		
 		return S_OK;
 	}
@@ -683,7 +686,10 @@ public:
 	{
 		RETURN_HR_IF(SIM_E_NOT_SUPPORTED_WHILE_RUNNING, _running);
 
-		auto hr = RunOnSimulatorThread ([this]
+		unique_cotaskmem_bitmapinfo screen;
+		POINT beam;
+
+		auto hr = RunOnSimulatorThread ([this, &screen, &beam]
 			{
 				if (!_cpu->Halted())
 					simulate_one_in_break_mode();
@@ -695,12 +701,22 @@ public:
 					} while (_cpu->Halted());
 				}
 
-				_screen->generate_all();
+				auto hr = _screen->CopyBuffer (_showCRTSnapshot, screen.addressof(), &beam); LOG_IF_FAILED(hr);
+
 				return S_OK;
 			});
 		RETURN_IF_FAILED(hr);
 		
-		return SendSimulateOneCompleteEvent();
+		hr = SendSimulateOneCompleteEvent(); LOG_IF_FAILED(hr);
+
+		if (_screenCompleteHandler)
+		{
+			hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
+			if (SUCCEEDED(hr))
+				screen.release();
+		}
+
+		return S_OK;
 	}
 /*
 	virtual HRESULT STDMETHODCALLTYPE AdviseSimulatorEvents (ISimulatorEventHandler* handler) override
@@ -791,7 +807,10 @@ public:
 		if (stat.cbSize.QuadPart != sizeof(snapshot_file_header) + 48 * 1024)
 			return SIM_E_SNAPSHOT_FILE_WRONG_SIZE;
 
-		hr = RunOnSimulatorThread ([this, stream]
+		unique_cotaskmem_bitmapinfo screen;
+		POINT beam;
+
+		hr = RunOnSimulatorThread ([this, stream, &screen, &beam]
 			{
 				HRESULT hr;
 
@@ -842,11 +861,20 @@ public:
 					QueryPerformanceCounter(&_running_info.value().start_time_perf_counter);
 				}
 				else
-					_screen->generate_all();
+				{
+					hr = _screen->CopyBuffer(_showCRTSnapshot, &screen, &beam); LOG_IF_FAILED(hr);
+				}
 
 				return S_OK;
 			});
 		RETURN_IF_FAILED(hr);
+
+		if (screen && _screenCompleteHandler)
+		{
+			hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
+			if (SUCCEEDED(hr))
+				screen.release();
+		}
 
 		return S_OK;
 	}
@@ -877,11 +905,22 @@ public:
 			_ramDevice->WriteMemory (address + i, read, buffer);
 		}
 
-		hr = this->RunOnSimulatorThread ([this, address]
+		if (_screenCompleteHandler)
+		{
+			unique_cotaskmem_bitmapinfo screenBuffer;
+			POINT beam;
+			hr = RunOnSimulatorThread([&screenBuffer, &beam, this]
 			{
-				_screen->generate_all();
-				return S_OK;
-			}); RETURN_IF_FAILED(hr);
+				return _screen->CopyBuffer (_showCRTSnapshot, &screenBuffer, &beam);
+			});
+
+			if (SUCCEEDED(hr))
+			{
+				hr = _screenCompleteHandler->OnScreenComplete(screenBuffer.get(), beam); RETURN_IF_FAILED(hr);
+				if (SUCCEEDED(hr))
+					screenBuffer.release();
+			}
+		}
 
 		return S_OK;
 	}
@@ -919,14 +958,15 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE AdviseScreenComplete (IScreenCompleteEventHandler* handler) override
 	{
-		bool pushed = _screenCompleteHandlers.try_push_back(handler); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		RETURN_HR_IF(E_UNEXPECTED, _screenCompleteHandler != nullptr);
+		_screenCompleteHandler = handler;
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE UnadviseScreenComplete (IScreenCompleteEventHandler* handler) override
 	{
-		auto it = _screenCompleteHandlers.find(handler); RETURN_HR_IF(E_INVALIDARG, it == _screenCompleteHandlers.end());
-		_screenCompleteHandlers.erase(it);
+		RETURN_HR_IF(E_INVALIDARG, handler != _screenCompleteHandler);
+		_screenCompleteHandler = nullptr;
 		return S_OK;
 	}
 
@@ -938,11 +978,6 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE ProcessKeyUp   (uint32_t vkey, uint32_t modifiers) override
 	{
 		return RunOnSimulatorThread([this, vkey, modifiers] { return _keyboard->ProcessKeyUp(vkey, modifiers); });
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetScreenData  (BITMAPINFO** ppBitmapInfo, POINT* pBeamLocation) override
-	{
-		return _screen->GetScreenData(ppBitmapInfo, pBeamLocation);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE AddBreakpoint (BreakpointType type, bool physicalMemorySpace, UINT64 address, SIM_BP_COOKIE* pCookie) override
@@ -1003,6 +1038,38 @@ public:
 	{
 		RETURN_HR(E_NOTIMPL);
 	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetShowCRTSnapshot() override
+	{
+		return _showCRTSnapshot ? S_OK : S_FALSE;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE SetShowCRTSnapshot(BOOL val) override
+	{
+		if (_showCRTSnapshot != (bool)val)
+		{
+			_showCRTSnapshot = (bool)val;
+
+			if (_screenCompleteHandler)
+			{
+				unique_cotaskmem_bitmapinfo screenBuffer;
+				POINT beam;
+				auto hr = RunOnSimulatorThread([&screenBuffer, &beam, this]
+				{
+					return _screen->CopyBuffer (_showCRTSnapshot, &screenBuffer, &beam);
+				});
+
+				if (SUCCEEDED(hr))
+				{
+					hr = _screenCompleteHandler->OnScreenComplete(screenBuffer.get(), beam); RETURN_IF_FAILED(hr);
+					if (SUCCEEDED(hr))
+						screenBuffer.release();
+				}
+			}
+		}
+
+		return S_OK;
+	}
 	#pragma endregion
 
 	#pragma region IDeviceEventHandler
@@ -1012,7 +1079,6 @@ public:
 			{
 				for (uint32_t i = 0; i < _eventHandlers.size(); i++)
 					_eventHandlers[i]->ProcessSimulatorEvent(event.get(), riidEvent);
-				return S_OK;
 			});
 	}
 	#pragma endregion
@@ -1020,13 +1086,33 @@ public:
 	#pragma region IScreenDeviceCompleteEventHandler
 	virtual void OnScreenComplete() override
 	{
-		// No error checking, not even logging, as in case of error it would probably freeze the app.
-		PostWorkToMainThread([this]
+		// No error checking, not even logging, as this function is called 50 times a second
+		// and in case of error it would probably freeze the app.
+
+		// TODO: register for this callback when simulation starts running, unregister when simulation paused.
+		if (_running_info)
+		{
+			// This callback is called when the screen device finishes rendering a complete screen. This means
+			// the image on the simulated screen is identical to the image in the video memory. Thus CopyBuffer
+			// creates the same image regardless of the value of its "BOOL crt" parameter. Let's pass TRUE
+			// since the screen is already generated as a BITMAPINFO and it's much faster to simply copy it.
+			BOOL crt = TRUE;
+
+			unique_cotaskmem_bitmapinfo screen;
+			auto hr = _screen->CopyBuffer (crt, screen.addressof(), nullptr);
+			if (SUCCEEDED(hr))
 			{
-				for (uint32_t i = 0; i < _screenCompleteHandlers.size(); i++)
-					_screenCompleteHandlers[i]->OnScreenComplete();
-				return S_OK;
-			});
+				PostWorkToMainThread([this, buffer=std::move(screen)]() mutable
+				{
+					if (_screenCompleteHandler)
+					{
+						auto hr = _screenCompleteHandler->OnScreenComplete(buffer.get(), { -1, -1 });
+						if (SUCCEEDED(hr))
+							buffer.release();
+					}
+				});
+			}
+		}
 	}
 	#pragma endregion
 };

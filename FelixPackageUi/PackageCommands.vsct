@@ -105,7 +105,19 @@
 				</Strings>
 			</Button>
 
-			<Button guid="guidFelixPackageCmdSet" id="cmdidSaveFile" priority="0x0104" type="Button">
+			<Button guid="guidFelixPackageCmdSet" id="cmdidShowCRTSnapshot" priority="0x104" type="Button">
+				<Parent guid="guidFelixPackageCmdSet" id="TWToolbarGroup" />
+				<Icon guid="guidImages" id="8" />
+				<Strings>
+					<ButtonText>Show CRT Snapshop</ButtonText>
+					<ToolTipText>When On, shows the snapshot of the CRT display.
+When Off, shows a snapshot of the video memory,
+including newly drawn parts that the CRT beam hasn't reached yet.
+(Only makes a difference while stepping in the debugger.)</ToolTipText>
+				</Strings>
+			</Button>
+
+			<Button guid="guidFelixPackageCmdSet" id="cmdidSaveFile" priority="0x0105" type="Button">
 				<Parent guid="guidFelixPackageCmdSet" id="cmdidSaveFileGroup" />
 				<Icon guid="guidImages" id="5" />
 				<CommandFlag>NoShowOnMenuController</CommandFlag>
@@ -117,7 +129,7 @@
 				</Strings>
 			</Button>
 
-			<Button guid="guidFelixPackageCmdSet" id="cmdidSaveMemory" priority="0x0105" type="Button">
+			<Button guid="guidFelixPackageCmdSet" id="cmdidSaveMemory" priority="0x0106" type="Button">
 				<Parent guid="guidFelixPackageCmdSet" id="cmdidSaveFileGroup" />
 				<!--<CommandFlag>TextOnly</CommandFlag>-->
 				<Strings>
@@ -142,7 +154,7 @@
             inside a button definition. An important aspect of this declaration is that the element id 
             must be the actual index (1-based) of the bitmap inside the bitmap strip. -->
 
-			<Bitmap guid="guidImages" href="Z80Images.png" usedList="1,2,3,4,5,6,7" />
+			<Bitmap guid="guidImages" href="Z80Images.png" usedList="1,2,3,4,5,6,7,8" />
 		</Bitmaps>
 
 		<Menus>

@@ -287,14 +287,19 @@ struct __declspec(novtable) irq_line_i
 
 struct IScreenDeviceCompleteEventHandler
 {
+	// Function called by the screen device every time it completes drawing a screen.
 	virtual void OnScreenComplete() = 0;
 };
 
 struct IScreenDevice : IDevice//, IInterruptingDevice
 {
 	//virtual zx_spectrum_ula_regs regs() const = 0;
-	virtual void generate_all() = 0;
-	virtual HRESULT GetScreenData (BITMAPINFO** ppBitmapInfo, POINT* pBeamLocation) = 0;
+
+	// crt = FALSE   - creates a snapshot of the video memory, including newly drawn parts that the CRT beam hasn't reached yet to put on screen.
+	// crt = TRUE    - creates a snapshot of the CRT screen.
+	// ppBuffer      - must be freed by the caller when no longer needed, using CoTaskMemFree.
+	// pBeamLocation - caller can pass NULL if it doesn't need this information.
+	virtual HRESULT CopyBuffer (BOOL crt, OUT BITMAPINFO** ppBuffer, OUT POINT* pBeamLocation) = 0;
 };
 HRESULT STDMETHODCALLTYPE MakeScreenDevice (Bus* memory, Bus* io, irq_line_i* irq, IScreenDeviceCompleteEventHandler* eh, wistd::unique_ptr<IScreenDevice>* ppDevice);
 
