@@ -781,7 +781,7 @@ public:
 		if (auto op = wil::try_com_query_nothrow<IFelixLaunchOptionsProvider>(engine))
 		{
 			com_ptr<IFelixLaunchOptions> options;
-			if (SUCCEEDED(op->GetLaunchOptions(&options)))
+			if (SUCCEEDED(op->GetLaunchOptions(&options)) && options)
 				options->get_ProjectDir(&p->_projectDir);
 		}
 

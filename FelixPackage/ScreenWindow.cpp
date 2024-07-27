@@ -768,16 +768,7 @@ public:
 				return LoadFile(false);
 
 			if (nCmdID == cmdidDebugZ80File)
-			{
-				//return LoadFile(true);
-				wil::com_ptr_nothrow<IVsUIShell> shell;
-				auto hr = _sp->QueryService (SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
-				LONG result;
-				hr = shell->ShowMessageBox (0, CLSID_NULL, (LPOLESTR)L"Debug File", (LPOLESTR)L"Not Yet Implemented",
-					nullptr, 0, OLEMSGBUTTON_OK, OLEMSGDEFBUTTON_FIRST, OLEMSGICON_INFO, FALSE, &result);
-				RETURN_IF_FAILED(hr);
-				return S_OK;
-			}
+				return LoadFile(true);
 
 			if (nCmdID == cmdidScreenWindowDebug)
 			{

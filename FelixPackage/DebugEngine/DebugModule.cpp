@@ -270,7 +270,7 @@ public:
 		if (!_symbols)
 		{
 			if (!_symbolsPath)
-				RETURN_HR(E_MODULE_HAS_NO_SYMBOLS);
+				return E_MODULE_HAS_NO_SYMBOLS;
 
 			if (FAILED(_symbolLoadResult))
 				// We tried already to load them and this was the result. Don't try again.

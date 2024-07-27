@@ -300,6 +300,9 @@ struct IScreenDevice : IDevice//, IInterruptingDevice
 	// ppBuffer      - must be freed by the caller when no longer needed, using CoTaskMemFree.
 	// pBeamLocation - caller can pass NULL if it doesn't need this information.
 	virtual HRESULT CopyBuffer (BOOL crt, OUT BITMAPINFO** ppBuffer, OUT POINT* pBeamLocation) = 0;
+
+	// Generates the entire CRT screen from video memory.
+	virtual HRESULT GenerateScreen() = 0;
 };
 HRESULT STDMETHODCALLTYPE MakeScreenDevice (Bus* memory, Bus* io, irq_line_i* irq, IScreenDeviceCompleteEventHandler* eh, wistd::unique_ptr<IScreenDevice>* ppDevice);
 

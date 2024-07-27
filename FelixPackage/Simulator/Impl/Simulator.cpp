@@ -862,7 +862,8 @@ public:
 				}
 				else
 				{
-					hr = _screen->CopyBuffer(_showCRTSnapshot, &screen, &beam); LOG_IF_FAILED(hr);
+					hr = _screen->GenerateScreen(); LOG_IF_FAILED(hr);
+					hr = _screen->CopyBuffer(TRUE, &screen, &beam); LOG_IF_FAILED(hr);
 				}
 
 				return S_OK;

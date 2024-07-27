@@ -377,44 +377,7 @@ public:
 		else
 		{
 			InitBitmapInfoHeader(bi);
-
-			uint32_t border_argb = spectrum_color_to_argb (_border, false);
-
-			for (uint32_t row = 0; row < border_size_top; row++)
-				__stosd((unsigned long*)get_dest_pixel(bi, row, 0), border_argb, screen_width);
-
-			for (uint32_t row = border_size_top + 192; row < screen_height; row++)
-				__stosd((unsigned long*)get_dest_pixel(bi, row, 0), border_argb, screen_width);
-
-			for (uint32_t y = border_size_top; y <= border_size_top + 192; y++)
-			{
-				uint32_t* p = get_dest_pixel(bi, y, 0);
-				for (uint32_t x = 0; x < border_size_left_px; x++)
-					*p++ = border_argb;
-				p = get_dest_pixel(bi, y, border_size_left_px + 256);
-				for (uint32_t x = 0; x < border_size_right_px; x++)
-					*p++ = border_argb;
-			}
-
-			// pixels
-			for (uint32_t y = 0; y < 192; y++)
-			{
-				for (uint32_t x = 0; x < 32; x++)
-				{
-					uint16_t src_pixel_data = 0x4000 | ((y & 7) << 8) | ((y & 0x38) << 2) | ((y & 0xC0) << 5) | x;
-					WI_ASSERT (src_pixel_data < 0x5800);
-					uint16_t src_pixel_attr = 0x5800 | ((y >> 3) << 5) | x;
-					WI_ASSERT (src_pixel_attr < 0x5B00);
-					uint8_t data = memory->read(src_pixel_data);
-					uint8_t attr = memory->read(src_pixel_attr);
-					uint32_t* dest_pixel = get_dest_pixel (bi, y + border_size_top, x * 8 + border_size_left_px);
-					bool brightness = attr & 0x40;
-					auto ink_color   = spectrum_color_to_argb (attr & 7, brightness);
-					auto paper_color = spectrum_color_to_argb ((attr >> 3) & 7, brightness);
-					for (uint8_t i = 0x80; i; i >>= 1)
-						*dest_pixel++ = (data & i) ? ink_color : paper_color;
-				}
-			}
+			GenerateInternal(bi);
 		}
 
 		*ppBuffer = bi;
@@ -425,6 +388,53 @@ public:
 			pBeamLocation->y = (LONG)(frame_time / ticks_per_row) - (LONG)vsync_row_count;
 			pBeamLocation->x = ((LONG)(frame_time % ticks_per_row) - (LONG)hsync_col_count) * 2; // column in clock cycles (one unit equals two pixels)
 		}
+		return S_OK;
+	}
+
+	void GenerateInternal (BITMAPINFO* bi)
+	{
+		uint32_t border_argb = spectrum_color_to_argb (_border, false);
+
+		for (uint32_t row = 0; row < border_size_top; row++)
+			__stosd((unsigned long*)get_dest_pixel(bi, row, 0), border_argb, screen_width);
+
+		for (uint32_t row = border_size_top + 192; row < screen_height; row++)
+			__stosd((unsigned long*)get_dest_pixel(bi, row, 0), border_argb, screen_width);
+
+		for (uint32_t y = border_size_top; y <= border_size_top + 192; y++)
+		{
+			uint32_t* p = get_dest_pixel(bi, y, 0);
+			for (uint32_t x = 0; x < border_size_left_px; x++)
+				*p++ = border_argb;
+			p = get_dest_pixel(bi, y, border_size_left_px + 256);
+			for (uint32_t x = 0; x < border_size_right_px; x++)
+				*p++ = border_argb;
+		}
+
+		// pixels
+		for (uint32_t y = 0; y < 192; y++)
+		{
+			for (uint32_t x = 0; x < 32; x++)
+			{
+				uint16_t src_pixel_data = 0x4000 | ((y & 7) << 8) | ((y & 0x38) << 2) | ((y & 0xC0) << 5) | x;
+				WI_ASSERT (src_pixel_data < 0x5800);
+				uint16_t src_pixel_attr = 0x5800 | ((y >> 3) << 5) | x;
+				WI_ASSERT (src_pixel_attr < 0x5B00);
+				uint8_t data = memory->read(src_pixel_data);
+				uint8_t attr = memory->read(src_pixel_attr);
+				uint32_t* dest_pixel = get_dest_pixel (bi, y + border_size_top, x * 8 + border_size_left_px);
+				bool brightness = attr & 0x40;
+				auto ink_color   = spectrum_color_to_argb (attr & 7, brightness);
+				auto paper_color = spectrum_color_to_argb ((attr >> 3) & 7, brightness);
+				for (uint8_t i = 0x80; i; i >>= 1)
+					*dest_pixel++ = (data & i) ? ink_color : paper_color;
+			}
+		}
+	}
+
+	virtual HRESULT GenerateScreen() override
+	{
+		GenerateInternal(_screenData.get());
 		return S_OK;
 	}
 	#pragma endregion

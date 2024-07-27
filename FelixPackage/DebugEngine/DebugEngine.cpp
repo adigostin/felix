@@ -462,21 +462,19 @@ public:
 		if (!exePath)
 			RETURN_HR(E_NO_EXE_FILENAME);
 
-		/*
 		if (!_wcsicmp(PathFindExtension(exePath.get()), L".sna"))
 		{
-			wil::com_ptr_nothrow<IStream> stream;
+			com_ptr<IStream> stream;
 			auto hr = SHCreateStreamOnFileEx (exePath.get(), STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream); RETURN_IF_FAILED(hr);
-			hr = _simulator->LoadSnapshot(stream.get()); RETURN_IF_FAILED(hr);
-			wil::com_ptr_nothrow<IDebugModule2> ram_module;
-			hr = MakeModule (0x4000, 0xC000, exePath.get(), nullptr, true, &ram_module); RETURN_IF_FAILED(hr);
-			hr = program->AddModule(ram_module.get()); RETURN_IF_FAILED(hr);
+			hr = _simulator->LoadSnapshot(stream); RETURN_IF_FAILED(hr);
+			com_ptr<IDebugModule2> ram_module;
+			hr = MakeModule (0x4000, 0xC000, exePath.get(), nullptr, true, this, _program, _callback, &ram_module); RETURN_IF_FAILED(hr);
+			hr = mcoll->AddModule(ram_module); RETURN_IF_FAILED(hr);
 
-			hr = SendLoadCompleteEvent (_callback.get(), this, program.get(), thread.get()); RETURN_IF_FAILED(hr);
-			hr = SendEntryPointEvent (_callback.get(), this, program.get(), thread.get()); RETURN_IF_FAILED(hr);
+			hr = SendLoadCompleteEvent (_callback, this, _program, thread); RETURN_IF_FAILED(hr);
+			hr = SendEntryPointEvent (_callback, this, _program, thread); RETURN_IF_FAILED(hr);
 		}
-		else
-		*/if (!_wcsicmp(PathFindExtension(exePath.get()), L".bin"))
+		else if (!_wcsicmp(PathFindExtension(exePath.get()), L".bin"))
 		{
 			// Simulate some instructions until the EDITOR function is called.
 			// TODO: use timeout

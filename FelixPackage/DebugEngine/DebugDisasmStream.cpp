@@ -263,7 +263,12 @@ public:
 			wil::unique_bstr symbol;
 			uint16_t offset;
 			if (useOperandSymbols && SUCCEEDED(GetSymbolFromAddress(val, SK_Both, nullptr, &symbol, &offset, nullptr)))
-				operands << reg << ", " << symbol.get() << " + " << offset << " ; " << hex<uint16_t>(val);
+			{
+				if (offset)
+					operands << reg << ", " << symbol.get() << " + " << offset << " ; " << hex<uint16_t>(val);
+				else
+					operands << reg << ", " << symbol.get() << " ; " << hex<uint16_t>(val);
+			}
 			else
 				operands << reg << ", " << hex<uint16_t>(val);
 			ptr += 3;
