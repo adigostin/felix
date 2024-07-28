@@ -798,7 +798,7 @@ public:
 			return S_OK;
 		}
 
-		RETURN_HR(E_NOTIMPL);
+		return S_FALSE;
 	}
 	#pragma endregion
 

@@ -16,8 +16,8 @@ class DebugProgramProcessImpl : public IDebugProgram2, IDebugModuleCollection, I
 	GUID _programId;
 	com_ptr<IDebugProcess2> _process;
 	vector_nothrow<com_ptr<IDebugModule2>> _modules;
-	wil::com_ptr_nothrow<IDebugEngine2> _engine;
-	wil::com_ptr_nothrow<IDebugEventCallback2> _callback;
+	com_ptr<IDebugEngine2> _engine;
+	com_ptr<IDebugEventCallback2> _callback;
 	com_ptr<IDebugThread2> _thread;
 	com_ptr<ISimulator> _simulator;
 	bool _advisingSimulatorEvents = false;
@@ -266,9 +266,9 @@ public:
 			RETURN_HR(E_NOTIMPL);
 	}
 
-	HRESULT STDMETHODCALLTYPE CauseBreak(void) override
+	HRESULT STDMETHODCALLTYPE CauseBreak() override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return _simulator->Break();
 	}
 
 	HRESULT STDMETHODCALLTYPE GetEngineInfo(BSTR* pbstrEngine, GUID* pguidEngine) override
@@ -426,6 +426,14 @@ public:
 				}
 			}
 
+			return S_OK;
+		}
+
+		if (riidEvent == __uuidof(ISimulatorBreakEvent))
+		{
+			using BreakEvent = EventBase<IDebugBreakEvent2, EVENT_SYNC_STOP>;
+			com_ptr<BreakEvent> e = new (std::nothrow) BreakEvent(); RETURN_IF_NULL_ALLOC(e);
+			auto hr = e->Send (_callback, _engine, this, _thread); RETURN_IF_FAILED(hr);
 			return S_OK;
 		}
 

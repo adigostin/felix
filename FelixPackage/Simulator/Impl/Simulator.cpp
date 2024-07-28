@@ -623,26 +623,34 @@ public:
 		if (!_running)
 			return S_FALSE;
 
-		auto hr = RunOnSimulatorThread([this]
+		unique_cotaskmem_bitmapinfo screen;
+		POINT beam;
+
+		auto hr = RunOnSimulatorThread([this, &screen, &beam]
 			{
-				WI_ASSERT(_running_info.has_value());
-				_running_info.reset();
-				//_screen->generate_all();
+				if(_running_info.has_value())
+				{
+					_running_info.reset();
+					auto hr = _screen->CopyBuffer (_showCRTSnapshot, screen.addressof(), &beam); LOG_IF_FAILED(hr);
+				}
 				return S_OK;
 			});
 		RETURN_IF_FAILED(hr);
 
 		_running = false;
+
+		using BreakEvent = SimulatorEvent<ISimulatorBreakEvent>;
+		auto event = com_ptr(new (std::nothrow) BreakEvent()); RETURN_IF_NULL_ALLOC(event);
 		for (uint32_t i = 0; i < _eventHandlers.size(); i++)
+			_eventHandlers[i]->ProcessSimulatorEvent(event, __uuidof(event));
+
+		if (_screenCompleteHandler)
 		{
-			WI_ASSERT(false);
-			/*
-			com_ptr<ISimulatorEventHandler> h;
-			auto hr = p->Resolve(&h); LOG_IF_FAILED(hr);
+			hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
 			if (SUCCEEDED(hr))
-				h->OnSimulationStopped();
-			*/
+				screen.release();
 		}
+
 		return S_OK;
 	}
 
