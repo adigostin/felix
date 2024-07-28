@@ -30,8 +30,8 @@ class ScreenWindowImpl
 	com_ptr<IServiceProvider> _sp;
 	DWORD _debugger_events_cookie = 0;
 	bool _advisingScreenCompleteEvents = false;
-	LONG _zoomNumerator = 1;
-	LONG _zoomDenominator = 1;
+	struct Rational { LONG numerator; LONG denominator; };
+	Rational _zoom;
 	wil::unique_hfont _debugFont;
 	wil::unique_hfont _beamFont;
 	wil::unique_hgdiobj _beamPen;
@@ -135,7 +135,8 @@ public:
 	{
 		if (msg == WM_SIZE)
 		{
-			ProcessWmSize (hWnd, wParam, LOWORD(lParam), HIWORD(lParam));
+			if (_bitmap)
+				_zoom = GetZoom (&_bitmap.get()->bmiHeader, LOWORD(lParam), HIWORD(lParam));
 			return 0;
 		}
 
@@ -180,30 +181,18 @@ public:
 
 		return DefWindowProc (hWnd, msg, wParam, lParam);
 	}
-
-	void ProcessWmSize (HWND hwnd, WPARAM wParam, LONG w, LONG h)
+	
+	static Rational GetZoom (const BITMAPINFOHEADER* bi, LONG clientWidth, LONG clientHeight)
 	{
-		if (_bitmap)
-		{
-			SIZE ss = { _bitmap.get()->bmiHeader.biWidth, _bitmap.get()->bmiHeader.biHeight };
-			if (w >= ss.cx && h >= ss.cy)
-			{
-				// zoom >= 1
-				_zoomNumerator = std::min(w / ss.cx, h / ss.cy);
-				_zoomDenominator = 1;
-			}
-			else if (w > 0 && h > 0)
-			{
-				// zoom <= 1
-				_zoomNumerator = 1;
-				_zoomDenominator = std::max ((ss.cx + w - 1) / w, (ss.cy + h - 1) / h);
-			}
-			else
-			{
-				_zoomNumerator = 0;
-				_zoomDenominator = 1;
-			}
-		}
+		if (clientWidth >= bi->biWidth && clientHeight >= bi->biHeight)
+			// zoom >= 1
+			return Rational{ .numerator = std::min(clientWidth / bi->biWidth, clientHeight / bi->biHeight), .denominator = 1 };
+
+		if (clientWidth > 0 && clientHeight > 0)
+			// zoom <= 1
+			return Rational{ .numerator = 1, .denominator = std::max ((bi->biWidth + clientWidth - 1) / clientWidth, (bi->biHeight + clientHeight - 1) / clientHeight) };
+		
+		return { 0, 1 };
 	}
 
 	LRESULT ProcessWmErase (HDC hdc)
@@ -217,8 +206,8 @@ public:
 			FillRect(hdc, &clientRect, b.get());
 		else
 		{
-			LONG w = _bitmap.get()->bmiHeader.biWidth * _zoomNumerator / _zoomDenominator;
-			LONG h = _bitmap.get()->bmiHeader.biHeight * _zoomNumerator / _zoomDenominator;
+			LONG w = _bitmap.get()->bmiHeader.biWidth * _zoom.numerator / _zoom.denominator;
+			LONG h = _bitmap.get()->bmiHeader.biHeight * _zoom.numerator / _zoom.denominator;
 			LONG xDest = (clientRect.right - w) / 2;
 			LONG yDest = (clientRect.bottom - h) / 2;
 			RECT rc = { 0, 0, clientRect.right, yDest };
@@ -259,8 +248,8 @@ public:
 		{
 			int w = bitmapInfo->bmiHeader.biWidth;
 			int h = bitmapInfo->bmiHeader.biHeight;
-			int wscaled = w * _zoomNumerator / _zoomDenominator;
-			int hscaled = h * _zoomNumerator / _zoomDenominator;
+			int wscaled = w * _zoom.numerator / _zoom.denominator;
+			int hscaled = h * _zoom.numerator / _zoom.denominator;
 			int xDest = (clientRect.right - wscaled) / 2;
 			int yDest = (clientRect.bottom - hscaled) / 2;
 			int ires = StretchDIBits (hdc, xDest, yDest, wscaled, hscaled,
@@ -281,7 +270,7 @@ public:
 				DrawTextW (ps.hdc, buffer, cc, &rc, DT_CALCRECT);
 				LONG margin = rc.bottom / 4;
 
-				POINT from = { margin + rc.right + margin, yDest + beamLocation.y * _zoomNumerator / _zoomDenominator };
+				POINT from = { margin + rc.right + margin, yDest + beamLocation.y * _zoom.numerator / _zoom.denominator };
 				POINT to   = { clientRect.right, from.y };
 				::MoveToEx (ps.hdc, from.x, from.y, nullptr);
 				::LineTo (ps.hdc, to.x, to.y);
@@ -298,7 +287,7 @@ public:
 				rc = { };
 				DrawTextW (ps.hdc, buffer, cc, &rc, DT_CALCRECT);
 
-				from = { xDest + beamLocation.x * _zoomNumerator / _zoomDenominator, margin + rc.bottom + margin };
+				from = { xDest + beamLocation.x * _zoom.numerator / _zoom.denominator, margin + rc.bottom + margin };
 				to   = { from.x, clientRect.bottom };
 				::MoveToEx (ps.hdc, from.x, from.y, nullptr);
 				::LineTo (ps.hdc, to.x, to.y);
@@ -561,6 +550,13 @@ public:
 	#pragma region IScreenCompleteEventHandler
 	virtual HRESULT STDMETHODCALLTYPE OnScreenComplete (BITMAPINFO* bi, POINT beamLocation) override
 	{
+		if (!_bitmap)
+		{
+			RECT cr;
+			::GetClientRect(_hwnd, &cr);
+			_zoom = GetZoom (&bi->bmiHeader, cr.right, cr.bottom);
+		}
+
 		_bitmap = unique_cotaskmem_bitmapinfo(bi);
 		this->beamLocation = beamLocation;
 		BOOL erase = _simulator->Running_HR() == S_FALSE;
