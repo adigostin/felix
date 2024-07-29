@@ -247,9 +247,15 @@ public:
 		return S_OK;
 	}
 
+	// Informs a debug engine (DE) that the program specified has been atypically terminated and
+	// that the DE should clean up all references to the program and send a program destroy event.
 	virtual HRESULT __stdcall DestroyProgram(IDebugProgram2* pProgram) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		// called for example when we return an error code from ResumeProcess()
+		wil::com_ptr_nothrow<ProgramDestroyEvent> pde = new (std::nothrow) ProgramDestroyEvent(); RETURN_IF_NULL_ALLOC(pde);
+		pde->_exitCode = 0;
+		auto hr = pde->Send (_callback.get(), this, pProgram, nullptr); LOG_IF_FAILED(hr);
+		return S_OK;
 	}
 
 	virtual HRESULT __stdcall ContinueFromSynchronousEvent(IDebugEvent2* pEvent) override
@@ -466,7 +472,7 @@ public:
 		{
 			com_ptr<IStream> stream;
 			auto hr = SHCreateStreamOnFileEx (exePath.get(), STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream); RETURN_IF_FAILED(hr);
-			hr = _simulator->LoadSnapshot(stream); RETURN_IF_FAILED(hr);
+			hr = _simulator->LoadSnapshot(stream); RETURN_HR_IF_EXPECTED(hr, hr == SIM_E_SNAPSHOT_FILE_WRONG_SIZE); RETURN_IF_FAILED(hr);
 			com_ptr<IDebugModule2> ram_module;
 			hr = MakeModule (0x4000, 0xC000, exePath.get(), nullptr, true, this, _program, _callback, &ram_module); RETURN_IF_FAILED(hr);
 			hr = mcoll->AddModule(ram_module); RETURN_IF_FAILED(hr);
@@ -701,6 +707,17 @@ public:
 		return S_OK;
 	}
 
+	struct ProgramDestroyEvent : public EventBase<IDebugProgramDestroyEvent2, EVENT_SYNCHRONOUS>
+	{
+		DWORD _exitCode;
+
+		virtual HRESULT __stdcall GetExitCode(DWORD* exitCode) override
+		{
+			*exitCode = _exitCode;
+			return S_OK;
+		}
+	};
+
 	virtual HRESULT __stdcall TerminateProcess(IDebugProcess2* pProcess) override
 	{
 		if (_editorFunctionBreakpoint)
@@ -720,17 +737,6 @@ public:
 			auto hr = _simulator->RemoveBreakpoint(_exitPointBreakpoint); LOG_IF_FAILED(hr);
 			_exitPointBreakpoint = 0;
 		}
-
-		struct ProgramDestroyEvent : public EventBase<IDebugProgramDestroyEvent2, EVENT_SYNCHRONOUS>
-		{
-			DWORD _exitCode;
-
-			virtual HRESULT __stdcall GetExitCode(DWORD* exitCode) override
-			{
-				*exitCode = _exitCode;
-				return S_OK;
-			}
-		};
 
 		wil::com_ptr_nothrow<ProgramDestroyEvent> pde = new (std::nothrow) ProgramDestroyEvent(); RETURN_IF_NULL_ALLOC(pde);
 		pde->_exitCode = 0;

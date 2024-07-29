@@ -3,7 +3,6 @@
 #include "Z80CPU.h"
 #include "shared/unordered_map_nothrow.h"
 #include "shared/com.h"
-#include <optional>
 
 // For the P/V flag calculation, the "Parity/Overflow Flag" paragraph in the Z80 pdf has a good explanation.
 
@@ -405,8 +404,6 @@ class cpu : public IZ80CPU
 	// The stack starts at SP and ends at this address.
 	// Whenever SP is assigned, this is set to the same value;
 	uint16_t _start_of_stack = 0;
-
-	std::optional<uint16_t> _addr_of_irq_ret_addr;
 
 	SIM_BP_COOKIE _nextBpCookie = 1;
 	unordered_map_nothrow<uint16_t, vector_nothrow<SIM_BP_COOKIE>> code_bps;
@@ -938,9 +935,6 @@ public:
 		uint8_t cc = (opcode >> 3) & 7;
 		if (condition_met(cc))
 		{
-			if (_addr_of_irq_ret_addr && regs.sp == *_addr_of_irq_ret_addr)
-				_addr_of_irq_ret_addr.reset();
-
 			uint16_t addr = memory->read_uint16(regs.sp);
 			regs.sp += 2;
 			regs.pc = addr;
@@ -1050,9 +1044,6 @@ public:
 			// This scenario happens when we simulate the code at 0x1030 from the Spectrum 48K ROM.
 			_start_of_stack += 2;
 		}
-
-		if (_addr_of_irq_ret_addr && regs.sp == *_addr_of_irq_ret_addr)
-			_addr_of_irq_ret_addr.reset();
 
 		// Let's not go too far with the simulation and do a simple read of the return address.
 		uint16_t addr = memory->read_uint16(regs.sp);
@@ -1834,8 +1825,6 @@ public:
 					regs.pc = 0x38;
 					regs.iff1 = false;
 					cpu_time += 13;
-					WI_ASSERT(!_addr_of_irq_ret_addr); // nested interrupts not supported for now
-					_addr_of_irq_ret_addr = regs.sp;
 					return S_OK;
 				}
 				else if (regs.im == 2)
@@ -1849,8 +1838,6 @@ public:
 					regs.pc = addr;
 					regs.iff1 = false;
 					cpu_time += 19;
-					WI_ASSERT(!_addr_of_irq_ret_addr); // nested interrupts not supported for now
-					_addr_of_irq_ret_addr = regs.sp;
 					return S_OK;
 				}
 				else
@@ -1975,7 +1962,6 @@ public:
 	{
 		memset (&regs, 0, sizeof(regs));
 		_start_of_stack = 0;
-		_addr_of_irq_ret_addr.reset();
 		cpu_time = 0;
 	}
 	/*
@@ -2069,102 +2055,6 @@ public:
 	{
 		return code_bps.size();
 	}
-
-	// Let's keep this code, maybe we'll eventually try to build a real call stack, as used by high-level languages.
-	/*
-	virtual bool build_call_stack (cpu_call_stack_helper_i* helper, uint16_t* ptrs_to_ret_addrs, uint32_t buffer_size, uint32_t* actual_size) const override
-	{
-		// We try to build a call stack using some heuristics and instruction decoding.
-
-		if (actual_size)
-			*actual_size = 0;
-
-		auto add_ptr_to_ret_addr = [ptrs_to_ret_addrs, buffer_size, actual_size] (uint32_t& entry_index, uint16_t ptr_to_ret_addr)
-		{
-			if (entry_index < buffer_size)
-				ptrs_to_ret_addrs[entry_index] = ptr_to_ret_addr;
-
-			entry_index++;
-
-			if (actual_size)
-				*actual_size = entry_index;
-		};
-
-		// An array entry specifies the end (highest address) of the stack frame.
-		// If the entry is not the last, the entry is also a pointer where the caller's return address was written.
-		// 
-		// The first stack frame (the one that appears topmost in the Call Stack window)
-		// starts at SP and ends at the first entry of the array.
-		// 
-		// The array is never empty; it contains at least the start of the stack
-		// (i.e., its highest address, the one that the Z80 code initialized for example with LD SP, nn.)
-
-		uint16_t sp = regs.sp;
-		uint32_t frame_index = 0;
-
-		// Read addresses one by one starting at 'sp' and check if the instruction before the address is a call.
-		// (Building the call stack like this is a simple process, but we might have some junk bytes there
-		// that happen to look like a call/rst instruction; the tradeoff is acceptable for now.)
-		uint32_t frame_size_words = 0;
-		while (true)
-		{
-			if (((_start_of_stack == 0) && (sp == 0))
-				|| (_start_of_stack && (sp >= _start_of_stack)))
-			{
-				// Add end address of last frame (= bottom frame in the Call Stack window).
-				add_ptr_to_ret_addr(frame_index, _start_of_stack);
-				return true;
-			}
-
-			if (_addr_of_irq_ret_addr && sp == *_addr_of_irq_ret_addr)
-			{
-				add_ptr_to_ret_addr (frame_index, sp);
-				sp += 2;
-				frame_size_words = 0;
-			}
-			else
-			{
-				uint16_t value = memory->read_uint16(sp);
-
-				if ((value >= 1) && ((memory->read(value - 1) & 0xC7) == 0xC7))
-				{
-					// rst 0/8/...
-					add_ptr_to_ret_addr (frame_index, sp);
-					sp += 2;
-					frame_size_words = 0;
-				}
-				else if ((value >= 3) && ((memory->read(value - 3) == 0xCD) || ((memory->read(value - 3) & 0xC7) == 0xC4)))
-				{
-					// "call nn" or "call cc, nn"
-					add_ptr_to_ret_addr (frame_index, sp);
-					sp += 2;
-					frame_size_words = 0;
-				}
-				else if (helper->is_known_code_location(value))
-				{
-					// We didn't decode a call with this address as return address, but the application tells us this is known code.
-					add_ptr_to_ret_addr (frame_index, sp);
-					sp += 2;
-					frame_size_words = 0;
-				}
-				else
-				{
-					// not a call
-
-					frame_size_words++;
-					if ((frame_size_words == 10) || (sp >= 0xFFFE))
-					{
-						// We probably went haywire with our algorithm. TODO: handle this.
-						WI_ASSERT(false);
-						return false;
-					}
-
-					sp += 2;
-				}
-			}
-		}
-	}
-	*/
 };
 
 HRESULT STDMETHODCALLTYPE MakeZ80CPU (Bus* memory, Bus* io, irq_line_i* irq, wistd::unique_ptr<IZ80CPU>* ppCPU)

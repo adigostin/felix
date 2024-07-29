@@ -709,10 +709,7 @@ public:
 		dti.guidPortSupplier = PortSupplier_Id;
 		dti.bstrPortName = SysAllocString(SingleDebugPortName); RETURN_IF_NULL_ALLOC(dti.bstrPortName);
 		dti.fSendToOutputWindow = TRUE;
-		hr = debugger2->LaunchDebugTargets2 (1, &dti);
-		if (hr == OLE_E_PROMPTSAVECANCELLED)
-			hr = E_ABORT;
-		RETURN_IF_FAILED(hr);
+		hr = debugger2->LaunchDebugTargets2 (1, &dti); RETURN_IF_FAILED(hr);
 
 		return S_OK;
 	}

@@ -10,7 +10,7 @@
 
 static const wchar_t SingleDebugProgramName[] = L"Z80 Program";
 
-class DebugProgramProcessImpl : public IDebugProgram2, IDebugModuleCollection, ISimulatorEventHandler
+class DebugProgramImpl : public IDebugProgram2, IDebugModuleCollection, ISimulatorEventHandler
 {
 	ULONG _refCount = 0;
 	GUID _programId;
@@ -444,7 +444,7 @@ public:
 
 HRESULT MakeDebugProgram (IDebugProcess2* process, IDebugEngine2* engine, ISimulator* simulator, IDebugEventCallback2* callback, IDebugProgram2** ppProgram)
 {
-	auto p = com_ptr(new (std::nothrow) DebugProgramProcessImpl()); RETURN_IF_NULL_ALLOC(p);
+	auto p = com_ptr(new (std::nothrow) DebugProgramImpl()); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance (process, engine, simulator, callback); RETURN_IF_FAILED(hr);
 	*ppProgram = p.detach();
 	return S_OK;

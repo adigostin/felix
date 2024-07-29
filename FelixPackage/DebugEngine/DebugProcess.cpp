@@ -14,9 +14,6 @@ class DebugProcessImpl : public IDebugProcess2
 	GUID _processGuid;
 	com_ptr<IDebugPort2> _parentPort;
 	FILETIME _creationTime;
-	com_ptr<IDebugEngine2> _engine;
-	com_ptr<IDebugEventCallback2> _callback;
-	com_ptr<ISimulator> _simulator;
 	com_ptr<IDebugProgram2> _program;
 
 public:
@@ -188,7 +185,10 @@ public:
 
 	HRESULT STDMETHODCALLTYPE Terminate() override
 	{
-		RETURN_HR(E_NOTIMPL);
+		// called for example when we return an error code from ResumeProcess()
+		_program->Terminate();
+		_program = nullptr;
+		return S_OK;
 	}
 
 	HRESULT STDMETHODCALLTYPE Attach(IDebugEventCallback2* pCallback, GUID* rgguidSpecificEngines, DWORD celtSpecificEngines, HRESULT* rghrEngineAttach) override
