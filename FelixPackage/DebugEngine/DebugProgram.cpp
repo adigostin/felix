@@ -377,18 +377,6 @@ public:
 		auto hr = ModuleLoadEvent::CreateInstance(module, TRUE, &event); RETURN_IF_FAILED(hr);
 		hr = event->Send (_callback.get(), _engine.get(), this, _thread.get()); LOG_IF_FAILED(hr);
 
-		// This is a best attempt at binding the breakpoints. We want to ignore the returned error code here.
-///		for (auto& pb : _breakpoints)
-///		{
-///			wil::com_ptr_nothrow<IEnumDebugErrorBreakpoints2> errBPs;
-///			if (SUCCEEDED(pb->EnumErrorBreakpoints(BPET_ALL, &errBPs)))
-///			{
-///				ULONG count;
-///				if (SUCCEEDED(errBPs->GetCount(&count)) && count)
-///					pb->Bind();
-///			}
-///		}
-
 		return S_OK;
 	}
 	#pragma endregion
