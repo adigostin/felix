@@ -5,7 +5,6 @@
 
 // TODO: rename these to E_Z80_XXX
 #define E_UNKNOWN_FILE_EXTENSION             MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x201)
-#define E_MODULE_HAS_NO_SYMBOLS              MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x202)
 #define E_UNRECOGNIZED_DEBUG_FILE_EXTENSION  MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x203)
 #define E_UNRECOGNIZED_SLD_VERSION           MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x204)
 #define E_INVALID_SLD_LINE                   MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x205)
@@ -108,8 +107,16 @@ HRESULT MakeDebugPort (const wchar_t* portName, const GUID& portId, IDebugPort2*
 HRESULT MakeDebugProgram (IDebugProcess2* process, IDebugEngine2* engine, ISimulator* simulator, IDebugEventCallback2* callback, IDebugProgram2** ppProgram);
 HRESULT MakeDebugProcess (IDebugPort2* pPort, LPCOLESTR pszExe, IDebugEngine2* engine,
 	ISimulator* simulator, IDebugEventCallback2* callback, IDebugProcess2** ppProcess);
-HRESULT MakeModule (UINT64 address, DWORD size, const wchar_t* path, const wchar_t* debug_info_path, bool user_code,
+
+// If "symbolsFilePath" is non-NULL, it is the full path to the file with symbols; the module implementation
+// will not attempt to load symbols from other places.
+// If "symbolsFilePath" is NULL, the module implementation may attempt to load symbols from other places,
+// such as from a file located next to the module file with the same filename and a different extension.
+// The module implementation attempts to load the symbols only once per debug session, when the symbols
+// are needed for the first time, for example in the implementation of IZ80Module::GetSymbols.
+HRESULT MakeModule (UINT64 address, DWORD size, const wchar_t* path, const wchar_t* symbolsFilePath, bool user_code,
 	IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback, IDebugModule2** to);
+
 HRESULT MakeSldSymbols (IDebugModule2* module, IZ80Symbols** to);
 HRESULT MakeZ80SymSymbols (IDebugModule2* module, IZ80Symbols** to);
 HRESULT MakeThread (IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback, IDebugThread2** ppThread);

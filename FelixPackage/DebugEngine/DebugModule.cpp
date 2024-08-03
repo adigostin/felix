@@ -17,19 +17,22 @@ class Z80Module : public IDebugModule3, IZ80Module
 	com_ptr<IDebugProgram2> _program;
 	com_ptr<IDebugEventCallback2> _callback;
 
-	wil::com_ptr_nothrow<IZ80Symbols> _symbols;
+	// _symbols==NULL and SUCCEEDED(_symbolLoadResult) - loading has not been attempted yet during this debug sessions
+	// _symbols==NULL and FAILED(_symbolLoadResult) - loading has been attempted and failed with the error code from _symbolLoadResult
+	// _symbols!=NULL - loading has been attempted and was successful.
+	com_ptr<IZ80Symbols> _symbols;
 	HRESULT _symbolLoadResult = S_OK;
 
 public:
-	HRESULT InitInstance (UINT64 address, DWORD size, const wchar_t* path, const wchar_t* symbolsPath,
+	HRESULT InitInstance (UINT64 address, DWORD size, const wchar_t* path, const wchar_t* symbolsFilePath,
 		bool user_code, IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback)
 	{
 		_address = address;
 		_size = size;
 		_path = wil::make_process_heap_string_nothrow(path); RETURN_IF_NULL_ALLOC(_path);
-		if (symbolsPath)
+		if (symbolsFilePath)
 		{
-			_symbolsPath = wil::make_process_heap_string_nothrow(symbolsPath); RETURN_IF_NULL_ALLOC(_symbolsPath);
+			_symbolsPath = wil::make_process_heap_string_nothrow(symbolsFilePath); RETURN_IF_NULL_ALLOC(_symbolsPath);
 		}
 		_user_code = user_code;
 		_engine = engine;
@@ -50,6 +53,7 @@ public:
 			|| TryQI<IZ80Module>(this, riid, ppvObject))
 			return S_OK;
 
+		// These may be implemented eventually.
 		if (   riid == IID_IDebugDumpModule100
 			|| riid == IID_IDebugModuleInternal165
 			|| riid == IID_IDebugModuleManagedInternal165
@@ -61,6 +65,7 @@ public:
 		)
 			return E_NOINTERFACE;
 
+		// These will never be implemented.
 		if (   riid == IID_IManagedObject
 			|| riid == IID_IProvideClassInfo
 			|| riid == IID_IInspectable
@@ -73,7 +78,7 @@ public:
 		)
 			return E_NOINTERFACE;
 
-		RETURN_HR(E_NOINTERFACE);
+		return E_NOINTERFACE;
 	}
 
 	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
@@ -267,40 +272,58 @@ public:
 	#pragma region IZ80Module
 	virtual HRESULT STDMETHODCALLTYPE GetSymbols (IZ80Symbols** symbols) override
 	{
-		if (!_symbols)
+		if (_symbols)
 		{
-			if (!_symbolsPath)
-				return E_MODULE_HAS_NO_SYMBOLS;
-
-			if (FAILED(_symbolLoadResult))
-				// We tried already to load them and this was the result. Don't try again.
-				return _symbolLoadResult;
-
-			// Attempt to load them for the first time.
-			auto* ext = PathFindExtension(_symbolsPath.get());
-			if (!wcscmp(ext, L".sld"))
-			{
-				_symbolLoadResult = MakeSldSymbols (this, &_symbols);
-			}
-			else if (!wcscmp(ext, L".z80sym"))
-			{
-				_symbolLoadResult = MakeZ80SymSymbols (this, &_symbols);
-			}
-			else
-				_symbolLoadResult = E_UNRECOGNIZED_DEBUG_FILE_EXTENSION;
-
-			if (FAILED(_symbolLoadResult))
-			{
-				if (auto errorMessage = wil::make_hlocal_string_nothrow(L"load error"))
-					if (auto e = com_ptr(new (std::nothrow) SymbolSearchEvent(this, std::move(errorMessage), 0)))
-						e->Send(_callback.get(), _engine.get(), _program.get(), nullptr);
-				RETURN_HR(_symbolLoadResult);
-			}
-
-			if (auto errorMessage = wil::make_hlocal_string_nothrow(_symbolsPath.get()))
-				if (auto e = com_ptr(new (std::nothrow) SymbolSearchEvent(this, std::move(errorMessage), MIF_SYMBOLS_LOADED)))
-					e->Send(_callback.get(), _engine.get(), _program.get(), nullptr);
+			*symbols = _symbols;
+			_symbols->AddRef();
+			return S_OK;
 		}
+
+		*symbols = nullptr;
+
+		if (FAILED(_symbolLoadResult))
+			// We tried already to load them and this was the result. Don't try again.
+			return _symbolLoadResult;
+		
+		// Attempt to load them for the first time.
+		if (!_symbolsPath)
+		{
+			size_t bufferLen = wcslen(_path.get()) + 10;
+			auto symPath = wil::make_process_heap_string_nothrow (_path.get(), bufferLen);
+			_symbolLoadResult = PathCchRenameExtension (symPath.get(), bufferLen + 1, L".sld"); RETURN_IF_FAILED(_symbolLoadResult);
+			if (!::PathFileExists(symPath.get()))
+			{
+				_symbolLoadResult = PathCchRenameExtension (symPath.get(), bufferLen + 1, L".z80sym"); RETURN_IF_FAILED(_symbolLoadResult);
+				if (!::PathFileExists(symPath.get()))
+					return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
+			}
+
+			_symbolsPath = std::move(symPath);
+		}
+
+		auto* ext = PathFindExtension(_symbolsPath.get());
+		if (!wcscmp(ext, L".sld"))
+		{
+			_symbolLoadResult = MakeSldSymbols (this, &_symbols);
+		}
+		else if (!wcscmp(ext, L".z80sym"))
+		{
+			_symbolLoadResult = MakeZ80SymSymbols (this, &_symbols);
+		}
+		else
+			_symbolLoadResult = E_UNRECOGNIZED_DEBUG_FILE_EXTENSION;
+
+		if (FAILED(_symbolLoadResult))
+		{
+			if (auto errorMessage = wil::make_hlocal_string_nothrow(L"load error"))
+				if (auto e = com_ptr(new (std::nothrow) SymbolSearchEvent(this, std::move(errorMessage), 0)))
+					e->Send(_callback.get(), _engine.get(), _program.get(), nullptr);
+			RETURN_HR(_symbolLoadResult);
+		}
+
+		if (auto errorMessage = wil::make_hlocal_string_nothrow(_symbolsPath.get()))
+			if (auto e = com_ptr(new (std::nothrow) SymbolSearchEvent(this, std::move(errorMessage), MIF_SYMBOLS_LOADED)))
+				e->Send(_callback.get(), _engine.get(), _program.get(), nullptr);
 
 		_symbols.copy_to(symbols);
 		return S_OK;
@@ -308,11 +331,11 @@ public:
 	#pragma endregion
 };
 
-HRESULT MakeModule (UINT64 address, DWORD size, const wchar_t* path, const wchar_t* debug_info_path, bool user_code,
+HRESULT MakeModule (UINT64 address, DWORD size, const wchar_t* path, const wchar_t* symbolsFilePath, bool user_code,
 	IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback, IDebugModule2** to) 
 {
 	auto p = com_ptr(new (std::nothrow) Z80Module()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance (address, size, path, debug_info_path, user_code, engine, program, callback); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance (address, size, path, symbolsFilePath, user_code, engine, program, callback); RETURN_IF_FAILED(hr);
 	*to = p.detach();
 	return S_OK;
 }
