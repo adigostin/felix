@@ -262,19 +262,7 @@ public:
 			wil::unique_bstr symbol;
 			uint16_t offset = 0;
 			com_ptr<IDebugModule2> pcModule;
-			hr = ::GetModuleAtAddress(program.get(), pc, &pcModule);
-			if (hr == S_OK)
-			{
-				if (auto z80m = wil::try_com_query_nothrow<IZ80Module>(pcModule))
-				{
-					wil::com_ptr_nothrow<IZ80Symbols> syms;
-					hr = z80m->GetSymbols(&syms);
-					if (SUCCEEDED(hr))
-					{
-						hr = syms->GetSymbolAtAddress(pc, SK_Code, nullptr, &symbol, &offset); // intentionally ignore hr
-					}
-				}
-			}
+			hr = GetSymbolFromAddress (program, pc, SK_Code, nullptr, &symbol, &offset, &pcModule);
 
 			bool pushed = entries.try_push_back (Entry{ sp, { pc, std::move(pcModule), std::move(symbol), offset, nullptr } }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 

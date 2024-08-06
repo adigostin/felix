@@ -889,3 +889,30 @@ HRESULT GetModuleAtAddress (IDebugProgram2* program, UINT64 address, OUT IDebugM
 
 	return E_NO_MODULE_AT_THIS_ADDRESS;
 }
+
+HRESULT GetSymbolFromAddress(
+	__RPC__in IDebugProgram2* program,
+	__RPC__in uint16_t address,
+	__RPC__in SymbolKind searchKind,
+	__RPC__deref_out_opt SymbolKind* foundKind,
+	__RPC__deref_out_opt BSTR* foundSymbol,
+	__RPC__deref_out_opt UINT16* foundOffset,
+	__RPC__deref_out_opt IDebugModule2** foundModule)
+{
+	wil::com_ptr_nothrow<IDebugModule2> m;
+	auto hr = ::GetModuleAtAddress (program, address, &m); RETURN_IF_FAILED_EXPECTED(hr);
+
+	wil::com_ptr_nothrow<IZ80Module> z80m;
+	hr = m->QueryInterface(&z80m); RETURN_IF_FAILED(hr);
+
+	wil::com_ptr_nothrow<IZ80Symbols> syms;
+	hr = z80m->GetSymbols(&syms); RETURN_IF_FAILED_EXPECTED(hr);
+
+	hr = syms->GetSymbolAtAddress(address, searchKind, foundKind, foundSymbol, foundOffset); RETURN_IF_FAILED_EXPECTED(hr);
+
+	if (foundModule)
+		*foundModule = m.detach();
+
+	return S_OK;
+}
+

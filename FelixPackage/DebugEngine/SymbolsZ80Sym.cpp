@@ -132,7 +132,7 @@ struct Z80SymSymbols : IZ80Symbols
 		if (!isalpha(p[0]))
 			RETURN_HR(E_INVALID_Z80SYM_LINE);
 		const char* name_from = p;
-		while (isalnum(p[0]) || p[0] == '_' || p[0] == '-' || p[0] == '+' || p[0] == '$' || p[0] == '/')
+		while (isalnum(p[0]) || p[0] == '_' || p[0] == '-' || p[0] == '+' || p[0] == '$' || p[0] == '/' || p[0] == '?')
 			p++;
 		const char* name_to = p;
 		if (*p != ' ' && *p != 9 && *p != 0x0d)

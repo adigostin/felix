@@ -3,6 +3,8 @@
 #include "DebugEngine.h"
 #include "shared/com.h"
 
+static const char header[] = "|SLD.data.version|1\r\n";
+
 struct SldSymbols : IZ80Symbols
 {
 	ULONG _refCount = 0;
@@ -20,6 +22,9 @@ struct SldSymbols : IZ80Symbols
 		DWORD bytes_read;
 		BOOL bres = ReadFile (h.get(), text.get(), file_size, &bytes_read, nullptr); RETURN_LAST_ERROR_IF(!bres);
 		text.get()[file_size] = 0;
+
+		if (strncmp (text.get(), header, sizeof(header) - 1))
+			RETURN_HR(E_UNRECOGNIZED_SLD_VERSION);
 
 		auto p = wil::com_ptr_nothrow<SldSymbols>(new (std::nothrow) SldSymbols()); RETURN_IF_NULL_ALLOC(p);
 		p->_text = std::move(text);
@@ -68,6 +73,7 @@ struct SldSymbols : IZ80Symbols
 			const char* value;
 			const char* type;
 			const char* data;
+			const char* end_of_line;
 		};
 
 		const char* fields[8];
@@ -93,6 +99,7 @@ struct SldSymbols : IZ80Symbols
 			}
 			else if (*p == '\r')
 			{
+				e.end_of_line = p;
 				p++;
 				if (*p == '\n')
 					p++;
@@ -102,6 +109,7 @@ struct SldSymbols : IZ80Symbols
 			else
 			{
 				// end of file
+				e.end_of_line = p;
 				return i == expected_field_count;
 			}
 		}
@@ -115,10 +123,6 @@ struct SldSymbols : IZ80Symbols
 		__RPC__deref_out BSTR* srcFilename,
 		__RPC__out UINT32* srcLineIndex) override
 	{
-		static const char header[] = "|SLD.data.version|1\r\n";
-		if (strncmp (_text.get(), header, sizeof(header) - 1))
-			RETURN_HR(E_UNRECOGNIZED_SLD_VERSION);
-
 		sld_entry entry;
 		
 		{
@@ -163,15 +167,8 @@ struct SldSymbols : IZ80Symbols
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetAddressFromSourceLocation(
-		__RPC__in LPCWSTR src_filename,
-		__RPC__in uint32_t line_index,
-		__RPC__out UINT16* address_out) override
+	virtual HRESULT STDMETHODCALLTYPE GetAddressFromSourceLocation (LPCWSTR src_filename, uint32_t line_index, UINT16* address_out) override
 	{
-		static const char header[] = "|SLD.data.version|1\r\n";
-		if (strncmp (_text.get(), header, sizeof(header) - 1))
-			RETURN_HR(E_UNRECOGNIZED_SLD_VERSION);
-
 		int filename_buffer_len = WideCharToMultiByte (CP_UTF8, 0, src_filename, -1, nullptr, 0, nullptr, nullptr); RETURN_HR_IF(E_FAIL, !filename_buffer_len);
 		auto u8_filename = wil::make_hlocal_ansistring_nothrow (nullptr, filename_buffer_len - 1); RETURN_IF_NULL_ALLOC(u8_filename);
 		int ires = WideCharToMultiByte (CP_UTF8, 0, src_filename, -1, u8_filename.get(), filename_buffer_len, nullptr, nullptr); RETURN_HR_IF(E_FAIL, ires != filename_buffer_len);
@@ -204,14 +201,51 @@ struct SldSymbols : IZ80Symbols
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetSymbolAtAddress(
-		__RPC__in uint16_t address,
-		__RPC__in SymbolKind searchKind,
-		__RPC__deref_out_opt SymbolKind* foundKind,
-		__RPC__deref_out_opt BSTR* foundSymbol,
-		__RPC__deref_out_opt UINT16* foundOffset) override
+	virtual HRESULT STDMETHODCALLTYPE GetSymbolAtAddress (uint16_t address, SymbolKind searchKind, SymbolKind* foundKind, BSTR* foundSymbol, UINT16* foundOffset) override
 	{
-		return E_NOTIMPL;
+		// The .sld file doesn't make a difference between code and data.
+		// For example "label: nop" generates the same line in .sld as "label: db 0".
+		// That's why we're not checking the "searchKind" parameter.
+
+		const char* p = _text.get() + sizeof(header) - 1;
+		const char* prev_symbol_line = nullptr;
+		sld_entry entry;
+		while(true)
+		{
+			if (!*p)
+				return E_ADDRESS_NOT_IN_SYMBOL_FILE;
+
+			auto this_line = p;
+
+			bool bres = try_parse_line(p, entry); RETURN_HR_IF(E_INVALID_SLD_LINE, !bres);
+
+			if (entry.type[0] != 'F' || entry.type[1] != '|')
+				continue;
+			
+			uint16_t line_addr = (uint16_t)strtoul(entry.value, nullptr, 10);
+			if (line_addr == address)
+				break;
+
+			if (line_addr > address)
+			{
+				if (!foundOffset)
+					return E_ADDRESS_NOT_IN_SYMBOL_FILE; // caller wants exact address matches only
+				if (!prev_symbol_line)
+					return E_ADDRESS_NOT_IN_SYMBOL_FILE;
+				bres = try_parse_line(prev_symbol_line, entry); WI_ASSERT(bres);
+				break;
+			}
+
+			prev_symbol_line = this_line;
+		}
+
+		if (foundKind)
+			*foundKind = searchKind;
+		if (foundSymbol)
+			RETURN_IF_FAILED(MakeBstrFromString(entry.data, entry.end_of_line, foundSymbol));
+		if (foundOffset)
+			*foundOffset = address - (uint16_t)strtoul(entry.value, nullptr, 10);
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetAddressFromSymbol (LPCWSTR symbolName, UINT16* address) override

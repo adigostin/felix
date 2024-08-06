@@ -180,7 +180,7 @@ class Z80Disassembly : public IDebugDisassemblyStream2
 {
 	ULONG _refCount = 0;
 	DISASSEMBLY_STREAM_SCOPE _dwScope;
-	wil::com_ptr_nothrow<IDebugProgram2> _program;
+	com_ptr<IDebugProgram2> _program;
 	com_ptr<ISimulator> _simulator;
 	//wil::com_ptr_nothrow<IZ80BlockInstruction> _blockInstruction;
 	uint16_t _address;
@@ -231,6 +231,28 @@ public:
 	static constexpr const char* const cb_instrs_0[] = { "RLC", "RRC", "RL", "RR", "SLA", "SRA", "SLL", "SRL" };
 	static constexpr const char* const cb_instrs_40[] = { "BIT", "RES", "SET" };
 
+	// Returns true if the address was formatted as symbol; the caller should add the hex value as a comment at the end of the line
+	// Returns false if the address was not formatted as symbol, but as hex value; the caller need not add a comment.
+	bool TryFormatAddr (uint16_t addr, bool useOperandSymbols, opersb& operands)
+	{
+		if (useOperandSymbols)
+		{
+			wil::unique_bstr symbol;
+			uint16_t offset;
+			if (SUCCEEDED(GetSymbolFromAddress(_program, addr, SK_Both, nullptr, &symbol, &offset, nullptr)))
+			{
+				if (offset)
+					operands << symbol.get() << " + " << offset;
+				else
+					operands << symbol.get();
+				return true;
+			}
+		}
+
+		operands << hex<uint16_t>(addr);
+		return false;
+	}
+
 	// This function assumes that memory at "bytes" contains enough bytes for the longest Z80 instruction (four bytes or so).
 	// It returns the length of the decoded instruction.
 	uint8_t DecodeInstruction (uint16_t address, const uint8_t* bytes, const char*& opcode, opersb& operands, bool useOperandSymbols)
@@ -260,17 +282,9 @@ public:
 			opcode = "LD";
 			auto reg = reg16(xy, (ptr[0] >> 4) & 3);
 			uint16_t val = ptr[1] | (ptr[2] << 8);
-			wil::unique_bstr symbol;
-			uint16_t offset;
-			if (useOperandSymbols && SUCCEEDED(GetSymbolFromAddress(val, SK_Both, nullptr, &symbol, &offset, nullptr)))
-			{
-				if (offset)
-					operands << reg << ", " << symbol.get() << " + " << offset << " ; " << hex<uint16_t>(val);
-				else
-					operands << reg << ", " << symbol.get() << " ; " << hex<uint16_t>(val);
-			}
-			else
-				operands << reg << ", " << hex<uint16_t>(val);
+			operands << reg << ", ";
+			if (TryFormatAddr(val, useOperandSymbols, operands))
+				operands << " ; " << hex<uint16_t>(val);
 			ptr += 3;
 		}
 		else if (ptr[0] == 2)
@@ -351,10 +365,8 @@ public:
 			// djnz/jr e
 			opcode = (ptr[0] == 0x10) ? "DJNZ" : "JR";
 			uint16_t dest = (uint16_t)(address + 2 + (uint16_t)(int16_t)(int8_t)ptr[1]);
-			wil::unique_bstr symbol;
-			if (useOperandSymbols && SUCCEEDED(GetSymbolFromAddress(dest, SK_Both, nullptr, &symbol, nullptr, nullptr)))
-				operands << symbol.get() << " ; ";
-			operands << hex<uint16_t>(dest);
+			if (TryFormatAddr(dest, useOperandSymbols, operands))
+				operands << " ; " << hex<uint16_t>(dest);
 			ptr += 2;
 		}
 		else if ((ptr[0] & 0xE7) == 0x20)
@@ -363,10 +375,8 @@ public:
 			opcode = "JR";
 			uint16_t dest = (uint16_t)(address + 2 + (uint16_t)(int16_t)(int8_t)ptr[1]);
 			operands << cc[(ptr[0] >> 3) & 3] << ", ";
-			wil::unique_bstr symbol;
-			if (useOperandSymbols && SUCCEEDED(GetSymbolFromAddress(dest, SK_Both, nullptr, &symbol, nullptr, nullptr)))
-				operands << symbol.get() << " ; ";
-			operands << hex<uint16_t>(dest);
+			if (TryFormatAddr(dest, useOperandSymbols, operands))
+				operands << " ; " << hex<uint16_t>(dest);
 			ptr += 2;
 		}
 		else if (ptr[0] == 0x22)
@@ -374,11 +384,11 @@ public:
 			// LD (nn), HL
 			uint16_t dest = ptr[1] | (ptr[2] << 8);
 			opcode = "LD";
-			wil::unique_bstr symbol;
-			if (useOperandSymbols && SUCCEEDED(GetSymbolFromAddress(dest, SK_Both, nullptr, &symbol, nullptr, nullptr)))
-				operands << '(' << symbol.get() << "), " << xy << " ; " << hex<uint16_t>(dest);
-			else
-				operands << '(' << hex<uint16_t>(dest) << "), " << xy;
+			operands << '(';
+			bool b = TryFormatAddr(dest, useOperandSymbols, operands);
+			operands << "), HL";
+			if(b)
+				operands << " ; " << hex<uint16_t>(dest);
 			ptr += 3;
 		}
 		else if (ptr[0] == 0x27)
@@ -392,11 +402,11 @@ public:
 			// LD HL, (nn)
 			uint16_t src = ptr[1] | (ptr[2] << 8);
 			opcode = "LD";
-			wil::unique_bstr symbol;
-			if (useOperandSymbols && SUCCEEDED(GetSymbolFromAddress(src, SK_Both, nullptr, &symbol, nullptr, nullptr)))
-				operands << xy << ", (" << symbol.get() << ") ; " << hex<uint16_t>(src);
-			else
-				operands << xy << ", (" << hex<uint16_t>(src) << ")";
+			operands << "HL, (";
+			bool b = TryFormatAddr(src, useOperandSymbols, operands);
+			operands << ')';
+			if(b)
+				operands << " ; " << hex<uint16_t>(src);
 			ptr += 3;
 		}
 		else if (ptr[0] == 0x2F)
@@ -410,11 +420,11 @@ public:
 			// ld (imm16), a
 			opcode = "LD";
 			uint16_t dest = ptr[1] | (ptr[2] << 8);
-			wil::unique_bstr symbol;
-			if (useOperandSymbols && SUCCEEDED(GetSymbolFromAddress(dest, SK_Both, nullptr, &symbol, nullptr, nullptr)))
-				operands << '(' << symbol.get() << "), A ; " << hex<uint16_t>(dest);
-			else
-				operands << '(' << hex<uint16_t>(dest) << "), A";
+			operands << '(';
+			bool b = TryFormatAddr(dest, useOperandSymbols, operands);
+			operands << "), A";
+			if (b)
+				operands << " ; " << hex<uint16_t>(dest);
 			ptr += 3;
 		}
 		else if (ptr[0] == 0x37)
@@ -426,7 +436,12 @@ public:
 		{
 			// LD A, (nn)
 			opcode = "LD";
-			operands << "A, (" << hex<uint16_t>(ptr[1] | (ptr[2] << 8)) << ")";
+			uint16_t addr = ptr[1] | (ptr[2] << 8);
+			operands << "A, (";
+			bool b = TryFormatAddr(addr, useOperandSymbols, operands);
+			operands << ')';
+			if (b)
+				operands << " ; " << hex<uint16_t>(addr);
 			ptr += 3;
 		}
 		else if (ptr[0] == 0x3F)
@@ -483,26 +498,29 @@ public:
 		{
 			// jp nz/z/nc/c/po/pe/p/m, nn
 			opcode = "JP";
-			operands << cc[(ptr[0] >> 3) & 7] << ", " << hex<uint16_t>(ptr[1] | (ptr[2] << 8));
+			uint16_t addr = ptr[1] | (ptr[2] << 8);
+			operands << cc[(ptr[0] >> 3) & 7] << ", ";
+			if (TryFormatAddr(addr, useOperandSymbols, operands))
+				operands << " ; " << hex<uint16_t>(addr);
 			ptr += 3;
 		}
 		else if (ptr[0] == 0xC3)
 		{
 			// jp nn
 			opcode = "JP";
-			uint16_t dest = ptr[1] | (ptr[2] << 8);
-			wil::unique_bstr symbol;
-			if (useOperandSymbols && SUCCEEDED(GetSymbolFromAddress(dest, SK_Both, nullptr, &symbol, nullptr, nullptr)))
-				operands << symbol.get() << " ; " << hex<uint16_t>(dest);
-			else
-				operands << hex<uint16_t>(dest);
+			uint16_t addr = ptr[1] | (ptr[2] << 8);
+			if (TryFormatAddr(addr, useOperandSymbols, operands))
+				operands << " ; " << hex<uint16_t>(addr);
 			ptr += 3;
 		}
 		else if ((ptr[0] & 0xC7) == 0xC4)
 		{
 			// call nz/z/nc/c/po/pe/p/m, nn
 			opcode = "CALL";
-			operands << cc[(ptr[0] >> 3) & 7] << ", " << hex<uint16_t>(ptr[1] | (ptr[2] << 8));
+			uint16_t addr = ptr[1] | (ptr[2] << 8);
+			operands << cc[(ptr[0] >> 3) & 7] << ", ";
+			if (TryFormatAddr(addr, useOperandSymbols, operands))
+				operands << " ; " << hex<uint16_t>(addr);
 			ptr += 3;
 		}
 		else if ((ptr[0] & 0xC7) == 0xC6)
@@ -517,11 +535,8 @@ public:
 			// RST #
 			uint16_t addr = ptr[0] & 0x38;
 			opcode = "RST";
-			wil::unique_bstr symbol;
-			if (useOperandSymbols && SUCCEEDED(GetSymbolFromAddress(addr, SK_Both, nullptr, &symbol, nullptr, nullptr)))
-				operands << symbol.get() << " ; " << hex<uint16_t>(addr);
-			else
-				operands << hex<uint16_t>(addr);
+			if (TryFormatAddr(addr, useOperandSymbols, operands))
+				operands << " ; " << hex<uint16_t>(addr);
 			ptr++;
 		}
 		else if (ptr[0] == 0xC9)
@@ -534,12 +549,9 @@ public:
 		{
 			// call nn
 			opcode = "CALL";
-			uint16_t dest = ptr[1] | (ptr[2] << 8);
-			wil::unique_bstr symbol;
-			if (useOperandSymbols && SUCCEEDED(GetSymbolFromAddress(dest, SK_Both, nullptr, &symbol, nullptr, nullptr)))
-				operands << symbol.get() << " ; " << hex<uint16_t>(dest);
-			else
-				operands << hex<uint16_t>(dest);
+			uint16_t addr = ptr[1] | (ptr[2] << 8);
+			if (TryFormatAddr(addr, useOperandSymbols, operands))
+				operands << " ; " << hex<uint16_t>(addr);
 			ptr += 3;
 		}
 		else if ((ptr[0] & 0xCF) == 9)
@@ -614,13 +626,13 @@ public:
 			{
 				// ld (nn), bc/de/hl/sp
 				opcode = "LD";
-				uint16_t dest = ptr[2] | (ptr[3] << 8);
+				uint16_t addr = ptr[2] | (ptr[3] << 8);
 				uint8_t reg = (ptr[1] >> 4) & 3;
-				wil::unique_bstr symbol;
-				if (useOperandSymbols && SUCCEEDED(GetSymbolFromAddress(dest, SK_Both, nullptr, &symbol, nullptr, nullptr)))
-					operands << '(' << symbol.get() << "), " << reg16(xy, reg) << " ; " << hex<uint16_t>(dest);
-				else
-					operands << '(' << hex<uint16_t>(dest) << "), " << reg16(xy, reg);
+				operands << '(';
+				bool b = TryFormatAddr(addr, useOperandSymbols, operands);
+				operands << "), " << reg16(xy, reg);
+				if(b)
+					operands << " ; " << hex<uint16_t>(addr);
 				ptr += 4;
 			}
 			else if (ptr[1] == 0x44)
@@ -632,7 +644,13 @@ public:
 			{
 				// ld bc/de/hl/sp, (nn)
 				opcode = "LD";
-				operands << reg16(xy, (ptr[1] >> 4) & 3) << ", (" << hex<uint16_t>(ptr[2] | (ptr[3] << 8)) << ')';
+				uint16_t addr = ptr[2] | (ptr[3] << 8);
+				uint8_t reg = (ptr[1] >> 4) & 3;
+				operands << reg16(xy, (ptr[1] >> 4) & 3) << ", (";
+				bool b = TryFormatAddr(addr, useOperandSymbols, operands);
+				operands << ')';
+				if(b)
+					operands << " ; " << hex<uint16_t>(addr);
 				ptr += 4;
 			}
 			else if (ptr[1] == 0x45)
@@ -786,31 +804,6 @@ public:
 		return (uint8_t)(ptr - bytes);
 	}
 
-	HRESULT GetSymbolFromAddress(
-		__RPC__in uint16_t address,
-		__RPC__in SymbolKind searchKind,
-		__RPC__deref_out_opt SymbolKind* foundKind,
-		__RPC__deref_out_opt BSTR* foundSymbol,
-		__RPC__deref_out_opt UINT16* foundOffset,
-		__RPC__deref_out_opt IDebugModule2** foundModule)
-	{
-		wil::com_ptr_nothrow<IDebugModule2> m;
-		auto hr = ::GetModuleAtAddress (_program.get(), address, &m); RETURN_IF_FAILED_EXPECTED(hr);
-
-		wil::com_ptr_nothrow<IZ80Module> z80m;
-		hr = m->QueryInterface(&z80m); RETURN_IF_FAILED(hr);
-
-		wil::com_ptr_nothrow<IZ80Symbols> syms;
-		hr = z80m->GetSymbols(&syms); RETURN_IF_FAILED_EXPECTED(hr);
-
-		hr = syms->GetSymbolAtAddress(address, searchKind, foundKind, foundSymbol, foundOffset); RETURN_IF_FAILED_EXPECTED(hr);
-
-		if (foundModule)
-			*foundModule = m.detach();
-
-		return S_OK;
-	}
-	
 	#pragma region IDebugDisassemblyStream2
 	virtual HRESULT __stdcall Read(DWORD dwInstructions, DISASSEMBLY_STREAM_FIELDS dwFields, DWORD* pdwInstructionsRead, DisassemblyData* prgDisassembly) override
 	{
@@ -914,7 +907,7 @@ public:
 			if (dwFields & DSF_SYMBOL) // 0x20
 			{
 				wil::unique_bstr symbol;
-				hr = GetSymbolFromAddress(_address, SK_Both, nullptr, &symbol, nullptr, nullptr);
+				hr = GetSymbolFromAddress(_program, _address, SK_Both, nullptr, &symbol, nullptr, nullptr);
 				if (SUCCEEDED(hr) && symbol)
 				{
 					dd->bstrSymbol = symbol.release();

@@ -133,3 +133,11 @@ HRESULT MakeRegisterExpression (IDebugThread2* thread, LPCOLESTR originalText, z
 HRESULT MakeNumberExpression (LPCOLESTR originalText, bool physicalMemorySpace, uint32_t value, IDebugProgram2* program, IDebugExpression2** to);
 HRESULT MakeNumberProperty (LPCOLESTR originalText, bool physicalMemorySpace, UINT64 value, IDebugProgram2* program, IDebugProperty2** to);
 HRESULT MakeMemoryBytes (IDebugMemoryBytes2** to);
+HRESULT GetSymbolFromAddress(
+	__RPC__in IDebugProgram2* program,
+	__RPC__in uint16_t address,
+	__RPC__in SymbolKind searchKind,
+	__RPC__deref_out_opt SymbolKind* foundKind,
+	__RPC__deref_out_opt BSTR* foundSymbol,
+	__RPC__deref_out_opt UINT16* foundOffset,
+	__RPC__deref_out_opt IDebugModule2** foundModule);
