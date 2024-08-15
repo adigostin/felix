@@ -28,6 +28,8 @@ static bool TryQI (ITo* from, REFIID riid, void** ppvObject)
 	return false;
 }
 
+// Helper function meant to be called from the IUnknown::Release() of STA objects.
+// When the last reference is released, calls the destructor while the object still has a reference count of 1.
 template<typename T>
 ULONG ReleaseST (T* _this, ULONG& refCount)
 {
