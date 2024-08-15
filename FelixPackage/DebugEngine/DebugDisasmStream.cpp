@@ -237,9 +237,11 @@ public:
 	{
 		if (useOperandSymbols)
 		{
+			const uint16_t OffsetMax = 15; // heuristic: an offset larger than this is likely another variable, one we don't have a symbol for
 			wil::unique_bstr symbol;
 			uint16_t offset;
-			if (SUCCEEDED(GetSymbolFromAddress(_program, addr, SK_Both, nullptr, &symbol, &offset, nullptr)))
+			if (SUCCEEDED(GetSymbolFromAddress(_program, addr, SK_Both, nullptr, &symbol, &offset, nullptr))
+				&& (offset <= OffsetMax))
 			{
 				if (offset)
 					operands << symbol.get() << " + " << offset;
