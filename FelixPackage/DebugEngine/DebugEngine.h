@@ -72,7 +72,8 @@ struct __declspec(novtable) __declspec(uuid("EE50873B-DFAC-4F23-826D-495832A8FD6
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("25071BD1-2108-4D4D-B665-8FE19E31A6CF") IDebugModuleCollection : IUnknown
 {
-	// Adds a module to the program, sends VS the IDebugModuleLoadEvent2 event, and attempts to bind breakpoints.
+	// Adds a module to the program and sends VS the IDebugModuleLoadEvent2 event.
+	// (VS will in turn attempts to bind breakpoints.)
 	virtual HRESULT STDMETHODCALLTYPE AddModule (IDebugModule2* module) = 0;
 };
 
