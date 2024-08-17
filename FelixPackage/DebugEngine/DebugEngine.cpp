@@ -126,28 +126,24 @@ public:
 			{
 				case BPLT_CONTEXT:
 				{
-					RETURN_HR(E_NOTIMPL);
-///					BP_REQUEST_INFO info = { };
-///					hr = pBPRequest->GetRequestInfo (BPREQI_BPLOCATION, &info); RETURN_IF_FAILED(hr);
-///					if (info.bpLocation.bpLocationType != locationType)
-///						RETURN_HR(E_FAIL);					
-///					auto cc = wil::com_ptr_nothrow(info.bpLocation.bpLocation.bplocCodeContext.pCodeContext);
-///					info.bpLocation.bpLocation.bplocCodeContext.pCodeContext->Release();
-///					info.bpLocation.bpLocation.bplocCodeContext.pCodeContext = 0;
-///					wil::com_ptr_nothrow<IZ80CodeContext> z80cc;
-///					hr = cc->QueryInterface(&z80cc); RETURN_IF_FAILED(hr);
-///					if (z80cc->PhysicalMemorySpace())
-///						RETURN_HR(E_FAIL);
-///					hr = MakeSimplePendingBreakpoint (_program.get(), (uint16_t)z80cc->Address(), ppPendingBP); RETURN_IF_FAILED(hr);
-///					return S_OK;
+					BP_REQUEST_INFO info = { };
+					hr = pBPRequest->GetRequestInfo (BPREQI_BPLOCATION, &info); RETURN_IF_FAILED(hr);
+					RETURN_HR_IF(E_FAIL, info.bpLocation.bpLocationType != locationType);
+					auto cc = com_ptr(info.bpLocation.bpLocation.bplocCodeContext.pCodeContext);
+					info.bpLocation.bpLocation.bplocCodeContext.pCodeContext->Release();
+					info.bpLocation.bpLocation.bplocCodeContext.pCodeContext = nullptr;
+					com_ptr<IFelixCodeContext> z80cc;
+					hr = cc->QueryInterface(&z80cc); RETURN_IF_FAILED(hr);
+					RETURN_HR_IF(E_FAIL, z80cc->PhysicalMemorySpace());
+					hr = MakeSimplePendingBreakpoint (_callback, this, _program, _bpman, false, z80cc->Address(), ppPendingBP); RETURN_IF_FAILED(hr);
+					return S_OK;
 				}
 
 				case BPLT_ADDRESS:
 				{
 					BP_REQUEST_INFO info = { };
 					hr = pBPRequest->GetRequestInfo (BPREQI_BPLOCATION, &info); RETURN_IF_FAILED(hr);
-					if (info.bpLocation.bpLocationType != locationType)
-						RETURN_HR(E_FAIL);
+					RETURN_HR_IF(E_FAIL, info.bpLocation.bpLocationType != locationType);
 
 					uint64_t address;
 					bool converted = false;
@@ -172,15 +168,10 @@ public:
 					if (ca.bstrAddress)
 						SysFreeString(ca.bstrAddress);
 
-					if (!converted)
-						RETURN_HR(E_FAIL);
+					RETURN_HR_IF(E_FAIL, !converted);
 
-					if (address >= 0x10000)
-						RETURN_HR(E_FAIL);
-
-					RETURN_HR(E_NOTIMPL);
-					//hr = MakeSimplePendingBreakpoint (_program.get(), (uint16_t)address, ppPendingBP); RETURN_IF_FAILED(hr);
-					//return S_OK;
+					hr = MakeSimplePendingBreakpoint (_callback, this, _program, _bpman, false, address, ppPendingBP); RETURN_IF_FAILED(hr);
+					return S_OK;
 				}
 
 				case BPLT_FILE_LINE:

@@ -31,6 +31,7 @@ public:
 
 	~BreakpointManagerImpl()
 	{
+		WI_ASSERT(_bps.empty());
 	}
 
 	#pragma region IUnknown
@@ -289,6 +290,8 @@ struct BoundBreakpointImpl : IDebugBoundBreakpoint2, IDebugBreakpointResolution2
 			|| TryQI<IDebugBreakpointResolution2>(this, riid, ppvObject))
 			return S_OK;
 
+		RETURN_HR_IF_EXPECTED(E_NOINTERFACE, riid == IID_IDebugBoundBreakpoint110); // will never implement this (something about CPU vs. GPU code)
+
 		*ppvObject = NULL;
 		return E_NOINTERFACE;
 	}
@@ -478,6 +481,9 @@ public:
 			return S_OK;
 		}
 
+		if (riid == GUID{ 0x59790436, 0x0EEE, 0x490F, { 0x9C, 0x74, 0xD2, 0xCD, 0xF0, 0xC9, 0xBE, 0x17 } }) // IID_IAmAnSDMBreakpointErrorObject
+			return E_NOINTERFACE;
+
 		return E_NOINTERFACE;
 	}
 
@@ -553,7 +559,7 @@ struct BreakpointErrorEvent : EventBase<IDebugBreakpointErrorEvent2, EVENT_ASYNC
 
 // ============================================================================
 
-struct SimplePendingBreakpoint : IDebugPendingBreakpoint2
+struct SimplePendingBreakpoint : IDebugPendingBreakpoint2, IDebugEventCallback2
 {
 	ULONG _refCount = 0;
 	com_ptr<IDebugEventCallback2> _callback;
@@ -563,8 +569,9 @@ struct SimplePendingBreakpoint : IDebugPendingBreakpoint2
 	bool _physicalMemorySpace;
 	UINT64 _address;
 	PENDING_BP_STATE_INFO _stateInfo = { };
-	wil::com_ptr_nothrow<IDebugBoundBreakpoint2> _boundBP;
-	wil::com_ptr_nothrow<IDebugErrorBreakpoint2> _errorBP;
+	com_ptr<IDebugBoundBreakpoint2> _boundBP;
+	com_ptr<IDebugErrorBreakpoint2> _errorBP;
+	bool _advisedDebugEventCallback = false;
 
 	static HRESULT CreateInstance (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program, 
 		IBreakpointManager* bpman, bool physicalMemorySpace, UINT64 address, IDebugPendingBreakpoint2** to)
@@ -580,28 +587,22 @@ struct SimplePendingBreakpoint : IDebugPendingBreakpoint2
 		return S_OK;
 	}
 
+	~SimplePendingBreakpoint()
+	{
+		WI_ASSERT(!_advisedDebugEventCallback);
+	}
+
 	#pragma region IUnknown
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
 	{
-		if (!ppvObject)
-			RETURN_HR(E_POINTER);
-
-		*ppvObject = NULL;
-
-		if (riid == __uuidof(IUnknown))
-		{
-			*ppvObject = static_cast<IUnknown*>(this);
-			AddRef();
+		if (   TryQI<IUnknown>(static_cast<IDebugPendingBreakpoint2*>(this), riid, ppvObject)
+			|| TryQI<IDebugPendingBreakpoint2>(this, riid, ppvObject)
+			|| TryQI<IDebugEventCallback2>(this, riid, ppvObject)
+		)
 			return S_OK;
-		}
-		else if (riid == __uuidof(IDebugPendingBreakpoint2))
-		{
-			*ppvObject = static_cast<IDebugPendingBreakpoint2*>(this);
-			AddRef();
-			return S_OK;
-		}
 
-		RETURN_HR(E_NOINTERFACE);
+		*ppvObject = nullptr;
+		return E_NOINTERFACE;
 	}
 
 	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
@@ -612,8 +613,8 @@ struct SimplePendingBreakpoint : IDebugPendingBreakpoint2
 	#pragma region IDebugPendingBreakpoint2
 	virtual HRESULT STDMETHODCALLTYPE CanBind (IEnumDebugErrorBreakpoints2 **ppErrorEnum) override
 	{
-		if (_stateInfo.state == PBPS_DELETED)
-			RETURN_HR(E_BP_DELETED);
+		*ppErrorEnum = nullptr;
+		RETURN_HR_IF(E_BP_DELETED, _stateInfo.state == PBPS_DELETED);
 
 		return S_OK;
 	}
@@ -621,20 +622,22 @@ struct SimplePendingBreakpoint : IDebugPendingBreakpoint2
 	virtual HRESULT STDMETHODCALLTYPE Bind() override
 	{
 		if (_stateInfo.state == PBPS_DELETED)
-			RETURN_HR(E_BP_DELETED);
+			return E_BP_DELETED;
 
 		if (_boundBP)
-			RETURN_HR(S_FALSE);
+			return S_FALSE;
 
 		auto hr = BoundBreakpointImpl::CreateInstance (this, _program, _bpman, _physicalMemorySpace, _address, &_boundBP); RETURN_IF_FAILED(hr);
 		
 		if (_stateInfo.state == BPS_ENABLED)
+			// Necessary when adding a breakpoint on a source code line while debugging.
 			_boundBP->Enable(TRUE);
 		
-		auto p = wil::com_ptr_nothrow(new (std::nothrow) BreakpointBoundEvent (this, _boundBP.get()));
-		if (!p)
-			RETURN_HR(E_OUTOFMEMORY);
-		hr = p->Send (_callback.get(), _engine.get(), _program.get(), nullptr); RETURN_IF_FAILED(hr);
+		auto p = wil::com_ptr_nothrow(new (std::nothrow) BreakpointBoundEvent (this, _boundBP.get())); LOG_IF_NULL_ALLOC(p);
+		if (p)
+		{
+			hr = p->Send (_callback.get(), _engine.get(), _program.get(), nullptr); RETURN_IF_FAILED(hr);
+		}
 
 		return S_OK;
 	}
@@ -664,25 +667,35 @@ struct SimplePendingBreakpoint : IDebugPendingBreakpoint2
 
 	virtual HRESULT STDMETHODCALLTYPE Enable (BOOL fEnable) override
 	{
+		HRESULT hr;
+
 		if (_stateInfo.state == PBPS_DELETED)
 			RETURN_HR(E_BP_DELETED);
-
-		//if (_boundBP)
-		//	_boundBP->Enable(fEnable);
 
 		if (fEnable)
 		{
 			if (_stateInfo.state != PBPS_ENABLED)
 			{
-///				_stateInfo.state = PBPS_ENABLED;
-///				_program->RegisterPendingBreakpoint(this);
+				WI_ASSERT(!_advisedDebugEventCallback);
+				com_ptr<IVsDebugger> debugger;
+				hr = serviceProvider->QueryService (SID_SVsShellDebugger, &debugger); RETURN_IF_FAILED(hr);
+				hr = debugger->AdviseDebugEventCallback(static_cast<IDebugEventCallback2*>(this)); RETURN_IF_FAILED(hr);
+				_advisedDebugEventCallback = true;
+
+				_stateInfo.state = PBPS_ENABLED;
 			}
 		}
 		else
 		{
-///			if (_stateInfo.state == PBPS_ENABLED)
-///				_program->UnregisterPendingBreakpoint(this);
-///			_stateInfo.state = PBPS_DISABLED;
+			if (_stateInfo.state == PBPS_ENABLED)
+			{
+				WI_ASSERT(_advisedDebugEventCallback);
+				com_ptr<IVsDebugger> debugger;
+				hr = serviceProvider->QueryService (SID_SVsShellDebugger, &debugger); RETURN_IF_FAILED(hr);
+				hr = debugger->UnadviseDebugEventCallback(static_cast<IDebugEventCallback2*>(this)); RETURN_IF_FAILED(hr);
+				_advisedDebugEventCallback = false;
+			}
+			_stateInfo.state = PBPS_DISABLED;
 		}
 
 		return S_OK;
@@ -715,8 +728,15 @@ struct SimplePendingBreakpoint : IDebugPendingBreakpoint2
 		if (_stateInfo.state == PBPS_DELETED)
 			RETURN_HR(E_BP_DELETED);
 
-///		if (_stateInfo.state == PBPS_ENABLED)
-///			_program->UnregisterPendingBreakpoint(this);
+		if (_stateInfo.state == PBPS_ENABLED)
+		{
+			///_program->UnregisterPendingBreakpoint(this);
+			WI_ASSERT(_advisedDebugEventCallback);
+			com_ptr<IVsDebugger> debugger;
+			auto hr = serviceProvider->QueryService (SID_SVsShellDebugger, &debugger); RETURN_IF_FAILED(hr);
+			hr = debugger->UnadviseDebugEventCallback(static_cast<IDebugEventCallback2*>(this)); RETURN_IF_FAILED(hr);
+			_advisedDebugEventCallback = false;
+		}
 
 		if (_boundBP)
 		{
@@ -733,6 +753,47 @@ struct SimplePendingBreakpoint : IDebugPendingBreakpoint2
 		_errorBP = nullptr;
 
 		_stateInfo.state = PBPS_DELETED;
+		return S_OK;
+	}
+	#pragma endregion
+
+	#pragma region IDebugEventCallback2
+	virtual HRESULT STDMETHODCALLTYPE Event (IDebugEngine2 *pEngine, IDebugProcess2 *pProcess,
+		IDebugProgram2 *pProgram, IDebugThread2 *pThread, IDebugEvent2 *pEvent, REFIID riidEvent, DWORD dwAttrib) override
+	{
+		// When the user clicks Stop Debugging, VS calls our Delete function, and in that function
+		// we call IVsDebugger::UnadviseDebugEventCallback; from that point on we shouldn't receive
+		// any more debug events. VS, however, sends us some more events, that's why the check for PBPS_ENABLED.
+		if (_stateInfo.state != PBPS_ENABLED)
+			return S_OK;
+
+		if (riidEvent == IID_IDebugModuleLoadEvent2)
+		{
+			com_ptr<IDebugModuleLoadEvent2> mle;
+			auto hr = pEvent->QueryInterface(&mle); RETURN_IF_FAILED(hr);
+			com_ptr<IDebugModule2> module;
+			BOOL load;
+			hr = mle->GetModule(&module, nullptr, &load); RETURN_IF_FAILED(hr);
+			MODULE_INFO mi;
+			hr = module->GetInfo (MIF_LOADADDRESS | MIF_SIZE, &mi); RETURN_IF_FAILED(hr);
+			if (_address >= mi.m_addrLoadAddress && _address < mi.m_addrLoadAddress + mi.m_dwSize)
+			{
+				if (load)
+				{
+					// If we have an error breakpoint, we try again to bind this pending breakpoint,
+					// maybe we can resolve it this time in the just-loaded module.
+					if (_errorBP)
+					{
+						__debugbreak();
+					}
+				}
+				else
+				{
+					RETURN_HR(E_NOTIMPL);
+				}
+			}
+		}
+
 		return S_OK;
 	}
 	#pragma endregion
@@ -797,15 +858,13 @@ public:
 	#pragma region IUnknown
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
 	{
-		RETURN_HR_IF(E_POINTER, !ppvObject);
-		*ppvObject = NULL;
-
-		if (TryQI<IUnknown>(static_cast<IDebugPendingBreakpoint2*>(this), riid, ppvObject)
+		if (   TryQI<IUnknown>(static_cast<IDebugPendingBreakpoint2*>(this), riid, ppvObject)
 			|| TryQI<IDebugPendingBreakpoint2>(this, riid, ppvObject)
 			|| TryQI<IDebugEventCallback2>(this, riid, ppvObject))
 			return S_OK;
 
-		RETURN_HR(E_NOINTERFACE);
+		*ppvObject = nullptr;
+		return E_NOINTERFACE;
 	}
 
 	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
@@ -865,6 +924,7 @@ WI_ASSERT(!_errorBP);
 			hr = BoundBreakpointImpl::CreateInstance (this, _program, _bpman, physicalMemorySpace, address, &_boundBP); RETURN_IF_FAILED(hr);
 
 			if (_stateInfo.state == PBPS_ENABLED)
+				// Necessary when adding a breakpoint on a source code line while debugging.
 				_boundBP->Enable(TRUE);
 
 			wil::com_ptr_nothrow<BreakpointBoundEvent> p = new (std::nothrow) BreakpointBoundEvent (this, _boundBP.get()); LOG_IF_NULL_ALLOC(p);
@@ -879,7 +939,8 @@ WI_ASSERT(!_errorBP);
 
 	virtual HRESULT STDMETHODCALLTYPE GetState (__RPC__out PENDING_BP_STATE_INFO *pState) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		*pState = _stateInfo;
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetBreakpointRequest (__RPC__deref_out_opt IDebugBreakpointRequest2 **ppBPRequest) override
@@ -907,14 +968,10 @@ WI_ASSERT(!_errorBP);
 		if (_stateInfo.state == PBPS_DELETED)
 			RETURN_HR(E_BP_DELETED);
 
-		//if (_boundBP)
-		//	_boundBP->Enable(fEnable);
-
 		if (fEnable)
 		{
 			if (_stateInfo.state != PBPS_ENABLED)
 			{
-				///_program->RegisterPendingBreakpoint(this);
 				WI_ASSERT(!_advisedDebugEventCallback);
 				com_ptr<IVsDebugger> debugger;
 				hr = serviceProvider->QueryService (SID_SVsShellDebugger, &debugger); RETURN_IF_FAILED(hr);
@@ -1049,9 +1106,7 @@ WI_ASSERT(!_errorBP);
 
 								auto p = com_ptr(new (std::nothrow) BreakpointBoundEvent (this, _boundBP.get())); LOG_IF_NULL_ALLOC(p);
 								if (p)
-								{
-									hr = p->Send (_callback.get(), _engine.get(), _program.get(), nullptr); LOG_IF_FAILED(hr);
-								}
+									p->Send (_callback.get(), _engine.get(), _program.get(), nullptr);
 
 								return S_OK;
 							}
@@ -1061,7 +1116,7 @@ WI_ASSERT(!_errorBP);
 					{
 						// If we have a bound breakpoint whose address is in the just-unloaded module,
 						// we unbind it and turn it into an error breakpoint.
-						WI_ASSERT(false);
+						RETURN_HR(E_NOTIMPL);
 					}
 				}
 			}
