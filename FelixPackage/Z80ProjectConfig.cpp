@@ -415,7 +415,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE StartClean(IVsOutputWindowPane * pIVsOutputWindowPane, DWORD dwOptions) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE StartUpToDateCheck(IVsOutputWindowPane * pIVsOutputWindowPane, DWORD dwOptions) override
