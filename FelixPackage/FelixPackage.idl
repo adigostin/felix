@@ -81,14 +81,14 @@ library ATLProject1Lib
 	interface IZ80ProjectItem : IDispatch
 	{
 		VSITEMID GetItemId();
-		HRESULT GetMkDocument (BSTR* pbstrMkDocument);
+		HRESULT GetMkDocument (BSTR* pbstrMkDocument); // returns the full path
 		IZ80ProjectItem* Next(); // TODO: keep an unordered_map with itemid/itemptr, then get rid of Next, SetNext, FindDescendant
 		void SetNext (IZ80ProjectItem* next);
 		HRESULT GetProperty (VSHPROPID propid, VARIANT* pvar);
 		HRESULT SetProperty (VSHPROPID propid, REFVARIANT var);
 		HRESULT GetGuidProperty (VSHPROPID propid, GUID* pguid);
 		HRESULT SetGuidProperty (VSHPROPID propid, REFGUID rguid);
-		HRESULT GetCanonicalName (BSTR* pbstrName);
+		HRESULT GetCanonicalName (BSTR* pbstrName); // returns the path relative to project if possible, otherwise the full path -- all lowercase
 		HRESULT IsItemDirty (IUnknown *punkDocData, BOOL *pfDirty);
 	}
 

@@ -905,6 +905,15 @@ public:
 				return S_OK;
 			}
 
+			if (propid == VSHPROPID_EditLabel) // -2026,
+			{
+				const wchar_t* ext = ::PathFindExtension(_filename.get());
+				BSTR bs = SysAllocStringLen(_filename.get(), (UINT)(ext - _filename.get())); RETURN_IF_NULL_ALLOC(bs);
+				pvar->vt = VT_BSTR;
+				pvar->bstrVal = bs;
+				return S_OK;
+			}
+
 			if (propid == VSHPROPID_ExtObject) // -2027
 				return E_NOTIMPL;
 
@@ -1059,41 +1068,48 @@ public:
 	{
 		// https://docs.microsoft.com/en-us/dotnet/api/microsoft.visualstudio.shell.interop.__vshpropid?view=visualstudiosdk-2017
 
-		// TODO: property change notifications
-
 		if (itemid == VSITEMID_ROOT)
 		{
+			HRESULT hr;
 			if (propid == VSHPROPID_Caption)
 			{
-				if (var.vt != VT_BSTR)
-					RETURN_HR(E_INVALIDARG);
+				RETURN_HR_IF(E_INVALIDARG, var.vt != VT_BSTR);
 				_caption = wil::make_hlocal_string_nothrow(var.bstrVal); RETURN_IF_NULL_ALLOC(_caption);
-				return S_OK;
+				hr = S_OK;
 			}
 			else if (propid == VSHPROPID_ItemDocCookie) // -2034
 			{
-				if (var.vt != VT_VSCOOKIE)
-					RETURN_HR(E_INVALIDARG);
+				RETURN_HR_IF(E_INVALIDARG, var.vt != VT_VSCOOKIE);
 				_itemDocCookie = V_VSCOOKIE(&var);
-				return S_OK;
+				hr = S_OK;
 			}
 			else if (propid == VSHPROPID_ParentHierarchy)
 			{
 				// TODO: need to advise hierarchy events also for the parent?
-				if (var.vt != VT_UNKNOWN)
-					RETURN_HR(E_INVALIDARG);
-				auto hr = var.punkVal->QueryInterface(&_parentHierarchy); RETURN_IF_FAILED(hr);
-				return S_OK;
+				RETURN_HR_IF(E_INVALIDARG, var.vt != VT_UNKNOWN);
+				hr = var.punkVal->QueryInterface(&_parentHierarchy); RETURN_IF_FAILED(hr);
 			}
 			else if (propid == VSHPROPID_ParentHierarchyItemid)
 			{
-				if (var.vt != VT_VSITEMID)
-					RETURN_HR(E_INVALIDARG);
+				RETURN_HR_IF(E_INVALIDARG, var.vt != VT_VSITEMID);
 				_parentHierarchyItemId = V_VSITEMID(&var);
-				return S_OK;
+				hr = S_OK;
+			}
+			else if (propid == VSHPROPID_EditLabel)
+			{
+				RETURN_HR_IF(E_INVALIDARG, var.vt != VT_BSTR);
+				hr = RenameProject(var.bstrVal); RETURN_IF_FAILED_EXPECTED(hr);
+			}
+			else
+				RETURN_HR(E_NOTIMPL);
+
+			if (SUCCEEDED(hr))
+			{
+				for (auto& s : _hierarchyEventSinks)
+					s.second->OnPropertyChanged(itemid, propid, 0);
 			}
 
-			RETURN_HR(E_NOTIMPL);
+			return hr;
 		}
 
 		if (auto d = FindDescendant(itemid))
@@ -1121,36 +1137,48 @@ public:
 
 		if (itemid == VSITEMID_ROOT)
 		{
-			*pbstrName = SysAllocString(_filename.get());
-			return *pbstrName ? S_OK : E_OUTOFMEMORY;
+			wil::unique_cotaskmem_string buffer;
+			DWORD unused;
+			auto hr = GetCurFile (&buffer, &unused); RETURN_IF_FAILED(hr);
+			*pbstrName = SysAllocString (buffer.get()); RETURN_IF_NULL_ALLOC(*pbstrName);
+			return S_OK;
 		}
 
 		if (auto d = FindDescendant(itemid))
 			return d->GetCanonicalName(pbstrName);
 
-		RETURN_HR(E_INVALIDARG);
+		WI_ASSERT(false);
+		return E_FAIL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE ParseCanonicalName(LPCOLESTR pszName, VSITEMID* pitemid) override
 	{
-		size_t nameLen = wcslen(pszName);
-		auto canonical = wil::make_cotaskmem_string_nothrow(nullptr, nameLen + 10); RETURN_IF_NULL_ALLOC(canonical);
-		ULONG flags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
-		auto hr = PathCchCanonicalizeEx (canonical.get(), nameLen + 10, pszName, flags); RETURN_IF_FAILED(hr);
+		// Note AGO: VS calls this function with full paths, with the call stack to this function showing
+		// parameters with "mk" in their names. This happens for example while renaming a project, during the
+		// call to OnAfterRenameProject.
+		wil::unique_bstr projCN;
+		auto hr = this->GetCanonicalName(VSITEMID_ROOT, &projCN); LOG_IF_FAILED(hr);
+		if (SUCCEEDED(hr) && !_wcsicmp(projCN.get(), pszName))
+		{
+			*pitemid = VSITEMID_ROOT;
+			return S_OK;
+		}
 
-		wil::com_ptr_nothrow<IZ80ProjectItem> c;
-		hr = FindDescendant([&canonical](IZ80ProjectItem* c)
+		com_ptr<IZ80ProjectItem> c;
+		hr = FindDescendant([pszName](IZ80ProjectItem* c)
 			{
-				wil::unique_bstr childCanonicalName;
-				auto hr = c->GetCanonicalName(&childCanonicalName); RETURN_IF_FAILED(hr);
-				return _wcsicmp(canonical.get(), childCanonicalName.get()) ? S_FALSE : S_OK;
+				wil::unique_bstr childCN;
+				auto hr = c->GetCanonicalName(&childCN); RETURN_IF_FAILED(hr);
+				return _wcsicmp(childCN.get(), pszName) ? S_FALSE : S_OK;
 			}, &c);
 		RETURN_IF_FAILED(hr);
 		if (hr == S_OK)
+		{
 			*pitemid = c->GetItemId();
-		else
-			*pitemid = VSITEMID_NIL;
-		return hr;
+			return S_OK;
+		}
+
+		return E_FAIL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE Unused0() override
@@ -1198,6 +1226,84 @@ public:
 		return E_NOTIMPL;
 	}
 	#pragma endregion
+
+	HRESULT RenameProject (BSTR newName)
+	{
+		auto newNameLen = SysStringLen(newName); RETURN_HR_IF(E_INVALIDARG, newNameLen==0);
+
+		// See if new name has an extension and that it is the right one.
+		wil::unique_bstr defaultExt;
+		auto hr = GetDefaultProjectFileExtension (&defaultExt); RETURN_IF_FAILED(hr);
+		auto* newNameExt = wcsrchr(newName, '.');
+
+		wil::unique_hlocal_string newFilename;
+		wil::unique_hlocal_string newCaption;
+		if(!newNameExt || _wcsicmp(newNameExt + 1, defaultExt.get()))
+		{
+			newCaption = wil::make_hlocal_string_nothrow(newName); RETURN_IF_NULL_ALLOC(newCaption);
+			size_t newFilenameLen = newNameLen + 1 + SysStringLen(defaultExt.get());
+			newFilename = wil::make_hlocal_string_nothrow(newName, newFilenameLen); RETURN_IF_NULL_ALLOC(newFilename);
+			hr = StringCchCat(newFilename.get(), newFilenameLen + 1, L"."); RETURN_IF_FAILED(hr);
+			hr = StringCchCat(newFilename.get(), newFilenameLen + 1, defaultExt.get()); RETURN_IF_FAILED(hr);
+		}
+		else
+		{
+			newCaption = wil::make_hlocal_string_nothrow(newName, newNameExt - newName); RETURN_IF_NULL_ALLOC(newCaption);
+			newFilename = wil::make_hlocal_string_nothrow(newName, newNameLen); RETURN_IF_NULL_ALLOC(newFilename);
+		}
+
+		// Check if it exists.
+		wil::unique_hlocal_string newFullPath;
+		ULONG flags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
+		hr = PathAllocCombine (_location.get(), newFilename.get(), flags, &newFullPath); RETURN_IF_FAILED(hr);
+		HANDLE hFile = ::CreateFile (newFullPath.get(), GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hFile != INVALID_HANDLE_VALUE)
+		{
+			CloseHandle(hFile);
+			//CString msg;
+			//VxFormatString1(msg, IDS_RENAMEFILEALREADYEXISTS, strNewFullName);
+			//_VxModule.SetErrorInfo(hr, msg, 0);
+			return HRESULT_FROM_WIN32(ERROR_FILE_EXISTS);
+		}
+
+		BOOL renameCanContinue = FALSE;
+		com_ptr<IVsSolution> solution;
+		hr = serviceProvider->QueryService(SID_SVsSolution, &solution); RETURN_IF_FAILED(hr);
+		wil::unique_bstr oldFullPath;
+		hr = this->GetMkDocument(VSITEMID_ROOT, &oldFullPath); RETURN_IF_FAILED(hr);
+		hr = solution->QueryRenameProject (this, oldFullPath.get(), newFullPath.get(), 0, &renameCanContinue);
+		if(FAILED(hr) || !renameCanContinue)
+			return OLE_E_PROMPTSAVECANCELLED;
+
+		if (!::MoveFile (oldFullPath.get(), newFullPath.get()))
+			RETURN_LAST_ERROR();
+
+		// Bookkeeping time. We need to update our project name, our title, 
+		// and force our rootnode to update its caption.
+		_filename = std::move(newFilename);
+		_caption = std::move(newCaption);
+
+		// Make sure the property browser is updated
+		com_ptr<IVsUIShell> uiShell;
+		hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell); RETURN_IF_FAILED(hr);
+		uiShell->RefreshPropertyBrowser(DISPID_VALUE); // return value ignored on purpose
+
+		// Let the world know that the project is renamed. Solution needs to be told of rename. 
+		hr = solution->OnAfterRenameProject (this, oldFullPath.get(), newFullPath.get(), 0); LOG_IF_FAILED(hr);
+
+		for (auto& s : _hierarchyEventSinks)
+		{
+			s.second->OnPropertyChanged(VSITEMID_ROOT, VSHPROPID_Caption, 0);
+			s.second->OnPropertyChanged(VSITEMID_ROOT, VSHPROPID_Name, 0);
+			s.second->OnPropertyChanged(VSITEMID_ROOT, VSHPROPID_SaveName, 0);
+			s.second->OnPropertyChanged(VSITEMID_ROOT, VSHPROPID_StateIconIndex, 0);
+		}
+
+		//Fire an event to extensibility
+		//CAutomationEvents::FireProjectsEvent (this, CAutomationEvents::ProjectsEventsDispIDs::ItemRenamed, strOldFullName);
+
+		return S_OK;;
+	}
 
 	#pragma region IVsUIHierarchy
 	virtual HRESULT STDMETHODCALLTYPE QueryStatusCommand (VSITEMID itemid, const GUID* pguidCmdGroup, ULONG cCmds, OLECMD prgCmds[], OLECMDTEXT* pCmdText) override
@@ -1319,7 +1425,8 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetCurFile(LPOLESTR* ppszFilename, DWORD* pnFormatIndex) override
 	{
-		// Note that we return true for VSHPROPID_MonikerSameAsPersistFile.
+		// Note that we return true for VSHPROPID_MonikerSameAsPersistFile, meaning that
+		// IVsProject::GetMkDocument returns the same as GetCurFile for VSITEMID_ROOT.
 
 		size_t reservedLen = wcslen(_location.get()) + wcslen(_filename.get()) + 10;
 
@@ -1380,11 +1487,14 @@ public:
 		return S_OK;
 	}
 
+	// File-based project types must return the path from this method.
 	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (VSITEMID itemid, BSTR* pbstrMkDocument) override
 	{
 		if (itemid == VSITEMID_ROOT)
 		{
-			// Note that we return true for VSHPROPID_MonikerSameAsPersistFile.
+			// Note that we return true for VSHPROPID_MonikerSameAsPersistFile, meaning that
+			// IVsProject::GetMkDocument returns the same as GetCurFile for VSITEMID_ROOT.
+
 			wil::unique_cotaskmem_string buffer;
 			DWORD unused;
 			auto hr = GetCurFile (&buffer, &unused); RETURN_IF_FAILED(hr);

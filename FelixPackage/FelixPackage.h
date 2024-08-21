@@ -38,3 +38,4 @@ HRESULT Z80AsmLanguageInfo_CreateInstance (IVsLanguageInfo** to);
 HRESULT MakeDebugPortSupplier (IDebugPortSupplier2** to);
 HRESULT MakeDebugEngine (IDebugEngine2** to);
 HRESULT MakeLaunchOptions (IFelixLaunchOptions** ppOptions);
+HRESULT GetDefaultProjectFileExtension (BSTR* ppExt);
