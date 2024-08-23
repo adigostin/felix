@@ -37,6 +37,7 @@ class Z80Project
 	//, IVsBuildPropertyStorage2
 	, IZ80ProjectItemParent
 	, IPropertyNotifySink
+	, IVsHierarchyEvents // this implementation only forwards calls to subscribed sinks
 {
 	static inline com_ptr<ITypeLib> _typeLib;
 	static inline com_ptr<ITypeInfo> _typeInfo;
@@ -584,6 +585,8 @@ public:
 		RETURN_HR_IF(E_POINTER, !ppvObject);
 		*ppvObject = nullptr;
 
+		RETURN_HR_IF_EXPECTED(E_NOINTERFACE, riid == IID_ICustomCast); // VS abuses this, let's check it first
+
 		if (   TryQI<IZ80ProjectProperties>(this, riid, ppvObject)
 			|| TryQI<IDispatch>(this, riid, ppvObject)
 			|| TryQI<IUnknown>(static_cast<IVsUIHierarchy*>(this), riid, ppvObject)
@@ -609,6 +612,7 @@ public:
 			//|| TryQI<IVsBuildPropertyStorage2>(this, riid, ppvObject)
 			|| TryQI<IZ80ProjectItemParent>(this, riid, ppvObject)
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
+			|| TryQI<IVsHierarchyEvents>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -645,7 +649,6 @@ public:
 			|| riid == GUID{ 0x266e178e, 0x46b9, 0x4e95, { 0x91, 0x0c, 0x43, 0xaf, 0x54, 0xe3, 0x02, 0x3c } } // IVsStubWindowPrivate
 			|| riid == IID_IProvideMultipleClassInfo
 			|| riid == IID_IExtendedObject
-			|| riid == IID_ICustomCast
 			|| riid == IID_IVsSccProjectProviderBinding
 			|| riid == IID_IVsSccProject2
 			|| riid == GUID{ 0x101d210d, 0x5b28, 0x4e02, { 0xb2, 0x20, 0x19, 0x94, 0x9f, 0xf4, 0x02, 0x3b } } // IID_IVsProjectAsyncOpen
@@ -1513,27 +1516,23 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE OpenItem(VSITEMID itemid, REFGUID rguidLogicalView, IUnknown* punkDocDataExisting, IVsWindowFrame** ppWindowFrame) override
 	{
-		auto d = FindDescendant(itemid);
-		if (!d)
-			return E_FAIL;
+		auto d = FindDescendant(itemid); RETURN_HR_IF(E_INVALIDARG, d == nullptr);
 
 		wil::unique_bstr mkDocument;
-		auto hr = d->GetMkDocument(&mkDocument);
-		if (FAILED(hr))
-			return hr;
+		auto hr = d->GetMkDocument(&mkDocument); RETURN_IF_FAILED(hr);
 
 		wil::com_ptr_nothrow<IVsUIShellOpenDocument> uiShellOpenDocument;
-		hr = _sp->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument);
-		if (FAILED(hr))
-			return hr;
-
-		wil::unique_variant caption;
-		hr = d->GetProperty (VSHPROPID_Caption, &caption); RETURN_IF_FAILED(hr);
+		hr = _sp->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED(hr);
 
 		hr = uiShellOpenDocument->OpenStandardEditor(OSE_ChooseBestStdEditor, mkDocument.get(), rguidLogicalView,
-			caption.bstrVal, this, itemid, punkDocDataExisting, _sp.get(), ppWindowFrame);
-		if (FAILED(hr))
-			return hr;
+			L"%3", this, itemid, punkDocDataExisting, _sp.get(), ppWindowFrame); RETURN_IF_FAILED_EXPECTED(hr);
+
+		wil::unique_variant var;
+		hr = (*ppWindowFrame)->GetProperty(VSFPROPID_DocCookie, &var); LOG_IF_FAILED(hr);
+		if (SUCCEEDED(hr) && (var.vt == VT_VSCOOKIE) && (V_VSCOOKIE(&var) != VSDOCCOOKIE_NIL))
+		{
+			hr = d->SetProperty (VSHPROPID_ItemDocCookie, var); LOG_IF_FAILED(hr);
+		}
 
 		return S_OK;
 	}
@@ -1633,27 +1632,23 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE ReopenItem(VSITEMID itemid, REFGUID rguidEditorType, LPCOLESTR pszPhysicalView, REFGUID rguidLogicalView, IUnknown* punkDocDataExisting, IVsWindowFrame** ppWindowFrame) override
 	{
-		auto d = FindDescendant(itemid);
-		if (!d)
-			return E_FAIL;
+		auto d = FindDescendant(itemid); RETURN_HR_IF(E_INVALIDARG, d == nullptr);
 
 		wil::unique_bstr mkDocument;
-		auto hr = d->GetMkDocument(&mkDocument);
-		if (FAILED(hr))
-			return hr;
+		auto hr = d->GetMkDocument(&mkDocument); RETURN_IF_FAILED(hr);
 
-		wil::com_ptr_nothrow<IVsUIShellOpenDocument> uiShellOpenDocument;
-		hr = _sp->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument);
-		if (FAILED(hr))
-			return hr;
-
-		wil::unique_variant caption;
-		hr = d->GetProperty (VSHPROPID_Caption, &caption); RETURN_IF_FAILED(hr);
+		com_ptr<IVsUIShellOpenDocument> uiShellOpenDocument;
+		hr = _sp->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED(hr);
 
 		hr = uiShellOpenDocument->OpenSpecificEditor(0, mkDocument.get(), rguidEditorType, pszPhysicalView, rguidLogicalView,
-			caption.bstrVal, this, itemid, punkDocDataExisting, _sp.get(), ppWindowFrame);
-		if (FAILED(hr))
-			return hr;
+			L"%3", this, itemid, punkDocDataExisting, _sp.get(), ppWindowFrame); RETURN_IF_FAILED_EXPECTED(hr);
+
+		wil::unique_variant var;
+		hr = (*ppWindowFrame)->GetProperty(VSFPROPID_DocCookie, &var); LOG_IF_FAILED(hr);
+		if (SUCCEEDED(hr) && (var.vt == VT_VSCOOKIE) && (V_VSCOOKIE(&var) != VSDOCCOOKIE_NIL))
+		{
+			hr = d->SetProperty (VSHPROPID_ItemDocCookie, var); LOG_IF_FAILED(hr);
+		}
 
 		return S_OK;
 	}
@@ -2427,6 +2422,40 @@ public:
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE OnRequestEdit (DISPID dispID) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+	#pragma endregion
+
+	#pragma region IVsHierarchyEvents
+	virtual HRESULT STDMETHODCALLTYPE OnItemAdded (VSITEMID itemidParent, VSITEMID itemidSiblingPrev, VSITEMID itemidAdded) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnItemsAppended (VSITEMID itemidParent) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnItemDeleted (VSITEMID itemid) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged (VSITEMID itemid, VSHPROPID propid, DWORD flags) override
+	{
+		for (auto& s : _hierarchyEventSinks)
+			s.second->OnPropertyChanged(itemid, propid, flags);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnInvalidateItems (VSITEMID itemidParent) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnInvalidateIcon (HICON hicon) override
 	{
 		RETURN_HR(E_NOTIMPL);
 	}
