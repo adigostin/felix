@@ -132,6 +132,7 @@ BEGIN
     IDS_COMPANYNAME         "Adi Gostin"
     IDS_VERSION             "1.0"
     IDS_DEBUGGING_PROP_PAGE_TITLE "Debugging"
+    IDS_RENAMEFILEALREADYEXISTS "File already exists.\r\n\r\n%s"
 END
 
 #endif    // English (United States) resources

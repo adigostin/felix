@@ -695,3 +695,28 @@ HRESULT GetDefaultProjectFileExtension (BSTR* ppExt)
 
 	return (*ppExt = SysAllocString(cached.get())) ? S_OK : E_OUTOFMEMORY;
 }
+
+HRESULT SetErrorInfo1 (HRESULT errorHR, ULONG packageStringResId, LPCWSTR arg1)
+{
+	wil::com_ptr_nothrow<IVsShell> shell;
+	auto hr = serviceProvider->QueryService(SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
+
+	wil::unique_bstr message;
+	hr = shell->LoadPackageString(CLSID_FelixPackage, packageStringResId, &message); RETURN_IF_FAILED(hr);
+
+	wil::unique_hlocal_string buffer;
+	for (size_t sz = 100; ; sz *= 2)
+	{
+		buffer = wil::make_hlocal_string_nothrow(nullptr, sz); RETURN_IF_NULL_ALLOC(buffer);
+		int ires = swprintf_s (buffer.get(), sz, message.get(), arg1); RETURN_HR_IF(E_FAIL, ires < 0);
+		if (ires < sz)
+			break;
+	}
+
+	com_ptr<IVsUIShell> uiShell;
+	hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell); RETURN_IF_FAILED(hr);
+
+	hr = uiShell->SetErrorInfo (errorHR, buffer.get(), 0, nullptr, nullptr); RETURN_IF_FAILED(hr);
+
+	return S_OK;
+}

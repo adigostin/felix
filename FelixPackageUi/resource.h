@@ -9,6 +9,7 @@
 #define IDS_COMPANYNAME                 103
 #define IDS_VERSION                     104
 #define IDS_DEBUGGING_PROP_PAGE_TITLE   105
+#define IDS_RENAMEFILEALREADYEXISTS     106
 #define IDB_IMAGES                      300
 #define IDI_PACKAGE_ICON                400
 #define IDI_SPECTRUM                    401

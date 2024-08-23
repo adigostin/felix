@@ -8,6 +8,7 @@
 #include "Z80Xml.h"
 #include "dispids.h"
 #include "guids.h"
+#include "../FelixPackageUi/resource.h"
 
 #pragma comment (lib, "Pathcch.lib")
 #pragma comment (lib, "xmllite.lib")
@@ -1252,18 +1253,20 @@ public:
 			newFilename = wil::make_hlocal_string_nothrow(newName, newNameLen); RETURN_IF_NULL_ALLOC(newFilename);
 		}
 
-		// Check if it exists.
 		wil::unique_hlocal_string newFullPath;
 		ULONG flags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
 		hr = PathAllocCombine (_location.get(), newFilename.get(), flags, &newFullPath); RETURN_IF_FAILED(hr);
-		HANDLE hFile = ::CreateFile (newFullPath.get(), GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (hFile != INVALID_HANDLE_VALUE)
+
+		// Check if it exists, but only if the user changed more than character casing.
+		if (_wcsicmp(_filename.get(), newFilename.get()))
 		{
-			CloseHandle(hFile);
-			//CString msg;
-			//VxFormatString1(msg, IDS_RENAMEFILEALREADYEXISTS, strNewFullName);
-			//_VxModule.SetErrorInfo(hr, msg, 0);
-			return HRESULT_FROM_WIN32(ERROR_FILE_EXISTS);
+			HANDLE hFile = ::CreateFile (newFullPath.get(), GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+			if (hFile != INVALID_HANDLE_VALUE)
+			{
+				CloseHandle(hFile);
+				SetErrorInfo1 (HRESULT_FROM_WIN32(ERROR_FILE_EXISTS), IDS_RENAMEFILEALREADYEXISTS, newFullPath.get());
+				return HRESULT_FROM_WIN32(ERROR_FILE_EXISTS);
+			}
 		}
 
 		BOOL renameCanContinue = FALSE;
@@ -1299,10 +1302,7 @@ public:
 			s.second->OnPropertyChanged(VSITEMID_ROOT, VSHPROPID_StateIconIndex, 0);
 		}
 
-		//Fire an event to extensibility
-		//CAutomationEvents::FireProjectsEvent (this, CAutomationEvents::ProjectsEventsDispIDs::ItemRenamed, strOldFullName);
-
-		return S_OK;;
+		return S_OK;
 	}
 
 	#pragma region IVsUIHierarchy
