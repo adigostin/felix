@@ -72,6 +72,7 @@
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <SDLCheck>false</SDLCheck>
+      <AdditionalOptions>/Zc:strictStrings-</AdditionalOptions>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>_DEBUG;UNICODE;_UNICODE;_AFXDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -102,7 +103,7 @@
       <StructMemberAlignment>8</StructMemberAlignment>
     </Midl>
     <ClCompile>
-      <AdditionalOptions>/Oxs</AdditionalOptions>
+      <AdditionalOptions>/Oxs /Zc:strictStrings-</AdditionalOptions>
       <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)wil\include;$(SolutionDir)shared\include;$(SolutionDir)third_party;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
