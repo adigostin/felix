@@ -20,7 +20,7 @@ static const wchar_t BinaryFilename[] = L"ROMs/Spectrum48K.rom";
 
 // These must be kept in sync with the pkgdef line [$RootKey$\InstalledProducts\FelixPackage]
 //static const wchar_t InstalledProductRegPath[] = L"InstalledProducts\\FelixPackage";
-static const char SentryReleaseName[] = "FelixPackage@0.9.4";
+static const char SentryReleaseName[] = "FelixPackage@0.9.5";
 
 // {8F0D9E89-4C6C-4B63-83CF-1AA6B6E59BCB}
 GUID SID_Simulator = { 0x8f0d9e89, 0x4c6c, 0x4b63, { 0x83, 0xcf, 0x1a, 0xa6, 0xb6, 0xe5, 0x9b, 0xcb } };
