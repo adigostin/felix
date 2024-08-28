@@ -7,7 +7,7 @@ using unique_safearray = wil::unique_any<SAFEARRAY*, decltype(SafeArrayDestroy),
 
 static const auto InvariantLCID = LocaleNameToLCID(LOCALE_NAME_INVARIANT, 0);
 
-static HRESULT GetEnumValueName (ITypeInfo* ti, const TYPEATTR* typeAttr, LONG value, BSTR* nameOut)
+static HRESULT GetNameFromEnumValue (ITypeInfo* ti, const TYPEATTR* typeAttr, LONG value, BSTR* nameOut)
 {
 	RETURN_HR_IF(E_INVALIDARG, typeAttr->typekind != TKIND_ENUM);
 
@@ -22,6 +22,29 @@ static HRESULT GetEnumValueName (ITypeInfo* ti, const TYPEATTR* typeAttr, LONG v
 			UINT cNames;
 			hr = hr = ti->GetNames(varDesc->memid, nameOut, 1, &cNames); RETURN_IF_FAILED(hr);
 			RETURN_HR_IF(E_FAIL, cNames != 1);
+			return S_OK;
+		}
+	}
+
+	RETURN_HR(DISP_E_UNKNOWNNAME);
+}
+
+static HRESULT GetEnumValueFromName (ITypeInfo* ti, const TYPEATTR* typeAttr, LPCWSTR name, LONG* valueOut)
+{
+	RETURN_HR_IF(E_INVALIDARG, typeAttr->typekind != TKIND_ENUM);
+
+	for (WORD i = 0; i < typeAttr->cVars; i++)
+	{
+		VARDESC* varDesc;
+		auto hr = ti->GetVarDesc(i, &varDesc); RETURN_IF_FAILED(hr);
+		auto releaseVarDesc = wil::scope_exit([ti, varDesc] { ti->ReleaseVarDesc(varDesc); });
+		RETURN_HR_IF(E_INVALIDARG, varDesc->lpvarValue->vt != VT_I4);
+		wil::unique_bstr n;
+		UINT cNames;
+		hr = ti->GetNames(varDesc->memid, &n, 1, &cNames); RETURN_IF_FAILED(hr);
+		if (!wcscmp(n.get(), name))
+		{
+			*valueOut = varDesc->lpvarValue->lVal;
 			return S_OK;
 		}
 	}
@@ -173,7 +196,7 @@ static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, IXmlWriterL
 								if (refTypeAttr->typekind == TKIND_ENUM)
 								{
 									wil::unique_bstr value;
-									hr = GetEnumValueName (refTypeInfo.get(), refTypeAttr, V_I4(&result), &value); RETURN_IF_FAILED(hr);
+									hr = GetNameFromEnumValue (refTypeInfo.get(), refTypeAttr, V_I4(&result), &value); RETURN_IF_FAILED(hr);
 									bool pushed = attributes.try_push_back(ValueProperty{ fd->memid, std::move(name), std::move(value) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 								}
 								else
@@ -389,11 +412,25 @@ static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDis
 
 		MEMBERID memid;
 		hr = typeInfo->GetIDsOfNames(&const_cast<LPOLESTR&>(attrName), 1, &memid); RETURN_IF_FAILED(hr);
-		VARTYPE vt;
-		hr = FindPutFunction(memid, typeInfo.get(), typeAttr, &vt); RETURN_IF_FAILED(hr);
-		wil::unique_variant valueVariant;
+		FUNCDESC* fd = nullptr;
+		for (WORD i = 0; i < typeAttr->cFuncs && !fd; i++)
+		{
+			hr = typeInfo->GetFuncDesc(i, &fd); RETURN_IF_FAILED(hr);
+			if ((fd->invkind == INVOKE_PROPERTYPUT) && (fd->memid == memid))
+			{
+				RETURN_HR_IF(E_FAIL, fd->cParams != 1);
+				break;
+			}
+			
+			typeInfo->ReleaseFuncDesc(fd);
+			fd = nullptr;
+		}
 
-		switch (vt)
+		RETURN_HR_IF_NULL(DISP_E_MEMBERNOTFOUND, fd);
+		auto releaseFD = wil::scope_exit([ti=typeInfo.get(), fd] { ti->ReleaseFuncDesc(fd); });
+
+		wil::unique_variant valueVariant;
+		switch (fd->lprgelemdescParam[0].tdesc.vt)
 		{
 			case VT_BSTR:
 				hr = InitVariantFromString(attrValue, &valueVariant); RETURN_IF_FAILED(hr);
@@ -403,6 +440,23 @@ static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDis
 				hr = InitVariantFromBoolean(!wcscmp(attrValue, L"True"), &valueVariant); RETURN_IF_FAILED(hr);
 				break;
 
+			case VT_USERDEFINED:
+			{
+				com_ptr<ITypeInfo> refTypeInfo;
+				hr = typeInfo->GetRefTypeInfo (fd->elemdescFunc.tdesc.hreftype, &refTypeInfo); RETURN_IF_FAILED(hr);
+				TYPEATTR* refTypeAttr;
+				hr = refTypeInfo->GetTypeAttr(&refTypeAttr); RETURN_IF_FAILED(hr);
+				auto releaseRefTypeAttr = wil::scope_exit([ti=refTypeInfo.get(), refTypeAttr] { ti->ReleaseTypeAttr(refTypeAttr); });
+				if (refTypeAttr->typekind == TKIND_ENUM)
+				{
+					LONG value;
+					hr = GetEnumValueFromName (refTypeInfo, refTypeAttr, attrValue, &value); RETURN_IF_FAILED(hr);
+					hr = InitVariantFromInt32 (value, &valueVariant); RETURN_IF_FAILED(hr);
+				}
+				else
+					RETURN_HR(E_NOTIMPL);
+				break;
+			}
 			default:
 				RETURN_HR(E_NOTIMPL);
 		}
