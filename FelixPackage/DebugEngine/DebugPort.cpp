@@ -4,6 +4,7 @@
 #include "DebugEventBase.h"
 #include "shared/com.h"
 #include "shared/unordered_map_nothrow.h"
+#include "shared/OtherGuids.h"
 #include <OleCtl.h>
 
 class Z80DebugPort : public IZ80DebugPort, IConnectionPoint, IConnectionPointContainer
@@ -21,61 +22,41 @@ public:
 	#pragma region IUnknown
 	virtual HRESULT __stdcall QueryInterface(REFIID riid, void** ppvObject) override
 	{
-		if (!ppvObject)
-			return E_POINTER;
+		RETURN_HR_IF_NULL(E_POINTER, ppvObject);
+		*ppvObject = nullptr;
 
-		*ppvObject = NULL;
-
-		if (riid == __uuidof(IZ80DebugPort))
-		{
-			*ppvObject = static_cast<IZ80DebugPort*>(this);
-			AddRef();
-			return S_OK;
-		}
-		else if (riid == __uuidof(IUnknown))
-		{
-			*ppvObject = static_cast<IDebugPort2*>(this);
-			AddRef();
-			return S_OK;
-		}
-		else if (riid == __uuidof(IDebugPort2))
-		{
-			*ppvObject = static_cast<IDebugPort2*>(this);
-			AddRef();
-			return S_OK;
-		}
-		else if (riid == __uuidof(IConnectionPoint))
-		{
-			*ppvObject = static_cast<IConnectionPoint*>(this);
-			AddRef();
-			return S_OK;
-		}
-		else if (riid == __uuidof(IConnectionPointContainer))
-		{
-			*ppvObject = static_cast<IConnectionPointContainer*>(this);
-			AddRef();
-			return S_OK;
-		}
-		else if (riid == __uuidof(IClientSecurity)
-			||   riid == IID_IMarshal
-			||   riid == IID_INoMarshal
-			//||   riid == IID_IdentityUnmarshal
-			||   riid == IID_IStdMarshalInfo
-			//||   riid == IID_INoIdea5_DebugPort
-			||   riid == IID_IAgileObject
-			||   riid == IID_IFastRundown
-			//||   riid == IID_INoIdea7
-			//||   riid == IID_INoIdea8
-			//||   riid == IID_INoIdea9
-			//||   riid == IID_INoIdea10
-			//||   riid == IID_IApplicationFrame
-			//||   riid == IID_IApplicationFrameManager
-			//||   riid == IID_IApplicationFrameEventHandler
-			//||   riid == IID_IStreamGroup
+		if (   TryQI<IUnknown>(static_cast<IZ80DebugPort*>(this), riid, ppvObject)
+			|| TryQI<IDebugPort2>(this, riid, ppvObject)
+			|| TryQI<IZ80DebugPort>(this, riid, ppvObject)
+			|| TryQI<IConnectionPoint>(this, riid, ppvObject)
+			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
 		)
-			return E_NOINTERFACE;
+			return S_OK;
 
-		//BreakIntoDebugger();
+		#ifdef _DEBUG
+		if (riid == IID_IClientSecurity) return E_NOINTERFACE;
+		if (riid == IID_IMarshal) return E_NOINTERFACE;
+		if (riid == IID_INoMarshal) return E_NOINTERFACE;
+		if (riid == IID_IStdMarshalInfo) return E_NOINTERFACE;
+		if (riid == IID_IAgileObject) return E_NOINTERFACE;
+		if (riid == IID_IFastRundown) return E_NOINTERFACE;
+		if (riid == IID_CDebugPort) return E_NOINTERFACE;
+		if (riid == IID_IDebugPortEx2) return E_NOINTERFACE; // This interface is normally private between the SDM and the custom port supplier.
+		if (riid == IID_INoIdea7) return E_NOINTERFACE;
+		if (riid == IID_IdentityUnmarshal) return E_NOINTERFACE;
+		if (riid == IID_INotARealInterface) return E_NOINTERFACE;
+		if (riid == IID_INoIdea9) return E_NOINTERFACE;
+		if (riid == IID_INoIdea10) return E_NOINTERFACE;
+		if (riid == IID_INoIdea11) return E_NOINTERFACE;
+		if (riid == IID_INoIdea14) return E_NOINTERFACE;
+		if (riid == IID_INoIdea15) return E_NOINTERFACE;
+		for (auto& i : HardcodedRundownIFsOfInterest)
+			if (*i == riid)
+				return E_NOINTERFACE;
+		if (riid == IID_IExternalConnection) return E_NOINTERFACE;
+		if (riid == IID_ICallFactory) return E_NOINTERFACE;
+		#endif
+
 		return E_NOINTERFACE;
 	}
 

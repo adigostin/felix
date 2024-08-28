@@ -1,8 +1,11 @@
 
 #include "pch.h"
+#include <ivstrackprojectdocuments2.h>
 #include "FelixPackage.h"
 #include "shared/OtherGuids.h"
 #include "shared/com.h"
+#include "../FelixPackageUi/resource.h"
+#include "dispids.h"
 
 struct Z80AsmFile : IZ80AsmFile, IProvideClassInfo, IOleCommandTarget, IVsGetCfgProvider
 {
@@ -177,6 +180,7 @@ public:
 			case VSHPROPID_SaveName: // -2002
 			case VSHPROPID_Caption: // -2003
 			case VSHPROPID_Name: // -2012
+			case VSHPROPID_EditLabel: // -2026
 			case VSHPROPID_DescriptiveName: // -2108
 				return InitVariantFromString (PathFindFileName(_pathRelativeToProjectDir.get()), pvar);
 
@@ -216,10 +220,6 @@ public:
 			case VSHPROPID_IsNonMemberItem: // -2044
 				return InitVariantFromBoolean (FALSE, pvar);
 
-			case VSHPROPID_EditLabel: // -2026
-				// TODO: allow editing
-				return E_NOTIMPL;
-
 			case VSHPROPID_ExtObject: // -2027
 				return E_NOTIMPL;
 
@@ -232,20 +232,20 @@ public:
 			case VSHPROPID_ShowOnlyItemCaption: // -2058
 				return InitVariantFromBoolean (TRUE, pvar);
 
+			case VSHPROPID_AltHierarchy: // -2019
+			case VSHPROPID_StateIconIndex: // -2029
+			case VSHPROPID_OverlayIconIndex: // -2048
 			case VSHPROPID_ProjectTreeCapabilities: // -2146
 			case VSHPROPID_IconIndex:
 			case VSHPROPID_IconHandle:
 			case VSHPROPID_OpenFolderIconHandle:
 			case VSHPROPID_OpenFolderIconIndex:
-			case VSHPROPID_OverlayIconIndex:
-			case VSHPROPID_SupportsIconMonikers:
-			case VSHPROPID_StateIconIndex:
-			case VSHPROPID_IsSharedItemsImportFile:
-			case VSHPROPID_AltHierarchy:
+			case VSHPROPID_IsSharedItemsImportFile: // -2154
+			case VSHPROPID_SupportsIconMonikers: // -2159
 				return E_NOTIMPL;
 
 			default:
-				RETURN_HR(E_NOTIMPL);
+				return E_NOTIMPL;
 		}
 	}
 
@@ -258,8 +258,17 @@ public:
 				_parentItemId = V_VSITEMID(&var);
 				return S_OK;
 
+			case VSHPROPID_EditLabel	: // -2026
+				RETURN_HR_IF(E_INVALIDARG, var.vt != VT_BSTR);
+				return RenameFile (var.bstrVal);
+
+			case VSHPROPID_ItemDocCookie: // -2034
+				RETURN_HR_IF(E_INVALIDARG, var.vt != VT_VSCOOKIE);
+				_docCookie = var.lVal;// V_VSCOOKIE(&var);
+				return S_OK;
+
 			default:
-				RETURN_HR(E_NOTIMPL);
+				return E_NOTIMPL;
 		}
 	}
 
@@ -672,6 +681,120 @@ public:
 		return _hier->QueryInterface(ppCfgProvider);
 	}
 	#pragma endregion
+
+	HRESULT RenameFile (BSTR newName)
+	{
+		HRESULT hr;
+
+		ULONG flags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
+
+		wil::unique_variant projectDir;
+		hr = _hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
+		RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
+
+		wil::unique_hlocal_string oldFullPath;
+		hr = PathAllocCombine (projectDir.bstrVal, _pathRelativeToProjectDir.get(), flags, oldFullPath.addressof()); RETURN_IF_FAILED(hr);
+
+		VSQueryEditResult fEditVerdict;
+		com_ptr<IVsQueryEditQuerySave2> queryEdit;
+		hr = serviceProvider->QueryService (SID_SVsQueryEditQuerySave, &queryEdit); RETURN_IF_FAILED(hr);
+		hr = queryEdit->QueryEditFiles (QEF_DisallowInMemoryEdits, 1, oldFullPath.addressof(), nullptr, nullptr, &fEditVerdict, nullptr); LOG_IF_FAILED(hr);
+		if (FAILED(hr) || (fEditVerdict != QER_EditOK))
+			return OLE_E_PROMPTSAVECANCELLED;
+
+		// Check if the document is in the cache and rename document in the cache.
+		com_ptr<IVsRunningDocumentTable> pRDT;
+		hr = serviceProvider->QueryService(SID_SVsRunningDocumentTable, &pRDT); LOG_IF_FAILED(hr);
+		VSCOOKIE dwCookie = VSCOOKIE_NIL;
+		pRDT->FindAndLockDocument (RDT_NoLock, oldFullPath.get(), nullptr, nullptr, nullptr, &dwCookie); // ignore returned HRESULT as we're only interested in dwCookie
+
+		// TODO: repro and test this
+		// if document is open and we are not owner of document, do not rename it
+		//if (poHier != NULL)
+		//{
+		//	CComPtr<IVsHierarchy> pMyHier = (GetCVsHierarchy()->GetIVsHierarchy());
+		//	CComPtr<IUnknown> punkRDTHier;
+		//	CComPtr<IUnknown> punkMyHier;
+		//	pMyHier->QueryInterface(IID_IUnknown, (void **)&punkMyHier);
+		//	poHier->QueryInterface(IID_IUnknown, (void **)&punkRDTHier);
+		//	if (punkRDTHier != punkMyHier)
+		//		return S_OK;
+		//}
+
+		com_ptr<IVsProject> project;
+		hr = _hier->QueryInterface(&project); RETURN_IF_FAILED(hr);
+
+		auto relativeDir = wil::make_hlocal_string_nothrow(_pathRelativeToProjectDir.get());
+		hr = PathCchRemoveFileSpec (relativeDir.get(), wcslen(_pathRelativeToProjectDir.get()) + 1); RETURN_IF_FAILED(hr);
+		wil::unique_hlocal_string newFullPath;
+		hr = PathAllocCombine (projectDir.bstrVal, relativeDir.get(), flags, newFullPath.addressof()); RETURN_IF_FAILED(hr);
+		hr = PathAllocCombine (newFullPath.get(), newName, flags, newFullPath.addressof()); RETURN_IF_FAILED(hr);
+
+		com_ptr<IVsTrackProjectDocuments2> trackProjectDocs;
+		hr = serviceProvider->QueryService (SID_SVsTrackProjectDocuments, &trackProjectDocs); RETURN_IF_FAILED(hr);
+		BOOL fRenameCanContinue = FALSE;
+		hr = trackProjectDocs->OnQueryRenameFile (project, oldFullPath.get(), newFullPath.get(), VSRENAMEFILEFLAGS_NoFlags, &fRenameCanContinue);
+		if (FAILED(hr) || !fRenameCanContinue)
+			return OLE_E_PROMPTSAVECANCELLED;
+
+		wil::unique_hlocal_string otherPathRelativeToProjectDir;
+		hr = PathAllocCombine (relativeDir.get(), newName, flags, otherPathRelativeToProjectDir.addressof()); RETURN_IF_FAILED(hr);
+
+		if (!::MoveFile (oldFullPath.get(), newFullPath.get()))
+			return HRESULT_FROM_WIN32(GetLastError());
+		std::swap (_pathRelativeToProjectDir, otherPathRelativeToProjectDir);
+		auto undoRename = wil::scope_exit([this, &otherPathRelativeToProjectDir, &newFullPath, &oldFullPath]
+			{
+				std::swap (_pathRelativeToProjectDir, otherPathRelativeToProjectDir);
+				::MoveFile (newFullPath.get(), oldFullPath.get());
+			});
+
+
+		if (dwCookie != VSCOOKIE_NIL)
+		{
+			hr = pRDT->RenameDocument (oldFullPath.get(), newFullPath.get(), HIERARCHY_DONTCHANGE, VSITEMID_NIL);
+			if (FAILED(hr))
+			{
+				// We could rename the file on disk, but not in the Running Document Table.
+				// Do we want the rename operation to fail? Not really. So no error checking.
+			}
+		}
+
+		// TODO: ignore file change notifications
+		//CSuspendFileChanges suspendFileChanges (strNewName, TRUE );
+
+		// Tell packages that care that it happened. No error checking here.
+		trackProjectDocs->OnAfterRenameFile (project, oldFullPath.get(), newFullPath.get(), VSRENAMEFILEFLAGS_NoFlags);
+
+		com_ptr<IVsHierarchyEvents> events;
+		hr = _hier->QueryInterface(&events); LOG_IF_FAILED(hr);
+		if (SUCCEEDED(hr))
+		{
+			events->OnPropertyChanged(_itemId, VSHPROPID_Caption, 0);
+			events->OnPropertyChanged(_itemId, VSHPROPID_Name, 0);
+			events->OnPropertyChanged(_itemId, VSHPROPID_SaveName, 0);
+			events->OnPropertyChanged(_itemId, VSHPROPID_DescriptiveName, 0);
+			events->OnPropertyChanged(_itemId, VSHPROPID_StateIconIndex, 0);
+		}
+
+		// TODO: repro this
+		// Make sure the property browser is updated
+		//com_ptr<IVsUIShell> uiShell;
+		//hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell); LOG_IF_FAILED(hr);
+		//if (SUCCEEDED(hr))
+		//	uiShell->RefreshPropertyBrowser(DISPID_VALUE); // return value ignored on purpose
+
+		// mark project as dirty
+		com_ptr<IPropertyNotifySink> pns;
+		hr = _hier->QueryInterface(&pns); LOG_IF_FAILED(hr);
+		if (SUCCEEDED(hr))
+			pns->OnChanged(dispidItems);
+
+		//~CSuspendFileChanges
+
+		undoRename.release();
+		return S_OK;
+	}
 };
 
 // ============================================================================

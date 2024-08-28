@@ -20,7 +20,7 @@ static const wchar_t BinaryFilename[] = L"ROMs/Spectrum48K.rom";
 
 // These must be kept in sync with the pkgdef line [$RootKey$\InstalledProducts\FelixPackage]
 //static const wchar_t InstalledProductRegPath[] = L"InstalledProducts\\FelixPackage";
-static const char SentryReleaseName[] = "FelixPackage@0.9.4";
+static const char SentryReleaseName[] = "FelixPackage@0.9.5";
 
 // {8F0D9E89-4C6C-4B63-83CF-1AA6B6E59BCB}
 GUID SID_Simulator = { 0x8f0d9e89, 0x4c6c, 0x4b63, { 0x83, 0xcf, 0x1a, 0xa6, 0xb6, 0xe5, 0x9b, 0xcb } };
@@ -659,5 +659,64 @@ HRESULT FelixPackage_CreateInstance (IVsPackage** out)
 	wil::com_ptr_nothrow<FelixPackageImpl> p = new (std::nothrow) FelixPackageImpl(); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance(); RETURN_IF_FAILED(hr);
 	*out = p.detach();
+	return S_OK;
+}
+
+HRESULT GetDefaultProjectFileExtension (BSTR* ppExt)
+{
+	static wil::unique_hlocal_string cached;
+	if (!cached)
+	{
+		com_ptr<ILocalRegistry4> lr;
+		auto hr = serviceProvider->QueryService(SID_SLocalRegistry, &lr); RETURN_IF_FAILED(hr);
+
+		VSLOCALREGISTRYROOTHANDLE vsRootHandle;
+		wil::unique_bstr regRoot;
+		hr = lr->GetLocalRegistryRootEx (RegType_Configuration, &vsRootHandle, &regRoot); RETURN_IF_FAILED(hr);
+		HKEY rootKey = (HKEY)(ULONG_PTR)(LONG)vsRootHandle;
+
+		static const wchar_t Projects[] = L"\\Projects\\";
+		static const size_t GuidStrSize = 38;
+		uint32_t keyNameLen = SysStringLen(regRoot.get()) + (sizeof(Projects) / 2 - 1) + GuidStrSize;
+		auto keyName = wil::make_hlocal_string_nothrow(nullptr, keyNameLen);
+		hr = StringCchCat(keyName.get(), keyNameLen + 1, regRoot.get()); RETURN_IF_FAILED(hr);
+		STRSAFE_LPWSTR end;
+		hr = StringCchCatEx(keyName.get(), keyNameLen + 1, Projects, &end, nullptr, 0); RETURN_IF_FAILED(hr);
+		StringFromGUID2 (IID_IZ80ProjectProperties, end, GuidStrSize + 1);
+		wil::unique_hkey key;
+		auto lresult = RegOpenKeyEx(rootKey, keyName.get(), 0, KEY_READ, &key); RETURN_IF_WIN32_ERROR(lresult);
+
+		wchar_t value[20];
+		DWORD valueSize = sizeof(value);
+		lresult = RegGetValue (key.get(), NULL, L"DefaultProjectExtension", RRF_RT_REG_SZ, nullptr, value, &valueSize); RETURN_IF_WIN32_ERROR(lresult);
+
+		cached = wil::make_hlocal_string_nothrow(value, valueSize / 2 - 1); RETURN_IF_NULL_ALLOC(cached);
+	}
+
+	return (*ppExt = SysAllocString(cached.get())) ? S_OK : E_OUTOFMEMORY;
+}
+
+HRESULT SetErrorInfo1 (HRESULT errorHR, ULONG packageStringResId, LPCWSTR arg1)
+{
+	wil::com_ptr_nothrow<IVsShell> shell;
+	auto hr = serviceProvider->QueryService(SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
+
+	wil::unique_bstr message;
+	hr = shell->LoadPackageString(CLSID_FelixPackage, packageStringResId, &message); RETURN_IF_FAILED(hr);
+
+	wil::unique_hlocal_string buffer;
+	for (size_t sz = 100; ; sz *= 2)
+	{
+		buffer = wil::make_hlocal_string_nothrow(nullptr, sz); RETURN_IF_NULL_ALLOC(buffer);
+		int ires = swprintf_s (buffer.get(), sz, message.get(), arg1); RETURN_HR_IF(E_FAIL, ires < 0);
+		if (ires < sz)
+			break;
+	}
+
+	com_ptr<IVsUIShell> uiShell;
+	hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell); RETURN_IF_FAILED(hr);
+
+	hr = uiShell->SetErrorInfo (errorHR, buffer.get(), 0, nullptr, nullptr); RETURN_IF_FAILED(hr);
+
 	return S_OK;
 }

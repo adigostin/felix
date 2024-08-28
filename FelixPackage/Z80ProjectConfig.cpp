@@ -470,7 +470,7 @@ public:
 		if (propid == VSBLDCFGPROPID_SupportsMTBuild)
 			return InitVariantFromBoolean (TRUE, pvar);
 
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE StartBuildEx(DWORD dwBuildId, IVsOutputWindowPane * pIVsOutputWindowPane, DWORD dwOptions) override

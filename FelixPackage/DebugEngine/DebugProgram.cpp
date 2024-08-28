@@ -236,6 +236,10 @@ public:
 					{
 						len = 2;
 					}
+					else if (buffer[0] == 0x76) // HALT
+					{
+						len = 1;
+					}
 				}
 
 				if (len)

@@ -15,9 +15,11 @@
 #define dispidConfigurations       5
 #define dispidGeneralProperties    6
 #define dispidDebuggingProperties  7
-#define dispidItems                8
 #define dispidProjectGuid          9
 #define dispidSaveListing          10
 #define dispidListingFilename      11
+
+// IZ80ProjectProperties
+#define dispidItems                8
 
 #endif

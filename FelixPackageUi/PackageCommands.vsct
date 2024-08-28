@@ -109,10 +109,11 @@
 				<Parent guid="guidFelixPackageCmdSet" id="TWToolbarGroup" />
 				<Icon guid="guidImages" id="8" />
 				<Strings>
-					<ButtonText>Show CRT Snapshop</ButtonText>
-					<ToolTipText>When On, shows the snapshot of the CRT display.
-When Off, shows a snapshot of the video memory,
-including newly drawn parts that the CRT beam hasn't reached yet.
+					<ButtonText>Show CRT Snapshot</ButtonText>
+					<ToolTipText>Show CRT Snapshot
+When On, shows a snapshot of the CRT with the beam frozen in time.
+When Off, shows a snapshot of the video memory, including newly drawn
+parts that the beam hasn't reached yet.
 (Only makes a difference while stepping in the debugger.)</ToolTipText>
 				</Strings>
 			</Button>
