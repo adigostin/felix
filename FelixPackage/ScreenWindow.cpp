@@ -669,12 +669,9 @@ public:
 
 		if (settings_store)
 		{
-			auto dir = wil::make_hlocal_string_nothrow(of.pwzFileName, of.nFileOffset);
-			if(dir)
-			{
-				hr = settings_store->SetString (SettingsCollection, SettingLoadSavePath, dir.get());
-				LOG_IF_FAILED(hr);
-			}
+			// No error checking, nothing we could do about it anyway.
+			if (auto dir = wil::make_hlocal_string_nothrow(of.pwzFileName, of.nFileOffset))
+				settings_store->SetString (SettingsCollection, SettingLoadSavePath, dir.get());
 		}
 
 		if (!start_debugging)
