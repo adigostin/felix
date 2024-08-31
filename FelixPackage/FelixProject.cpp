@@ -858,18 +858,16 @@ public:
 		if (itemid == VSITEMID_NIL)
 			return E_INVALIDARG;
 
-		if (itemid == _parentHierarchyItemId)
-			// This function is sometimes called with a call stack showing some "Connected Services" stuff:
-			// Microsoft.VisualStudio.ConnectedServices.VisualStudio.Extensions.VsHierarchyExtensions.IsItemChildOfConnectedServicesNode
-			// Seems like a bug in the caller.
-			return E_INVALIDARG;
-
 		// https://docs.microsoft.com/en-us/dotnet/api/microsoft.visualstudio.shell.interop.__vshpropid?view=visualstudiosdk-2017
 
 		if (itemid == VSITEMID_ROOT)
 		{
 			if (propid == VSHPROPID_Parent) // -1000
-				return InitVariantFromInt32 (_parentHierarchyItemId, pvar);
+				// The VSITEMID of the node’s parent item. For example, in projects a folder node is the parent of
+				// the files put into that folder. The property uses a System.Int32 value. If the node is a direct
+				// parent of the root node, VSITEMID_ROOT is retrieved. If the node is at the root level and it
+				// does not have a parent, VSITEMID_NIL is returned.
+				return InitVariantFromInt32 (VSITEMID_NIL, pvar);
 
 			if (propid == VSHPROPID_FirstChild) // -1001
 				return InitVariantFromInt32 (_firstChild ? _firstChild->GetItemId() : VSITEMID_NIL, pvar);
@@ -1504,9 +1502,6 @@ public:
 			*pbstrMkDocument = SysAllocString (buffer.get()); RETURN_IF_NULL_ALLOC(*pbstrMkDocument);
 			return S_OK;
 		}
-
-		if (itemid == _parentHierarchyItemId)
-			RETURN_HR(E_INVALIDARG);
 
 		if (auto d = FindDescendant(itemid))
 			return d->GetMkDocument(pbstrMkDocument);
