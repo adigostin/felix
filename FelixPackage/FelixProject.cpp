@@ -825,10 +825,13 @@ public:
 			RETURN_HR(E_NOTIMPL);
 		}
 
+		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
+		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
+
 		if (auto d = FindDescendant(itemid))
 			return d->GetGuidProperty(propid, pguid);
 
-		RETURN_HR(E_INVALIDARG);
+		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE SetGuidProperty(VSITEMID itemid, VSHPROPID propid, REFGUID rguid) override
@@ -847,17 +850,17 @@ public:
 			RETURN_HR(E_NOTIMPL);
 		}
 
+		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
+		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
+
 		if (auto d = FindDescendant(itemid))
 			return d->SetGuidProperty(propid, rguid);
 
-		RETURN_HR(E_INVALIDARG);
+		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetProperty (VSITEMID itemid, VSHPROPID propid, VARIANT* pvar) override
 	{
-		if (itemid == VSITEMID_NIL)
-			return E_INVALIDARG;
-
 		// https://docs.microsoft.com/en-us/dotnet/api/microsoft.visualstudio.shell.interop.__vshpropid?view=visualstudiosdk-2017
 
 		#pragma region Some properties return the same thing for any node of our hierarchy
@@ -1062,10 +1065,13 @@ public:
 			return E_NOTIMPL;
 		}
 
+		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
+		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
+
 		if (auto d = FindDescendant(itemid))
 			return d->GetProperty(propid, pvar);
 
-		RETURN_HR(E_NOTIMPL);
+		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE SetProperty (VSITEMID itemid, VSHPROPID propid, VARIANT var) override
@@ -1120,10 +1126,13 @@ public:
 			return hr;
 		}
 
+		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
+		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
+
 		if (auto d = FindDescendant(itemid))
 			return d->SetProperty(propid, var);
 
-		RETURN_HR(E_INVALIDARG);
+		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetNestedHierarchy(VSITEMID itemid, REFIID iidHierarchyNested, void** ppHierarchyNested, VSITEMID* pitemidNested) override
@@ -1152,11 +1161,13 @@ public:
 			return S_OK;
 		}
 
+		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
+		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
+
 		if (auto d = FindDescendant(itemid))
 			return d->GetCanonicalName(pbstrName);
 
-		WI_ASSERT(false);
-		return E_FAIL;
+		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE ParseCanonicalName(LPCOLESTR pszName, VSITEMID* pitemid) override
@@ -1318,6 +1329,9 @@ public:
 		if (itemid == VSITEMID_ROOT)
 			return QueryStatus (pguidCmdGroup, cCmds, prgCmds, pCmdText);
 
+		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
+		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
+
 		if (auto d = FindDescendant(itemid))
 		{
 			wil::com_ptr_nothrow<IOleCommandTarget> ct;
@@ -1325,13 +1339,16 @@ public:
 			return ct->QueryStatus (pguidCmdGroup, cCmds, prgCmds, pCmdText);
 		}
 
-		RETURN_HR(E_INVALIDARG);
+		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE ExecCommand (VSITEMID itemid, const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT* pvaIn, VARIANT* pvaOut) override
 	{
 		if (itemid == VSITEMID_ROOT)
 			return ExecInternal (pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
+
+		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
+		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
 
 		if (auto d = FindDescendant(itemid))
 		{
@@ -1342,7 +1359,7 @@ public:
 			return ct->Exec (pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
 		}
 
-		RETURN_HR(E_INVALIDARG);
+		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
 	#pragma endregion
 
@@ -1509,10 +1526,13 @@ public:
 			return S_OK;
 		}
 
+		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
+		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
+
 		if (auto d = FindDescendant(itemid))
 			return d->GetMkDocument(pbstrMkDocument);
 
-		RETURN_HR(E_INVALIDARG);
+		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE OpenItem(VSITEMID itemid, REFGUID rguidLogicalView, IUnknown* punkDocDataExisting, IVsWindowFrame** ppWindowFrame) override
@@ -2136,8 +2156,13 @@ public:
 			return S_OK;
 		}
 
-		auto d = FindDescendant(itemid);
-		return d->IsItemDirty(punkDocData, pfDirty);
+		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
+		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
+
+		if (auto d = FindDescendant(itemid))
+			return d->IsItemDirty(punkDocData, pfDirty);
+
+		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE SaveItem (VSSAVEFLAGS dwSave, LPCOLESTR pszSilentSaveAsName, VSITEMID itemid, IUnknown *punkDocData, BOOL *pfCanceled) override
