@@ -860,6 +860,14 @@ public:
 
 		// https://docs.microsoft.com/en-us/dotnet/api/microsoft.visualstudio.shell.interop.__vshpropid?view=visualstudiosdk-2017
 
+		#pragma region Some properties return the same thing for any node of our hierarchy
+		if (propid == VSHPROPID_ParentHierarchy) // -2032
+			return InitVariantFromUnknown (_parentHierarchy.get(), pvar);
+
+		if (propid == VSHPROPID_ParentHierarchyItemid) // -2033
+			return InitVariantFromInt32 (_parentHierarchyItemId, pvar);
+		#pragma endregion
+
 		if (itemid == VSITEMID_ROOT)
 		{
 			if (propid == VSHPROPID_Parent) // -1000
@@ -924,12 +932,6 @@ public:
 
 			if (propid == VSHPROPID_HandlesOwnReload) // -2031
 				return InitVariantFromBoolean (FALSE, pvar);
-
-			if (propid == VSHPROPID_ParentHierarchy) // -2032
-				return InitVariantFromUnknown (_parentHierarchy.get(), pvar);
-
-			if (propid == VSHPROPID_ParentHierarchyItemid) // -2033
-				return InitVariantFromInt32 (_parentHierarchyItemId, pvar);
 
 			if (propid == VSHPROPID_ItemDocCookie) // -2034
 				return InitVariantFromInt32 (_itemDocCookie, pvar);
@@ -1068,6 +1070,22 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE SetProperty (VSITEMID itemid, VSHPROPID propid, VARIANT var) override
 	{
+		#pragma region Some properties return the same thing for any node of our hierarchy
+		if (propid == VSHPROPID_ParentHierarchy)
+		{
+			// TODO: need to advise hierarchy events also for the parent?
+			RETURN_HR_IF(E_INVALIDARG, var.vt != VT_UNKNOWN);
+			return var.punkVal->QueryInterface(&_parentHierarchy);
+		}
+		
+		if (propid == VSHPROPID_ParentHierarchyItemid)
+		{
+			RETURN_HR_IF(E_INVALIDARG, var.vt != VT_VSITEMID);
+			_parentHierarchyItemId = V_VSITEMID(&var);
+			return S_OK;
+		}
+		#pragma endregion
+
 		// https://docs.microsoft.com/en-us/dotnet/api/microsoft.visualstudio.shell.interop.__vshpropid?view=visualstudiosdk-2017
 
 		if (itemid == VSITEMID_ROOT)
@@ -1083,18 +1101,6 @@ public:
 			{
 				RETURN_HR_IF(E_INVALIDARG, var.vt != VT_VSCOOKIE);
 				_itemDocCookie = V_VSCOOKIE(&var);
-				hr = S_OK;
-			}
-			else if (propid == VSHPROPID_ParentHierarchy)
-			{
-				// TODO: need to advise hierarchy events also for the parent?
-				RETURN_HR_IF(E_INVALIDARG, var.vt != VT_UNKNOWN);
-				hr = var.punkVal->QueryInterface(&_parentHierarchy); RETURN_IF_FAILED(hr);
-			}
-			else if (propid == VSHPROPID_ParentHierarchyItemid)
-			{
-				RETURN_HR_IF(E_INVALIDARG, var.vt != VT_VSITEMID);
-				_parentHierarchyItemId = V_VSITEMID(&var);
 				hr = S_OK;
 			}
 			else if (propid == VSHPROPID_EditLabel)
