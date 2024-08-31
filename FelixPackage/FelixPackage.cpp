@@ -203,6 +203,19 @@ public:
 			sentry_value_set_by_key(exc, "stacktrace", stacktrace);
 
 			sentry_event_add_exception(event, exc);
+			if (failure.pszMessage && *failure.pszMessage)
+			{
+				int len = WideCharToMultiByte (CP_UTF8, 0, failure.pszMessage, -1, nullptr, 0, nullptr, nullptr);
+				if (len)
+				{
+					auto s = wil::make_hlocal_ansistring_nothrow(nullptr, len - 1);
+					if (s)
+					{
+						WideCharToMultiByte (CP_UTF8, 0, failure.pszMessage, -1, s.get(), len, nullptr, nullptr);
+						sentry_value_set_by_key (event, "message", sentry_value_new_string(s.get()));
+					}
+				}
+			}
 			sentry_capture_event(event);
 		}
 	}
