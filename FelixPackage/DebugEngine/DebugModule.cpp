@@ -236,7 +236,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE LoadSymbols() override
 	{
 		// VS calls this when right-clicking a frame in the Call Stack window and choosing Load Symbols.
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE IsUserCode (BOOL *pfUser) override

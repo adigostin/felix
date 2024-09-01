@@ -42,12 +42,12 @@ public:
 	#pragma region IDebugExpression2
 	virtual HRESULT STDMETHODCALLTYPE EvaluateAsync (EVALFLAGS dwFlags, IDebugEventCallback2 *pExprCallback) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE Abort() override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE EvaluateSync (EVALFLAGS dwFlags, DWORD dwTimeout, IDebugEventCallback2 *pExprCallback, IDebugProperty2 **ppResult) override
