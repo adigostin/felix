@@ -345,8 +345,18 @@ public:
 
 		if (grfLaunch & DBGLAUNCH_NoDebug)
 		{
-			// TODO: ShellExecute(...)
-			RETURN_HR(E_NOTIMPL);
+			wil::com_ptr_nothrow<IVsUIShell> uiShell;
+			hr = serviceProvider->QueryService(SID_SVsUIShell, &uiShell);
+			if (SUCCEEDED(hr))
+			{
+				HWND parent;
+				hr = uiShell->GetDialogOwnerHwnd(&parent); RETURN_IF_FAILED(hr);
+				::MessageBox (parent, L"Starting without debugging is not yet implemented.\r\n\r\n"
+					L"For now you can Start Debugging (F5 by default) and \"ignore\" the debugger.", L"Felix", 0);
+				return S_OK;
+			}
+
+			return E_NOTIMPL;
 		}
 		else
 		{
