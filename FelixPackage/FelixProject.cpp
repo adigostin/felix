@@ -773,13 +773,7 @@ public:
 		_parentHierarchy = nullptr;
 		_parentHierarchyItemId = VSITEMID_NIL;
 		_firstChild = nullptr;
-
-		while (_configs.size())
-		{
-			auto hr = _configs.back()->UnadvisePropertyNotify(this); LOG_IF_FAILED(hr);
-			_configs.remove_back();
-		}
-
+		_configs.clear();
 		return S_OK;
 	}
 
@@ -1865,8 +1859,6 @@ public:
 		bool pushed = _configs.try_push_back(std::move(newConfig)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 		auto removeBack = wil::scope_exit([this] { _configs.remove_back(); });
 
-		hr = _configs.back()->AdvisePropertyNotify(this); RETURN_IF_FAILED(hr);
-
 		_isDirty = true;
 
 		for (auto& sink : _cfgProviderEventSinks)
@@ -1897,7 +1889,6 @@ public:
 			return E_INVALIDARG;
 		}
 
-		hr = it->get()->UnadvisePropertyNotify(this); LOG_IF_FAILED(hr);
 		_configs.erase(it);
 
 		_isDirty = true;
@@ -2267,17 +2258,7 @@ public:
 			bool pushed = newConfigs.try_push_back(std::move(config)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 		}
 
-		while(_configs.size())
-		{
-			_configs.back()->UnadvisePropertyNotify(this);
-			_configs.remove_back();
-		}
-
 		_configs = std::move(newConfigs);
-		for (uint32_t i = 0; i < _configs.size(); i++)
-		{
-			hr = _configs[i]->AdvisePropertyNotify(this); LOG_IF_FAILED(hr);
-		}
 
 		_isDirty = true;
 

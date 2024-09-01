@@ -37,8 +37,6 @@ library ATLProject1Lib
 		HRESULT GetOutputDirectory ([out, retval] BSTR* pbstr);
 		HRESULT GetOutputFileName ([out, retval] BSTR* pbstr);
 		HRESULT GetSldFileName ([out, retval] BSTR* pbstr);
-		HRESULT AdvisePropertyNotify (IPropertyNotifySink* sink);
-		HRESULT UnadvisePropertyNotify (IPropertyNotifySink* sink);
 	};
 
 	[object, uuid(6109C4FD-C067-4120-9853-6A2D6682BCB0), dual, nonextensible, pointer_default(unique)]
@@ -66,15 +64,21 @@ library ATLProject1Lib
 		[id(dispid__name), propget]
 		HRESULT __id ([out, retval] BSTR* value);
 
-		[id(dispidLoadAddress), bindable, propget] HRESULT LoadAddress ([out, retval] unsigned int* value);
-		[id(dispidLoadAddress), bindable, propput] HRESULT LoadAddress (unsigned int value);
+		[id(dispidLoadAddress), bindable, propget, helpstring("This setting is currently not implemented; the load address is always 32768. It will be implemented in a future release.")]
+		HRESULT LoadAddress ([out, retval] unsigned long* value);
+		[id(dispidLoadAddress), bindable, propput]
+		HRESULT LoadAddress (unsigned long value);
 
-		[id(dispidEntryPointAddress), bindable, propget] HRESULT EntryPointAddress ([out, retval] unsigned short* value);
-		[id(dispidEntryPointAddress), bindable, propput] HRESULT EntryPointAddress (unsigned short value);
+		[id(dispidEntryPointAddress), bindable, propget, helpstring("This setting is currently not implemented; the entry point address is always 32768. It will be implemented in a future release.")]
+		HRESULT EntryPointAddress ([out, retval] unsigned short* value);
+		[id(dispidEntryPointAddress), bindable, propput]
+		HRESULT EntryPointAddress (unsigned short value);
 
-		[id(dispidLaunchType), bindable, propget, helpstring("Selects the launch method: PRINT USR from Basic, RANDOMIZE USR from Basic, or jump right after reset.")]
+		// "Selects the launch method: PRINT USR from Basic, RANDOMIZE USR from Basic, or jump right after reset."
+		[id(dispidLaunchType), bindable, propget, helpstring("This setting is currently not implemented; the launch type is always PRINT USR. It will be implemented in a future release.")]
 		HRESULT LaunchType ([out, retval] enum LaunchType* value);
-		[id(dispidLaunchType), bindable, propput] HRESULT LaunchType (enum LaunchType value);
+		[id(dispidLaunchType), bindable, propput]
+		HRESULT LaunchType (enum LaunchType value);
 	};
 
 	[object, uuid(A2EE7852-34B1-49A9-A3DB-36232AC6680C), dual, nonextensible, pointer_default(unique)]
@@ -130,7 +134,10 @@ library ATLProject1Lib
 	[object, uuid(588F7F04-8B74-404D-A80B-F7CCE9FA3E27), dual, nonextensible, pointer_default(unique)]
 	interface IFelixLaunchOptions : IDispatch
 	{
-		[id(1), propget] HRESULT ProjectDir ([out, retval] BSTR* pbstr);
-		[id(1), propput] HRESULT ProjectDir (BSTR pbstr);
+		[id(dispidProjectDir), propget] HRESULT ProjectDir ([out, retval] BSTR* pbstr);
+		[id(dispidProjectDir), propput] HRESULT ProjectDir (BSTR pbstr);
+
+		[id(dispidDebuggingProperties), propget] HRESULT DebuggingProperties ([out, retval] IDispatch** ppDispatch);
+		[id(dispidDebuggingProperties), propput] HRESULT DebuggingProperties (IDispatch* pDispatch);
 	}
 };

@@ -9,14 +9,15 @@
 #include "guids.h"
 #include "Z80Xml.h"
 
+// Useful doc: https://learn.microsoft.com/en-us/visualstudio/extensibility/internals/managing-configuration-options?view=vs-2022
+
 #pragma comment (lib, "Synchronization.lib")
 
 static const HINSTANCE hinstance = reinterpret_cast<HINSTANCE>(&__ImageBase);
 
-struct Z80ProjectConfig;
-
-static HRESULT GeneralPageProperties_CreateInstance (Z80ProjectConfig* config, ITypeLib* typeLib, IDispatch** to);
-static HRESULT DebuggingPageProperties_CreateInstance (Z80ProjectConfig* config, ITypeLib* typeLib, IDispatch** to);
+static constexpr uint32_t LoadAddressDefaultValue = 0x8000;
+static constexpr uint16_t EntryPointAddressDefaultValue = 0x8000;
+static constexpr LaunchType LaunchTypeDefaultValue = LaunchType::PrintUsr;
 
 struct Z80ProjectConfig
 	: IZ80ProjectConfig
@@ -35,7 +36,6 @@ struct Z80ProjectConfig
 	wil::unique_bstr _platformName;
 	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsBuildStatusCallback>> _buildStatusCallbacks;
 	VSCOOKIE _buildStatusNextCookie = VSCOOKIE_NIL + 1;
-	vector_nothrow<com_ptr<IPropertyNotifySink>> _propNotifySinks;
 
 	static inline com_ptr<ITypeLib> _typeLib;
 	static inline com_ptr<ITypeInfo> _typeInfo;
@@ -43,13 +43,8 @@ struct Z80ProjectConfig
 	static constexpr OutputFileType OutputFileTypeDefaultValue = OutputFileType::Binary;
 	OutputFileType _outputFileType = OutputFileTypeDefaultValue;
 
-	static constexpr uint32_t LoadAddressDefaultValue = 0x8000;
 	uint32_t _loadAddress = LoadAddressDefaultValue;
-
-	static constexpr uint16_t EntryPointAddressDefaultValue = 0x8000;
 	uint16_t _entryPointAddress = EntryPointAddressDefaultValue;
-
-	static constexpr LaunchType LaunchTypeDefaultValue = LaunchType::PrintUsr;
 	LaunchType _launchType = LaunchTypeDefaultValue;
 
 	bool _saveListing = false;
@@ -305,6 +300,10 @@ public:
 		RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
 		hr = opts->put_ProjectDir(projectDir.bstrVal); RETURN_IF_FAILED(hr);
 		
+		com_ptr<IDispatch> dbgProps;
+		hr = this->get_DebuggingProperties(&dbgProps); RETURN_IF_FAILED(hr);
+		hr = opts->put_DebuggingProperties(dbgProps); RETURN_IF_FAILED(hr);
+
 		com_ptr<IStream> stream;
 		hr = CreateStreamOnHGlobal (nullptr, TRUE, &stream); RETURN_IF_FAILED(hr);
 		UINT UTF16CodePage = 1200;
@@ -732,7 +731,13 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE get_GeneralProperties (IDispatch** ppDispatch) override
 	{
-		return GeneralPageProperties_CreateInstance (this, _typeLib.get(), ppDispatch);
+		com_ptr<IZ80ProjectConfigGeneralProperties> props;
+		auto hr = GeneralPageProperties_CreateInstance (_typeLib.get(), &props); RETURN_IF_FAILED(hr);
+		hr = props->put_OutputFileType (_outputFileType); RETURN_IF_FAILED(hr);
+		hr = props->put_SaveListing (_saveListing); RETURN_IF_FAILED(hr);
+		hr = props->put_SaveListingFilename (_listingFilename.get()); RETURN_IF_FAILED(hr);
+		*ppDispatch = props.detach();
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_GeneralProperties (IDispatch* pDispatch) override
@@ -768,8 +773,10 @@ public:
 
 		if (changed)
 		{
-			for (auto& sink : _propNotifySinks)
-				sink->OnChanged(dispidGeneralProperties);
+			com_ptr<IPropertyNotifySink> pns;
+			hr = _hier->QueryInterface(&pns); LOG_IF_FAILED(hr);
+			if (SUCCEEDED(hr))
+				pns->OnChanged(dispidConfigurations);
 		}
 
 		return S_OK;
@@ -777,7 +784,13 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE get_DebuggingProperties (IDispatch** ppDispatch) override
 	{
-		return DebuggingPageProperties_CreateInstance (this, _typeLib.get(), ppDispatch);
+		com_ptr<IZ80ProjectConfigDebugProperties> props;
+		auto hr = DebuggingPageProperties_CreateInstance (_typeLib, &props); RETURN_IF_FAILED(hr);
+		hr = props->put_LoadAddress(_loadAddress); RETURN_IF_FAILED(hr);
+		hr = props->put_EntryPointAddress(_entryPointAddress); RETURN_IF_FAILED(hr);
+		hr = props->put_LaunchType(_launchType); RETURN_IF_FAILED(hr);
+		*ppDispatch = props.detach();
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_DebuggingProperties (IDispatch* pDispatch) override
@@ -785,20 +798,22 @@ public:
 		wil::com_ptr_nothrow<IZ80ProjectConfigDebugProperties> dp;
 		auto hr = pDispatch->QueryInterface(&dp); RETURN_IF_FAILED(hr);
 
+		bool changed = false;
+
 		uint16_t entryPointAddress;
 		hr = dp->get_EntryPointAddress(&entryPointAddress); RETURN_IF_FAILED(hr);
 		if (_entryPointAddress != entryPointAddress)
 		{
 			_entryPointAddress = entryPointAddress;
-			// TODO: notification
+			changed = true;
 		}
 
-		uint32_t loadAddress;
+		unsigned long loadAddress;
 		hr = dp->get_LoadAddress(&loadAddress); RETURN_IF_FAILED(hr);
 		if (_loadAddress != loadAddress)
 		{
 			_loadAddress = loadAddress;
-			// TODO: notification
+			changed = true;
 		}
 
 		LaunchType launchType;
@@ -806,7 +821,15 @@ public:
 		if (_launchType != launchType)
 		{
 			_launchType = launchType;
-			// TODO: notification
+			changed = true;
+		}
+
+		if (changed)
+		{
+			com_ptr<IPropertyNotifySink> pns;
+			hr = _hier->QueryInterface(&pns); LOG_IF_FAILED(hr);
+			if (SUCCEEDED(hr))
+				pns->OnChanged(dispidConfigurations);
 		}
 
 		return S_OK;
@@ -869,22 +892,6 @@ public:
 		*pbstr = SysAllocString(L"output.sld"); RETURN_IF_NULL_ALLOC(*pbstr);
 		return S_OK;
 	}
-
-	virtual HRESULT STDMETHODCALLTYPE AdvisePropertyNotify (IPropertyNotifySink *sink) override
-	{
-		auto it = _propNotifySinks.find(sink);
-		RETURN_HR_IF(E_INVALIDARG, it != _propNotifySinks.end());
-		_propNotifySinks.try_push_back(sink);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE UnadvisePropertyNotify (IPropertyNotifySink *sink) override
-	{
-		auto it = _propNotifySinks.find(sink);
-		RETURN_HR_IF(E_INVALIDARG, it == _propNotifySinks.end());
-		_propNotifySinks.erase(it);
-		return S_OK;
-	}
 	#pragma endregion
 
 	#pragma region IXmlParent
@@ -896,7 +903,7 @@ public:
 			return S_OK;
 		}
 
-		if (dispidDebuggingProperties == dispidDebuggingProperties)
+		if (dispidProperty == dispidDebuggingProperties)
 		{
 			*xmlElementNameOut = nullptr;
 			return S_OK;
@@ -908,11 +915,21 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE CreateChild (DISPID dispidProperty, PCWSTR xmlElementName, IDispatch** childOut) override
 	{
 		if (dispidProperty == dispidGeneralProperties)
-			return GeneralPageProperties_CreateInstance (this, _typeLib.get(), childOut);
+		{
+			com_ptr<IZ80ProjectConfigGeneralProperties> pp;
+			auto hr = GeneralPageProperties_CreateInstance (_typeLib, &pp); RETURN_IF_FAILED(hr);
+			*childOut = pp.detach();
+			return S_OK;
+		}
 
 		if (dispidProperty == dispidDebuggingProperties)
-			return DebuggingPageProperties_CreateInstance(this, _typeLib.get(), childOut);
-			
+		{
+			com_ptr<IZ80ProjectConfigDebugProperties> pp;
+			auto hr = DebuggingPageProperties_CreateInstance (_typeLib, &pp); RETURN_IF_FAILED(hr);
+			*childOut = pp.detach();
+			return S_OK;
+		}
+
 		RETURN_HR(E_NOTIMPL);
 	}
 
@@ -931,14 +948,13 @@ HRESULT Z80ProjectConfig_CreateInstance (IVsUIHierarchy* hier, ITypeLib* typeLib
 struct GeneralPageProperties : IZ80ProjectConfigGeneralProperties, IProvideClassInfo, IVsPerPropertyBrowsing, IConnectionPointContainer
 {
 	ULONG _refCount = 0;
-	wil::com_ptr_nothrow<Z80ProjectConfig> _config;
 	static inline wil::com_ptr_nothrow<ITypeInfo> _typeInfo;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
 	OutputFileType _outputFileType;
 	bool _saveListing;
 	wil::unique_bstr _listingFilename;
 
-	static HRESULT CreateInstance (Z80ProjectConfig* config, ITypeLib* typeLib, IDispatch** to)
+	static HRESULT CreateInstance (ITypeLib* typeLib, IZ80ProjectConfigGeneralProperties** to)
 	{
 		HRESULT hr;
 
@@ -948,14 +964,6 @@ struct GeneralPageProperties : IZ80ProjectConfigGeneralProperties, IProvideClass
 		}
 
 		auto p = com_ptr(new (std::nothrow) GeneralPageProperties()); RETURN_IF_NULL_ALLOC(p);
-		p->_config = config;
-		p->_outputFileType = config->_outputFileType;
-		p->_saveListing = config->_saveListing;
-
-		if (config->_listingFilename)
-		{
-			p->_listingFilename = wil::make_bstr_nothrow(config->_listingFilename.get()); RETURN_IF_NULL_ALLOC(p->_listingFilename);
-		}
 
 		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(p, &p->_propNotifyCP); RETURN_IF_FAILED(hr);
 
@@ -1133,15 +1141,6 @@ struct GeneralPageProperties : IZ80ProjectConfigGeneralProperties, IProvideClass
 	}
 	#pragma endregion
 
-	void NotifyPropertyChanged (DISPID dispID)
-	{
-		for (auto& c : _propNotifyCP->GetConnections())
-		{
-			if (auto sink = wil::try_com_query_nothrow<IPropertyNotifySink>(c.pUnk))
-				sink->OnChanged(dispID);
-		}
-	}
-
 	#pragma region IZ80ProjectConfigGeneralProperties
 	virtual HRESULT STDMETHODCALLTYPE get___id(BSTR *value) override
 	{
@@ -1161,7 +1160,7 @@ struct GeneralPageProperties : IZ80ProjectConfigGeneralProperties, IProvideClass
 		if (_outputFileType != value)
 		{
 			_outputFileType = value;
-			NotifyPropertyChanged(dispidOutputFileType);
+			_propNotifyCP->NotifyPropertyChanged(dispidOutputFileType);
 		}
 
 		return S_OK;
@@ -1179,7 +1178,7 @@ struct GeneralPageProperties : IZ80ProjectConfigGeneralProperties, IProvideClass
 		if (_saveListing != s)
 		{
 			_saveListing = s;
-			NotifyPropertyChanged(dispidSaveListing);
+			_propNotifyCP->NotifyPropertyChanged(dispidSaveListing);
 		}
 
 		return S_OK;
@@ -1202,7 +1201,7 @@ struct GeneralPageProperties : IZ80ProjectConfigGeneralProperties, IProvideClass
 		{
 			auto fn = wil::make_bstr_nothrow(filename); RETURN_IF_NULL_ALLOC(fn);
 			_listingFilename = std::move(fn);
-			NotifyPropertyChanged(dispidListingFilename);
+			_propNotifyCP->NotifyPropertyChanged(dispidListingFilename);
 		}
 
 		return S_OK;
@@ -1210,21 +1209,26 @@ struct GeneralPageProperties : IZ80ProjectConfigGeneralProperties, IProvideClass
 	#pragma endregion
 };
 
-struct DebuggingPageProperties : IZ80ProjectConfigDebugProperties, IProvideClassInfo, IVsPerPropertyBrowsing
+struct DebuggingPageProperties : IZ80ProjectConfigDebugProperties, IProvideClassInfo, IVsPerPropertyBrowsing, IConnectionPointContainer
 {
 	ULONG _refCount = 0;
-	wil::com_ptr_nothrow<Z80ProjectConfig> _config;
-	static inline wil::com_ptr_nothrow<ITypeInfo> _typeInfo;
+	static inline com_ptr<ITypeInfo> _typeInfo;
+	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
+	uint32_t _loadAddress = LoadAddressDefaultValue;
+	uint16_t _entryPointAddress = EntryPointAddressDefaultValue;
+	LaunchType _launchType = LaunchTypeDefaultValue;
 
-	static HRESULT CreateInstance (Z80ProjectConfig* config, ITypeLib* typeLib, IDispatch** to)
+	static HRESULT CreateInstance (ITypeLib* typeLib, IZ80ProjectConfigDebugProperties** to)
 	{
+		HRESULT hr;
+
 		if (!_typeInfo)
 		{
-			auto hr = typeLib->GetTypeInfoOfGuid(IID_IZ80ProjectConfigDebugProperties, &_typeInfo); RETURN_IF_FAILED(hr);
+			hr = typeLib->GetTypeInfoOfGuid(IID_IZ80ProjectConfigDebugProperties, &_typeInfo); RETURN_IF_FAILED(hr);
 		}
 
-		wil::com_ptr_nothrow<DebuggingPageProperties> p = new (std::nothrow) DebuggingPageProperties(); RETURN_IF_NULL_ALLOC(p);
-		p->_config = config;
+		com_ptr<DebuggingPageProperties> p = new (std::nothrow) DebuggingPageProperties(); RETURN_IF_NULL_ALLOC(p);
+		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(p, &p->_propNotifyCP); RETURN_IF_FAILED(hr);
 		*to = p.detach();
 		return S_OK;
 	}
@@ -1242,6 +1246,7 @@ struct DebuggingPageProperties : IZ80ProjectConfigDebugProperties, IProvideClass
 			|| TryQI<IZ80ProjectConfigDebugProperties>(this, riid, ppvObject)
 			|| TryQI<IProvideClassInfo>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
+			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -1327,19 +1332,19 @@ struct DebuggingPageProperties : IZ80ProjectConfigDebugProperties, IProvideClass
 	{
 		if (dispid == dispidLoadAddress)
 		{
-			*fDefault = (_config->_loadAddress == Z80ProjectConfig::LoadAddressDefaultValue);
+			*fDefault = (_loadAddress == LoadAddressDefaultValue);
 			return S_OK;
 		}
 
 		if (dispid == dispidEntryPointAddress)
 		{
-			*fDefault = (_config->_entryPointAddress == Z80ProjectConfig::EntryPointAddressDefaultValue);
+			*fDefault = (_entryPointAddress == EntryPointAddressDefaultValue);
 			return S_OK;
 		}
 
 		if (dispid == dispidLaunchType)
 		{
-			*fDefault = (_config->_launchType == Z80ProjectConfig::LaunchTypeDefaultValue);
+			*fDefault = (_launchType == LaunchTypeDefaultValue);
 			return S_OK;
 		}
 
@@ -1355,6 +1360,25 @@ struct DebuggingPageProperties : IZ80ProjectConfigDebugProperties, IProvideClass
 	virtual HRESULT STDMETHODCALLTYPE ResetPropertyValue (DISPID dispid) override { return E_NOTIMPL; }
 	#pragma endregion
 	
+	#pragma region IConnectionPointContainer
+	virtual HRESULT STDMETHODCALLTYPE EnumConnectionPoints (IEnumConnectionPoints **ppEnum) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE FindConnectionPoint (REFIID riid, IConnectionPoint **ppCP) override
+	{
+		if (riid == IID_IPropertyNotifySink)
+		{
+			*ppCP = _propNotifyCP;
+			_propNotifyCP->AddRef();
+			return S_OK;
+		}
+
+		RETURN_HR(E_NOTIMPL);
+	}
+	#pragma endregion
+
 	#pragma region IZ80ProjectConfigDebugProperties
 	virtual HRESULT STDMETHODCALLTYPE get___id(BSTR *value) override
 	{
@@ -1363,18 +1387,18 @@ struct DebuggingPageProperties : IZ80ProjectConfigDebugProperties, IProvideClass
 		return S_OK;;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_LoadAddress (uint32_t* value) override
+	virtual HRESULT STDMETHODCALLTYPE get_LoadAddress (DWORD* value) override
 	{
-		*value = _config->_loadAddress;
+		*value = _loadAddress;
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_LoadAddress (uint32_t value) override
+	virtual HRESULT STDMETHODCALLTYPE put_LoadAddress (DWORD value) override
 	{
-		if (_config->_loadAddress != value)
+		if (_loadAddress != value)
 		{
-			// TODO: notifications
-			_config->_loadAddress = value;
+			_loadAddress = value;
+			_propNotifyCP->NotifyPropertyChanged(dispidLoadAddress);
 		}
 
 		return S_OK;
@@ -1382,16 +1406,16 @@ struct DebuggingPageProperties : IZ80ProjectConfigDebugProperties, IProvideClass
 
 	virtual HRESULT STDMETHODCALLTYPE get_EntryPointAddress (uint16_t* value) override
 	{
-		*value = _config->_entryPointAddress;
+		*value = _entryPointAddress;
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_EntryPointAddress (uint16_t value) override
 	{
-		if (_config->_entryPointAddress != value)
+		if (_entryPointAddress != value)
 		{
-			// TODO: notifications
-			_config->_entryPointAddress = value;
+			_entryPointAddress = value;
+			_propNotifyCP->NotifyPropertyChanged(dispidEntryPointAddress);
 		}
 
 		return S_OK;
@@ -1399,16 +1423,16 @@ struct DebuggingPageProperties : IZ80ProjectConfigDebugProperties, IProvideClass
 
 	virtual HRESULT STDMETHODCALLTYPE get_LaunchType (enum LaunchType *value) override
 	{
-		*value = _config->_launchType;
+		*value = _launchType;
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_LaunchType (enum LaunchType value) override
 	{
-		if (_config->_launchType != value)
+		if (_launchType != value)
 		{
-			// TODO: notifications
-			_config->_launchType = value;
+			_launchType = value;
+			_propNotifyCP->NotifyPropertyChanged(dispidLaunchType);
 		}
 
 		return S_OK;
@@ -1416,13 +1440,13 @@ struct DebuggingPageProperties : IZ80ProjectConfigDebugProperties, IProvideClass
 	#pragma endregion
 };
 
-static HRESULT GeneralPageProperties_CreateInstance (Z80ProjectConfig* config, ITypeLib* typeLib, IDispatch** to)
+HRESULT GeneralPageProperties_CreateInstance (ITypeLib* typeLib, IZ80ProjectConfigGeneralProperties** to)
 {
-	return GeneralPageProperties::CreateInstance(config, typeLib, to);
+	return GeneralPageProperties::CreateInstance(typeLib, to);
 }
 
-static HRESULT DebuggingPageProperties_CreateInstance (Z80ProjectConfig* config, ITypeLib* typeLib, IDispatch** to)
+HRESULT DebuggingPageProperties_CreateInstance (ITypeLib* typeLib, IZ80ProjectConfigDebugProperties** to)
 {
-	return DebuggingPageProperties::CreateInstance(config, typeLib, to);
+	return DebuggingPageProperties::CreateInstance(typeLib, to);
 }
 

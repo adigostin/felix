@@ -195,7 +195,14 @@ public:
 	}
 	#pragma endregion
 
-	const vector_nothrow<CONNECTDATA>& GetConnections() const { return _cps; }
+	void NotifyPropertyChanged (DISPID dispID) const
+	{
+		for (auto& c : _cps)
+		{
+			if (auto sink = wil::try_com_query_nothrow<IPropertyNotifySink>(c.pUnk))
+				sink->OnChanged(dispID);
+		}
+	}
 };
 
 class EnumConnectionsImpl : public IEnumConnections

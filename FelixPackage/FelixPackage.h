@@ -40,3 +40,5 @@ HRESULT MakeDebugEngine (IDebugEngine2** to);
 HRESULT MakeLaunchOptions (IFelixLaunchOptions** ppOptions);
 HRESULT GetDefaultProjectFileExtension (BSTR* ppExt);
 HRESULT SetErrorInfo1 (HRESULT errorHR, ULONG packageStringResId, LPCWSTR arg1);
+HRESULT GeneralPageProperties_CreateInstance (ITypeLib* typeLib, IZ80ProjectConfigGeneralProperties** to);
+HRESULT DebuggingPageProperties_CreateInstance (ITypeLib* typeLib, IZ80ProjectConfigDebugProperties** to);

@@ -430,8 +430,21 @@ static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDis
 		auto releaseFD = wil::scope_exit([ti=typeInfo.get(), fd] { ti->ReleaseFuncDesc(fd); });
 
 		wil::unique_variant valueVariant;
-		switch (fd->lprgelemdescParam[0].tdesc.vt)
+		VARTYPE vt = fd->lprgelemdescParam[0].tdesc.vt;
+		switch (vt)
 		{
+			case VT_UI1:
+			case VT_UI2:
+			case VT_UI4:
+			case VT_I1:
+			case VT_I2:
+			case VT_I4:
+			{
+				hr = InitVariantFromString(attrValue, &valueVariant); RETURN_IF_FAILED(hr);
+				hr = VariantChangeTypeEx (&valueVariant, &valueVariant, InvariantLCID, 0, vt); RETURN_IF_FAILED(hr);
+				break;
+			}
+
 			case VT_BSTR:
 				hr = InitVariantFromString(attrValue, &valueVariant); RETURN_IF_FAILED(hr);
 				break;

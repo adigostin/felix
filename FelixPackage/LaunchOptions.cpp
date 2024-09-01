@@ -1,15 +1,17 @@
 
 #include "pch.h"
-#include "FelixPackage_h.h"
+#include "FelixPackage.h"
 #include "shared/com.h"
 #include "Z80Xml.h"
+#include "dispids.h"
 
-class LaunchOptionsImpl : public IFelixLaunchOptions
+class LaunchOptionsImpl : public IFelixLaunchOptions, IXmlParent
 {
 	ULONG _refCount = 0;
-	static inline wil::com_ptr_nothrow<ITypeLib> _typeLib;
-	static inline wil::com_ptr_nothrow<ITypeInfo> _typeInfo;
+	static inline com_ptr<ITypeLib> _typeLib;
+	static inline com_ptr<ITypeInfo> _typeInfo;
 	wil::unique_process_heap_string _projectDir;
+	com_ptr<IDispatch> _debuggingProperties;
 
 public:
 	HRESULT InitInstance()
@@ -37,9 +39,11 @@ public:
 		RETURN_HR_IF (E_POINTER, !ppvObject);
 		*ppvObject = nullptr;
 
-		if (   TryQI<IUnknown>(this, riid, ppvObject)
+		if (   TryQI<IUnknown>(static_cast<IFelixLaunchOptions*>(this), riid, ppvObject)
 			|| TryQI<IDispatch>(this, riid, ppvObject)
-			|| TryQI<IFelixLaunchOptions>(this, riid, ppvObject))
+			|| TryQI<IFelixLaunchOptions>(this, riid, ppvObject)
+			|| TryQI<IXmlParent>(this, riid, ppvObject)
+		)
 			return S_OK;
 
 		return E_NOINTERFACE;
@@ -99,6 +103,51 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE put_ProjectDir (BSTR pbstr) override
 	{
 		_projectDir = wil::make_unique_string_nothrow<wil::unique_process_heap_string>(pbstr); RETURN_IF_NULL_ALLOC(_projectDir);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_DebuggingProperties (IDispatch **ppDispatch) override
+	{
+		*ppDispatch = _debuggingProperties;
+		if (_debuggingProperties)
+			_debuggingProperties->AddRef();
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_DebuggingProperties (IDispatch *pDispatch) override
+	{
+		_debuggingProperties = pDispatch;
+		return S_OK;
+	}
+	#pragma endregion
+
+	#pragma region IXmlParent
+	virtual HRESULT STDMETHODCALLTYPE GetChildXmlElementName (DISPID dispidProperty, IUnknown* child, BSTR* xmlElementNameOut) override
+	{
+		if (dispidProperty == dispidDebuggingProperties)
+		{
+			*xmlElementNameOut = nullptr;
+			return S_OK;
+		}
+
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE CreateChild (DISPID dispidProperty, PCWSTR xmlElementName, IDispatch** childOut) override
+	{
+		if (dispidProperty == dispidDebuggingProperties)
+		{
+			com_ptr<IZ80ProjectConfigDebugProperties> pp;
+			auto hr = DebuggingPageProperties_CreateInstance (_typeLib, &pp); RETURN_IF_FAILED(hr);
+			*childOut = pp.detach();
+			return S_OK;
+		}
+
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE NeedSerialization (DISPID dispidProperty) override
+	{
 		return S_OK;
 	}
 	#pragma endregion
