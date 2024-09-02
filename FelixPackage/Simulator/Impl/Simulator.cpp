@@ -477,11 +477,7 @@ public:
 
 		virtual ULONG STDMETHODCALLTYPE Release() override
 		{
-			WI_ASSERT(_refCount);
-			auto newRefCount = --_refCount;
-			if (newRefCount == 0)
-				delete this;
-			return newRefCount;
+			return ReleaseST(this, _refCount);
 		}
 		#pragma endregion
 	};
