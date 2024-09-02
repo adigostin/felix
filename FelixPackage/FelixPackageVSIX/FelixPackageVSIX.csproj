@@ -92,10 +92,7 @@
     <ProjectReference Include="..\FelixPackage.vcxproj">
       <Project>{79203f4b-6f1f-4d65-ade5-d082617da696}</Project>
       <Name>FelixPackage</Name>
-      <IncludeOutputGroupsInVSIX>BuiltProjectOutputGroup;BuiltProjectOutputGroupDependencies;GetCopyToOutputDirectoryItems;PkgdefProjectOutputGroup;</IncludeOutputGroupsInVSIX>
-      <IncludeOutputGroupsInVSIXLocalOnly>
-        DebugSymbolsProjectOutputGroup;
-      </IncludeOutputGroupsInVSIXLocalOnly>
+      <IncludeOutputGroupsInVSIX>BuiltProjectOutputGroup;BuiltProjectOutputGroupDependencies;GetCopyToOutputDirectoryItems;PkgdefProjectOutputGroup;DebugSymbolsProjectOutputGroup</IncludeOutputGroupsInVSIX>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
     <ProjectReference Include="..\..\FelixPackageUi\FelixPackageUi.vcxproj">
