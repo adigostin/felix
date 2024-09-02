@@ -223,10 +223,6 @@ public:
 		if (hr == S_OK)
 		{
 		}
-		else if (hr == SIM_E_UNDEFINED_INSTRUCTION)
-		{
-			on_undefined_instruction(_cpu->GetPC());
-		}
 		else
 			WI_ASSERT(false); // we're not supposed to get any other outcome
 	}
@@ -318,13 +314,6 @@ public:
 						com_ptr<ISimulatorBreakpointEvent> bps;
 						auto hr = outcomeUnk->QueryInterface(&bps); WI_ASSERT(SUCCEEDED(hr));
 						hr = on_bp_hit(bps.get()); WI_ASSERT(SUCCEEDED(hr));
-						timeout = INFINITE;
-						duration_to_sleep.QuadPart = 0; // not used
-						break;
-					}
-					else if (outcomeHR == SIM_E_UNDEFINED_INSTRUCTION)
-					{
-						on_undefined_instruction(_cpu->GetPC());
 						timeout = INFINITE;
 						duration_to_sleep.QuadPart = 0; // not used
 						break;
@@ -453,44 +442,6 @@ public:
 				auto hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
 				if (SUCCEEDED(hr))
 					screen.release();
-			}
-		};
-
-		hr = PostWorkToMainThread (std::move(work)); RETURN_IF_FAILED(hr);
-		
-		return S_OK;
-	}
-
-	// Called when simulation was running and the CPU reached an undefined instruction.
-	HRESULT on_undefined_instruction (UINT64 address)
-	{
-		_running_info.reset();
-
-		unique_cotaskmem_bitmapinfo screen;
-		POINT beam;
-		auto hr = _screen->CopyBuffer(_showCRTSnapshot, screen.addressof(), &beam); LOG_IF_FAILED(hr);
-
-		auto work = [this, address, screen=std::move(screen), beam]()
-		{
-			WI_ASSERT(_running);
-			_running = false;
-
-			for (uint32_t i = 0; i < _eventHandlers.size(); i++)
-			{
-				WI_ASSERT(false);
-				/*
-				com_ptr<ISimulatorEventHandler> h;
-				auto hr = p->Resolve(&h); LOG_IF_FAILED(hr);
-				if (SUCCEEDED(hr))
-					h->OnUndefinedInstruction(address);
-
-				if (_screenCompleteHandler)
-				{
-					hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
-					if (SUCCEEDED(hr))
-						screen.release();
-				}
-				*/
 			}
 		};
 

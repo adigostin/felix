@@ -1704,9 +1704,8 @@ public:
 			auto handler = dispatch_ed[opcode];
 			if (!handler)
 			{
-				regs.pc = oldpc;
-				regs.r = oldr;
-				return SIM_E_UNDEFINED_INSTRUCTION;
+				cpu_time += 8;
+				return S_OK;
 			}
 
 			executed = (this->*handler)(opcode);
@@ -1718,9 +1717,8 @@ public:
 			auto handler = dispatch_cb[opcode];
 			if (!handler)
 			{
-				regs.pc = oldpc;
-				regs.r = oldr;
-				return SIM_E_UNDEFINED_INSTRUCTION;
+				cpu_time += 8; // dummy duration; will do this property when we implement the undocumented instructions
+				return S_OK;
 			}
 
 			executed = (this->*handler) (xy, memhlxy_addr, opcode);
@@ -1728,13 +1726,7 @@ public:
 		else
 		{
 			auto handler = dispatch[opcode];
-			if (!handler)
-			{
-				regs.pc = oldpc;
-				regs.r = oldr;
-				return SIM_E_UNDEFINED_INSTRUCTION;
-			}
-
+			WI_ASSERT(handler);
 			executed = (this->*handler)(xy, opcode);
 		}
 
