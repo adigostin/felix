@@ -1,7 +1,6 @@
 
 #include "pch.h"
 #include "Bus.h"
-#include "shared/com.h"
 #include <xaudio2.h>
 
 class Beeper : public IDevice, IXAudio2VoiceCallback
@@ -26,7 +25,7 @@ class Beeper : public IDevice, IXAudio2VoiceCallback
 	// this is zero at the beginning, and also after each timeout between packets
 	UINT64 _previous_packet_last_sample_time = 0;
 
-	com_ptr<IXAudio2> _xaudio2;
+	wil::com_ptr_nothrow<IXAudio2> _xaudio2;
 	IXAudio2MasteringVoice* _mastering_voice = nullptr;
 	IXAudio2SourceVoice* _source_voice = nullptr;
 
@@ -195,19 +194,30 @@ public:
 
 	void AudioBufferEvent (const uint8_t* data, uint32_t data_size_bytes)
 	{
+		XAUDIO2_VOICE_STATE state;
+		_source_voice->GetState (&state);
+		if (state.BuffersQueued == XAUDIO2_MAX_QUEUED_BUFFERS)
+		{
+			// At the time of this writing, this happens when the processor is starved, and can be easily reproduced
+			// by running in the simulator SAVE "D" CODE 0,10000 while running something like HeavyLoad,
+			// on all processor cores, with Above Normal priority, for about 30 seconds; when stopping HeavyLoad,
+			// the simulator tries to catch up (bad idea - needs fixing), so it generates many audio buffers.
+			return;
+		}
+
 		auto copy = (uint8_t*)malloc (data_size_bytes);
 		if (!copy)
 			return;
 		memcpy (copy, data, data_size_bytes);
 
-		XAUDIO2_VOICE_STATE state;
-		_source_voice->GetState (&state);
-
 		XAUDIO2_BUFFER buffer = { };
 		buffer.pAudioData = copy;
 		buffer.AudioBytes = data_size_bytes;
 		buffer.pContext = copy;
-		auto hr = _source_voice->SubmitSourceBuffer (&buffer); LOG_IF_FAILED(hr);
+		auto hr = _source_voice->SubmitSourceBuffer (&buffer);
+		if (FAILED(hr))
+			// Not sure how to handle this. We're not on the GUI thread here so our telemetry dialog code will probably crash.
+			free(copy);
 	}
 
 	#pragma region IXAudio2VoiceCallback
