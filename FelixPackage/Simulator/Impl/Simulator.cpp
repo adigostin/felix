@@ -196,7 +196,7 @@ public:
 			for (auto& d : _active_devices_)
 			{
 				if (d->Time() < time)
-					advanced |= (d->SimulateTo(time) == S_OK);
+					advanced |= d->SimulateTo(time);
 			}
 
 			if (!advanced)

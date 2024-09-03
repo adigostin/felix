@@ -104,7 +104,7 @@ public:
 		while (_time < requested_time)
 		{
 			if (_io_bus->writer_behind_of(_time))
-				return S_FALSE;
+				return _time > initial_time;
 
 			// TODO: after a long pause, send a first buffer with double the normal size and double the normal delay.
 			// If we send this first buffer with the normal size and the normal delay,
@@ -161,7 +161,7 @@ public:
 			_time += increment;
 		}
 
-		return true;
+		return _time > initial_time;
 	}
 	#pragma endregion
 

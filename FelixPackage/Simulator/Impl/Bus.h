@@ -184,8 +184,8 @@ struct DECLSPEC_NOVTABLE Bus
 				// in case the device is blocked on some other device that's also blocked.
 				// This kind of scenario is taken care of in the simulator class.
 
-				d.Device->SimulateTo(requested_time);
-				if (d.Device->Time() < requested_time)
+				bool advanced = d.Device->SimulateTo(requested_time);
+				if (!advanced || (d.Device->Time() < requested_time))
 					return false;
 			}
 
