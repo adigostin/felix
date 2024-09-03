@@ -470,15 +470,9 @@ public:
 			return E_NOINTERFACE;
 		}
 
-		virtual ULONG STDMETHODCALLTYPE AddRef() override
-		{
-			return ++_refCount;
-		}
+		virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
-		virtual ULONG STDMETHODCALLTYPE Release() override
-		{
-			return ReleaseST(this, _refCount);
-		}
+		virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 		#pragma endregion
 	};
 
