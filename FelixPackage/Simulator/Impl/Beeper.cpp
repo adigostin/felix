@@ -85,7 +85,7 @@ public:
 		_previous_packet_last_sample_level = false;
 		_previous_packet_last_sample_time = 0;
 		uint8_t data = 0;
-		AudioBufferEvent(&data, 1);
+		SendSamplesToXAudio(&data, 1);
 	}
 
 	virtual UINT64 STDMETHODCALLTYPE Time() override { return _time; }
@@ -120,25 +120,21 @@ public:
 					// Was that previous packet in the recent past, or a long time ago?
 					if (!_previous_packet_last_sample_time)
 					{
-						// It was a long time ago. (We erased its timestamp to avoid overflowing time deltas.)
-						_samples.try_push_back(_level ? 127 : 0);
+						// It was a long time ago.
+						PushSample(_level ? 127 : 0);
 					}
 					else
 					{
 						// Ok, it was in the recent past.
 						// That previous packet should not have been too long ago.
-						WI_ASSERT (_time - _previous_packet_last_sample_time < max_delay_t_states);
+						WI_ASSERT (_time - _previous_packet_last_sample_time <= max_delay_t_states);
 
 						// Here we generate samples between the last sample of the previous packet and the sample we have now.
 						for (auto t = _previous_packet_last_sample_time + increment; (int32_t)(_time - t) > 0; t += increment)
-						{
-							WI_ASSERT(_samples.size() < _samples.capacity());
-							_samples.try_push_back(_previous_packet_last_sample_level ? 127 : 0);
-						}
+							PushSample(_previous_packet_last_sample_level ? 127 : 0);
 
 						// and now we add the current sample
-						WI_ASSERT(_samples.size() < _samples.capacity());
-						_samples.try_push_back(_level ? 127 : 0);
+						PushSample(_level ? 127 : 0);
 
 						// From now on we should have no need to know about the last sample of the previous packet.
 						_previous_packet_last_sample_time = 0;
@@ -159,16 +155,7 @@ public:
 			else
 			{
 				// add current level as sample to the existing packet
-				WI_ASSERT(_samples.size() < _samples.capacity());
-				_samples.try_push_back(_level ? 127 : 0);
-
-				if (_samples.size() == _samples.capacity())
-				{
-					AudioBufferEvent (_samples.data(), _samples.size());
-					_previous_packet_last_sample_level = _level;
-					_previous_packet_last_sample_time = _time;
-					_samples.clear();
-				}
+				PushSample(_level ? 127 : 0);
 			}
 
 			_time += increment;
@@ -177,6 +164,20 @@ public:
 		return true;
 	}
 	#pragma endregion
+
+	void PushSample (uint8_t value)
+	{
+		WI_ASSERT(_samples.size() < _samples.capacity());
+		_samples.try_push_back(value);
+
+		if (_samples.size() == _samples.capacity())
+		{
+			SendSamplesToXAudio (_samples.data(), _samples.size());
+			_previous_packet_last_sample_level = _level;
+			_previous_packet_last_sample_time = _time;
+			_samples.clear();
+		}
+	}
 
 	static void process_io_write_request (IDevice* d, uint16_t address, uint8_t value)
 	{
@@ -192,7 +193,7 @@ public:
 		}
 	}
 
-	void AudioBufferEvent (const uint8_t* data, uint32_t data_size_bytes)
+	void SendSamplesToXAudio (const uint8_t* data, uint32_t data_size_bytes)
 	{
 		XAUDIO2_VOICE_STATE state;
 		_source_voice->GetState (&state);
