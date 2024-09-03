@@ -86,8 +86,8 @@ BEGIN
     PUSHBUTTON      "Don't send",IDCANCEL,240,136,68,20
     LTEXT           "Sorry for the inconvenience.\r\nPlease help improve this software by sending the developers this anonymous error report:",IDC_STATIC,4,4,304,16
     EDITTEXT        IDC_EDIT_ERROR_REPORT,4,24,304,84,ES_MULTILINE | ES_AUTOHSCROLL | ES_READONLY | WS_VSCROLL | WS_HSCROLL
-    LTEXT           "Optionally type your email address if you want to hear back regarding this particular issue:",IDC_STATIC,4,112,152,20
-    EDITTEXT        IDC_EDIT_EMAIL_ADDRESS,160,116,148,12,ES_AUTOHSCROLL
+    LTEXT           "Optionally type your email address if you want to hear back regarding this particular issue:",IDC_STATIC,4,112,152,20,NOT WS_VISIBLE
+    EDITTEXT        IDC_EDIT_EMAIL_ADDRESS,160,116,148,12,ES_AUTOHSCROLL | NOT WS_VISIBLE
 END
 
 
