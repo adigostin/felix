@@ -711,7 +711,7 @@ public:
 		dti.guidPortSupplier = PortSupplier_Id;
 		dti.bstrPortName = SysAllocString(SingleDebugPortName); RETURN_IF_NULL_ALLOC(dti.bstrPortName);
 		dti.fSendToOutputWindow = TRUE;
-		hr = debugger2->LaunchDebugTargets2 (1, &dti); RETURN_IF_FAILED(hr);
+		hr = debugger2->LaunchDebugTargets2 (1, &dti); RETURN_IF_FAILED_MSG(hr, "LaunchDebugTargets2 returned 0x%08x", hr);
 
 		return S_OK;
 	}

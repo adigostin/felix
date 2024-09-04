@@ -20,7 +20,7 @@ static const wchar_t BinaryFilename[] = L"ROMs/Spectrum48K.rom";
 
 // These must be kept in sync with the pkgdef line [$RootKey$\InstalledProducts\FelixPackage]
 //static const wchar_t InstalledProductRegPath[] = L"InstalledProducts\\FelixPackage";
-static const char SentryReleaseName[] = "FelixPackage@0.9.6";
+static const char SentryReleaseName[] = "0.9.6";
 
 // {8F0D9E89-4C6C-4B63-83CF-1AA6B6E59BCB}
 GUID SID_Simulator = { 0x8f0d9e89, 0x4c6c, 0x4b63, { 0x83, 0xcf, 0x1a, 0xa6, 0xb6, 0xe5, 0x9b, 0xcb } };
@@ -142,6 +142,42 @@ public:
 		_simulator = nullptr;
 	}
 
+	// From https://stackoverflow.com/a/34691914/451036
+	// Implemented because the Windows-provided CaptureStackBackTrace stops at the first frame with managed code.
+	// It's generally more useful for us to look further than that, for example we can find out if our function
+	// Z80DebugEngine::ResumeProcess was called - through many frames with managed code - from ScreenWindowImpl::Loadfile
+	// or from Z80ProjectConfig::DebugLaunch.
+	static DWORD CaptureStackBackTrace3 (DWORD FramesToSkip, DWORD nFrames, PVOID* BackTrace, PDWORD pBackTraceHash)
+	{
+		CONTEXT ContextRecord;
+		RtlCaptureContext(&ContextRecord);
+
+		DWORD iFrame;
+		for (iFrame = 0; iFrame < nFrames; iFrame++)
+		{
+			DWORD64 ImageBase;
+			PRUNTIME_FUNCTION pFunctionEntry = RtlLookupFunctionEntry(ContextRecord.Rip, &ImageBase, NULL);
+
+			if (pFunctionEntry == NULL)
+				break;
+
+			PVOID HandlerData;
+			DWORD64 EstablisherFrame;
+			RtlVirtualUnwind(UNW_FLAG_NHANDLER,
+				ImageBase,
+				ContextRecord.Rip,
+				pFunctionEntry,
+				&ContextRecord,
+				&HandlerData,
+				&EstablisherFrame,
+				NULL);
+
+			BackTrace[iFrame] = (PVOID)ContextRecord.Rip;
+		}
+
+		return iFrame;
+	}
+
 	static void __stdcall TelemetryCallback (bool alreadyReported, const wil::FailureInfo& failure) noexcept
 	{
 		HRESULT hr;
@@ -186,36 +222,41 @@ public:
 
 		if (report && !::IsDebuggerPresent())
 		{
-			static const char* const FailureTypeNames[] = { "Exception", "Return", "Log", "FailFast" };
 			sentry_value_t event = sentry_value_new_event();
-			auto exc = sentry_value_new_exception (FailureTypeNames[(int)failure.type], failure.pszCode);
 
-			sentry_value_t frames = sentry_value_new_list();
-			sentry_value_t frame = sentry_value_new_object();
-			sentry_value_set_by_key(frame, "instruction_addr", sentry_value_new_string("0x1234"));
-			sentry_value_set_by_key(frame, "filename", sentry_value_new_string(failure.pszFile));
-			sentry_value_set_by_key(frame, "function", sentry_value_new_string(failure.pszFunction));
-			sentry_value_set_by_key(frame, "lineno", sentry_value_new_int32(failure.uLineNumber));
-			sentry_value_set_by_key(frame, "package", sentry_value_new_string(failure.pszModule));
-			sentry_value_append(frames, frame);
-			sentry_value_t stacktrace = sentry_value_new_object();
-			sentry_value_set_by_key(stacktrace, "frames", frames);
+			static const char* const FailureTypeNames[] = { "THROW", "RETURN", "LOG", "FAIL_FAST" };
+			char hrstr[16];
+			sprintf_s(hrstr, "0x%08X", failure.hr);
+			auto exc = sentry_value_new_exception (FailureTypeNames[(int)failure.type], hrstr);
+
+			auto returnValues = wil::make_unique_hlocal_nothrow<void*[]>(256);
+			if (!returnValues)
+				return;
+			DWORD captured = CaptureStackBackTrace3 (0, 256, returnValues.get(), nullptr);
+			// Skip frames corresponding to framework code.
+			DWORD userCodeIndex = 0;
+			while (userCodeIndex < captured && returnValues.get()[userCodeIndex] != failure.returnAddress)
+				userCodeIndex++;
+			if (userCodeIndex == captured)
+				userCodeIndex = 0; // We couldn't find it, so let's fall back to reporting all the frames
+			auto stacktrace = sentry_value_new_stacktrace(returnValues.get() + userCodeIndex, captured - userCodeIndex);
 			sentry_value_set_by_key(exc, "stacktrace", stacktrace);
 
 			sentry_event_add_exception(event, exc);
-			if (failure.pszMessage && *failure.pszMessage)
+
+			wchar_t message[2048];
+			hr = wil::GetFailureLogString (message, ARRAYSIZE(message), failure);
+			int len = WideCharToMultiByte (CP_UTF8, 0, message, -1, nullptr, 0, nullptr, nullptr);
+			if (len)
 			{
-				int len = WideCharToMultiByte (CP_UTF8, 0, failure.pszMessage, -1, nullptr, 0, nullptr, nullptr);
-				if (len)
+				auto s = wil::make_hlocal_ansistring_nothrow(nullptr, len - 1);
+				if (s)
 				{
-					auto s = wil::make_hlocal_ansistring_nothrow(nullptr, len - 1);
-					if (s)
-					{
-						WideCharToMultiByte (CP_UTF8, 0, failure.pszMessage, -1, s.get(), len, nullptr, nullptr);
-						sentry_value_set_by_key (event, "message", sentry_value_new_string(s.get()));
-					}
+					WideCharToMultiByte (CP_UTF8, 0, message, -1, s.get(), len, nullptr, nullptr);
+					sentry_value_set_by_key (event, "message", sentry_value_new_string(s.get()));
 				}
 			}
+
 			sentry_capture_event(event);
 		}
 	}
@@ -236,7 +277,7 @@ public:
 
 			auto& failure = *(const wil::FailureInfo*)(void*)lParam;
 			wchar_t message[2048];
-			hr = wil::GetFailureLogString (message, ARRAYSIZE(message), failure);
+			wil::GetFailureLogString (message, ARRAYSIZE(message), failure);
 
 			HWND edit = GetDlgItem(hwndDlg, IDC_EDIT_ERROR_REPORT);
 			SetWindowText (edit, message);
@@ -283,6 +324,49 @@ public:
 		return FALSE;
 	}
 
+	static void GetAppId (BSTR* pBstr)
+	{
+		MIDL_INTERFACE("1EAA526A-0898-11d3-B868-00C04F79F802") IVsAppId : IUnknown
+		{
+			virtual STDMETHODIMP Dummy0() = 0; // int SetSite(IOleServiceProvider pSP);
+			virtual STDMETHODIMP GetProperty (int propid /* VSAPROPID */, VARIANT* com_ptr) = 0;
+			virtual STDMETHODIMP Dummy1() = 0; // int SetProperty(int propid, object var);
+			virtual STDMETHODIMP Dummy2() = 0; // int GetGuidProperty(int propid, out Guid guid);
+			virtual STDMETHODIMP Dummy3() = 0; // int SetGuidProperty(int propid, ref Guid rguid);
+			virtual STDMETHODIMP Dummy4() = 0; // int Initialize();
+		};
+
+		// The IVsAppId API is not documented anywhere. let's give it a try because it gives us the minor version too (i.e., the "2" in 17.11.2).
+		com_ptr<IVsAppId> appId;
+		auto hr = serviceProvider->QueryService(__uuidof(IVsAppId), &appId);
+		if (SUCCEEDED(hr))
+		{
+			wil::unique_variant ver;
+			hr = appId->GetProperty (-8642, &ver);
+			if (SUCCEEDED(hr) && (ver.vt == VT_BSTR))
+			{
+				*pBstr = ver.release().bstrVal;
+				return;
+			}
+		}
+
+		// Fall back to something documented
+		com_ptr<IVsShell> shell;
+		hr = serviceProvider->QueryService(SID_SVsShell, &shell);
+		if (SUCCEEDED(hr))
+		{
+			wil::unique_variant ver;
+			hr = shell->GetProperty (VSSPROPID_ReleaseVersion, &ver);
+			if (SUCCEEDED(hr) && (ver.vt == VT_BSTR))
+			{
+				*pBstr = ver.release().bstrVal;
+				return;
+			}
+		}
+
+		*pBstr = SysAllocString(L"VS Ver Unknown");
+	}
+
 	void InitSentry()
 	{
 		HRESULT hr;
@@ -325,7 +409,16 @@ public:
 		sentry_options_set_dsn(_sentryOptions, "https://042ccb2ce64bea0c9e97e5f515153f35@o4506847414714368.ingest.us.sentry.io/4506849315127296");
 		sentry_options_set_database_path(_sentryOptions, dbpath);
 		sentry_options_set_release(_sentryOptions, SentryReleaseName);
-		sentry_options_set_debug(_sentryOptions, 1);
+		//sentry_options_set_debug(_sentryOptions, 1);
+		//sentry_options_set_symbolize_stacktraces(_sentryOptions, 1);
+
+		wil::unique_bstr ver;
+		GetAppId (&ver); 
+		char buffer[100];
+		int ires = WideCharToMultiByte(CP_UTF8, 0, ver.get(), -1, buffer, sizeof(buffer), 0, nullptr);
+		if (ires > 0)
+			sentry_options_set_environment(_sentryOptions, buffer);
+
 		int res = sentry_init(_sentryOptions);
 	}
 

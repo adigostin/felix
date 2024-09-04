@@ -30,6 +30,10 @@ struct keyboard : IKeyboardDevice
 
 	virtual bool SimulateTo (UINT64 requested_time) override
 	{
+		// For testing purposes: The combination 1F9Y causes a hard crash on the simulator thread.
+		if ((keys_down[3] & 1) && (keys_down[1] & 8) && (keys_down[4] & 2) && (keys_down[5] & 16))
+			volatile int x = *(int*)0;
+
 		WI_ASSERT (_time < requested_time);
 		_time = requested_time;
 		return true;
