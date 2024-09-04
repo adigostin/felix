@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
     <Metadata>
-        <Identity Id="768bc57b-42a8-42ab-b389-457946c4fc6a" Version="0.9.6" Language="en-US" Publisher="Adrian Gostin" />
+        <Identity Id="768bc57b-42a8-42ab-b389-457946c4fc6a" Version="0.9.7" Language="en-US" Publisher="Adrian Gostin" />
         <DisplayName>Felix</DisplayName>
         <Description xml:space="preserve">A project system, debug engine and simulator for the ZX Spectrum computer.</Description>
         <Icon>Spectrum.ico</Icon>
