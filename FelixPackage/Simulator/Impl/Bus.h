@@ -3,15 +3,6 @@
 #include "../Simulator.h"
 #include "shared/vector_nothrow.h"
 
-struct IDeviceEvent : ISimulatorEvent
-{
-};
-
-struct IDeviceEventHandler
-{
-	virtual HRESULT STDMETHODCALLTYPE ProcessDeviceEvent (IDeviceEvent* event, REFIID riidEvent) = 0;
-};
-
 struct DECLSPEC_NOVTABLE IDevice
 {
 	virtual ~IDevice() = default;
@@ -39,8 +30,7 @@ struct DECLSPEC_NOVTABLE ICPU : IDevice
 	// Returns S_OK if the instruction was simulated.
 	// Returns S_FALSE if the instruction was not simulated due to waiting for other devices to catch up.
 	// Returns E_BREAKPOINT_HIT (only if "checkBreakpoints" is true) and sets "outcome" to an IEnumBreakpoints.
-	// Returns E_UNDEFINED_INSTRUCTION when trying to execute an undefined instruction (its address is at PC).
-	virtual HRESULT SimulateOne (BOOL checkBreakpoints, IDeviceEventHandler* h, IUnknown** outcome) = 0;
+	virtual HRESULT SimulateOne (BOOL checkBreakpoints, IUnknown** outcome) = 0;
 	virtual HRESULT AddBreakpoint (BreakpointType type, uint16_t address, SIM_BP_COOKIE* pCookie) = 0;
 	virtual HRESULT RemoveBreakpoint (SIM_BP_COOKIE cookie) = 0;
 	virtual BOOL HasBreakpoints() = 0;

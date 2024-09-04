@@ -21,7 +21,7 @@ using unique_cotaskmem_bitmapinfo = wil::unique_any<BITMAPINFO*, decltype(&::CoT
 
 // ============================================================================
 
-class SimulatorImpl : public ISimulator, IDeviceEventHandler, IScreenDeviceCompleteEventHandler
+class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler
 {
 	ULONG _refCount = 0;
 
@@ -219,7 +219,7 @@ public:
 		// Let's simulate one CPU instruction. Since this is a user-initiated action,
 		// we must ask the CPU to ignore breakpoints while executing this particular instruction.
 		com_ptr<IUnknown> outcome;
-		auto hr = _cpu->SimulateOne(false, this, &outcome);
+		auto hr = _cpu->SimulateOne(false, &outcome);
 		if (hr == S_OK)
 		{
 		}
@@ -301,7 +301,7 @@ public:
 					while (!device_to_sync_on || (_cpu->Time() < time_to_sync_to_))
 					{
 						bool check_breakpoints = true;
-						outcomeHR = _cpu->SimulateOne(check_breakpoints, this, &outcomeUnk);
+						outcomeHR = _cpu->SimulateOne(check_breakpoints, &outcomeUnk);
 						if (outcomeHR != S_OK)
 							break;
 					}
@@ -1019,17 +1019,6 @@ public:
 		}
 
 		return S_OK;
-	}
-	#pragma endregion
-
-	#pragma region IDeviceEventHandler
-	virtual HRESULT STDMETHODCALLTYPE ProcessDeviceEvent (IDeviceEvent* event, REFIID riidEvent) override
-	{
-		return PostWorkToMainThread([this, event=com_ptr(event), riidEvent]
-			{
-				for (uint32_t i = 0; i < _eventHandlers.size(); i++)
-					_eventHandlers[i]->ProcessSimulatorEvent(event.get(), riidEvent);
-			});
 	}
 	#pragma endregion
 

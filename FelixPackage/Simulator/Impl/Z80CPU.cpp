@@ -1611,7 +1611,7 @@ public:
 	};
 	#pragma endregion
 
-	virtual HRESULT STDMETHODCALLTYPE SimulateOne (BOOL check_breakpoints, IDeviceEventHandler* eh, IUnknown** outcome) override
+	virtual HRESULT STDMETHODCALLTYPE SimulateOne (BOOL check_breakpoints, IUnknown** outcome) override
 	{
 		if (regs.iff1)
 		{
