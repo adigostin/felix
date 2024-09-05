@@ -134,64 +134,6 @@ struct s_z_pv_flags_t
 static const s_z_pv_flags_t s_z_pv_flags;
 #pragma endregion
 
-class BreakpointCollection : public ISimulatorBreakpointEvent
-{
-	ULONG _refCount = 0;
-	BreakpointType _type;
-	uint16_t _address;
-	vector_nothrow<SIM_BP_COOKIE> _bps;
-
-public:
-	HRESULT InitInstance (BreakpointType type, uint16_t address, SIM_BP_COOKIE const* bps, uint32_t size)
-	{
-		_type = type;
-		_address = address;
-		bool r = _bps.try_reserve(size); RETURN_HR_IF(E_OUTOFMEMORY, !r);
-		for (uint32_t i = 0; i < size; i++)
-			_bps.try_push_back(bps[i]);
-		return S_OK;
-	}
-
-	#pragma region IUnknown
-	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
-	{
-		RETURN_HR_IF(E_POINTER, !ppvObject);
-
-		if (TryQI<IUnknown>(this, riid, ppvObject)
-			|| TryQI<ISimulatorEvent>(this, riid, ppvObject)
-			|| TryQI<ISimulatorBreakpointEvent>(this, riid, ppvObject))
-			return S_OK;
-
-		*ppvObject = nullptr;
-		return E_NOINTERFACE;
-	}
-
-	virtual ULONG STDMETHODCALLTYPE AddRef() override
-	{
-		return InterlockedIncrement(&_refCount);
-	}
-
-	virtual ULONG STDMETHODCALLTYPE Release() override
-	{
-		WI_ASSERT(_refCount);
-		if (_refCount > 1)
-			return InterlockedDecrement(&_refCount);
-		delete this;
-		return 0;
-	}
-	#pragma endregion
-
-	#pragma region IEnumBreakpoints
-	virtual BreakpointType GetType() override { return _type; }
-
-	virtual UINT16 GetAddress() override { return _address; }
-
-	virtual ULONG GetBreakpointCount() override { return _bps.size(); }
-
-	virtual HRESULT GetBreakpointAt(ULONG i, SIM_BP_COOKIE* ppKey) override { *ppKey = _bps[i]; return S_OK; }
-	#pragma endregion
-};
-
 class cpu : public IZ80CPU
 {
 	using handler_t    = bool(cpu::*)(hl_ix_iy xy, uint8_t opcode);
@@ -1611,14 +1553,17 @@ public:
 	};
 	#pragma endregion
 
-	virtual HRESULT STDMETHODCALLTYPE SimulateOne (BOOL check_breakpoints, IUnknown** outcome) override
+	virtual bool SimulateOne (BreakpointsHit* bps) override
 	{
+		if (bps)
+			bps->size = 0;
+
 		if (regs.iff1)
 		{
 			bool interrupted;
 			uint8_t irq_address;
 			if (!irq->try_poll_irq_at_time_point(interrupted, irq_address, cpu_time))
-				return S_FALSE;
+				return false;
 
 			if (interrupted)
 			{
@@ -1626,7 +1571,7 @@ public:
 
 				if (regs.im == 0)
 				{
-					WI_ASSERT(false); // not yet implemented
+					LOG_HR_MSG(E_NOTIMPL, "IM0 is not yet implemented");
 				}
 				else if (regs.im == 1)
 				{
@@ -1636,9 +1581,9 @@ public:
 					regs.pc = 0x38;
 					regs.iff1 = false;
 					cpu_time += 13;
-					return S_OK;
+					return true;
 				}
-				else if (regs.im == 2)
+				else
 				{
 					uint16_t addr = (regs.i << 8) | (irq_address & 0xFE);
 					if (!memory->try_read_request (addr, addr, cpu_time))
@@ -1649,10 +1594,8 @@ public:
 					regs.pc = addr;
 					regs.iff1 = false;
 					cpu_time += 19;
-					return S_OK;
+					return true;
 				}
-				else
-					WI_ASSERT(false);
 			}
 		}
 
@@ -1660,25 +1603,25 @@ public:
 		{
 			cpu_time += 4;
 			regs.r = (regs.r & 0x80) | ((regs.r + 1) & 0x7f);
-			return S_OK;
+			return true;
 		}
 
-		if (check_breakpoints)
+		if (bps)
 		{
 			auto it = code_bps.find(regs.pc);
 			if (it != code_bps.end())
 			{
-				com_ptr<BreakpointCollection> bps = new (std::nothrow) BreakpointCollection(); RETURN_IF_NULL_ALLOC(bps);
-				auto hr = bps->InitInstance (BreakpointType::Code, regs.pc, it->second.data(), it->second.size()); RETURN_IF_FAILED(hr);
-				*outcome = bps.detach();
-				return SIM_E_BREAKPOINT_HIT;
+				bps->address = regs.pc;
+				bps->size = std::min((uint32_t)_countof(BreakpointsHit::bps), it->second.size());
+				memcpy(bps->bps, it->second.data(), bps->size);
+				return false;
 			}
 		}
 
 		uint8_t opcode;
 		bool b = memory->try_read_request (regs.pc, opcode, cpu_time);
 		if (!b)
-			return S_FALSE;
+			return false;
 
 		uint16_t oldpc = regs.pc;
 		uint8_t oldr = regs.r;
@@ -1705,7 +1648,7 @@ public:
 			if (!handler)
 			{
 				cpu_time += 8;
-				return S_OK;
+				return true;
 			}
 
 			executed = (this->*handler)(opcode);
@@ -1718,7 +1661,7 @@ public:
 			if (!handler)
 			{
 				cpu_time += 8; // dummy duration; will do this property when we implement the undocumented instructions
-				return S_OK;
+				return true;
 			}
 
 			executed = (this->*handler) (xy, memhlxy_addr, opcode);
@@ -1734,7 +1677,7 @@ public:
 		{
 			regs.pc = oldpc;
 			regs.r = oldr;
-			return S_FALSE;
+			return false;
 		}
 
 		if (_ei_countdown)
@@ -1744,7 +1687,7 @@ public:
 				regs.iff1 = 1;
 		}
 
-		return S_OK;
+		return true;
 	}
 
 	// ========================================================================

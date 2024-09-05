@@ -16,9 +16,17 @@ struct DECLSPEC_NOVTABLE IDevice
 	virtual bool SimulateTo (UINT64 requested_time) = 0;
 };
 
-#define SIM_E_BREAKPOINT_HIT              MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x201)
-#define SIM_E_NOT_SUPPORTED_WHILE_RUNNING MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x203)
+#define SIM_E_NOT_SUPPORTED_WHILE_RUNNING MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x203) // TODO: use E_UNEXPECTED instead of this
 
+struct BreakpointsHit
+{
+	//BreakpointType type;
+	uint16_t address;
+	SIM_BP_COOKIE bps[8];
+	uint32_t size;
+};
+
+// TODO: ICPU shoulnd't derive from IDevice, too little in common.
 struct DECLSPEC_NOVTABLE ICPU : IDevice
 {
 //	virtual HRESULT STDMETHODCALLTYPE GetRegisters (IRegisterGroup** ppRegs) = 0;
@@ -27,10 +35,23 @@ struct DECLSPEC_NOVTABLE ICPU : IDevice
 	virtual UINT16 GetPC() const = 0;
 	virtual HRESULT SetPC(UINT16 pc) = 0;
 
-	// Returns S_OK if the instruction was simulated.
-	// Returns S_FALSE if the instruction was not simulated due to waiting for other devices to catch up.
-	// Returns E_BREAKPOINT_HIT (only if "checkBreakpoints" is true) and sets "outcome" to an IEnumBreakpoints.
-	virtual HRESULT SimulateOne (BOOL checkBreakpoints, IUnknown** outcome) = 0;
+	// If the caller wants this function to check for breakpoints, it passes into "bps" a pointer
+	// to a caller-allocated structure for receiving information about any breakpoint hit (zero or more).
+	// In this case the implementation checks for code breakpoints (BreakpointType::Code)
+	// before attempting to execute the instruction at PC, or for data breakpoints (BreakpointType::Data)
+	// during the execution of the instruction.
+	// If the caller wants this function to ignore breakpoints, is passes NULL for "bps". The caller
+	// might want to ignore breakpoints, for example, when execution is stopped and the user does
+	// a Step or Go command.
+	// 
+	// Returns:
+	//  - "true" if something was simulated and the CPU's time advanced its Time() by some cycles
+	//    (maybe because an instruction was executed, maybe because an interrupt kicked in and jumping to 
+	//    the interrupt routine took some cycles, or maybe because the CPU was HALTed and remained so)
+	//  - "false" - if nothing was executed and the CPU remained at the same Time()
+	//    (maybe waiting for other devices to catch up, maybe code breakpoint).
+	virtual bool SimulateOne (BreakpointsHit* bps) = 0;
+
 	virtual HRESULT AddBreakpoint (BreakpointType type, uint16_t address, SIM_BP_COOKIE* pCookie) = 0;
 	virtual HRESULT RemoveBreakpoint (SIM_BP_COOKIE cookie) = 0;
 	virtual BOOL HasBreakpoints() = 0;

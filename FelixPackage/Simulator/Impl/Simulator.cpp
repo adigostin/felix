@@ -218,23 +218,24 @@ public:
 
 		// Let's simulate one CPU instruction. Since this is a user-initiated action,
 		// we must ask the CPU to ignore breakpoints while executing this particular instruction.
-		com_ptr<IUnknown> outcome;
-		auto hr = _cpu->SimulateOne(false, &outcome);
-		if (hr == S_OK)
-		{
-		}
-		else
-			WI_ASSERT(false); // we're not supposed to get any other outcome
+		bool advanced = _cpu->SimulateOne(nullptr);
+		WI_ASSERT(advanced);
 	}
 
 	DWORD simulation_thread_proc()
 	{
-		// TODO: "To initialize a thread as free-threaded, call CoInitializeEx, specifying COINIT_MULTITHREADED"
+		HANDLE waitHandles[3] = { _run_on_simulator_thread_request.get(), _cpu_thread_exit_request.get(), _waitableTimer.get() };
 		bool exit_request = false;
 		while(!exit_request)
 		{
 			// TODO: add support for syncing on multiple devices, needed in case two devices need to sync on
 			// the same time _and_ the first is waiting for the second (we'd have an infinite loop with the code as it is now).
+
+			DWORD waitHandleCount = 2;
+			DWORD waitTimeout = INFINITE;
+			IDevice* device_to_sync_on = nullptr;
+			UINT64 time_to_sync_to_ = 0;
+
 			if (_running_info)
 			{
 				UINT64 rt = real_time();
@@ -269,10 +270,7 @@ public:
 				}
 				#pragma endregion
 
-				// --------------------------------------------
 				// Let's find out how far we can simulate, and try to simulate to that point in time.
-				IDevice* device_to_sync_on = nullptr;
-				UINT64 time_to_sync_to_ = rt + milliseconds_to_ticks(1000);
 				for (auto& d : _active_devices_)
 				{
 					UINT64 t;
@@ -282,121 +280,76 @@ public:
 						device_to_sync_on = d;
 						time_to_sync_to_ = t;
 					}
-				};
-				//WI_ASSERT(device_to_sync_on);
+				}
 
-				DWORD timeout; // Either 0 or INFINITE. For other values, WaitForMultipleObjects would use an imprecise timer.
-				LARGE_INTEGER duration_to_sleep; // 100 nanosecond intervals for the precise timer, used only when timeout==INFINITE
-				HRESULT outcomeHR;
-				com_ptr<IUnknown> outcomeUnk;
 				while(true)
 				{
 					// First ask the CPU to simulate itself; then ask the devices
 					// to simulate themselves until they catch up with the CPU, not more.
-					// We don't want the devices to go far ahead of the CPU; if the CPU will stop at a breakpoint
-					// or an undefined instruction, we'll want to show to the user the devices at a time as close
-					// as possible to the CPU time; we can do that only if the devices are at all times behind
-					// the CPU or only slightly (a few clock cycles) ahead of it.
-					outcomeHR = S_OK;
-					while (!device_to_sync_on || (_cpu->Time() < time_to_sync_to_))
+					// We don't want the devices to go far ahead of the CPU; if the CPU will stop at a breakpoint,
+					// we'll want to show to the user the devices at a time as close as possible to the CPU time;
+					// we can do that only if the devices are at all times behind the CPU or only slightly
+					// (a few clock cycles) ahead of it.
+					BreakpointsHit bpsHit;
+					while (_cpu->Time() < time_to_sync_to_)
 					{
-						bool check_breakpoints = true;
-						outcomeHR = _cpu->SimulateOne(check_breakpoints, &outcomeUnk);
-						if (outcomeHR != S_OK)
+						bool advanced = _cpu->SimulateOne(&bpsHit);
+						if (!advanced || bpsHit.size)
 							break;
 					}
 
-					// Whatever the outcome, we must first bring the devices close to the CPU time.
+					// Whatever the outcome of the above simulation, we must first bring the devices close to the CPU time.
 					simulate_devices_to(_cpu->Time());
 
-					if (outcomeHR == SIM_E_BREAKPOINT_HIT)
+					if (bpsHit.size)
 					{
-						com_ptr<ISimulatorBreakpointEvent> bps;
-						auto hr = outcomeUnk->QueryInterface(&bps); WI_ASSERT(SUCCEEDED(hr));
-						hr = on_bp_hit(bps.get()); WI_ASSERT(SUCCEEDED(hr));
-						timeout = INFINITE;
-						duration_to_sleep.QuadPart = 0; // not used
+						on_bp_hit(&bpsHit);
 						break;
 					}
-					else if (outcomeHR == S_OK)
+
+					if (_cpu->Time() >= time_to_sync_to_)
 					{
 						// Now let's see how long we need to wait for the real time to catch up.
 						WI_ASSERT(device_to_sync_on);
-						timeout = 0;
-						duration_to_sleep.QuadPart = 0;
-						//auto rt = real_time(); // read it again cause we might have simulated a lot
-						// Later edit: the line above was causing a lot of trouble, and the benefit was just theoretical.
 						if (time_to_sync_to_ > rt)
 						{
-							uint64_t hundredsOfNs = ticks_to_hundreds_of_nanoseconds(time_to_sync_to_ - rt);
-							if (hundredsOfNs)
-							{
-								timeout = INFINITE;
-								duration_to_sleep.QuadPart = -(INT64)hundredsOfNs;
-							}
+							uint64_t hundredsOfNanoseconds = ticks_to_hundreds_of_nanoseconds(time_to_sync_to_ - rt);
+							LARGE_INTEGER dueTime = { .QuadPart = -(INT64)hundredsOfNanoseconds };
+							BOOL bRes = SetWaitableTimer (_waitableTimer.get(), &dueTime, 0, nullptr, nullptr, FALSE); WI_ASSERT(bRes);
+							waitHandleCount = 3;
 						}
+						else
+							waitTimeout = 0; // We're lagging behind real time, so we won't wait.
 						break;
 					}
-					else if (outcomeHR == S_FALSE)
-					{
-					}
-					else
-						WI_ASSERT(false);
 				}
+			}
 
-				HANDLE waitHandles[3] = { _run_on_simulator_thread_request.get(), _cpu_thread_exit_request.get() };
-				DWORD waitCount = 2;
-				if (duration_to_sleep.QuadPart != 0)
-				{
-					BOOL bRes = SetWaitableTimer (_waitableTimer.get(), &duration_to_sleep, 0, nullptr, nullptr, FALSE); LOG_IF_WIN32_BOOL_FALSE(bRes);
-					if (bRes)
-					{
-						waitHandles[2] = _waitableTimer.get();
-						waitCount = 3;
-					}
-				}
-				
-				DWORD waitResult = WaitForMultipleObjects (waitCount, waitHandles, FALSE, timeout);
-				if (waitResult == WAIT_TIMEOUT 
-					|| waitResult == WAIT_OBJECT_0 + 2)
-				{
-					WI_ASSERT(device_to_sync_on);
-
-					//WI_ASSERT(real_time() >= time_to_sync_to);
-					// Real time has caugth up with the simulated time.
+			DWORD waitResult = WaitForMultipleObjects (waitHandleCount, waitHandles, FALSE, waitTimeout);
+			switch (waitResult)
+			{
+				case WAIT_TIMEOUT:
+				case WAIT_OBJECT_0 + 2: // _waitableTimer
+					// Real time has caught up with the simulated time.
 					// Let's unblock the device that was waiting for this time point.
+					WI_ASSERT(device_to_sync_on);
 					if (device_to_sync_on->Time() < time_to_sync_to_ + 1)
 					{
 						bool res = device_to_sync_on->SimulateTo(time_to_sync_to_ + 1);
 						WI_ASSERT(res);
 					}
-				}
-				else if (waitResult == WAIT_OBJECT_0)
-				{
+					break;
+
+				case WAIT_OBJECT_0: // _run_on_simulator_thread_request
 					_runOnSimulatorThreadResult = _runOnSimulatorThreadFunction();
 					SetEvent(_runOnSimulatorThreadComplete.get());
-				}
-				else if (waitResult == WAIT_OBJECT_0 + 1)
-				{
+					break;
+
+				case WAIT_OBJECT_0 + 1: // _cpu_thread_exit_request
 					exit_request = true;
-				}
-				else
-					WI_ASSERT(false); // TODO: handle error conditions
-			}
-			else
-			{
-				const HANDLE waitHandles[] = { _run_on_simulator_thread_request.get(), _cpu_thread_exit_request.get() };
-				DWORD waitResult = WaitForMultipleObjects ((DWORD)std::size(waitHandles), waitHandles, FALSE, INFINITE);
-				if (waitResult == WAIT_OBJECT_0)
-				{
-					_runOnSimulatorThreadResult = _runOnSimulatorThreadFunction();
-					SetEvent(_runOnSimulatorThreadComplete.get());
-				}
-				else if (waitResult == WAIT_OBJECT_0 + 1)
-				{
-					exit_request = true;
-				}
-				else
+					break;
+
+				default:
 					WI_ASSERT(false); // TODO: handle error conditions
 			}
 		}
@@ -422,31 +375,83 @@ public:
 		return S_OK;
 	}
 
-	// Called when simulation was running and the CPU reached a breakpoint.
-	HRESULT on_bp_hit (ISimulatorBreakpointEvent* bps)
+	class BreakpointCollection : public ISimulatorBreakpointEvent
 	{
-		_running_info.reset();
+		ULONG _refCount = 0;
+		BreakpointType _type;
+		uint16_t _address;
+		vector_nothrow<SIM_BP_COOKIE> _bps;
+
+	public:
+		HRESULT InitInstance (BreakpointType type, uint16_t address, SIM_BP_COOKIE const* bps, uint32_t size)
+		{
+			_type = type;
+			_address = address;
+			bool r = _bps.try_reserve(size); RETURN_HR_IF(E_OUTOFMEMORY, !r);
+			for (uint32_t i = 0; i < size; i++)
+				_bps.try_push_back(bps[i]);
+			return S_OK;
+		}
+
+		#pragma region IUnknown
+		virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
+		{
+			if (   TryQI<IUnknown>(this, riid, ppvObject)
+				|| TryQI<ISimulatorEvent>(this, riid, ppvObject)
+				|| TryQI<ISimulatorBreakpointEvent>(this, riid, ppvObject)
+				)
+				return S_OK;
+
+			*ppvObject = nullptr;
+			return E_NOINTERFACE;
+		}
+
+		virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
+
+		virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
+		#pragma endregion
+
+		#pragma region IEnumBreakpoints
+		virtual BreakpointType GetType() override { return _type; }
+
+		virtual UINT16 GetAddress() override { return _address; }
+
+		virtual ULONG GetBreakpointCount() override { return _bps.size(); }
+
+		virtual HRESULT GetBreakpointAt(ULONG i, SIM_BP_COOKIE* ppKey) override { *ppKey = _bps[i]; return S_OK; }
+		#pragma endregion
+	};
+
+	// Called when simulation was running and the CPU reached a breakpoint.
+	HRESULT on_bp_hit (const BreakpointsHit* bps)
+	{
+		auto bpsCopy = wil::make_unique_hlocal_nothrow<BreakpointsHit>(*bps); RETURN_IF_NULL_ALLOC(bpsCopy);
 
 		unique_cotaskmem_bitmapinfo screen;
 		POINT beam;
-		auto hr = _screen->CopyBuffer (_showCRTSnapshot, screen.addressof(), &beam); LOG_IF_FAILED(hr);
+		auto hr = _screen->CopyBuffer (_showCRTSnapshot, screen.addressof(), &beam); RETURN_IF_FAILED_EXPECTED(hr);
 
-		auto work = [this, bbps=com_ptr(bps), screen=std::move(screen), beam]() mutable
-		{
-			WI_ASSERT(_running);
-			_running = false;
-			for (uint32_t i = 0; i < _eventHandlers.size(); i++)
-				_eventHandlers[i]->ProcessSimulatorEvent(bbps.get(), __uuidof(bbps));
-			if (_screenCompleteHandler)
+		_running_info.reset();
+		auto work = [this, bps=std::move(bpsCopy), screen=std::move(screen), beam]() mutable
 			{
-				auto hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
-				if (SUCCEEDED(hr))
-					screen.release();
-			}
-		};
-
+				WI_ASSERT(_running);
+				_running = false;
+				if (auto bpEvent = com_ptr(new (std::nothrow) BreakpointCollection()))
+				{
+					if (SUCCEEDED(bpEvent->InitInstance(BreakpointType::Code, bps->address, bps->bps, bps->size)))
+					{
+						for (uint32_t i = 0; i < _eventHandlers.size(); i++)
+							_eventHandlers[i]->ProcessSimulatorEvent(bpEvent, __uuidof(ISimulatorBreakpointEvent));
+						if (_screenCompleteHandler)
+						{
+							auto hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
+							if (SUCCEEDED(hr))
+								screen.release();
+						}
+					}
+				}
+			};
 		hr = PostWorkToMainThread (std::move(work)); RETURN_IF_FAILED(hr);
-		
 		return S_OK;
 	}
 
