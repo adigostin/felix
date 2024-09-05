@@ -16,8 +16,6 @@ struct DECLSPEC_NOVTABLE IDevice
 	virtual bool SimulateTo (UINT64 requested_time) = 0;
 };
 
-#define SIM_E_NOT_SUPPORTED_WHILE_RUNNING MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x203) // TODO: use E_UNEXPECTED instead of this
-
 struct BreakpointsHit
 {
 	//BreakpointType type;
