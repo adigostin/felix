@@ -661,7 +661,7 @@ public:
 		of.pwzFileName = filename;
 		of.nMaxFileName = (DWORD)ARRAYSIZE(filename);
 		of.pwzInitialDir = initial_directory.get();
-		of.pwzFilter = L"Snapshot Files (*.sna)\0*.sna\0All Files (*.*)\0*.*\0";
+		of.pwzFilter = L"ZX Spectrum files (*.sna;*.z80)\0*.sna;*.z80\0All Files (*.*)\0*.*\0";
 		hr = shell->GetOpenFileNameViaDlg(&of);
 		if (hr == OLE_E_PROMPTSAVECANCELLED)
 			return S_OK;
@@ -681,23 +681,10 @@ public:
 
 		if (!start_debugging)
 		{
-			com_ptr<IStream> stream;
-			hr = SHCreateStreamOnFileEx (filename, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream); RETURN_IF_FAILED(hr);
-
-			hr = _simulator->LoadSnapshot(stream.get());
-			if (hr == SIM_E_SNAPSHOT_FILE_WRONG_SIZE)
-			{
-				LONG result;
-				hr = shell->ShowMessageBox (0, CLSID_NULL, (LPOLESTR)L"Wrong file size",
-					(LPOLESTR)L"The file has an unrecognized size.\r\n(Only ZX Spectrum 48K snapshot files are supported for now.)",
-					nullptr, 0, OLEMSGBUTTON_OK, OLEMSGDEFBUTTON_FIRST, OLEMSGICON_WARNING, FALSE, &result);
-				return S_OK;
-			}
-			RETURN_IF_FAILED(hr);
-
+			hr = _simulator->LoadFile(filename); RETURN_IF_FAILED_EXPECTED(hr);
 			if (_simulator->Running_HR() == S_FALSE)
 			{
-				hr = _simulator->Resume(false); RETURN_IF_FAILED(hr);
+				hr = _simulator->Resume(false); RETURN_IF_FAILED_EXPECTED(hr);
 			}
 			return S_OK;
 		}

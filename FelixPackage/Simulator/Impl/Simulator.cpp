@@ -45,7 +45,7 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler
 	com_ptr<IScreenCompleteEventHandler> _screenCompleteHandler;
 
 	using RunOnSimulatorThreadFunction = HRESULT(*)(void*);
-	stdext::inplace_function<HRESULT()> _runOnSimulatorThreadFunction;
+	stdext::inplace_function<HRESULT(), 64> _runOnSimulatorThreadFunction;
 	HRESULT            _runOnSimulatorThreadResult;
 	wil::unique_handle _run_on_simulator_thread_request;
 	wil::unique_handle _runOnSimulatorThreadComplete;
@@ -519,7 +519,7 @@ public:
 		return S_OK;
 	}
 
-	HRESULT RunOnSimulatorThread (stdext::inplace_function<HRESULT()> fun)
+	HRESULT RunOnSimulatorThread (stdext::inplace_function<HRESULT(), 64> fun)
 	{
 		_runOnSimulatorThreadFunction = std::move(fun);
 
@@ -726,45 +726,54 @@ public:
 		return S_OK;
 	}
 	*/
-	#pragma pack (push, 1)
-	// https://rk.nvg.ntnu.no/sinclair/faq/fileform.html#SNA
-	struct snapshot_file_header
+	HRESULT LoadSnapshot (const wchar_t* pFileName)
 	{
-		uint8_t i;
-		uint16_t alt_hl;
-		uint16_t alt_de;
-		uint16_t alt_bc;
-		uint16_t alt_af;
-		uint16_t hl;
-		uint16_t de;
-		uint16_t bc;
-		uint16_t iy;
-		uint16_t ix;
-		uint8_t      : 1;
-		uint8_t ei   : 1;
-		uint8_t iff2 : 1;
-		uint8_t      : 5;
-		uint8_t r;
-		uint16_t af;
-		uint16_t sp;
-		uint8_t im;
-		uint8_t border;
-	};
-	#pragma pack (pop)
-	
-	virtual HRESULT STDMETHODCALLTYPE LoadSnapshot (IStream* stream) override
-	{
-		auto hr = stream->Seek ( { .QuadPart = 0 }, STREAM_SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
+		#pragma pack (push, 1)
+		// https://rk.nvg.ntnu.no/sinclair/faq/fileform.html#SNA
+		struct snapshot_file_header
+		{
+			uint8_t i;
+			uint16_t alt_hl;
+			uint16_t alt_de;
+			uint16_t alt_bc;
+			uint16_t alt_af;
+			uint16_t hl;
+			uint16_t de;
+			uint16_t bc;
+			uint16_t iy;
+			uint16_t ix;
+			uint8_t      : 1;
+			uint8_t ei   : 1;
+			uint8_t iff2 : 1;
+			uint8_t      : 5;
+			uint8_t r;
+			uint16_t af;
+			uint16_t sp;
+			uint8_t im;
+			uint8_t border;
+		};
+		#pragma pack (pop)
+
+		com_ptr<IStream> stream;
+		auto hr = SHCreateStreamOnFileEx (pFileName, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream); RETURN_IF_FAILED_EXPECTED(hr);
 
 		STATSTG stat;
-		hr = stream->Stat (&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
+		hr = stream->Stat (&stat, STATFLAG_NONAME); RETURN_IF_FAILED_EXPECTED(hr);
 		if (stat.cbSize.QuadPart != sizeof(snapshot_file_header) + 48 * 1024)
-			return SIM_E_SNAPSHOT_FILE_WRONG_SIZE;
+			return SetErrorInfo(E_FAIL, L"The file has an unrecognized size.\r\n(Only ZX Spectrum 48K files are supported for now.)");
+
+		snapshot_file_header header;
+		ULONG read;
+		hr = stream->Read (&header, (ULONG)sizeof(header), &read); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_FAIL, read != sizeof(header));
+
+		auto buffer = wil::make_unique_hlocal_nothrow<uint8_t[]>(48 * 1024); RETURN_IF_NULL_ALLOC_EXPECTED(buffer);
+		hr = stream->Read(buffer.get(), 48 * 1024, &read); RETURN_IF_FAILED_EXPECTED(hr); RETURN_HR_IF(E_FAIL, read != 48 * 1024);
 
 		unique_cotaskmem_bitmapinfo screen;
 		POINT beam;
 
-		hr = RunOnSimulatorThread ([this, stream, &screen, &beam]
+		// It's ok to catch by reference since the call to RunOnSimulatorThread is blocking (returns when the work is complete).
+		hr = RunOnSimulatorThread ([this, &header, buffer=buffer.get(), &screen, &beam]
 			{
 				HRESULT hr;
 
@@ -772,21 +781,7 @@ public:
 				for (auto& d : _active_devices_)
 					d->Reset();
 
-				snapshot_file_header header;
-				ULONG read;
-				hr = stream->Read (&header, (ULONG)sizeof(header), &read); RETURN_IF_FAILED(hr);
-				if (read != sizeof(header))
-					return SIM_E_SNAPSHOT_FILE_WRONG_SIZE;
-
-				uint8_t buffer[128];
-				for (uint16_t i = 0; i < 48 * 1024; i += sizeof(buffer))
-				{
-					ULONG read;
-					hr = stream->Read (buffer, sizeof(buffer), &read); RETURN_IF_FAILED(hr);
-					if (read != sizeof(buffer))
-						return SIM_E_SNAPSHOT_FILE_WRONG_SIZE;
-					_ramDevice->WriteMemory(0x4000 + i, sizeof(buffer), buffer);
-				}
+				_ramDevice->WriteMemory(0x4000, 48 * 1024, buffer);
 
 				z80_register_set regs;
 				regs.halted = false;
@@ -833,7 +828,191 @@ public:
 
 		return S_OK;
 	}
-	
+
+	HRESULT LoadZ80 (const wchar_t* pFileName)
+	{
+		#pragma pack (push, 1)
+		// https://worldofspectrum.org/faq/reference/z80format.htm
+		struct z80_header
+		{
+			uint8_t  a;  // 0
+			uint8_t  f;  // 1
+			uint16_t bc; // 2-3
+			uint16_t hl; // 4-5
+			uint16_t pc; // 6-7
+			uint16_t sp; // 8-9
+			uint8_t  i;  // 10
+			uint8_t  r;  // 11
+			uint8_t  r0         : 1; // 12 b0
+			uint8_t  border     : 3; // 12 b1-b3
+			uint8_t  samrom     : 1; // 12 b4
+			uint8_t  compressed : 1; // 12 b5
+			uint8_t             : 2; // 12 b6-b7
+			uint16_t de;     // 13-14
+			uint16_t alt_bc; // 15-16
+			uint16_t alt_de; // 17-18
+			uint16_t alt_hl; // 19-20
+			uint8_t  alt_a;  // 21
+			uint8_t  alt_f;  // 22
+			uint16_t iy;     // 23-24
+			uint16_t ix;     // 25-26
+			uint8_t  ei;     // 27
+			uint8_t  iff2;   // 28
+			uint8_t  im       : 2; // 29 b0-b1
+			uint8_t  issue2   : 1; // 29 b2
+			uint8_t  freq2x   : 1; // 29 b3
+			uint8_t  vid_sync : 2; // 29 b4-b5
+			uint8_t  joystick : 2; // 29 b6-b7
+		};
+		#pragma pack (pop)
+
+		com_ptr<IStream> stream;
+		auto hr = SHCreateStreamOnFileEx (pFileName, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream); RETURN_IF_FAILED_EXPECTED(hr);
+
+		STATSTG stat;
+		hr = stream->Stat (&stat, STATFLAG_NONAME); RETURN_IF_FAILED_EXPECTED(hr);
+
+		z80_header header;
+		ULONG read;
+		hr = stream->Read (&header, (ULONG)sizeof(header), &read); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_FAIL, read != sizeof(header));
+		uint32_t inSize = stat.cbSize.LowPart - sizeof(header);
+		auto inBuffer = wil::unique_hglobal_ptr<uint8_t>((uint8_t*)GlobalAlloc(GMEM_FIXED, inSize)); RETURN_IF_NULL_ALLOC_EXPECTED(inBuffer);
+		hr = stream->Read(inBuffer.get(), inSize, &read); RETURN_IF_FAILED_EXPECTED(hr); RETURN_HR_IF(E_FAIL, read != inSize);
+		const uint8_t* inPtr = inBuffer.get();
+		const uint8_t* inEnd = inPtr + inSize;
+
+		auto outBuffer = wil::unique_hglobal_ptr<uint8_t>((uint8_t*)GlobalAlloc(GMEM_FIXED, 48 * 1024)); RETURN_IF_NULL_ALLOC_EXPECTED(outBuffer);
+		uint8_t* outPtr = outBuffer.get();
+		uint8_t* outEnd = outPtr + 48 * 1024;
+
+		auto SetMalformedErrorInfo = [](const wchar_t* detail) { return SetErrorInfo(E_FAIL, L"Malformed .Z80 file: %s", detail); };
+
+		if (header.pc != 0)
+		{
+			// Z80 Format version 1
+			if (!header.compressed)
+			{
+				if (inEnd - inPtr != 48 * 1024)
+					return SetMalformedErrorInfo (L"Format version 1, not compressed, size not 48K.");
+				memcpy (outPtr, inPtr, 48 * 1024);
+			}
+			else
+			{
+				while (true)
+				{
+					if (inPtr >= inEnd)
+						return SetMalformedErrorInfo (L"Format version 1, compressed, no 00EDED00 terminator.");
+				
+					if ((inPtr + 4 <= inEnd) && !memcmp(inPtr, "\x00\xED\xED\x00", 4))
+						break;
+					else if ((inPtr + 4 <= inEnd) && (inPtr[0] == 0xED) && (inPtr[1] == 0xED))
+					{
+						inPtr += 2;
+						uint8_t repeat = *inPtr++;
+						uint8_t value = *inPtr++;
+						if (outPtr + repeat > outEnd)
+							return SetMalformedErrorInfo (L"Longer than 48K.");
+						memset (outPtr, value, repeat);
+						outPtr += repeat;
+					}
+					else
+					{
+						if (outPtr + 1 > outEnd)
+							return SetMalformedErrorInfo (L"Longer than 48K.");
+						*outPtr++ = *inPtr++;
+					}
+				}
+			}
+		}
+		else
+		{
+			// Z80 Format version 2 or 3.
+			return SetErrorInfo(E_FAIL, L"The file has an unrecognized version.\r\n(Only Z80 Format 1 is supported for now.)");
+		}
+
+		unique_cotaskmem_bitmapinfo screen;
+		POINT beam;
+
+		// It's ok to catch by reference since the call to RunOnSimulatorThread is blocking (returns when the work is complete).
+		hr = RunOnSimulatorThread ([this, &header, buffer=outBuffer.get(), &screen, &beam]
+			{
+				HRESULT hr;
+
+				_cpu->Reset();
+				for (auto& d : _active_devices_)
+					d->Reset();
+
+				_ramDevice->WriteMemory(0x4000, 48 * 1024, buffer);
+
+				z80_register_set regs;
+				regs.halted = false;
+				regs.i       = header.i;
+				regs.alt.hl  = header.alt_hl;
+				regs.alt.bc  = header.alt_bc;
+				regs.alt.de  = header.alt_de;
+				regs.alt.a   = header.alt_a;
+				regs.alt.f.val = header.alt_f;
+				regs.main.hl = header.hl;
+				regs.main.de = header.de;
+				regs.main.bc = header.bc;
+				regs.ix      = header.ix;
+				regs.iy      = header.iy;
+				regs.iff1    = header.iff2;
+				regs.r       = header.r;
+				regs.main.a  = header.a;
+				regs.main.f.val = header.f;
+				regs.sp      = header.sp;
+				regs.im      = header.im;
+				regs.pc = memoryBus.read_uint16(regs.sp);
+				regs.sp += 2;
+				_cpu->SetZ80Registers(&regs);
+
+				if (_running_info)
+				{
+					_running_info.value().start_time = 0;
+					QueryPerformanceCounter(&_running_info.value().start_time_perf_counter);
+				}
+				else
+				{
+					hr = _screen->GenerateScreen(); LOG_IF_FAILED(hr);
+					hr = _screen->CopyBuffer(TRUE, &screen, &beam); LOG_IF_FAILED(hr);
+				}
+
+				return S_OK;
+			});
+		RETURN_IF_FAILED(hr);
+
+		if (screen && _screenCompleteHandler)
+		{
+			hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
+			if (SUCCEEDED(hr))
+				screen.release();
+		}
+
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE LoadFile (LPCWSTR pFileName) override
+	{
+		auto* ext = PathFindExtension(pFileName);
+
+		if (!_wcsicmp(ext, L".sna"))
+			return LoadSnapshot(pFileName);
+
+		if (!_wcsicmp(ext, L".z80"))
+			return LoadZ80(pFileName);
+
+		com_ptr<ICreateErrorInfo> cei;
+		if (SUCCEEDED(CreateErrorInfo(&cei)))
+		{
+			cei->SetDescription(L"The file has an unrecognized extension.");
+			if (auto ei = wil::try_com_query_nothrow<IErrorInfo>(cei))
+				::SetErrorInfo(0, ei.get());
+		}
+
+		return E_FAIL;
+	}
+
 	virtual HRESULT STDMETHODCALLTYPE LoadBinary (IStream* stream, uint16_t address) override
 	{
 		RETURN_HR_IF(SIM_E_NOT_SUPPORTED_WHILE_SIMULATION_RUNNING, _running);

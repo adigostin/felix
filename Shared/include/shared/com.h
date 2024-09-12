@@ -436,3 +436,27 @@ HRESULT make_single_entry_enumerator (IEntryType* singleEntryOrNull, IEnumerator
 }
 
 // ============================================================================
+
+HRESULT inline SetErrorInfo (HRESULT errorHR, LPCWSTR messageFormat, ...)
+{
+	va_list argptr;
+	va_start (argptr, messageFormat);
+	wchar_t message[256];
+	vswprintf_s(message, messageFormat, argptr);
+	va_end(argptr);
+
+	com_ptr<ICreateErrorInfo> cei;
+	if (SUCCEEDED(::CreateErrorInfo(&cei)))
+	{
+		if (SUCCEEDED(cei->SetDescription((LPOLESTR)message)))
+		{
+			com_ptr<IErrorInfo> ei;
+			if (SUCCEEDED(cei->QueryInterface(&ei)))
+			{
+				::SetErrorInfo(0, ei.get());
+			}
+		}
+	}
+
+	return errorHR;
+}
