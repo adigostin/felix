@@ -20,7 +20,7 @@ static constexpr uint16_t EntryPointAddressDefaultValue = 0x8000;
 static constexpr LaunchType LaunchTypeDefaultValue = LaunchType::PrintUsr;
 
 struct Z80ProjectConfig
-	: IZ80ProjectConfig
+	: ATL::IDispatchImpl<IZ80ProjectConfig, &IID_IZ80ProjectConfig, &LIBID_ATLProject1Lib, 0xFFFF, 0xFFFF>
 	, IVsDebuggableProjectCfg
 	, IVsBuildableProjectCfg
 	, IVsBuildableProjectCfg2
@@ -36,9 +36,6 @@ struct Z80ProjectConfig
 	wil::unique_bstr _platformName;
 	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsBuildStatusCallback>> _buildStatusCallbacks;
 	VSCOOKIE _buildStatusNextCookie = VSCOOKIE_NIL + 1;
-
-	static inline com_ptr<ITypeLib> _typeLib;
-	static inline com_ptr<ITypeInfo> _typeInfo;
 
 	static constexpr OutputFileType OutputFileTypeDefaultValue = OutputFileType::Binary;
 	OutputFileType _outputFileType = OutputFileTypeDefaultValue;
@@ -73,18 +70,8 @@ struct Z80ProjectConfig
 	wistd::unique_ptr<pending_build_info_t> _pending_build;
 
 public:
-	HRESULT InitInstance (IVsUIHierarchy* hier, ITypeLib* typeLib)
+	HRESULT InitInstance (IVsUIHierarchy* hier)
 	{
-		HRESULT hr;
-
-		if (!_typeLib)
-			_typeLib = typeLib;
-
-		if (!_typeInfo)
-		{
-			hr = typeLib->GetTypeInfoOfGuid(IID_IZ80ProjectConfig, &_typeInfo); RETURN_IF_FAILED(hr);
-		}
-
 		_hier = hier;
 		_threadId = GetCurrentThreadId();
 		_platformName = wil::make_bstr_nothrow(L"ZX Spectrum 48K"); RETURN_IF_NULL_ALLOC(_platformName);
@@ -198,35 +185,6 @@ public:
 	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
-	#pragma endregion
-
-	#pragma region IDispatch
-	virtual HRESULT STDMETHODCALLTYPE GetTypeInfoCount(UINT* pctinfo) override
-	{
-		*pctinfo = 1;
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetTypeInfo(UINT iTInfo, LCID lcid, ITypeInfo** ppTInfo) override
-	{
-		_typeInfo.copy_to(ppTInfo);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetIDsOfNames(REFIID riid, LPOLESTR* rgszNames, UINT cNames, LCID lcid, DISPID* rgDispId) override
-	{
-		if (cNames == 1 && !wcscmp(rgszNames[0], L"ExtenderCATID"))
-			return DISP_E_UNKNOWNNAME; // For this one name we don't want any error logging
-
-		auto hr = DispGetIDsOfNames (_typeInfo.get(), rgszNames, cNames, rgDispId); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE Invoke(DISPID dispIdMember, REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr) override
-	{
-		auto hr = DispInvoke (static_cast<IZ80ProjectConfig*>(this), _typeInfo.get(), dispIdMember, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
 	#pragma endregion
 
 	#pragma region IVsCfg
@@ -742,7 +700,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE get_GeneralProperties (IDispatch** ppDispatch) override
 	{
 		com_ptr<IZ80ProjectConfigGeneralProperties> props;
-		auto hr = GeneralPageProperties_CreateInstance (_typeLib.get(), &props); RETURN_IF_FAILED(hr);
+		auto hr = GeneralPageProperties_CreateInstance (&props); RETURN_IF_FAILED(hr);
 		hr = props->put_OutputFileType (_outputFileType); RETURN_IF_FAILED(hr);
 		hr = props->put_SaveListing (_saveListing); RETURN_IF_FAILED(hr);
 		hr = props->put_SaveListingFilename (_listingFilename.get()); RETURN_IF_FAILED(hr);
@@ -795,7 +753,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE get_DebuggingProperties (IDispatch** ppDispatch) override
 	{
 		com_ptr<IZ80ProjectConfigDebugProperties> props;
-		auto hr = DebuggingPageProperties_CreateInstance (_typeLib, &props); RETURN_IF_FAILED(hr);
+		auto hr = DebuggingPageProperties_CreateInstance (&props); RETURN_IF_FAILED(hr);
 		hr = props->put_LoadAddress(_loadAddress); RETURN_IF_FAILED(hr);
 		hr = props->put_EntryPointAddress(_entryPointAddress); RETURN_IF_FAILED(hr);
 		hr = props->put_LaunchType(_launchType); RETURN_IF_FAILED(hr);
@@ -927,7 +885,7 @@ public:
 		if (dispidProperty == dispidGeneralProperties)
 		{
 			com_ptr<IZ80ProjectConfigGeneralProperties> pp;
-			auto hr = GeneralPageProperties_CreateInstance (_typeLib, &pp); RETURN_IF_FAILED(hr);
+			auto hr = GeneralPageProperties_CreateInstance (&pp); RETURN_IF_FAILED(hr);
 			*childOut = pp.detach();
 			return S_OK;
 		}
@@ -935,7 +893,7 @@ public:
 		if (dispidProperty == dispidDebuggingProperties)
 		{
 			com_ptr<IZ80ProjectConfigDebugProperties> pp;
-			auto hr = DebuggingPageProperties_CreateInstance (_typeLib, &pp); RETURN_IF_FAILED(hr);
+			auto hr = DebuggingPageProperties_CreateInstance (&pp); RETURN_IF_FAILED(hr);
 			*childOut = pp.detach();
 			return S_OK;
 		}
@@ -947,31 +905,29 @@ public:
 	#pragma endregion
 };
 
-HRESULT Z80ProjectConfig_CreateInstance (IVsUIHierarchy* hier, ITypeLib* typeLib, IZ80ProjectConfig** to)
+HRESULT Z80ProjectConfig_CreateInstance (IVsUIHierarchy* hier, IZ80ProjectConfig** to)
 {
 	auto p = com_ptr(new (std::nothrow) Z80ProjectConfig()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance(hier, typeLib); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance(hier); RETURN_IF_FAILED(hr);
 	*to = p.detach();
 	return S_OK;
 }
 
-struct GeneralPageProperties : IZ80ProjectConfigGeneralProperties, IProvideClassInfo, IVsPerPropertyBrowsing, IConnectionPointContainer
+struct GeneralPageProperties
+	: ATL::IDispatchImpl<IZ80ProjectConfigGeneralProperties, &IID_IZ80ProjectConfigGeneralProperties, &LIBID_ATLProject1Lib, 0xFFFF, 0xFFFF>
+	, IProvideClassInfo
+	, IVsPerPropertyBrowsing
+	, IConnectionPointContainer
 {
 	ULONG _refCount = 0;
-	static inline wil::com_ptr_nothrow<ITypeInfo> _typeInfo;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
 	OutputFileType _outputFileType;
 	bool _saveListing;
 	wil::unique_bstr _listingFilename;
 
-	static HRESULT CreateInstance (ITypeLib* typeLib, IZ80ProjectConfigGeneralProperties** to)
+	static HRESULT CreateInstance (IZ80ProjectConfigGeneralProperties** to)
 	{
 		HRESULT hr;
-
-		if (!_typeInfo)
-		{
-			hr = typeLib->GetTypeInfoOfGuid(IID_IZ80ProjectConfigGeneralProperties, &_typeInfo); RETURN_IF_FAILED(hr);
-		}
 
 		auto p = com_ptr(new (std::nothrow) GeneralPageProperties()); RETURN_IF_NULL_ALLOC(p);
 
@@ -1035,40 +991,10 @@ struct GeneralPageProperties : IZ80ProjectConfigGeneralProperties, IProvideClass
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	#pragma region IDispatch
-	virtual HRESULT STDMETHODCALLTYPE GetTypeInfoCount(UINT* pctinfo) override
-	{
-		*pctinfo = 1;
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetTypeInfo(UINT iTInfo, LCID lcid, ITypeInfo** ppTInfo) override
-	{
-		_typeInfo.copy_to(ppTInfo);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetIDsOfNames(REFIID riid, LPOLESTR* rgszNames, UINT cNames, LCID lcid, DISPID* rgDispId) override
-	{
-		if (cNames == 1 && !wcscmp(rgszNames[0], L"ExtenderCATID"))
-			return DISP_E_UNKNOWNNAME; // For this one name we don't want any error logging
-
-		auto hr = DispGetIDsOfNames (_typeInfo.get(), rgszNames, cNames, rgDispId); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE Invoke(DISPID dispIdMember, REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr) override
-	{
-		auto hr = DispInvoke (static_cast<IZ80ProjectConfigGeneralProperties*>(this), _typeInfo.get(), dispIdMember, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
-	#pragma endregion
-
 	#pragma region IProvideClassInfo
 	virtual HRESULT STDMETHODCALLTYPE GetClassInfo (ITypeInfo **ppTI) override
 	{
-		_typeInfo.copy_to(ppTI);
-		return S_OK;
+		return GetTypeInfo(0, 0, ppTI);
 	}
 	#pragma endregion
 
@@ -1219,23 +1145,21 @@ struct GeneralPageProperties : IZ80ProjectConfigGeneralProperties, IProvideClass
 	#pragma endregion
 };
 
-struct DebuggingPageProperties : IZ80ProjectConfigDebugProperties, IProvideClassInfo, IVsPerPropertyBrowsing, IConnectionPointContainer
+struct DebuggingPageProperties
+	: ATL::IDispatchImpl<IZ80ProjectConfigDebugProperties, &IID_IZ80ProjectConfigDebugProperties, &LIBID_ATLProject1Lib, 0xFFFF, 0xFFFF>
+	, IProvideClassInfo
+	, IVsPerPropertyBrowsing
+	, IConnectionPointContainer
 {
 	ULONG _refCount = 0;
-	static inline com_ptr<ITypeInfo> _typeInfo;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
 	uint32_t _loadAddress = LoadAddressDefaultValue;
 	uint16_t _entryPointAddress = EntryPointAddressDefaultValue;
 	LaunchType _launchType = LaunchTypeDefaultValue;
 
-	static HRESULT CreateInstance (ITypeLib* typeLib, IZ80ProjectConfigDebugProperties** to)
+	static HRESULT CreateInstance (IZ80ProjectConfigDebugProperties** to)
 	{
 		HRESULT hr;
-
-		if (!_typeInfo)
-		{
-			hr = typeLib->GetTypeInfoOfGuid(IID_IZ80ProjectConfigDebugProperties, &_typeInfo); RETURN_IF_FAILED(hr);
-		}
 
 		com_ptr<DebuggingPageProperties> p = new (std::nothrow) DebuggingPageProperties(); RETURN_IF_NULL_ALLOC(p);
 		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(p, &p->_propNotifyCP); RETURN_IF_FAILED(hr);
@@ -1294,40 +1218,10 @@ struct DebuggingPageProperties : IZ80ProjectConfigDebugProperties, IProvideClass
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	#pragma region IDispatch
-	virtual HRESULT STDMETHODCALLTYPE GetTypeInfoCount(UINT* pctinfo) override
-	{
-		*pctinfo = 1;
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetTypeInfo(UINT iTInfo, LCID lcid, ITypeInfo** ppTInfo) override
-	{
-		_typeInfo.copy_to(ppTInfo);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetIDsOfNames(REFIID riid, LPOLESTR* rgszNames, UINT cNames, LCID lcid, DISPID* rgDispId) override
-	{
-		if (cNames == 1 && !wcscmp(rgszNames[0], L"ExtenderCATID"))
-			return DISP_E_UNKNOWNNAME; // For this one name we don't want any error logging
-
-		auto hr = DispGetIDsOfNames (_typeInfo.get(), rgszNames, cNames, rgDispId); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE Invoke(DISPID dispIdMember, REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr) override
-	{
-		auto hr = DispInvoke (static_cast<IZ80ProjectConfigDebugProperties*>(this), _typeInfo.get(), dispIdMember, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
-	#pragma endregion
-
 	#pragma region IProvideClassInfo
 	virtual HRESULT STDMETHODCALLTYPE GetClassInfo (ITypeInfo **ppTI) override
 	{
-		_typeInfo.copy_to(ppTI);
-		return S_OK;
+		return GetTypeInfo(0, 0, ppTI);
 	}
 	#pragma endregion
 
@@ -1450,13 +1344,13 @@ struct DebuggingPageProperties : IZ80ProjectConfigDebugProperties, IProvideClass
 	#pragma endregion
 };
 
-HRESULT GeneralPageProperties_CreateInstance (ITypeLib* typeLib, IZ80ProjectConfigGeneralProperties** to)
+HRESULT GeneralPageProperties_CreateInstance (IZ80ProjectConfigGeneralProperties** to)
 {
-	return GeneralPageProperties::CreateInstance(typeLib, to);
+	return GeneralPageProperties::CreateInstance(to);
 }
 
-HRESULT DebuggingPageProperties_CreateInstance (ITypeLib* typeLib, IZ80ProjectConfigDebugProperties** to)
+HRESULT DebuggingPageProperties_CreateInstance (IZ80ProjectConfigDebugProperties** to)
 {
-	return DebuggingPageProperties::CreateInstance(typeLib, to);
+	return DebuggingPageProperties::CreateInstance(to);
 }
 

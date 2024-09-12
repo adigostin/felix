@@ -19,7 +19,7 @@ static constexpr wchar_t Z80AsmElementName[] = L"AsmFile";
 
 // What MPF implements: https://docs.microsoft.com/en-us/visualstudio/extensibility/internals/project-model-core-components?view=vs-2022
 class Z80Project
-	: IZ80ProjectProperties    // includes IDispatch
+	: ATL::IDispatchImpl<IZ80ProjectProperties, &IID_IZ80ProjectProperties, &LIBID_ATLProject1Lib, 0xFFFF, 0xFFFF>
 	, IVsProject2              // includes IVsProject
 	, IVsUIHierarchy           // includes IVsHierarchy
 	, IPersistFileFormat       // includes IPersist
@@ -39,8 +39,6 @@ class Z80Project
 	, IPropertyNotifySink
 	, IVsHierarchyEvents // this implementation only forwards calls to subscribed sinks
 {
-	static inline com_ptr<ITypeLib> _typeLib;
-	static inline com_ptr<ITypeInfo> _typeInfo;
 	wil::com_ptr_nothrow<IServiceProvider> _sp;
 	ULONG _refCount = 0;
 	GUID _projectInstanceGuid;
@@ -157,18 +155,6 @@ public:
 	HRESULT InitInstance (IServiceProvider* sp, LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags)
 	{
 		HRESULT hr;
-
-		if (!_typeLib)
-		{
-			wil::unique_process_heap_string filename;
-			hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, filename); RETURN_IF_FAILED(hr);
-			hr = LoadTypeLibEx (filename.get(), REGKIND_NONE, &_typeLib); RETURN_IF_FAILED(hr);
-		}
-
-		if (!_typeInfo)
-		{
-			hr = _typeLib->GetTypeInfoOfGuid(IID_IZ80ProjectProperties, &_typeInfo); RETURN_IF_FAILED(hr);
-		}
 
 		_sp = sp;
 
@@ -718,35 +704,6 @@ public:
 	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
-	#pragma endregion
-
-	#pragma region IDispatch
-	virtual HRESULT STDMETHODCALLTYPE GetTypeInfoCount(UINT* pctinfo) override
-	{
-		*pctinfo = 1;
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetTypeInfo(UINT iTInfo, LCID lcid, ITypeInfo** ppTInfo) override
-	{
-		_typeInfo.copy_to(ppTInfo);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetIDsOfNames(REFIID riid, LPOLESTR* rgszNames, UINT cNames, LCID lcid, DISPID* rgDispId) override
-	{
-		if (cNames == 1 && !wcscmp(rgszNames[0], L"ExtenderCATID"))
-			return DISP_E_UNKNOWNNAME; // For this one name we don't want any error logging
-
-		auto hr = DispGetIDsOfNames (_typeInfo.get(), rgszNames, cNames, rgDispId); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE Invoke(DISPID dispIdMember, REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr) override
-	{
-		auto hr = DispInvoke (static_cast<IDispatch*>(this), _typeInfo.get(), dispIdMember, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
 	#pragma endregion
 
 	#pragma region IVsHierarchy
@@ -1607,7 +1564,7 @@ public:
 				
 				com_ptr<IZ80AsmFile> file;
 				VSITEMID itemId = _nextFileItemId++;
-				hr = MakeZ80AsmFile (itemId, this, itemidLoc, _typeLib.get(), &file); RETURN_IF_FAILED(hr);
+				hr = MakeZ80AsmFile (itemId, this, itemidLoc, &file); RETURN_IF_FAILED(hr);
 				auto path = wil::make_bstr_nothrow(pszItemName); RETURN_IF_NULL_ALLOC(path);
 				hr = file->put_Path(path.get()); RETURN_IF_FAILED(hr);
 
@@ -1702,7 +1659,7 @@ public:
 	#pragma region IProvideClassInfo
 	virtual HRESULT STDMETHODCALLTYPE GetClassInfo (ITypeInfo **ppTI) override
 	{
-		RETURN_HR(_typeInfo.copy_to(ppTI));
+		return GetTypeInfo(0, 0, ppTI);
 	}
 	#pragma endregion
 
@@ -1826,7 +1783,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE AddCfgsOfCfgName(LPCOLESTR pszCfgName, LPCOLESTR pszCloneCfgName, BOOL fPrivate) override
 	{
 		com_ptr<IZ80ProjectConfig> newConfig;
-		auto hr = Z80ProjectConfig_CreateInstance (this, _typeLib, &newConfig); RETURN_IF_FAILED_EXPECTED(hr);
+		auto hr = Z80ProjectConfig_CreateInstance (this, &newConfig); RETURN_IF_FAILED_EXPECTED(hr);
 
 		if (pszCloneCfgName)
 		{
@@ -2378,7 +2335,7 @@ public:
 		if (dispidProperty == dispidConfigurations)
 		{
 			wil::com_ptr_nothrow<IZ80ProjectConfig> config;
-			auto hr = Z80ProjectConfig_CreateInstance(this, _typeLib.get(), &config); RETURN_IF_FAILED(hr);
+			auto hr = Z80ProjectConfig_CreateInstance(this, &config); RETURN_IF_FAILED(hr);
 			*childOut = config.detach();
 			return S_OK;
 		}
@@ -2389,7 +2346,7 @@ public:
 			{
 				wil::com_ptr_nothrow<IZ80AsmFile> file;
 				VSITEMID itemId = _nextFileItemId++;
-				auto hr = MakeZ80AsmFile (itemId, this, VSITEMID_ROOT, _typeLib.get(), &file); RETURN_IF_FAILED(hr);
+				auto hr = MakeZ80AsmFile (itemId, this, VSITEMID_ROOT, &file); RETURN_IF_FAILED(hr);
 				*childOut = file.detach();
 				return S_OK;
 			}

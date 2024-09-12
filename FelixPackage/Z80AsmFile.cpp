@@ -7,9 +7,12 @@
 #include "../FelixPackageUi/resource.h"
 #include "dispids.h"
 
-struct Z80AsmFile : IZ80AsmFile, IProvideClassInfo, IOleCommandTarget, IVsGetCfgProvider
+struct Z80AsmFile 
+	: ATL::IDispatchImpl<IZ80AsmFile, &IID_IZ80AsmFile, &LIBID_ATLProject1Lib, 0xFFFF, 0xFFFF>
+	, IProvideClassInfo
+	, IOleCommandTarget
+	, IVsGetCfgProvider
 {
-	static inline wil::com_ptr_nothrow<ITypeInfo> _typeInfo;
 	VSITEMID _itemId;
 	ULONG _refCount = 0;
 	com_ptr<IVsUIHierarchy> _hier;
@@ -19,15 +22,8 @@ struct Z80AsmFile : IZ80AsmFile, IProvideClassInfo, IOleCommandTarget, IVsGetCfg
 	wil::unique_hlocal_string _pathRelativeToProjectDir;
 	
 public:
-	HRESULT InitInstance (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentItemId, ITypeLib* typeLib)
+	HRESULT InitInstance (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentItemId)
 	{
-		HRESULT hr;
-
-		if (!_typeInfo)
-		{
-			hr = typeLib->GetTypeInfoOfGuid(__uuidof(IZ80AsmFile), &_typeInfo); RETURN_IF_FAILED(hr);
-		}
-
 		_itemId = itemId;
 		_hier = hier;
 		_parentItemId = parentItemId;
@@ -93,35 +89,6 @@ public:
 	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
-	#pragma endregion
-
-	#pragma region IDispatch
-	virtual HRESULT STDMETHODCALLTYPE GetTypeInfoCount(UINT* pctinfo) override
-	{
-		*pctinfo = 1;
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetTypeInfo(UINT iTInfo, LCID lcid, ITypeInfo** ppTInfo) override
-	{
-		_typeInfo.copy_to(ppTInfo);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetIDsOfNames(REFIID riid, LPOLESTR* rgszNames, UINT cNames, LCID lcid, DISPID* rgDispId) override
-	{
-		if (cNames == 1 && !wcscmp(rgszNames[0], L"ExtenderCATID"))
-			return DISP_E_UNKNOWNNAME; // For this one name we don't want any error logging
-
-		auto hr = DispGetIDsOfNames (_typeInfo.get(), rgszNames, cNames, rgDispId); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE Invoke(DISPID dispIdMember, REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr) override
-	{
-		auto hr = DispInvoke (static_cast<IDispatch*>(this), _typeInfo.get(), dispIdMember, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
 	#pragma endregion
 
 	#pragma region IZ80ProjectItem
@@ -799,10 +766,10 @@ public:
 
 // ============================================================================
 
-HRESULT MakeZ80AsmFile (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentItemId, ITypeLib* typeLib, IZ80AsmFile** file)
+HRESULT MakeZ80AsmFile (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentItemId, IZ80AsmFile** file)
 {
 	com_ptr<Z80AsmFile> p = new (std::nothrow) Z80AsmFile(); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance(itemId, hier, parentItemId, typeLib); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance(itemId, hier, parentItemId); RETURN_IF_FAILED(hr);
 	*file = p.detach();
 	return S_OK;
 }

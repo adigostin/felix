@@ -6,6 +6,14 @@
 #include "../FelixPackageUi/Resource.h"
 #include "dispids.h"
 
+class CATLFelixPackageModule : public ATL::CAtlDllModuleT<CATLFelixPackageModule>
+{
+public :
+	DECLARE_LIBID(LIBID_ATLProject1Lib)
+};
+
+CATLFelixPackageModule felixModule;
+
 HRESULT FelixPackage_CreateInstance (IVsPackage** out);
 
 BOOL APIENTRY DllMain(HMODULE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)

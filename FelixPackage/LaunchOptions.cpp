@@ -5,31 +5,17 @@
 #include "Z80Xml.h"
 #include "dispids.h"
 
-class LaunchOptionsImpl : public IFelixLaunchOptions, IXmlParent
+class LaunchOptionsImpl
+	: public ATL::IDispatchImpl<IFelixLaunchOptions, &IID_IFelixLaunchOptions, &LIBID_ATLProject1Lib, 0xFFFF, 0xFFFF>
+	, IXmlParent
 {
 	ULONG _refCount = 0;
-	static inline com_ptr<ITypeLib> _typeLib;
-	static inline com_ptr<ITypeInfo> _typeInfo;
 	wil::unique_process_heap_string _projectDir;
 	com_ptr<IDispatch> _debuggingProperties;
 
 public:
 	HRESULT InitInstance()
 	{
-		HRESULT hr;
-
-		if (!_typeLib)
-		{
-			wil::unique_process_heap_string filename;
-			hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, filename); RETURN_IF_FAILED(hr);
-			hr = LoadTypeLibEx (filename.get(), REGKIND_NONE, &_typeLib); RETURN_IF_FAILED(hr);
-		}
-
-		if (!_typeInfo)
-		{
-			hr = _typeLib->GetTypeInfoOfGuid(IID_IFelixLaunchOptions, &_typeInfo); RETURN_IF_FAILED(hr);
-		}
-
 		return S_OK;
 	}
 
@@ -52,35 +38,6 @@ public:
 	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
-	#pragma endregion
-
-	#pragma region IDispatch
-	virtual HRESULT STDMETHODCALLTYPE GetTypeInfoCount(UINT* pctinfo) override
-	{
-		*pctinfo = 1;
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetTypeInfo(UINT iTInfo, LCID lcid, ITypeInfo** ppTInfo) override
-	{
-		_typeInfo.copy_to(ppTInfo);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetIDsOfNames(REFIID riid, LPOLESTR* rgszNames, UINT cNames, LCID lcid, DISPID* rgDispId) override
-	{
-		if (cNames == 1 && !wcscmp(rgszNames[0], L"ExtenderCATID"))
-			return DISP_E_UNKNOWNNAME; // For this one name we don't want any error logging
-
-		auto hr = DispGetIDsOfNames (_typeInfo.get(), rgszNames, cNames, rgDispId); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE Invoke(DISPID dispIdMember, REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr) override
-	{
-		auto hr = DispInvoke (static_cast<IFelixLaunchOptions*>(this), _typeInfo.get(), dispIdMember, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
 	#pragma endregion
 
 	#pragma region IFelixLaunchOptions
@@ -128,7 +85,7 @@ public:
 		if (dispidProperty == dispidDebuggingProperties)
 		{
 			com_ptr<IZ80ProjectConfigDebugProperties> pp;
-			auto hr = DebuggingPageProperties_CreateInstance (_typeLib, &pp); RETURN_IF_FAILED(hr);
+			auto hr = DebuggingPageProperties_CreateInstance(&pp); RETURN_IF_FAILED(hr);
 			*childOut = pp.detach();
 			return S_OK;
 		}

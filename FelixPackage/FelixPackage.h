@@ -29,8 +29,8 @@ inline VARIANT MakeVariantFromVSITEMID (VSITEMID itemid)
 }
 
 HRESULT MakeFelixProject (IServiceProvider* sp, LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject);
-HRESULT MakeZ80AsmFile (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentItemId, ITypeLib* typeLib, IZ80AsmFile** file);
-HRESULT Z80ProjectConfig_CreateInstance (IVsUIHierarchy* hier, ITypeLib* typeLib, IZ80ProjectConfig** to);
+HRESULT MakeZ80AsmFile (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentItemId, IZ80AsmFile** file);
+HRESULT Z80ProjectConfig_CreateInstance (IVsUIHierarchy* hier, IZ80ProjectConfig** to);
 HRESULT Z80ProjectFactory_CreateInstance (IServiceProvider* sp, IVsProjectFactory** to);
 HRESULT MakePGPropertyPage (UINT titleStringResId, REFGUID pageGuid, DISPID dispidChildObj, IPropertyPage** to);
 HRESULT SimulatorWindowPane_CreateInstance (IVsWindowPane** to);
@@ -40,5 +40,5 @@ HRESULT MakeDebugEngine (IDebugEngine2** to);
 HRESULT MakeLaunchOptions (IFelixLaunchOptions** ppOptions);
 HRESULT GetDefaultProjectFileExtension (BSTR* ppExt);
 HRESULT SetErrorInfo1 (HRESULT errorHR, ULONG packageStringResId, LPCWSTR arg1);
-HRESULT GeneralPageProperties_CreateInstance (ITypeLib* typeLib, IZ80ProjectConfigGeneralProperties** to);
-HRESULT DebuggingPageProperties_CreateInstance (ITypeLib* typeLib, IZ80ProjectConfigDebugProperties** to);
+HRESULT GeneralPageProperties_CreateInstance (IZ80ProjectConfigGeneralProperties** to);
+HRESULT DebuggingPageProperties_CreateInstance (IZ80ProjectConfigDebugProperties** to);
