@@ -612,10 +612,8 @@ public:
 				POINTS pts;
 				memcpy (&pts, &pvaIn->uintVal, 4);
 
-				com_ptr<IServiceProvider> site;
-				hr = _hier->GetSite(&site); RETURN_IF_FAILED(hr);
 				wil::com_ptr_nothrow<IVsUIShell> shell;
-				hr = site->QueryService(SID_SVsUIShell, &shell);
+				hr = serviceProvider->QueryService(SID_SVsUIShell, &shell);
 				if (FAILED(hr))
 					return hr;
 

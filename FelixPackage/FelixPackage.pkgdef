@@ -71,11 +71,11 @@
 
 
 [$RootKey$\CLSID\{0D7FDCBD-7936-495D-9EE1-1F7423367705}]
-@="Z80 Project General Property Page"
+@="Assembler Property Page"
 "InprocServer32"="$PackageFolder$\FelixPackage.dll"
 
 [$RootKey$\CLSID\{8A5DDADC-8F55-4BD9-80A7-BB5510E078DA}]
-@="Z80 Project Debugging Property Page"
+@="Debugging Property Page"
 "InprocServer32"="$PackageFolder$\FelixPackage.dll"
 
 // ----------------------------------------------------------------------------

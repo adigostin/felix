@@ -84,7 +84,7 @@ public:
 	{
 		if (dispidProperty == dispidDebuggingProperties)
 		{
-			com_ptr<IZ80ProjectConfigDebugProperties> pp;
+			com_ptr<IProjectConfigDebugProperties> pp;
 			auto hr = DebuggingPageProperties_CreateInstance(&pp); RETURN_IF_FAILED(hr);
 			*childOut = pp.detach();
 			return S_OK;
@@ -96,6 +96,11 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE NeedSerialization (DISPID dispidProperty) override
 	{
 		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetIDOfName (ITypeInfo* typeInfo, LPCWSTR name, MEMBERID* pMemId) override
+	{
+		return typeInfo->GetIDsOfNames(&const_cast<LPOLESTR&>(name), 1, pMemId);
 	}
 	#pragma endregion
 };

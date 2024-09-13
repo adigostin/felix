@@ -18,12 +18,12 @@ library ATLProject1Lib
 	enum OutputFileType { Binary, Sna };
 
 	[object, uuid(A6F7B8F9-7FD3-4819-963A-5238B32F4123), dual, nonextensible, pointer_default(unique)]
-	interface IZ80ProjectConfig : IDispatch
+	interface IProjectConfig : IDispatch
 	{
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
 
-		[id(dispidGeneralProperties), propget] HRESULT GeneralProperties ([out, retval] IDispatch** ppDispatch);
-		[id(dispidGeneralProperties), propput] HRESULT GeneralProperties (IDispatch* pDispatch);
+		[id(dispidAssemblerProperties), propget] HRESULT AssemblerProperties ([out, retval] IDispatch** ppDispatch);
+		[id(dispidAssemblerProperties), propput] HRESULT AssemblerProperties (IDispatch* pDispatch);
 
 		[id(dispidDebuggingProperties), propget] HRESULT DebuggingProperties ([out, retval] IDispatch** ppDispatch);
 		[id(dispidDebuggingProperties), propput] HRESULT DebuggingProperties (IDispatch* pDispatch);
@@ -40,7 +40,7 @@ library ATLProject1Lib
 	};
 
 	[object, uuid(6109C4FD-C067-4120-9853-6A2D6682BCB0), dual, nonextensible, pointer_default(unique)]
-	interface IZ80ProjectConfigGeneralProperties : IDispatch
+	interface IProjectConfigAssemblerProperties : IDispatch
 	{
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
 
@@ -59,7 +59,7 @@ library ATLProject1Lib
 	enum LaunchType { PrintUsr, RandomizeUsr, ResetAndJump };
 
 	[object, uuid(D529C72D-D7B3-40EF-9FF9-31595F4518D2), dual, nonextensible, pointer_default(unique)]
-	interface IZ80ProjectConfigDebugProperties : IDispatch
+	interface IProjectConfigDebugProperties : IDispatch
 	{
 		[id(dispid__name), propget]
 		HRESULT __id ([out, retval] BSTR* value);

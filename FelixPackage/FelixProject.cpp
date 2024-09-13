@@ -56,7 +56,7 @@ class Z80Project
 	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsCfgProviderEvents>> _cfgProviderEventSinks;
 	VSCOOKIE _nextCfgProviderEventCookie = 1;
 	VSCOOKIE _itemDocCookie = VSCOOKIE_NIL;
-	vector_nothrow<com_ptr<IZ80ProjectConfig>> _configs;
+	vector_nothrow<com_ptr<IProjectConfig>> _configs;
 
 	static HRESULT CreateProjectFilesFromTemplate (IServiceProvider* sp, const wchar_t* fromProjFilePath, const wchar_t* location, const wchar_t* filename)
 	{
@@ -1782,12 +1782,12 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE AddCfgsOfCfgName(LPCOLESTR pszCfgName, LPCOLESTR pszCloneCfgName, BOOL fPrivate) override
 	{
-		com_ptr<IZ80ProjectConfig> newConfig;
-		auto hr = Z80ProjectConfig_CreateInstance (this, &newConfig); RETURN_IF_FAILED_EXPECTED(hr);
+		com_ptr<IProjectConfig> newConfig;
+		auto hr = ProjectConfig_CreateInstance (this, &newConfig); RETURN_IF_FAILED_EXPECTED(hr);
 
 		if (pszCloneCfgName)
 		{
-			com_ptr<IZ80ProjectConfig> existing;
+			com_ptr<IProjectConfig> existing;
 			for (auto& c : _configs)
 			{
 				wil::unique_bstr name;
@@ -2205,12 +2205,12 @@ public:
 		LONG ubound;
 		hr = SafeArrayGetUBound(sa, 1, &ubound); RETURN_IF_FAILED(hr);
 
-		vector_nothrow<com_ptr<IZ80ProjectConfig>> newConfigs;
+		vector_nothrow<com_ptr<IProjectConfig>> newConfigs;
 		for (LONG i = 0; i <= ubound; i++)
 		{
 			wil::com_ptr_nothrow<IUnknown> child;
 			hr = SafeArrayGetElement (sa, &i, child.addressof()); RETURN_IF_FAILED(hr);
-			com_ptr<IZ80ProjectConfig> config;
+			com_ptr<IProjectConfig> config;
 			hr = child->QueryInterface(&config); RETURN_IF_FAILED(hr);
 			bool pushed = newConfigs.try_push_back(std::move(config)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 		}
@@ -2334,8 +2334,8 @@ public:
 	{
 		if (dispidProperty == dispidConfigurations)
 		{
-			wil::com_ptr_nothrow<IZ80ProjectConfig> config;
-			auto hr = Z80ProjectConfig_CreateInstance(this, &config); RETURN_IF_FAILED(hr);
+			wil::com_ptr_nothrow<IProjectConfig> config;
+			auto hr = ProjectConfig_CreateInstance(this, &config); RETURN_IF_FAILED(hr);
 			*childOut = config.detach();
 			return S_OK;
 		}
@@ -2363,6 +2363,11 @@ public:
 			return S_FALSE;
 
 		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetIDOfName (ITypeInfo* typeInfo, LPCWSTR name, MEMBERID* pMemId) override
+	{
+		return typeInfo->GetIDsOfNames(&const_cast<LPOLESTR&>(name), 1, pMemId);
 	}
 	#pragma endregion
 

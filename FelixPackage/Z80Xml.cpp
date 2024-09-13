@@ -396,7 +396,7 @@ static HRESULT FindPutFunction (MEMBERID memid, ITypeInfo* typeInfo, TYPEATTR* t
 
 static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDispatch* obj)
 {
-	wil::com_ptr_nothrow<ITypeInfo> typeInfo;
+	com_ptr<ITypeInfo> typeInfo;
 	auto hr = obj->GetTypeInfo(0, 0x0409, &typeInfo); RETURN_IF_FAILED(hr);
 	TYPEATTR* typeAttr;
 	hr = typeInfo->GetTypeAttr(&typeAttr); RETURN_IF_FAILED(hr);
@@ -488,6 +488,9 @@ static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDis
 
 	if (!reader->IsEmptyElement())
 	{
+		com_ptr<IXmlParent> objAsParent;
+		hr = obj->QueryInterface(&objAsParent); RETURN_IF_FAILED(hr);
+
 		// Try to read child elements.
 		while (true)
 		{
@@ -502,15 +505,13 @@ static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDis
 				hr = reader->GetLocalName(&childElemName, nullptr); RETURN_IF_FAILED(hr);
 
 				MEMBERID memid;
-				auto hr = typeInfo->GetIDsOfNames(&const_cast<LPOLESTR&>(childElemName), 1, &memid); RETURN_IF_FAILED(hr);
+				auto hr = objAsParent->GetIDOfName(typeInfo, childElemName, &memid); RETURN_IF_FAILED(hr);
 				VARTYPE vt;
 				hr = FindPutFunction(memid, typeInfo.get(), typeAttr, &vt); RETURN_IF_FAILED(hr);
 
 				if (vt == VT_DISPATCH)
 				{
-					wil::com_ptr_nothrow<IXmlParent> objAsParent;
-					hr = obj->QueryInterface(&objAsParent); RETURN_IF_FAILED(hr);
-					wil::com_ptr_nothrow<IDispatch> child;
+					com_ptr<IDispatch> child;
 					hr = objAsParent->CreateChild(memid, childElemName, &child); RETURN_IF_FAILED(hr);
 					hr = LoadFromXmlInternal (reader, childElemName, child.get()); RETURN_IF_FAILED(hr);
 					wil::unique_variant value;

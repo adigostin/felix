@@ -2,7 +2,7 @@
 <Z80Project>
 	<Configurations>
 		<Configuration ConfigName="Debug" PlatformName="ZX Spectrum 48K">
-			<GeneralProperties SaveListing="True" SaveListingFilename="bin/Debug/output.lst" />
+			<AssemblerProperties SaveListing="True" SaveListingFilename="bin/Debug/output.lst" />
 		</Configuration>
 	</Configurations>
 	<Items>

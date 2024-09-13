@@ -19,8 +19,8 @@ static constexpr uint32_t LoadAddressDefaultValue = 0x8000;
 static constexpr uint16_t EntryPointAddressDefaultValue = 0x8000;
 static constexpr LaunchType LaunchTypeDefaultValue = LaunchType::PrintUsr;
 
-struct Z80ProjectConfig
-	: ATL::IDispatchImpl<IZ80ProjectConfig, &IID_IZ80ProjectConfig, &LIBID_ATLProject1Lib, 0xFFFF, 0xFFFF>
+struct ProjectConfig
+	: ATL::IDispatchImpl<IProjectConfig, &IID_IProjectConfig, &LIBID_ATLProject1Lib, 0xFFFF, 0xFFFF>
 	, IVsDebuggableProjectCfg
 	, IVsBuildableProjectCfg
 	, IVsBuildableProjectCfg2
@@ -88,15 +88,11 @@ public:
 		return S_OK;
 	}
 
-	~Z80ProjectConfig()
-	{
-	}
-
 	static LRESULT CALLBACK window_proc (HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
 		if (msg == WM_OUTPUT_LINE)
 		{
-			auto p = reinterpret_cast<Z80ProjectConfig*>(GetWindowLongPtr (hwnd, GWLP_USERDATA)); WI_ASSERT(p);
+			auto p = reinterpret_cast<ProjectConfig*>(GetWindowLongPtr (hwnd, GWLP_USERDATA)); WI_ASSERT(p);
 			auto lock = p->_pending_build->string_queue_lock.lock_exclusive();
 			auto str = p->_pending_build->string_queue.remove(p->_pending_build->string_queue.begin());
 			lock.reset();
@@ -109,7 +105,7 @@ public:
 
 		if (msg == WM_BUILD_COMPLETE)
 		{
-			auto p = reinterpret_cast<Z80ProjectConfig*>(GetWindowLongPtr (hwnd, GWLP_USERDATA)); WI_ASSERT(p);
+			auto p = reinterpret_cast<ProjectConfig*>(GetWindowLongPtr (hwnd, GWLP_USERDATA)); WI_ASSERT(p);
 			WaitForSingleObject(p->_pending_build->thread_handle.get(), IsDebuggerPresent() ? INFINITE : 5000);
 			DWORD exit_code_hr = E_FAIL;
 			BOOL bres = GetExitCodeThread (p->_pending_build->thread_handle.get(), &exit_code_hr); LOG_IF_WIN32_BOOL_FALSE(bres);
@@ -134,7 +130,7 @@ public:
 
 		if (   TryQI<IUnknown>(static_cast<IVsDebuggableProjectCfg*>(this), riid, ppvObject)
 			|| TryQI<IDispatch>(this, riid, ppvObject)
-			|| TryQI<IZ80ProjectConfig>(this, riid, ppvObject)
+			|| TryQI<IProjectConfig>(this, riid, ppvObject)
 			|| TryQI<IXmlParent>(this, riid, ppvObject)
 			|| TryQI<IVsCfg>(this, riid, ppvObject)
 			|| TryQI<IVsProjectCfg>(this, riid, ppvObject)
@@ -588,7 +584,7 @@ public:
 
 	static DWORD WINAPI ReadBuildOutputThreadProcStatic (void* arg)
 	{
-		auto cfg = static_cast<Z80ProjectConfig*>(arg);
+		auto cfg = static_cast<ProjectConfig*>(arg);
 		return cfg->ReadBuildOutputThreadProc();
 	}
 
@@ -689,7 +685,7 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region IZ80ProjectConfig
+	#pragma region IProjectConfig
 	virtual HRESULT STDMETHODCALLTYPE get___id(BSTR *value) override
 	{
 		// For configurations, VS seems to request this and then ignore it.
@@ -697,10 +693,10 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_GeneralProperties (IDispatch** ppDispatch) override
+	virtual HRESULT STDMETHODCALLTYPE get_AssemblerProperties (IDispatch** ppDispatch) override
 	{
-		com_ptr<IZ80ProjectConfigGeneralProperties> props;
-		auto hr = GeneralPageProperties_CreateInstance (&props); RETURN_IF_FAILED(hr);
+		com_ptr<IProjectConfigAssemblerProperties> props;
+		auto hr = AssemblerPageProperties_CreateInstance (&props); RETURN_IF_FAILED(hr);
 		hr = props->put_OutputFileType (_outputFileType); RETURN_IF_FAILED(hr);
 		hr = props->put_SaveListing (_saveListing); RETURN_IF_FAILED(hr);
 		hr = props->put_SaveListingFilename (_listingFilename.get()); RETURN_IF_FAILED(hr);
@@ -708,9 +704,9 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_GeneralProperties (IDispatch* pDispatch) override
+	virtual HRESULT STDMETHODCALLTYPE put_AssemblerProperties (IDispatch* pDispatch) override
 	{
-		wil::com_ptr_nothrow<IZ80ProjectConfigGeneralProperties> gp;
+		wil::com_ptr_nothrow<IProjectConfigAssemblerProperties> gp;
 		auto hr = pDispatch->QueryInterface(&gp); RETURN_IF_FAILED(hr);
 
 		bool changed = false;
@@ -752,7 +748,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE get_DebuggingProperties (IDispatch** ppDispatch) override
 	{
-		com_ptr<IZ80ProjectConfigDebugProperties> props;
+		com_ptr<IProjectConfigDebugProperties> props;
 		auto hr = DebuggingPageProperties_CreateInstance (&props); RETURN_IF_FAILED(hr);
 		hr = props->put_LoadAddress(_loadAddress); RETURN_IF_FAILED(hr);
 		hr = props->put_EntryPointAddress(_entryPointAddress); RETURN_IF_FAILED(hr);
@@ -763,7 +759,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE put_DebuggingProperties (IDispatch* pDispatch) override
 	{
-		wil::com_ptr_nothrow<IZ80ProjectConfigDebugProperties> dp;
+		wil::com_ptr_nothrow<IProjectConfigDebugProperties> dp;
 		auto hr = pDispatch->QueryInterface(&dp); RETURN_IF_FAILED(hr);
 
 		bool changed = false;
@@ -865,7 +861,7 @@ public:
 	#pragma region IXmlParent
 	virtual HRESULT STDMETHODCALLTYPE GetChildXmlElementName (DISPID dispidProperty, IUnknown* child, BSTR* xmlElementNameOut) override
 	{
-		if (dispidProperty == dispidGeneralProperties)
+		if (dispidProperty == dispidAssemblerProperties)
 		{
 			*xmlElementNameOut = nullptr;
 			return S_OK;
@@ -882,17 +878,17 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE CreateChild (DISPID dispidProperty, PCWSTR xmlElementName, IDispatch** childOut) override
 	{
-		if (dispidProperty == dispidGeneralProperties)
+		if (dispidProperty == dispidAssemblerProperties)
 		{
-			com_ptr<IZ80ProjectConfigGeneralProperties> pp;
-			auto hr = GeneralPageProperties_CreateInstance (&pp); RETURN_IF_FAILED(hr);
+			com_ptr<IProjectConfigAssemblerProperties> pp;
+			auto hr = AssemblerPageProperties_CreateInstance (&pp); RETURN_IF_FAILED(hr);
 			*childOut = pp.detach();
 			return S_OK;
 		}
 
 		if (dispidProperty == dispidDebuggingProperties)
 		{
-			com_ptr<IZ80ProjectConfigDebugProperties> pp;
+			com_ptr<IProjectConfigDebugProperties> pp;
 			auto hr = DebuggingPageProperties_CreateInstance (&pp); RETURN_IF_FAILED(hr);
 			*childOut = pp.detach();
 			return S_OK;
@@ -902,19 +898,30 @@ public:
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE NeedSerialization (DISPID dispidProperty) override { return S_OK; }
+
+	virtual HRESULT STDMETHODCALLTYPE GetIDOfName (ITypeInfo* typeInfo, LPCWSTR name, MEMBERID* pMemId) override
+	{
+		if (!wcscmp(name, L"GeneralProperties"))
+		{
+			*pMemId = dispidAssemblerProperties;
+			return S_OK;
+		}
+
+		return typeInfo->GetIDsOfNames(&const_cast<LPOLESTR&>(name), 1, pMemId);
+	}
 	#pragma endregion
 };
 
-HRESULT Z80ProjectConfig_CreateInstance (IVsUIHierarchy* hier, IZ80ProjectConfig** to)
+HRESULT ProjectConfig_CreateInstance (IVsUIHierarchy* hier, IProjectConfig** to)
 {
-	auto p = com_ptr(new (std::nothrow) Z80ProjectConfig()); RETURN_IF_NULL_ALLOC(p);
+	auto p = com_ptr(new (std::nothrow) ProjectConfig()); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance(hier); RETURN_IF_FAILED(hr);
 	*to = p.detach();
 	return S_OK;
 }
 
-struct GeneralPageProperties
-	: ATL::IDispatchImpl<IZ80ProjectConfigGeneralProperties, &IID_IZ80ProjectConfigGeneralProperties, &LIBID_ATLProject1Lib, 0xFFFF, 0xFFFF>
+struct AssemblerPageProperties
+	: ATL::IDispatchImpl<IProjectConfigAssemblerProperties, &IID_IProjectConfigAssemblerProperties, &LIBID_ATLProject1Lib, 0xFFFF, 0xFFFF>
 	, IProvideClassInfo
 	, IVsPerPropertyBrowsing
 	, IConnectionPointContainer
@@ -925,11 +932,11 @@ struct GeneralPageProperties
 	bool _saveListing;
 	wil::unique_bstr _listingFilename;
 
-	static HRESULT CreateInstance (IZ80ProjectConfigGeneralProperties** to)
+	static HRESULT CreateInstance (IProjectConfigAssemblerProperties** to)
 	{
 		HRESULT hr;
 
-		auto p = com_ptr(new (std::nothrow) GeneralPageProperties()); RETURN_IF_NULL_ALLOC(p);
+		auto p = com_ptr(new (std::nothrow) AssemblerPageProperties()); RETURN_IF_NULL_ALLOC(p);
 
 		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(p, &p->_propNotifyCP); RETURN_IF_FAILED(hr);
 
@@ -947,7 +954,7 @@ struct GeneralPageProperties
 
 		if (   TryQI<IUnknown>(static_cast<IDispatch*>(this), riid, ppvObject)
 			|| TryQI<IDispatch>(this, riid, ppvObject)
-			|| TryQI<IZ80ProjectConfigGeneralProperties>(this, riid, ppvObject)
+			|| TryQI<IProjectConfigAssemblerProperties>(this, riid, ppvObject)
 			|| TryQI<IProvideClassInfo>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
@@ -1009,7 +1016,7 @@ struct GeneralPageProperties
 	{
 		if (dispid == dispidOutputFileType)
 		{
-			*fDefault = (_outputFileType == Z80ProjectConfig::OutputFileTypeDefaultValue);
+			*fDefault = (_outputFileType == ProjectConfig::OutputFileTypeDefaultValue);
 			return S_OK;
 		}
 
@@ -1049,7 +1056,7 @@ struct GeneralPageProperties
 	virtual HRESULT STDMETHODCALLTYPE ResetPropertyValue (DISPID dispid) override
 	{
 		if (dispid == dispidOutputFileType)
-			return put_OutputFileType(Z80ProjectConfig::OutputFileTypeDefaultValue);
+			return put_OutputFileType(ProjectConfig::OutputFileTypeDefaultValue);
 
 		if (dispid == dispidSaveListing)
 			return put_SaveListing(VARIANT_FALSE);
@@ -1146,7 +1153,7 @@ struct GeneralPageProperties
 };
 
 struct DebuggingPageProperties
-	: ATL::IDispatchImpl<IZ80ProjectConfigDebugProperties, &IID_IZ80ProjectConfigDebugProperties, &LIBID_ATLProject1Lib, 0xFFFF, 0xFFFF>
+	: ATL::IDispatchImpl<IProjectConfigDebugProperties, &IID_IProjectConfigDebugProperties, &LIBID_ATLProject1Lib, 0xFFFF, 0xFFFF>
 	, IProvideClassInfo
 	, IVsPerPropertyBrowsing
 	, IConnectionPointContainer
@@ -1157,7 +1164,7 @@ struct DebuggingPageProperties
 	uint16_t _entryPointAddress = EntryPointAddressDefaultValue;
 	LaunchType _launchType = LaunchTypeDefaultValue;
 
-	static HRESULT CreateInstance (IZ80ProjectConfigDebugProperties** to)
+	static HRESULT CreateInstance (IProjectConfigDebugProperties** to)
 	{
 		HRESULT hr;
 
@@ -1177,7 +1184,7 @@ struct DebuggingPageProperties
 
 		if (   TryQI<IUnknown>(static_cast<IDispatch*>(this), riid, ppvObject)
 			|| TryQI<IDispatch>(this, riid, ppvObject)
-			|| TryQI<IZ80ProjectConfigDebugProperties>(this, riid, ppvObject)
+			|| TryQI<IProjectConfigDebugProperties>(this, riid, ppvObject)
 			|| TryQI<IProvideClassInfo>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
@@ -1344,12 +1351,12 @@ struct DebuggingPageProperties
 	#pragma endregion
 };
 
-HRESULT GeneralPageProperties_CreateInstance (IZ80ProjectConfigGeneralProperties** to)
+HRESULT AssemblerPageProperties_CreateInstance (IProjectConfigAssemblerProperties** to)
 {
-	return GeneralPageProperties::CreateInstance(to);
+	return AssemblerPageProperties::CreateInstance(to);
 }
 
-HRESULT DebuggingPageProperties_CreateInstance (IZ80ProjectConfigDebugProperties** to)
+HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to)
 {
 	return DebuggingPageProperties::CreateInstance(to);
 }

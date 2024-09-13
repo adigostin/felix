@@ -9,7 +9,7 @@
 #define dispidEntryPointAddress    3
 #define dispidLaunchType           4
 #define dispidConfigurations       5
-#define dispidGeneralProperties    6
+#define dispidAssemblerProperties  6
 #define dispidDebuggingProperties  7
 #define dispidItems                8
 #define dispidProjectGuid          9

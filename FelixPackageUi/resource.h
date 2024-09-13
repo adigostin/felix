@@ -3,7 +3,7 @@
 // Used by FelixPackageUI.rc
 //
 #define IDS_OFFICIALNAME                100
-#define IDS_GENERAL_PROP_PAGE_TITLE     101
+#define IDS_ASSEMBLER_PROP_PAGE_TITLE   101
 #define IDD_REPORT_ERROR                101
 #define IDS_PRODUCTDETAILS              102
 #define IDS_COMPANYNAME                 103
