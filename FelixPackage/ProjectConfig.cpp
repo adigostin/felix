@@ -37,9 +37,6 @@ struct ProjectConfig
 	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsBuildStatusCallback>> _buildStatusCallbacks;
 	VSCOOKIE _buildStatusNextCookie = VSCOOKIE_NIL + 1;
 
-	static constexpr OutputFileType OutputFileTypeDefaultValue = OutputFileType::Binary;
-	OutputFileType _outputFileType = OutputFileTypeDefaultValue;
-
 	uint32_t _loadAddress = LoadAddressDefaultValue;
 	uint16_t _entryPointAddress = EntryPointAddressDefaultValue;
 	LaunchType _launchType = LaunchTypeDefaultValue;
@@ -697,7 +694,6 @@ public:
 	{
 		com_ptr<IProjectConfigAssemblerProperties> props;
 		auto hr = AssemblerPageProperties_CreateInstance (&props); RETURN_IF_FAILED(hr);
-		hr = props->put_OutputFileType (_outputFileType); RETURN_IF_FAILED(hr);
 		hr = props->put_SaveListing (_saveListing); RETURN_IF_FAILED(hr);
 		hr = props->put_SaveListingFilename (_listingFilename.get()); RETURN_IF_FAILED(hr);
 		*ppDispatch = props.detach();
@@ -710,14 +706,6 @@ public:
 		auto hr = pDispatch->QueryInterface(&gp); RETURN_IF_FAILED(hr);
 
 		bool changed = false;
-
-		enum OutputFileType newValue;
-		hr = gp->get_OutputFileType(&newValue); RETURN_IF_FAILED(hr);
-		if (_outputFileType != newValue)
-		{
-			_outputFileType = newValue;
-			changed = true;
-		}
 
 		VARIANT_BOOL saveListing;
 		hr = gp->get_SaveListing(&saveListing); RETURN_IF_FAILED(hr);
@@ -928,7 +916,6 @@ struct AssemblerPageProperties
 {
 	ULONG _refCount = 0;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
-	OutputFileType _outputFileType;
 	bool _saveListing;
 	wil::unique_bstr _listingFilename;
 
@@ -1016,7 +1003,7 @@ struct AssemblerPageProperties
 	{
 		if (dispid == dispidOutputFileType)
 		{
-			*fDefault = (_outputFileType == ProjectConfig::OutputFileTypeDefaultValue);
+			*fDefault = TRUE;
 			return S_OK;
 		}
 
@@ -1055,9 +1042,6 @@ struct AssemblerPageProperties
 
 	virtual HRESULT STDMETHODCALLTYPE ResetPropertyValue (DISPID dispid) override
 	{
-		if (dispid == dispidOutputFileType)
-			return put_OutputFileType(ProjectConfig::OutputFileTypeDefaultValue);
-
 		if (dispid == dispidSaveListing)
 			return put_SaveListing(VARIANT_FALSE);
 
@@ -1084,7 +1068,7 @@ struct AssemblerPageProperties
 	}
 	#pragma endregion
 
-	#pragma region IZ80ProjectConfigGeneralProperties
+	#pragma region IProjectConfigAssemblerProperties
 	virtual HRESULT STDMETHODCALLTYPE get___id(BSTR *value) override
 	{
 		// For configurations, this seems to be requested and then ignored.
@@ -1092,20 +1076,14 @@ struct AssemblerPageProperties
 		return S_OK;;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_OutputFileType (enum OutputFileType* value) override
+	virtual HRESULT STDMETHODCALLTYPE get_OutputFileType (OutputFileType* value) override
 	{
-		*value = _outputFileType;
+		*value = OutputFileType::Binary;
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_OutputFileType (enum OutputFileType value) override
+	virtual HRESULT STDMETHODCALLTYPE put_OutputFileType (OutputFileType value) override
 	{
-		if (_outputFileType != value)
-		{
-			_outputFileType = value;
-			_propNotifyCP->NotifyPropertyChanged(dispidOutputFileType);
-		}
-
 		return S_OK;
 	}
 
