@@ -8,7 +8,7 @@
 #include "dispids.h"
 
 struct Z80AsmFile 
-	: ATL::IDispatchImpl<IZ80AsmFile, &IID_IZ80AsmFile, &LIBID_ATLProject1Lib, 0xFFFF, 0xFFFF>
+	: IZ80AsmFile
 	, IProvideClassInfo
 	, IOleCommandTarget
 	, IVsGetCfgProvider
@@ -90,6 +90,8 @@ public:
 
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
+
+	IMPLEMENT_IDISPATCH(IID_IZ80AsmFile);
 
 	#pragma region IZ80ProjectItem
 	virtual VSITEMID STDMETHODCALLTYPE GetItemId() override { return _itemId; }

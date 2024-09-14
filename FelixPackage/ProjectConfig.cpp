@@ -20,7 +20,7 @@ static constexpr uint16_t EntryPointAddressDefaultValue = 0x8000;
 static constexpr LaunchType LaunchTypeDefaultValue = LaunchType::PrintUsr;
 
 struct ProjectConfig
-	: ATL::IDispatchImpl<IProjectConfig, &IID_IProjectConfig, &LIBID_ATLProject1Lib, 0xFFFF, 0xFFFF>
+	: IProjectConfig
 	, IVsDebuggableProjectCfg
 	, IVsBuildableProjectCfg
 	, IVsBuildableProjectCfg2
@@ -179,6 +179,8 @@ public:
 
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
+
+	IMPLEMENT_IDISPATCH(IID_IProjectConfig);
 
 	#pragma region IVsCfg
 	virtual HRESULT STDMETHODCALLTYPE get_DisplayName(BSTR * pbstrDisplayName) override
@@ -909,7 +911,7 @@ HRESULT ProjectConfig_CreateInstance (IVsUIHierarchy* hier, IProjectConfig** to)
 }
 
 struct AssemblerPageProperties
-	: ATL::IDispatchImpl<IProjectConfigAssemblerProperties, &IID_IProjectConfigAssemblerProperties, &LIBID_ATLProject1Lib, 0xFFFF, 0xFFFF>
+	: IProjectConfigAssemblerProperties
 	, IProvideClassInfo
 	, IVsPerPropertyBrowsing
 	, IConnectionPointContainer
@@ -984,6 +986,8 @@ struct AssemblerPageProperties
 
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
+
+	IMPLEMENT_IDISPATCH(IID_IProjectConfigAssemblerProperties);
 
 	#pragma region IProvideClassInfo
 	virtual HRESULT STDMETHODCALLTYPE GetClassInfo (ITypeInfo **ppTI) override
@@ -1131,7 +1135,7 @@ struct AssemblerPageProperties
 };
 
 struct DebuggingPageProperties
-	: ATL::IDispatchImpl<IProjectConfigDebugProperties, &IID_IProjectConfigDebugProperties, &LIBID_ATLProject1Lib, 0xFFFF, 0xFFFF>
+	: IProjectConfigDebugProperties
 	, IProvideClassInfo
 	, IVsPerPropertyBrowsing
 	, IConnectionPointContainer
@@ -1202,6 +1206,8 @@ struct DebuggingPageProperties
 
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
+
+	IMPLEMENT_IDISPATCH(IID_IProjectConfigDebugProperties)
 
 	#pragma region IProvideClassInfo
 	virtual HRESULT STDMETHODCALLTYPE GetClassInfo (ITypeInfo **ppTI) override

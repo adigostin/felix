@@ -460,3 +460,27 @@ HRESULT inline SetErrorInfo (HRESULT errorHR, LPCWSTR messageFormat, ...)
 
 	return errorHR;
 }
+
+#define IMPLEMENT_IDISPATCH(DISP_IID) static ITypeInfo* GetTypeInfo() { \
+		static com_ptr<ITypeInfo> _typeInfo; \
+		if (!_typeInfo) { \
+			wil::unique_process_heap_string filename; \
+			auto hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, filename); FAIL_FAST_IF_FAILED(hr); \
+			com_ptr<ITypeLib> _typeLib; \
+			hr = LoadTypeLibEx (filename.get(), REGKIND_NONE, &_typeLib); FAIL_FAST_IF_FAILED(hr); \
+			hr = _typeLib->GetTypeInfoOfGuid(DISP_IID, &_typeInfo); FAIL_FAST_IF_FAILED(hr); \
+		} \
+		return _typeInfo.get(); \
+	} \
+	virtual HRESULT STDMETHODCALLTYPE GetTypeInfoCount(UINT* pctinfo) override final { *pctinfo = 1; return S_OK; } \
+	virtual HRESULT STDMETHODCALLTYPE GetTypeInfo(UINT iTInfo, LCID lcid, ITypeInfo** ppTInfo) override final { \
+		*ppTInfo = GetTypeInfo(); \
+		(*ppTInfo)->AddRef(); \
+		return S_OK; \
+	} \
+	virtual HRESULT STDMETHODCALLTYPE GetIDsOfNames(REFIID riid, LPOLESTR* rgszNames, UINT cNames, LCID lcid, DISPID* rgDispId) override final { \
+		return DispGetIDsOfNames (GetTypeInfo(), rgszNames, cNames, rgDispId); \
+	} \
+	virtual HRESULT STDMETHODCALLTYPE Invoke(DISPID dispIdMember, REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr) override final { \
+		return DispInvoke (this, GetTypeInfo(), dispIdMember, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr); \
+	} \

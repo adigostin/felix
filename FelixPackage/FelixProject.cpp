@@ -19,7 +19,7 @@ static constexpr wchar_t Z80AsmElementName[] = L"AsmFile";
 
 // What MPF implements: https://docs.microsoft.com/en-us/visualstudio/extensibility/internals/project-model-core-components?view=vs-2022
 class Z80Project
-	: ATL::IDispatchImpl<IZ80ProjectProperties, &IID_IZ80ProjectProperties, &LIBID_ATLProject1Lib, 0xFFFF, 0xFFFF>
+	: IZ80ProjectProperties    // includes IDispatch
 	, IVsProject2              // includes IVsProject
 	, IVsUIHierarchy           // includes IVsHierarchy
 	, IPersistFileFormat       // includes IPersist
@@ -705,6 +705,8 @@ public:
 
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
+
+	IMPLEMENT_IDISPATCH(IID_IZ80ProjectProperties);
 
 	#pragma region IVsHierarchy
 	virtual HRESULT STDMETHODCALLTYPE SetSite(IServiceProvider* pSP) override

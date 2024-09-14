@@ -69,9 +69,4 @@
 #include <wil/win32_helpers.h>
 #include <wil/wistd_type_traits.h>
 
-// ATL
-#define _ATL_NO_AUTOMATIC_NAMESPACE
-#include <atlbase.h>
-#include <atlcom.h>
-
 extern "C" IMAGE_DOS_HEADER __ImageBase;

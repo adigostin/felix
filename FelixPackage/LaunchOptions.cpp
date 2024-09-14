@@ -6,12 +6,12 @@
 #include "dispids.h"
 
 class LaunchOptionsImpl
-	: public ATL::IDispatchImpl<IFelixLaunchOptions, &IID_IFelixLaunchOptions, &LIBID_ATLProject1Lib, 0xFFFF, 0xFFFF>
+	: public IFelixLaunchOptions
 	, IXmlParent
 {
 	ULONG _refCount = 0;
 	wil::unique_process_heap_string _projectDir;
-	com_ptr<IDispatch> _debuggingProperties;
+	com_ptr<IProjectConfigDebugProperties> _debuggingProperties;
 
 public:
 	HRESULT InitInstance()
@@ -40,6 +40,8 @@ public:
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
+	IMPLEMENT_IDISPATCH(IID_IFelixLaunchOptions)
+
 	#pragma region IFelixLaunchOptions
 	virtual HRESULT STDMETHODCALLTYPE get_ProjectDir (BSTR *pbstr) override
 	{
@@ -63,8 +65,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE put_DebuggingProperties (IDispatch *pDispatch) override
 	{
-		_debuggingProperties = pDispatch;
-		return S_OK;
+		return pDispatch->QueryInterface(&_debuggingProperties);
 	}
 	#pragma endregion
 
