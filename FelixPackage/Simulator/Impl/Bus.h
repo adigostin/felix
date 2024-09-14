@@ -64,6 +64,7 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{A97526D1-239A-4322-ABA8-33CF2690A732}")
 */
 struct DECLSPEC_NOVTABLE IMemoryDevice : IDevice
 {
+	virtual HRESULT GetBounds (DWORD* from, DWORD* to) = 0;
 	virtual HRESULT ReadMemory (uint32_t busAddress, uint32_t size, void* dest) = 0;
 	virtual HRESULT WriteMemory (uint32_t internalAddress, uint32_t size, const void* bytes) = 0;
 };

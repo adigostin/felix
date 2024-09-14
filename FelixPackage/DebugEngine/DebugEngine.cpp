@@ -23,7 +23,6 @@ class Z80DebugEngine : public IDebugEngine2, IDebugEngineLaunch2, ISimulatorEven
 	SIM_BP_COOKIE _entryPointBreakpoint = 0;
 	SIM_BP_COOKIE _exitPointBreakpoint = 0;
 	bool _advisingSimulatorEvents = false;
-	static const uint16_t binFileAddr = 0x8000;
 
 public:
 	~Z80DebugEngine()
@@ -572,6 +571,9 @@ public:
 		auto hr = _simulator->RemoveBreakpoint(_editorFunctionBreakpoint); LOG_IF_FAILED(hr);
 		_editorFunctionBreakpoint = 0;
 
+		com_ptr<IVsUIShell> uiShell;
+		hr = serviceProvider->QueryService(SID_SVsUIShell, &uiShell); RETURN_IF_FAILED(hr);
+
 		com_ptr<IDebugProcess2> process;
 		hr = _program->GetProcess(&process); RETURN_IF_FAILED(hr);
 		wil::unique_bstr exePath;
@@ -579,22 +581,37 @@ public:
 		if (!exePath)
 			RETURN_HR(E_NO_EXE_FILENAME);
 
+		com_ptr<IDispatch> debugPropsDisp;
+		hr = _launchOptions->get_DebuggingProperties(&debugPropsDisp); RETURN_IF_FAILED(hr);
+		com_ptr<IProjectConfigDebugProperties> debugProps;
+		hr = debugPropsDisp->QueryInterface(&debugProps); RETURN_IF_FAILED(hr);
+		DWORD loadAddress;
+		hr = debugProps->get_LoadAddress(&loadAddress); RETURN_IF_FAILED(hr);
+		WORD launchAddress;
+		hr = debugProps->get_EntryPointAddress(&launchAddress); RETURN_IF_FAILED(hr);
+
 		// Load the binary file.
 		wil::com_ptr_nothrow<IStream> stream;
 		hr = SHCreateStreamOnFileEx (exePath.get(), STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream); RETURN_IF_FAILED(hr);
 		STATSTG stat;
 		hr = stream->Stat (&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
-		hr = _simulator->LoadBinary(stream.get(), binFileAddr); RETURN_IF_FAILED(hr);
+		hr = _simulator->LoadBinary(stream.get(), loadAddress);
+		if (FAILED(hr))
+		{
+			uiShell->ReportErrorInfo(hr);
+			TerminateInternal();
+			return hr;
+		}
 		auto debug_info_path = wil::make_process_heap_string_nothrow(exePath.get()); RETURN_IF_NULL_ALLOC(debug_info_path);
 		hr = PathCchRenameExtension (debug_info_path.get(), wcslen(debug_info_path.get()) + 1, L".sld"); RETURN_IF_FAILED(hr);
 		com_ptr<IDebugModuleCollection> moduleColl;
 		hr = _program->QueryInterface(&moduleColl); RETURN_IF_FAILED(hr);
 		wil::com_ptr_nothrow<IDebugModule2> exe_module;
-		hr = MakeModule (binFileAddr, stat.cbSize.LowPart, exePath.get(), debug_info_path.get(), true,
+		hr = MakeModule (loadAddress, stat.cbSize.LowPart, exePath.get(), debug_info_path.get(), true,
 			this, _program.get(), _callback.get(), &exe_module); RETURN_IF_FAILED(hr);
 		hr = moduleColl->AddModule(exe_module.get()); RETURN_IF_FAILED(hr);
 
-		// Simulate what the EDITOR function would do when typing "PRINT USR 32768".
+		// Simulate what the EDITOR function would do when typing "PRINT USR <LaunchAddress>".
 
 		// The command line is from E-LINE to WORKSP.
 		UINT16 eline, worksp;
@@ -610,7 +627,7 @@ public:
 
 		// We need to replace the command line with PRINT USR <addr>.
 		char cmdLine[16];
-		int cmdLineLen = sprintf_s (cmdLine, "\xF5\xC0%u\x0D\x80", binFileAddr); RETURN_HR_IF(E_FAIL, cmdLineLen < 0);
+		int cmdLineLen = sprintf_s (cmdLine, "\xF5\xC0%u\x0D\x80", launchAddress); RETURN_HR_IF(E_FAIL, cmdLineLen < 0);
 		hr = _simulator->WriteMemoryBus (eline, (uint16_t)cmdLineLen, cmdLine); RETURN_IF_FAILED(hr);
 		hr = WriteZxSpectrumSystemVar (L"K-CUR", eline + cmdLineLen - 2); RETURN_IF_FAILED(hr);
 		hr = WriteZxSpectrumSystemVar (L"WORKSP", eline + cmdLineLen); RETURN_IF_FAILED(hr);
@@ -625,7 +642,7 @@ public:
 			
 		// Now put another breakpoint at the entry point of the Z80 program.
 		WI_ASSERT(!_entryPointBreakpoint);
-		hr = _simulator->AddBreakpoint (BreakpointType::Code, false, binFileAddr, &_entryPointBreakpoint); RETURN_IF_FAILED(hr);
+		hr = _simulator->AddBreakpoint (BreakpointType::Code, false, launchAddress, &_entryPointBreakpoint); RETURN_IF_FAILED(hr);
 		// Resume simulation so that the ZX Spectrum ROM parses our command and calls the Z80 program.
 		hr = _simulator->Resume(true); RETURN_IF_FAILED(hr);
 		return S_OK;
@@ -663,22 +680,27 @@ public:
 		return S_OK;
 	}
 
+	void TerminateInternal()
+	{
+		// It's not right to call our own implementations, but I can't find another way to terminate the debug session.
+		// I tried calling IDebugSession2::Terminate(), but it returns E_NOTIMPL.
+		wil::com_ptr_nothrow<IDebugProcess2> process;
+		auto hr = _program->GetProcess(&process); LOG_IF_FAILED(hr);
+		hr = _program->Terminate(); LOG_IF_FAILED(hr);
+		hr = TerminateProcess(process.get()); LOG_IF_FAILED(hr);
+	}
+
 	HRESULT ProcessExitPointBreakpointHit()
 	{
 		WI_ASSERT(_exitPointBreakpoint);
 		auto hr = _simulator->RemoveBreakpoint(_exitPointBreakpoint); LOG_IF_FAILED(hr);
 		_exitPointBreakpoint = 0;
 
-		z80_register_set regs;
-		hr = _simulator->GetRegisters(&regs, (uint32_t)sizeof(regs));
-		uint16_t bc = SUCCEEDED(hr) ? regs.main.bc : 0xFFFF;
+		//z80_register_set regs;
+		//hr = _simulator->GetRegisters(&regs, (uint32_t)sizeof(regs));
+		//uint16_t bc = SUCCEEDED(hr) ? regs.main.bc : 0xFFFF;
 
-		// It's not right to call our own implementations, but I can't find another way to terminate the debug session.
-		// I tried calling IDebugSession2::Terminate(), but it returns E_NOTIMPL.
-		wil::com_ptr_nothrow<IDebugProcess2> process;
-		hr = _program->GetProcess(&process); LOG_IF_FAILED(hr);
-		hr = _program->Terminate(); LOG_IF_FAILED(hr);
-		hr = TerminateProcess(process.get()); LOG_IF_FAILED(hr);
+		TerminateInternal();
 
 		// We'll resume execution of code from the ZX Spectrum ROM in ContinueFromSynchronousEvent().
 

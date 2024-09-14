@@ -15,8 +15,8 @@
 
 static const HINSTANCE hinstance = reinterpret_cast<HINSTANCE>(&__ImageBase);
 
-static constexpr uint32_t LoadAddressDefaultValue = 0x8000;
-static constexpr uint16_t EntryPointAddressDefaultValue = 0x8000;
+static constexpr DWORD LoadAddressDefaultValue = 0x8000;
+static constexpr WORD EntryPointAddressDefaultValue = 0x8000;
 static constexpr LaunchType LaunchTypeDefaultValue = LaunchType::PrintUsr;
 
 struct ProjectConfig
@@ -37,8 +37,8 @@ struct ProjectConfig
 	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsBuildStatusCallback>> _buildStatusCallbacks;
 	VSCOOKIE _buildStatusNextCookie = VSCOOKIE_NIL + 1;
 
-	uint32_t _loadAddress = LoadAddressDefaultValue;
-	uint16_t _entryPointAddress = EntryPointAddressDefaultValue;
+	DWORD _loadAddress = LoadAddressDefaultValue;
+	WORD _entryPointAddress = EntryPointAddressDefaultValue;
 	LaunchType _launchType = LaunchTypeDefaultValue;
 
 	bool _saveListing = false;
@@ -752,7 +752,7 @@ public:
 
 		bool changed = false;
 
-		uint16_t entryPointAddress;
+		WORD entryPointAddress;
 		hr = dp->get_EntryPointAddress(&entryPointAddress); RETURN_IF_FAILED(hr);
 		if (_entryPointAddress != entryPointAddress)
 		{
@@ -1140,8 +1140,8 @@ struct DebuggingPageProperties
 {
 	ULONG _refCount = 0;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
-	uint32_t _loadAddress = LoadAddressDefaultValue;
-	uint16_t _entryPointAddress = EntryPointAddressDefaultValue;
+	DWORD _loadAddress = LoadAddressDefaultValue;
+	WORD _entryPointAddress = EntryPointAddressDefaultValue;
 	LaunchType _launchType = LaunchTypeDefaultValue;
 
 	static HRESULT CreateInstance (IProjectConfigDebugProperties** to)
@@ -1297,13 +1297,13 @@ struct DebuggingPageProperties
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_EntryPointAddress (uint16_t* value) override
+	virtual HRESULT STDMETHODCALLTYPE get_EntryPointAddress (WORD* value) override
 	{
 		*value = _entryPointAddress;
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_EntryPointAddress (uint16_t value) override
+	virtual HRESULT STDMETHODCALLTYPE put_EntryPointAddress (WORD value) override
 	{
 		if (_entryPointAddress != value)
 		{

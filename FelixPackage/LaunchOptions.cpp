@@ -16,6 +16,7 @@ class LaunchOptionsImpl
 public:
 	HRESULT InitInstance()
 	{
+		auto hr = DebuggingPageProperties_CreateInstance (&_debuggingProperties); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 

@@ -1013,7 +1013,7 @@ public:
 		return E_FAIL;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE LoadBinary (IStream* stream, uint16_t address) override
+	virtual HRESULT STDMETHODCALLTYPE LoadBinary (IStream* stream, DWORD address) override
 	{
 		RETURN_HR_IF(SIM_E_NOT_SUPPORTED_WHILE_SIMULATION_RUNNING, _running);
 
@@ -1022,13 +1022,19 @@ public:
 		STATSTG stat;
 		hr = stream->Stat (&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
 		if (stat.cbSize.HighPart)
-			RETURN_HR(SIM_E_BINARY_FILE_TOO_LARGE);
+			RETURN_HR(HRESULT_FROM_WIN32(E_BOUNDS));
 		if (!stat.cbSize.LowPart)
-			RETURN_HR(SIM_E_BINARY_FILE_EMPTY);
-		if (stat.cbSize.LowPart > 0x10000)
-			RETURN_HR(SIM_E_BINARY_FILE_TOO_LARGE);
+			RETURN_HR(E_BOUNDS);
 		if (address + (uint16_t)stat.cbSize.LowPart <= address)
-			RETURN_HR(SIM_E_BINARY_FILE_TOO_LARGE);
+			RETURN_HR(HRESULT_FROM_WIN32(E_BOUNDS));
+		DWORD from, to;
+		_ramDevice->GetBounds(&from, &to);
+		if ((address < from) || (address + stat.cbSize.LowPart > to))
+			return SetErrorInfo(E_BOUNDS, L"Binary does not fit in RAM.\r\n\r\n"
+				"Binary load address range is 0x%04X...0x%04X.\r\n\r\n"
+				"RAM address range = 0x%04X...0x%04X.\r\n\r\n"
+				"Try to adjust the LoadAddress value in the project properties."
+				, address, address + stat.cbSize.LowPart, from, to);
 
 		uint8_t buffer[128];
 		for (uint16_t i = 0; i < stat.cbSize.LowPart; i += sizeof(buffer))

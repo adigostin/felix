@@ -90,6 +90,22 @@ public:
 	}
 
 	#pragma region IMemoryDevice
+	virtual HRESULT GetBounds (DWORD* from, DWORD* to) override
+	{
+		if (!_cpm)
+		{
+			*from =  0x4000;
+			*to   = 0x10000;
+			return S_OK;
+		}
+		else
+		{
+			*from = 0;
+			*to = 0xE000;
+			return S_OK;
+		}
+	}
+
 	virtual HRESULT ReadMemory (uint32_t address, uint32_t size, void* dest) override
 	{
 		RETURN_HR(E_NOTIMPL);
