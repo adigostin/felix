@@ -13,7 +13,6 @@ class Z80DebugEngine : public IDebugEngine2, IDebugEngineLaunch2, ISimulatorEven
 	ULONG _refCount = 0;
 	wil::unique_bstr _registryRoot;
 	WORD langId = 0;
-	bool _attachCalled = false;
 	com_ptr<IDebugEventCallback2> _callback;
 	com_ptr<ISimulator> _simulator;
 	com_ptr<IDebugPort2> _port;
@@ -101,17 +100,6 @@ public:
 
 	virtual HRESULT __stdcall Attach(IDebugProgram2** rgpPrograms, IDebugProgramNode2** rgpProgramNodes, DWORD celtPrograms, IDebugEventCallback2* pCallback, ATTACH_REASON dwReason) override
 	{
-		WI_ASSERT(!_attachCalled);
-
-		if (celtPrograms != 1)
-			RETURN_HR(E_INVALIDARG);
-
-		using ProgramCreateEvent = EventBase<IDebugProgramCreateEvent2, EVENT_ASYNCHRONOUS>;
-		wil::com_ptr_nothrow<ProgramCreateEvent> pce = new (std::nothrow) ProgramCreateEvent(); RETURN_IF_NULL_ALLOC(pce);
-		auto hr = pce->Send(pCallback, this, rgpPrograms[0], nullptr); RETURN_IF_FAILED(hr);
-
-		_attachCalled = true;
-
 		return S_OK;
 	}
 
@@ -292,6 +280,10 @@ public:
 		if (SUCCEEDED(pEvent->QueryInterface(&tde)))
 			return S_OK;
 
+		com_ptr<IDebugLoadCompleteEvent2> lce;
+		if (SUCCEEDED(pEvent->QueryInterface(lce.addressof())))
+			return S_OK;
+
 		RETURN_HR(E_NOTIMPL);
 	}
 
@@ -335,9 +327,11 @@ public:
 	static HRESULT SendLoadCompleteEvent (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program, IDebugThread2* thread)
 	{
 		// Must be stopping as per https://docs.microsoft.com/en-us/visualstudio/extensibility/debugger/supported-event-types?view=vs-2019
-		using LCE = EventBase<IDebugLoadCompleteEvent2, EVENT_SYNC_STOP>;
+		// Later edit: however, if we send IDebugLoadCompleteEvent2 (stopping) followed by IDebugEntryPointEvent2 (also stopping),
+		// VS calls IDebugProgram2::Continue twice! So let's send LoadComplete non-stopping. MIDebugEngine does the same.
+		using LCE = EventBase<IDebugLoadCompleteEvent2, EVENT_SYNCHRONOUS>;
 		auto e = com_ptr(new (std::nothrow) LCE()); RETURN_IF_NULL_ALLOC(e);
-		auto hr = callback->Event(engine, nullptr, program, thread, e.get(), IID_IDebugLoadCompleteEvent2, EVENT_SYNC_STOP); RETURN_IF_FAILED(hr);
+		auto hr = e->Send(callback, engine, program, thread); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
@@ -418,13 +412,15 @@ public:
 
 		hr = MakeBreakpointManager(_callback, this, _program, _simulator, &_bpman); RETURN_IF_FAILED(hr);
 
-		WI_ASSERT (!_attachCalled);
 		wil::com_ptr_nothrow<IDebugPort2> port;
 		hr = pProcess->GetPort(&port); RETURN_IF_FAILED(hr);
 		wil::com_ptr_nothrow<IZ80DebugPort> z80Port;
 		hr = port->QueryInterface(&z80Port); RETURN_IF_FAILED(hr);
 		hr = z80Port->SendProgramCreateEventToSinks (_program.get()); RETURN_IF_FAILED(hr);
-		WI_ASSERT (_attachCalled);
+
+		using ProgramCreateEvent = EventBase<IDebugProgramCreateEvent2, EVENT_ASYNCHRONOUS>;
+		wil::com_ptr_nothrow<ProgramCreateEvent> pce = new (std::nothrow) ProgramCreateEvent(); RETURN_IF_NULL_ALLOC(pce);
+		hr = pce->Send(_callback, this, _program, nullptr); RETURN_IF_FAILED(hr);
 
 		using ThreadCreateEvent = EventBase<IDebugThreadCreateEvent2, EVENT_ASYNCHRONOUS>;
 		wil::com_ptr_nothrow<ThreadCreateEvent> tce = new (std::nothrow) ThreadCreateEvent(); RETURN_IF_NULL_ALLOC(tce);
