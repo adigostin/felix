@@ -281,10 +281,8 @@ public:
 	{
 		// https://docs.microsoft.com/en-us/visualstudio/extensibility/debugger/launching-a-program?view=vs-2022
 
-		com_ptr<IServiceProvider> sp;
-		auto hr = _hier->GetSite(&sp); RETURN_IF_FAILED(hr);
 		wil::com_ptr_nothrow<IVsDebugger> debugger;
-		hr = sp->QueryService (SID_SVsShellDebugger, &debugger); RETURN_IF_FAILED(hr);
+		auto hr = serviceProvider->QueryService (SID_SVsShellDebugger, &debugger); RETURN_IF_FAILED(hr);
 
 		wil::unique_bstr output_dir;
 		hr = GetOutputDirectory(&output_dir); RETURN_IF_FAILED(hr);

@@ -12,8 +12,13 @@ class Z80DebugPortSupplier : public IDebugPortSupplier2, /*public IDebugPortSupp
 	wil::com_ptr_nothrow<IDebugPort2> _z80Port;
 
 public:
-	friend HRESULT MakeDebugPortSupplier (IDebugPortSupplier2** to);
-	friend static void DestroyDebugPortSupplier (Z80DebugPortSupplier* ps);
+	HRESULT InitInstance()
+	{
+		// Let's pretend that we (the supplier) have detected an attached port; we create a IDebugPort2 for it.
+		// This is needed in case the user starts the IDE and without any solution open clicks Attach...
+		//auto hr = MakeDebugPort(SingleDebugPortName, SingleDebugPortId, &p->_z80Port); IfFailedAssertRet();
+		return S_OK;
+	}
 
 	#pragma region IUnknown
 	virtual HRESULT __stdcall QueryInterface(REFIID riid, void** ppvObject) override
@@ -123,22 +128,8 @@ public:
 
 HRESULT MakeDebugPortSupplier (IDebugPortSupplier2** to)
 {
-	wil::com_ptr_nothrow<Z80DebugPortSupplier> p = new (std::nothrow) Z80DebugPortSupplier();
-	if (!p)
-	{
-		*to = nullptr;
-		return E_OUTOFMEMORY;
-	}
-	
-	// Let's pretend that we (the supplier) have detected an attached port; we create a IDebugPort2 for it.
-	// This is needed in case the user starts the IDE and without any solution open clicks Attach...
-	//auto hr = MakeDebugPort(SingleDebugPortName, SingleDebugPortId, &p->_z80Port); IfFailedAssertRet();
-
+	auto p = com_ptr(new (std::nothrow) Z80DebugPortSupplier()); RETURN_IF_NULL_ALLOC(p);
+	auto hr = p->InitInstance(); RETURN_IF_FAILED(hr);
 	*to = p.detach();
 	return S_OK;
-}
-
-static void DestroyDebugPortSupplier (Z80DebugPortSupplier* ps)
-{
-	delete ps;
 }
