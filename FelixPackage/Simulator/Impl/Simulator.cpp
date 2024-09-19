@@ -1022,11 +1022,11 @@ public:
 		STATSTG stat;
 		hr = stream->Stat (&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
 		if (stat.cbSize.HighPart)
-			RETURN_HR(HRESULT_FROM_WIN32(E_BOUNDS));
+			RETURN_HR(E_BOUNDS);
 		if (!stat.cbSize.LowPart)
 			RETURN_HR(E_BOUNDS);
 		if (address + (uint16_t)stat.cbSize.LowPart <= address)
-			RETURN_HR(HRESULT_FROM_WIN32(E_BOUNDS));
+			RETURN_HR(E_BOUNDS);
 		DWORD from, to;
 		_ramDevice->GetBounds(&from, &to);
 		if ((address < from) || (address + stat.cbSize.LowPart > to))
