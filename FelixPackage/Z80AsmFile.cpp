@@ -214,7 +214,11 @@ public:
 				return E_NOTIMPL;
 
 			default:
+				#ifdef _DEBUG
+				RETURN_HR(E_NOTIMPL);
+				#else
 				return E_NOTIMPL;
+				#endif
 		}
 	}
 
@@ -237,7 +241,11 @@ public:
 				return S_OK;
 
 			default:
+				#ifdef _DEBUG
+				RETURN_HR(E_NOTIMPL);
+				#else
 				return E_NOTIMPL;
+				#endif
 		}
 	}
 
@@ -249,12 +257,20 @@ public:
 			return S_OK;
 		}
 
+		#ifdef _DEBUG
 		RETURN_HR(E_NOTIMPL);
+		#else
+		return E_NOTIMPL;
+		#endif
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE SetGuidProperty (VSHPROPID propid, REFGUID rguid) override
 	{
+		#ifdef _DEBUG
 		RETURN_HR(E_NOTIMPL);
+		#else
+		return E_NOTIMPL;
+		#endif
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetCanonicalName (BSTR* pbstrName) override
@@ -273,6 +289,16 @@ public:
 		return S_OK;
 	}
 
+	virtual HRESULT STDMETHODCALLTYPE Close() override
+	{
+		_hier = nullptr;
+		if (_next)
+		{
+			_next->Close();
+			_next = nullptr;
+		}
+		return S_OK;
+	}
 	#pragma endregion
 
 	#pragma region IZ80SourceFile

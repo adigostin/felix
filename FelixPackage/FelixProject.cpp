@@ -52,11 +52,19 @@ class Z80Project
 	wil::com_ptr_nothrow<IVsUIHierarchy> _parentHierarchy;
 	VSITEMID _parentHierarchyItemId = VSITEMID_NIL; // item id of this project in the parent hierarchy
 	com_ptr<IZ80ProjectItem> _firstChild;
-	VSITEMID _nextFileItemId = 1000; // VS uses 1..2..3 etc for the Solution item. I'll deal with this later.
+	static inline VSITEMID _nextFileItemId = 1000; // VS uses 1..2..3 etc for the Solution item. I'll deal with this later.
 	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsCfgProviderEvents>> _cfgProviderEventSinks;
 	VSCOOKIE _nextCfgProviderEventCookie = 1;
 	VSCOOKIE _itemDocCookie = VSCOOKIE_NIL;
 	vector_nothrow<com_ptr<IProjectConfig>> _configs;
+
+	// I introduced this because VS sometimes retains a project for a long time after the user closes it.
+	// For example in VS 17.11.2, when doing Close Solution while a project file was open, and then
+	// opening another solution and another project file, VS calls GetCanonicalName on the old project.
+	// This happens because VS retains a reference to the old project in
+	// Microsoft.VisualStudio.PlatformUI.Packages.FileColor.ProjectFileGroupProvider.projectMap.
+	// (Looks like a bug in OnBeforeCloseProject() in that class.)
+	bool _closed = false;
 
 	static HRESULT CreateProjectFilesFromTemplate (IServiceProvider* sp, const wchar_t* fromProjFilePath, const wchar_t* location, const wchar_t* filename)
 	{
@@ -731,13 +739,18 @@ public:
 	{
 		_parentHierarchy = nullptr;
 		_parentHierarchyItemId = VSITEMID_NIL;
+		_firstChild->Close();
 		_firstChild = nullptr;
 		_configs.clear();
+		_closed = true;
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetGuidProperty(VSITEMID itemid, VSHPROPID propid, GUID* pguid) override
 	{
+		if (_closed)
+			return E_UNEXPECTED;
+
 		if (itemid == VSITEMID_ROOT)
 		{
 			if (propid == VSHPROPID_TypeGuid) // -1004
@@ -789,6 +802,9 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE SetGuidProperty(VSITEMID itemid, VSHPROPID propid, REFGUID rguid) override
 	{
+		if (_closed)
+			return E_UNEXPECTED;
+
 		// TODO: property change notifications
 
 		if (itemid == VSITEMID_ROOT)
@@ -815,6 +831,9 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE GetProperty (VSITEMID itemid, VSHPROPID propid, VARIANT* pvar) override
 	{
 		// https://docs.microsoft.com/en-us/dotnet/api/microsoft.visualstudio.shell.interop.__vshpropid?view=visualstudiosdk-2017
+
+		if (_closed)
+			return E_UNEXPECTED;
 
 		#pragma region Some properties return the same thing for any node of our hierarchy
 		if (propid == VSHPROPID_ParentHierarchy) // -2032
@@ -919,6 +938,9 @@ public:
 			if (propid == VSHPROPID_StatusBarClientText) // -2072
 				return E_NOTIMPL;
 
+			if (propid == VSHPROPID_DebuggeeProcessId) // -2073
+				return E_NOTIMPL;
+
 			// See the related VSHPROPID_ProjectDesignerEditor.
 			if (propid == VSHPROPID_SupportsProjectDesigner) // -2076
 				return InitVariantFromBoolean (FALSE, pvar);
@@ -1011,11 +1033,15 @@ public:
 				|| propid == VSHPROPID_DescriptiveName // -2108
 				|| propid == VSHPROPID_ProvisionalViewingStatus // -2112
 				|| propid == -9089 // VSHPROPID_SlowEnumeration
+				|| propid == VSHPROPID_ConfigurationProvider // -2036
 			)
 				return E_NOTIMPL;
 
-			PrintProperty ("Z80Project::GetProperty not handling ", propid, pvar);
+			#ifdef _DEBUG
+			RETURN_HR(E_NOTIMPL);
+			#else
 			return E_NOTIMPL;
+			#endif
 		}
 
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
@@ -1029,6 +1055,9 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE SetProperty (VSITEMID itemid, VSHPROPID propid, VARIANT var) override
 	{
+		if (_closed)
+			return E_UNEXPECTED;
+
 		#pragma region Some properties return the same thing for any node of our hierarchy
 		if (propid == VSHPROPID_ParentHierarchy)
 		{
@@ -1068,7 +1097,13 @@ public:
 				hr = RenameProject(var.bstrVal); RETURN_IF_FAILED_EXPECTED(hr);
 			}
 			else
+			{
+				#ifdef _DEBUG
 				RETURN_HR(E_NOTIMPL);
+				#else
+				return E_NOTIMPL;
+				#endif
+			}
 
 			if (SUCCEEDED(hr))
 			{
@@ -1102,6 +1137,9 @@ public:
 	// a particular item in the hierarchy from every other item in the hierarchy.
 	virtual HRESULT STDMETHODCALLTYPE GetCanonicalName(VSITEMID itemid, BSTR* pbstrName) override
 	{
+		if (_closed)
+			return E_UNEXPECTED;
+
 		// Returns a unique, string name for an item in the hierarchy.
 		// Used for workspace persistence, such as remembering window positions.
 

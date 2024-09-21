@@ -96,6 +96,7 @@ library ATLProject1Lib
 		HRESULT SetGuidProperty (VSHPROPID propid, REFGUID rguid);
 		HRESULT GetCanonicalName (BSTR* pbstrName); // returns the path relative to project if possible, otherwise the full path -- all lowercase
 		HRESULT IsItemDirty (IUnknown *punkDocData, BOOL *pfDirty);
+		HRESULT Close();
 	}
 
 	[object, uuid(D930CCA1-E515-4569-8DC6-959CD6367654), nonextensible, pointer_default(unique)]
