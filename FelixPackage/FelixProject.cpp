@@ -948,6 +948,9 @@ public:
 			if (propid == VSHPROPID_EnableDataSourceWindow) // -2083
 				return InitVariantFromBoolean (FALSE, pvar);
 
+			if (propid == VSHPROPID_DebuggerSourcePaths) // -2085
+				return E_NOTIMPL;
+
 			if (propid == VSHPROPID_NoDefaultNestedHierSorting) // -2090,
 				return E_NOTIMPL; // Default should be good enough
 
