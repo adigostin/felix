@@ -829,43 +829,192 @@ public:
 		return S_OK;
 	}
 
+	#pragma pack (push, 1)
+	// https://worldofspectrum.org/faq/reference/z80format.htm
+	struct z80_header
+	{
+		uint8_t  a;  // 0
+		uint8_t  f;  // 1
+		uint16_t bc; // 2-3
+		uint16_t hl; // 4-5
+		uint16_t pc; // 6-7
+		uint16_t sp; // 8-9
+		uint8_t  i;  // 10
+		uint8_t  r;  // 11
+		uint8_t  r0         : 1; // 12 b0
+		uint8_t  border     : 3; // 12 b1-b3
+		uint8_t  samrom     : 1; // 12 b4
+		uint8_t  compressed : 1; // 12 b5
+		uint8_t             : 2; // 12 b6-b7
+		uint16_t de;     // 13-14
+		uint16_t alt_bc; // 15-16
+		uint16_t alt_de; // 17-18
+		uint16_t alt_hl; // 19-20
+		uint8_t  alt_a;  // 21
+		uint8_t  alt_f;  // 22
+		uint16_t iy;     // 23-24
+		uint16_t ix;     // 25-26
+		uint8_t  ei;     // 27
+		uint8_t  iff2;   // 28
+		uint8_t  im       : 2; // 29 b0-b1
+		uint8_t  issue2   : 1; // 29 b2
+		uint8_t  freq2x   : 1; // 29 b3
+		uint8_t  vid_sync : 2; // 29 b4-b5
+		uint8_t  joystick : 2; // 29 b6-b7
+	};
+	#pragma pack (pop)
+
+	HRESULT SetMalformedErrorInfo (const wchar_t* detail)
+	{
+		return SetErrorInfo(E_FAIL, L"Malformed .Z80 file: %s", detail);
+	};
+
+	HRESULT DecompressZ80 (const uint8_t* inPtr, const uint8_t* inEnd, uint8_t* outPtr, uint8_t* outEnd, bool terminatorExpected)
+	{
+		while (true)
+		{
+			if (inPtr >= inEnd)
+			{
+				if (terminatorExpected)
+					return SetMalformedErrorInfo (L"Format version 1, compressed, no 00EDED00 terminator.");
+
+				return S_OK;
+			}
+
+			if ((inPtr + 4 <= inEnd) && !memcmp(inPtr, "\x00\xED\xED\x00", 4))
+				return S_OK;
+			
+			if ((inPtr + 4 <= inEnd) && (inPtr[0] == 0xED) && (inPtr[1] == 0xED))
+			{
+				inPtr += 2;
+				uint8_t repeat = *inPtr++;
+				uint8_t value = *inPtr++;
+				if (outPtr + repeat > outEnd)
+					return SetMalformedErrorInfo (L"Longer than 48K.");
+				memset (outPtr, value, repeat);
+				outPtr += repeat;
+			}
+			else
+			{
+				if (outPtr + 1 > outEnd)
+					return SetMalformedErrorInfo (L"Longer than 48K.");
+				*outPtr++ = *inPtr++;
+			}
+		}
+	}
+
+	HRESULT LoadZ80V1 (const z80_header* header, const uint8_t* inPtr, const uint8_t* inEnd, uint8_t* outPtr, uint8_t* outEnd)
+	{
+		if (!header->compressed)
+		{
+			if (inEnd - inPtr != 48 * 1024)
+				return SetMalformedErrorInfo (L"Format version 1, not compressed, size not 48K.");
+			memcpy (outPtr, inPtr, 48 * 1024);
+		}
+		else
+		{
+			auto hr = DecompressZ80(inPtr, inEnd, outPtr, outEnd, true); RETURN_IF_FAILED(hr);
+		}
+
+		return S_OK;
+	}
+
+	#pragma pack (push, 1)
+	struct z80_header_v23
+	{
+		uint16_t len;      // 30
+		uint16_t pc;       // 32
+		uint8_t  hardware_mode; // 34
+		uint8_t  byte_35;  // 35
+		uint8_t  byte_36;  // 36
+		uint8_t  r_emu     : 1; // 37 b0
+		uint8_t  ldir_emu  : 1; // 37 b1
+		uint8_t  ay_in_use : 1; // 37 b2
+		uint8_t            : 3; // 37 b3-b5
+		uint8_t  fuller    : 1; // 37 b6
+		uint8_t  modify_hw : 1; // 37 b7
+		uint8_t  out_fffd;       // 38
+		uint8_t  sound_chip[16]; // 39-54
+		uint16_t t_counter_low;  // 55-56
+		uint8_t  t_counter_high; // 57
+		uint8_t  : 8;  // 58 - Flag byte used by Spectator
+		uint8_t  : 8;  // 59 - 0xff if MGT Rom paged
+		uint8_t  : 8;  // 60 - 0xff if Multiface Rom paged.
+		uint8_t  : 8;  // 61 - 0xff if 0-8191 is ROM, 0 if RAM
+		uint8_t  : 8;  // 62 - 0xff if 8192-16383 is ROM, 0 if RAM
+		uint8_t  joystick_key_mapping[10];  // 63
+		uint8_t  keys[10];  // 73
+		uint8_t  : 8;  // 83
+		uint8_t  : 8;  // 84
+		uint8_t  : 8;  // 85
+		uint8_t  : 8;  // 86
+	};
+	#pragma pack (pop)
+
+	static inline const wchar_t* const HardwareModeNamesV2[] = {
+		L"48K", L"48K+IF1", L"SamRam", L"128K", L"128K+IF1" };
+	static inline const wchar_t* const HardwareModeNamesV3[] = {
+		L"48K", L"48K+IF1", L"SamRam", L"48K+M.G.T.", L"128K", L"128K+IF1", L"128K+M.G.T." };
+
+	HRESULT LoadZ80V23 (const z80_header_v23* header23, const uint8_t* inPtr, const uint8_t* inEnd, uint8_t* outPtr, uint8_t* outEnd)
+	{
+		const wchar_t* const* modeNames;
+		size_t modeNameCount;
+		if (header23->len == 23)
+		{
+			// Version 2
+			modeNames = HardwareModeNamesV2;
+			modeNameCount = std::size(HardwareModeNamesV2);
+		}
+		else if (header23->len == 54 || header23->len == 55)
+		{
+			// Version 3
+			modeNames = HardwareModeNamesV3;
+			modeNameCount = std::size(HardwareModeNamesV3);
+		}
+
+		if (auto hw = header23->hardware_mode; hw != 0)
+			return SetErrorInfo (E_FAIL, L"This file specifies hardware mode %u (%s), "
+				"but the simulator currently supports only hardware mode 0 (%s).", 
+				hw, (hw < modeNameCount) ? modeNames[hw] : L"??", modeNames[0]);
+
+		while (inPtr < inEnd)
+		{
+			if (inEnd - inPtr < 3)
+				return SetMalformedErrorInfo(L"Block Header too short.");
+			uint16_t lengthCompressedData = inPtr[0] | (inPtr[1] << 8);
+			uint8_t pageNumber = inPtr[2];
+			inPtr += 3;
+			
+			uint8_t* pagePtr;
+			if (pageNumber == 8)
+				pagePtr = outPtr; // Spectrum address 0x4000
+			else if (pageNumber == 4)
+				pagePtr = &outPtr[0x4000]; // Spectrum address 0x8000
+			else if (pageNumber == 5)
+				pagePtr = &outPtr[0x8000]; // Spectrum address 0xC000
+			else
+				return SetErrorInfo(E_FAIL, L"Unknown page number (%u) in Spectrum 48K mode.", pageNumber);
+
+			if (lengthCompressedData == 0xFFFF)
+			{
+				if (inEnd - inPtr < 0x4000)
+					return SetErrorInfo (E_FAIL, L"Page %u data too short. Expected %u, found %d.", pageNumber, 0x4000, inEnd - inPtr);
+				memcpy (pagePtr, inPtr, 0x4000);
+				inPtr += 0x4000;
+			}
+			else
+			{
+				auto hr = DecompressZ80 (inPtr, inPtr + lengthCompressedData, pagePtr, pagePtr + 0x4000, false); RETURN_IF_FAILED(hr);
+				inPtr += lengthCompressedData;
+			}
+		}
+
+		return S_OK;
+	}
+
 	HRESULT LoadZ80 (const wchar_t* pFileName)
 	{
-		#pragma pack (push, 1)
-		// https://worldofspectrum.org/faq/reference/z80format.htm
-		struct z80_header
-		{
-			uint8_t  a;  // 0
-			uint8_t  f;  // 1
-			uint16_t bc; // 2-3
-			uint16_t hl; // 4-5
-			uint16_t pc; // 6-7
-			uint16_t sp; // 8-9
-			uint8_t  i;  // 10
-			uint8_t  r;  // 11
-			uint8_t  r0         : 1; // 12 b0
-			uint8_t  border     : 3; // 12 b1-b3
-			uint8_t  samrom     : 1; // 12 b4
-			uint8_t  compressed : 1; // 12 b5
-			uint8_t             : 2; // 12 b6-b7
-			uint16_t de;     // 13-14
-			uint16_t alt_bc; // 15-16
-			uint16_t alt_de; // 17-18
-			uint16_t alt_hl; // 19-20
-			uint8_t  alt_a;  // 21
-			uint8_t  alt_f;  // 22
-			uint16_t iy;     // 23-24
-			uint16_t ix;     // 25-26
-			uint8_t  ei;     // 27
-			uint8_t  iff2;   // 28
-			uint8_t  im       : 2; // 29 b0-b1
-			uint8_t  issue2   : 1; // 29 b2
-			uint8_t  freq2x   : 1; // 29 b3
-			uint8_t  vid_sync : 2; // 29 b4-b5
-			uint8_t  joystick : 2; // 29 b6-b7
-		};
-		#pragma pack (pop)
-
 		com_ptr<IStream> stream;
 		auto hr = SHCreateStreamOnFileEx (pFileName, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream); RETURN_IF_FAILED_EXPECTED(hr);
 
@@ -885,49 +1034,23 @@ public:
 		uint8_t* outPtr = outBuffer.get();
 		uint8_t* outEnd = outPtr + 48 * 1024;
 
-		auto SetMalformedErrorInfo = [](const wchar_t* detail) { return SetErrorInfo(E_FAIL, L"Malformed .Z80 file: %s", detail); };
-
+		uint16_t pc;
 		if (header.pc != 0)
 		{
-			// Z80 Format version 1
-			if (!header.compressed)
-			{
-				if (inEnd - inPtr != 48 * 1024)
-					return SetMalformedErrorInfo (L"Format version 1, not compressed, size not 48K.");
-				memcpy (outPtr, inPtr, 48 * 1024);
-			}
-			else
-			{
-				while (true)
-				{
-					if (inPtr >= inEnd)
-						return SetMalformedErrorInfo (L"Format version 1, compressed, no 00EDED00 terminator.");
-				
-					if ((inPtr + 4 <= inEnd) && !memcmp(inPtr, "\x00\xED\xED\x00", 4))
-						break;
-					else if ((inPtr + 4 <= inEnd) && (inPtr[0] == 0xED) && (inPtr[1] == 0xED))
-					{
-						inPtr += 2;
-						uint8_t repeat = *inPtr++;
-						uint8_t value = *inPtr++;
-						if (outPtr + repeat > outEnd)
-							return SetMalformedErrorInfo (L"Longer than 48K.");
-						memset (outPtr, value, repeat);
-						outPtr += repeat;
-					}
-					else
-					{
-						if (outPtr + 1 > outEnd)
-							return SetMalformedErrorInfo (L"Longer than 48K.");
-						*outPtr++ = *inPtr++;
-					}
-				}
-			}
+			hr = LoadZ80V1 (&header, inPtr, inEnd, outPtr, outEnd); RETURN_IF_FAILED_EXPECTED(hr);
+			pc = header.pc;
 		}
 		else
 		{
-			// Z80 Format version 2 or 3.
-			return SetErrorInfo(E_FAIL, L"The file has an unrecognized version.\r\n(Only Z80 Format 1 is supported for now.)");
+			if (inEnd - inPtr < 2)
+				return SetMalformedErrorInfo(L"Header v2/3 too short.");
+			uint16_t header23_len = inPtr[0] | (inPtr[1] << 8);
+			if (inEnd - inPtr < (2 + header23_len))
+				return SetMalformedErrorInfo(L"Header v2/3 too short.");
+			auto* header23 = (const z80_header_v23*)inPtr;
+			inPtr += (2 + header23_len);
+			hr = LoadZ80V23 (header23, inPtr, inEnd, outPtr, outEnd); RETURN_IF_FAILED_EXPECTED(hr);
+			pc = header23->pc;
 		}
 
 		unique_cotaskmem_bitmapinfo screen;
@@ -1002,15 +1125,7 @@ public:
 		if (!_wcsicmp(ext, L".z80"))
 			return LoadZ80(pFileName);
 
-		com_ptr<ICreateErrorInfo> cei;
-		if (SUCCEEDED(CreateErrorInfo(&cei)))
-		{
-			cei->SetDescription(L"The file has an unrecognized extension.");
-			if (auto ei = wil::try_com_query_nothrow<IErrorInfo>(cei))
-				::SetErrorInfo(0, ei.get());
-		}
-
-		return E_FAIL;
+		return SetErrorInfo (E_FAIL, L"The file extension %s is not recognized.", ext);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE LoadBinary (IStream* stream, DWORD address) override

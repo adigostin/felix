@@ -439,6 +439,9 @@ HRESULT make_single_entry_enumerator (IEntryType* singleEntryOrNull, IEnumerator
 
 HRESULT inline SetErrorInfo (HRESULT errorHR, LPCWSTR messageFormat, ...)
 {
+	if (IsDebuggerPresent())
+		__debugbreak();
+
 	va_list argptr;
 	va_start (argptr, messageFormat);
 	wchar_t message[256];
