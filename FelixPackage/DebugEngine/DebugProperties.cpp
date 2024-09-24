@@ -6,8 +6,8 @@
 #include "shared/ula_register_set.h"
 #include "shared/com.h"
 
-enum class Reg { A, F, BC, DE, HL, SP, PC, IX, IY, I, R, IM, count };
-static const wchar_t* const RegNames[] = { L"A", L"F", L"BC", L"DE", L"HL", L"SP", L"PC", L"IX", L"IY", L"I", L"R", L"IM" };
+enum class Reg { A, F, BC, DE, HL, SP, PC, IX, IY, I, R, IM, IFF1, count };
+static const wchar_t* const RegNames[] = { L"A", L"F", L"BC", L"DE", L"HL", L"SP", L"PC", L"IX", L"IY", L"I", L"R", L"IM", L"IFF1" };
 
 enum class ula_reg { frame_time, line_ticks, col_ticks, irq, count };
 static inline const wchar_t* const ula_reg_names[] = { L"FRAME_TIME", L"LINE_TICKS", L"COL_TICKS", L"IRQ" };
@@ -34,18 +34,19 @@ static HRESULT reg_to_string (Reg reg, const z80_register_set& regs, BSTR* value
 {
 	switch (reg)
 	{
-		case Reg::A:  *value = ToString(regs.main.a); break;
-		case Reg::BC: *value = ToString(regs.main.bc); break;
-		case Reg::DE: *value = ToString(regs.main.de); break;
-		case Reg::HL: *value = ToString(regs.main.hl); break;
-		case Reg::SP: *value = ToString(regs.sp); break;
-		case Reg::PC: *value = ToString(regs.pc); break;
-		case Reg::IX: *value = ToString(regs.ix); break;
-		case Reg::IY: *value = ToString(regs.iy); break;
-		case Reg::F:  *value = ToString(regs.main.f.val); break;
-		case Reg::I:  *value = ToString(regs.i); break;
-		case Reg::R:  *value = ToString(regs.r); break;
-		case Reg::IM: *value = ToString(regs.im); break;
+		case Reg::A:    *value = ToString(regs.main.a); break;
+		case Reg::BC:   *value = ToString(regs.main.bc); break;
+		case Reg::DE:   *value = ToString(regs.main.de); break;
+		case Reg::HL:   *value = ToString(regs.main.hl); break;
+		case Reg::SP:   *value = ToString(regs.sp); break;
+		case Reg::PC:   *value = ToString(regs.pc); break;
+		case Reg::IX:   *value = ToString(regs.ix); break;
+		case Reg::IY:   *value = ToString(regs.iy); break;
+		case Reg::F:    *value = ToString(regs.main.f.val); break;
+		case Reg::I:    *value = ToString(regs.i); break;
+		case Reg::R:    *value = ToString(regs.r); break;
+		case Reg::IM:   *value = ToString(regs.im); break;
+		case Reg::IFF1: *value = SysAllocString(regs.iff1 ? L"1" : L"0"); break;
 		default:
 			RETURN_HR(E_NOTIMPL);
 	}

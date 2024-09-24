@@ -795,7 +795,7 @@ public:
 				regs.main.bc = header.bc;
 				regs.ix      = header.ix;
 				regs.iy      = header.iy;
-				regs.iff1    = header.iff2;
+				regs.iff1    = header.ei;
 				regs.r       = header.r;
 				regs.main.af = header.af;
 				regs.sp      = header.sp;
@@ -1080,7 +1080,7 @@ public:
 				regs.main.bc = header.bc;
 				regs.ix      = header.ix;
 				regs.iy      = header.iy;
-				regs.iff1    = header.iff2;
+				regs.iff1    = header.ei;
 				regs.r       = header.r;
 				regs.main.a  = header.a;
 				regs.main.f.val = header.f;
