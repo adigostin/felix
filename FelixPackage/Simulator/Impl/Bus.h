@@ -297,7 +297,7 @@ struct __declspec(novtable) irq_line_i
 struct IScreenDeviceCompleteEventHandler
 {
 	// Function called by the screen device every time it completes drawing a screen.
-	virtual void OnScreenComplete() = 0;
+	virtual void OnScreenDeviceComplete() = 0;
 };
 
 struct IScreenDevice : IDevice//, IInterruptingDevice

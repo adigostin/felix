@@ -375,7 +375,7 @@ public:
 		return S_OK;
 	}
 
-	class BreakpointCollection : public ISimulatorBreakpointEvent
+	class BreakpointEvent : public ISimulatorBreakpointEvent
 	{
 		ULONG _refCount = 0;
 		BreakpointType _type;
@@ -436,18 +436,16 @@ public:
 			{
 				WI_ASSERT(_running);
 				_running = false;
-				if (auto bpEvent = com_ptr(new (std::nothrow) BreakpointCollection()))
+				if (auto bpEvent = com_ptr(new (std::nothrow) BreakpointEvent());
+					bpEvent && SUCCEEDED(bpEvent->InitInstance(BreakpointType::Code, bps->address, bps->bps, bps->size)))
 				{
-					if (SUCCEEDED(bpEvent->InitInstance(BreakpointType::Code, bps->address, bps->bps, bps->size)))
+					for (uint32_t i = 0; i < _eventHandlers.size(); i++)
+						_eventHandlers[i]->ProcessSimulatorEvent(bpEvent, __uuidof(ISimulatorBreakpointEvent));
+					if (_screenCompleteHandler)
 					{
-						for (uint32_t i = 0; i < _eventHandlers.size(); i++)
-							_eventHandlers[i]->ProcessSimulatorEvent(bpEvent, __uuidof(ISimulatorBreakpointEvent));
-						if (_screenCompleteHandler)
-						{
-							auto hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
-							if (SUCCEEDED(hr))
-								screen.release();
-						}
+						auto hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
+						if (SUCCEEDED(hr))
+							screen.release();
 					}
 				}
 			};
@@ -1328,7 +1326,7 @@ public:
 	#pragma endregion
 
 	#pragma region IScreenDeviceCompleteEventHandler
-	virtual void OnScreenComplete() override
+	virtual void OnScreenDeviceComplete() override
 	{
 		// No error checking, not even logging, as this function is called 50 times a second
 		// and in case of error it would probably freeze the app.

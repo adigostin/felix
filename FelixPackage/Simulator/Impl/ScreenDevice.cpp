@@ -290,7 +290,7 @@ public:
 				dest_pixel[1] = argb;
 
 				if ((col == ticks_per_row - 1) && (row == rows_per_frame - 1))
-					_screenCompleteHandler->OnScreenComplete();
+					_screenCompleteHandler->OnScreenDeviceComplete();
 
 				col++;
 				_time++;
