@@ -130,11 +130,11 @@ parts that the beam hasn't reached yet.
 				</Strings>
 			</Button>
 
-			<Button guid="guidFelixPackageCmdSet" id="cmdidSaveMemory" priority="0x0106" type="Button">
+			<Button guid="guidFelixPackageCmdSet" id="cmdidSaveRAM" priority="0x0106" type="Button">
 				<Parent guid="guidFelixPackageCmdSet" id="cmdidSaveFileGroup" />
 				<!--<CommandFlag>TextOnly</CommandFlag>-->
 				<Strings>
-					<ButtonText>Save Memory</ButtonText>
+					<ButtonText>Save RAM</ButtonText>
 				</Strings>
 			</Button>
 

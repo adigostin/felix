@@ -4,6 +4,7 @@
 #include "shared/OtherGuids.h"
 #include "FelixPackage.h"
 #include "../FelixPackageUi/CommandIds.h"
+#include "../FelixPackageUi/resource.h"
 #include "guids.h"
 #include <queue>
 
@@ -28,6 +29,7 @@ class ScreenWindowImpl
 	com_ptr<ISimulator> _simulator;
 	wil::unique_event_nothrow _design_mode_event;
 	com_ptr<IServiceProvider> _sp;
+	com_ptr<IVsSettingsManager> _sm;
 	DWORD _debugger_events_cookie = 0;
 	bool _advisingScreenCompleteEvents = false;
 	struct Rational { LONG numerator; LONG denominator; };
@@ -387,6 +389,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE SetSite (IServiceProvider *pSP) override
 	{
 		_sp = pSP;
+		auto hr = _sp->QueryService(SID_SVsSettingsManager, &_sm); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
@@ -510,6 +513,9 @@ public:
 			::DestroyWindow(_hwnd);
 			_hwnd = nullptr;
 		}
+
+		_sm = nullptr;
+		_sp = nullptr;
 
 		return S_OK;
 	}
@@ -637,16 +643,8 @@ public:
 
 		wil::unique_bstr initial_directory;
 		com_ptr<IVsWritableSettingsStore> settings_store;
-		{
-			com_ptr<IVsSettingsManager> sm;
-			hr = _sp->QueryService(IID_SVsSettingsManager, &sm); LOG_IF_FAILED(hr);
-			if (SUCCEEDED(hr))
-			{
-				hr = sm->GetWritableSettingsStore (SettingsScope_UserSettings, &settings_store);
-				if (SUCCEEDED(hr))
-					settings_store->GetString (SettingsCollection, SettingLoadSavePath, &initial_directory); // no need to check for errors
-			}
-		}
+		if (SUCCEEDED(_sm->GetWritableSettingsStore (SettingsScope_UserSettings, &settings_store)))
+			settings_store->GetString (SettingsCollection, SettingLoadSavePath, &initial_directory); // no need to check for errors
 
 		wchar_t filename[MAX_PATH];
 		filename[0] = 0;
@@ -671,8 +669,7 @@ public:
 		{
 			if (SUCCEEDED(settings_store->CreateCollection(SettingsCollection)))
 			{
-				auto dir = wil::make_hlocal_string_nothrow(of.pwzFileName, of.nFileOffset);
-				if(dir)
+				if (auto dir = wil::make_hlocal_string_nothrow(of.pwzFileName, of.nFileOffset))
 				{
 					hr = settings_store->SetString (SettingsCollection, SettingLoadSavePath, dir.get()); LOG_IF_FAILED(hr);
 				}
@@ -700,6 +697,75 @@ public:
 		dti.fSendToOutputWindow = TRUE;
 		hr = debugger2->LaunchDebugTargets2 (1, &dti); RETURN_IF_FAILED_MSG(hr, "LaunchDebugTargets2 returned 0x%08x", hr);
 
+		return S_OK;
+	}
+
+	HRESULT SaveRAM()
+	{
+		com_ptr<IVsShell> shell;
+		auto hr = _sp->QueryService (SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
+
+		com_ptr<IVsUIShell> uiShell;
+		hr = _sp->QueryService (SID_SVsUIShell, &uiShell); RETURN_IF_FAILED(hr);
+
+		if (_simulator->Running_HR() == S_OK)
+		{
+			wil::unique_bstr str;
+			hr = shell->LoadPackageString (CLSID_FelixPackage, IDS_NOT_SUPPORTED_WHILE_SIMULATOR_RUNNING, &str);
+			if (SUCCEEDED(hr))
+			{
+				LONG result;
+				uiShell->ShowMessageBox (0, GUID_NULL, nullptr, str.get(), nullptr, 0, OLEMSGBUTTON_OK,
+					OLEMSGDEFBUTTON_FIRST, OLEMSGICON_INFO, FALSE, &result);
+			}
+			return S_OK;
+		}
+
+		HWND dialogOwner;
+		hr = uiShell->GetDialogOwnerHwnd(&dialogOwner); RETURN_IF_FAILED(hr);
+
+		wil::unique_bstr appName;
+		hr = uiShell->GetAppName(&appName); RETURN_IF_FAILED(hr);
+
+		wil::unique_bstr initial_directory;
+		com_ptr<IVsWritableSettingsStore> settings_store;
+		if (SUCCEEDED(_sm->GetWritableSettingsStore (SettingsScope_UserSettings, &settings_store)))
+			settings_store->GetString (SettingsCollection, SettingLoadSavePath, &initial_directory); // no need to check for errors
+
+		wchar_t filename[256];
+		filename[0] = 0;
+
+		VSSAVEFILENAMEW sf = { };
+		sf.lStructSize = (DWORD)sizeof(sf);
+		sf.hwndOwner = dialogOwner;
+		sf.pwzDlgTitle = appName.get();
+		sf.pwzFileName = filename;
+		sf.nMaxFileName = (DWORD)ARRAYSIZE(filename);
+		sf.pwzInitialDir = initial_directory.get();
+		sf.pwzFilter = L"Binary files (*.bin)\0*.bin\0All Files (*.*)\0*.*\0";
+		hr = uiShell->GetSaveFileNameViaDlg(&sf);
+		if (hr == OLE_E_PROMPTSAVECANCELLED)
+			return S_OK;
+		RETURN_IF_FAILED(hr);
+
+		if (settings_store)
+		{
+			if (SUCCEEDED(settings_store->CreateCollection(SettingsCollection)))
+			{
+				if (auto dir = wil::make_hlocal_string_nothrow(sf.pwzFileName, sf.nFileOffset))
+				{
+					hr = settings_store->SetString (SettingsCollection, SettingLoadSavePath, dir.get()); LOG_IF_FAILED(hr);
+				}
+			}
+		}
+
+		auto file = wil::unique_hfile(CreateFile(filename, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr)); RETURN_LAST_ERROR_IF(file.get() == INVALID_HANDLE_VALUE);
+
+		auto mem = wil::unique_hglobal_ptr<uint8_t>((uint8_t*)GlobalAlloc(GMEM_FIXED, 48 * 1024)); RETURN_IF_NULL_ALLOC(mem);
+		hr = _simulator->ReadMemoryBus(0x4000, 0xC000, mem.get()); RETURN_IF_FAILED(hr);
+
+		DWORD bytesWritten;
+		BOOL bRes = ::WriteFile (file.get(), mem.get(), 48 * 1024, &bytesWritten, nullptr); RETURN_LAST_ERROR_IF(!bRes);
 		return S_OK;
 	}
 
@@ -765,6 +831,9 @@ public:
 				auto hr = _simulator->SetShowCRTSnapshot(!show); RETURN_IF_FAILED(hr);
 				return S_OK;
 			}
+
+			if (nCmdID == cmdidSaveRAM)
+				return SaveRAM();
 
 			return OLECMDERR_E_NOTSUPPORTED;
 		}

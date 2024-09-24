@@ -133,6 +133,8 @@ BEGIN
     IDS_VERSION             "1.0"
     IDS_DEBUGGING_PROP_PAGE_TITLE "Debugging"
     IDS_RENAMEFILEALREADYEXISTS "File already exists.\r\n\r\n%s"
+    IDS_NOT_SUPPORTED_WHILE_SIMULATOR_RUNNING 
+                            "This operation is not supported while the simulator is running."
 END
 
 #endif    // English (United States) resources

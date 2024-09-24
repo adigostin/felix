@@ -10,6 +10,7 @@
 #define IDS_VERSION                     104
 #define IDS_DEBUGGING_PROP_PAGE_TITLE   105
 #define IDS_RENAMEFILEALREADYEXISTS     106
+#define IDS_NOT_SUPPORTED_WHILE_SIMULATOR_RUNNING 107
 #define IDB_IMAGES                      300
 #define IDI_PACKAGE_ICON                400
 #define IDI_SPECTRUM                    401
@@ -18,7 +19,6 @@
 #define IDC_BUTTON_SEND                 1001
 #define IDC_BUTTON_DONT_SEND            1002
 #define IDC_EDIT_EMAIL_ADDRESS          1003
-#define IDC_BUTTON1                     1004
 #define IDC_STATIC                      -1
 
 // Next default values for new objects
