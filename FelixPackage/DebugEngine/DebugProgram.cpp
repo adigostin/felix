@@ -429,6 +429,9 @@ public:
 			return S_OK;
 		}
 
+		if (riidEvent == __uuidof(ISimulatorSimulateOneEvent))
+			return SendStepCompleteEvent();
+
 		return S_FALSE;
 	}
 	#pragma endregion

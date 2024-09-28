@@ -762,24 +762,6 @@ public:
 	#pragma region ISimulatorEventHandler
 	virtual HRESULT STDMETHODCALLTYPE ProcessSimulatorEvent (ISimulatorEvent* event, REFIID riidEvent) override
 	{
-		if (riidEvent == __uuidof(ISimulatorSimulateOneEvent))
-		{
-			// Must be stopping as per https://docs.microsoft.com/en-us/visualstudio/extensibility/debugger/supported-event-types?view=vs-2019
-			using StepCompleteEvent = EventBase<IDebugStepCompleteEvent2, EVENT_SYNC_STOP>;
-			wil::com_ptr_nothrow<StepCompleteEvent> e = new (std::nothrow) StepCompleteEvent(); RETURN_IF_NULL_ALLOC(e);
-			com_ptr<IDebugThread2> thread;
-			{
-				com_ptr<IEnumDebugThreads2> enumThreads;
-				auto hr = _program->EnumThreads(&enumThreads); LOG_IF_FAILED(hr);
-				if (SUCCEEDED(hr))
-				{
-					hr = enumThreads->Next(1, &thread, nullptr); LOG_IF_FAILED(hr);
-				}
-			}
-			auto hr = e->Send (_callback.get(), this, _program.get(), thread.get()); RETURN_IF_FAILED(hr);
-			return S_OK;
-		}
-
 		if (riidEvent == __uuidof(ISimulatorResumeEvent))
 		{
 			return S_OK;
