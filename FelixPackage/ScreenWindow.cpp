@@ -615,31 +615,38 @@ public:
 		return FALSE;
 	}
 
-	HRESULT LoadFile (bool start_debugging)
+	HRESULT ConfirmStopDebugging()
 	{
-		HRESULT hr;
-
 		com_ptr<IVsDebugger> debugger;
-		hr = _sp->QueryService(SID_SVsShellDebugger, &debugger); RETURN_IF_FAILED(hr);
+		auto hr = _sp->QueryService(SID_SVsShellDebugger, &debugger); RETURN_IF_FAILED(hr);
 
 		com_ptr<IVsDebugger2> debugger2;
-		hr = _sp->QueryService(SID_SVsShellDebugger, &debugger2); RETURN_IF_FAILED(hr);
+		hr = debugger->QueryInterface(debugger2.addressof()); RETURN_IF_FAILED(hr);
 
 		DBGMODE mode;
 		hr = debugger->GetMode(&mode); RETURN_IF_FAILED(hr);
-		if (mode != DBGMODE_Design)
-		{
-			hr = _design_mode_event.create(); RETURN_IF_FAILED(hr);
-			auto destroy_event = wil::scope_exit([this] { _design_mode_event.reset(); });
+		if (mode == DBGMODE_Design)
+			return S_OK;
 
-			hr = debugger2->ConfirmStopDebugging(nullptr); RETURN_IF_FAILED(hr);
-			if (hr == S_FALSE)
-				return S_OK;
+		hr = _design_mode_event.create(); RETURN_IF_FAILED(hr);
+		auto destroy_event = wil::scope_exit([this] { _design_mode_event.reset(); });
 
-			// It's not a good thing to hijack the message loop, I know.
-			// I'll look into this some other time.
-			BOOL bres = AtlWaitWithMessageLoop(_design_mode_event.get()); WI_ASSERT(bres);
-		}
+		hr = debugger2->ConfirmStopDebugging(nullptr); RETURN_IF_FAILED(hr);
+		if (hr == S_FALSE)
+			return S_FALSE;
+
+		// It's not a good thing to hijack the message loop, I know.
+		// I'll look into this some other time.
+		BOOL bres = AtlWaitWithMessageLoop(_design_mode_event.get()); WI_ASSERT(bres);
+		
+		return S_OK;
+	}
+
+	HRESULT LoadFile (bool start_debugging)
+	{
+		auto hr = ConfirmStopDebugging(); RETURN_IF_FAILED(hr);
+		if (hr == S_FALSE)
+			return S_OK;
 
 		wil::unique_bstr initial_directory;
 		com_ptr<IVsWritableSettingsStore> settings_store;
@@ -686,6 +693,9 @@ public:
 			return S_OK;
 		}
 
+		com_ptr<IVsDebugger2> debugger2;
+		hr = _sp->QueryService(SID_SVsShellDebugger, &debugger2); RETURN_IF_FAILED(hr);
+
 		VsDebugTargetInfo2 dti = { };
 		dti.cbSize = sizeof(dti);
 		dti.dlo = DLO_CreateProcess;
@@ -695,8 +705,7 @@ public:
 		dti.guidPortSupplier = PortSupplier_Id;
 		dti.bstrPortName = SysAllocString(SingleDebugPortName); RETURN_IF_NULL_ALLOC(dti.bstrPortName);
 		dti.fSendToOutputWindow = TRUE;
-		hr = debugger2->LaunchDebugTargets2 (1, &dti); RETURN_IF_FAILED_MSG(hr, "LaunchDebugTargets2 returned 0x%08x", hr);
-
+		hr = debugger2->LaunchDebugTargets2 (1, &dti); RETURN_IF_FAILED_EXPECTED(hr);
 		return S_OK;
 	}
 
@@ -808,8 +817,11 @@ public:
 		{
 			if (nCmdID == cmdidResetSimulator)
 			{
-				auto hr = _simulator->Reset(0); RETURN_IF_FAILED(hr);
-				return hr;
+				auto hr = ConfirmStopDebugging(); RETURN_IF_FAILED(hr);
+				if (hr == S_FALSE)
+					return S_OK;
+				hr = _simulator->Reset(0); RETURN_IF_FAILED(hr);
+				return S_OK;
 			}
 
 			if (nCmdID == cmdidOpenZ80File)
