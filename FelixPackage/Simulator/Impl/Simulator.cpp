@@ -206,22 +206,6 @@ public:
 		}
 	}
 
-	void simulate_one_in_break_mode()
-	{
-		WI_ASSERT(::GetCurrentThreadId() == GetThreadId(_cpuThread.get()));
-		WI_ASSERT(!_running_info);
-
-		// The CPU might be waiting for a device, and that device might be waiting for the real time to catch up.
-		// This is often the case after we break a running program; see the related comment in Break().
-		// So before we attempt anything with the CPU, let's bring the devices up to date with it.
-		simulate_devices_to(_cpu->Time());
-
-		// Let's simulate one CPU instruction. Since this is a user-initiated action,
-		// we must ask the CPU to ignore breakpoints while executing this particular instruction.
-		bool advanced = _cpu->SimulateOne(nullptr);
-		WI_ASSERT(advanced);
-	}
-
 	DWORD simulation_thread_proc()
 	{
 		HANDLE waitHandles[3] = { _run_on_simulator_thread_request.get(), _cpu_thread_exit_request.get(), _waitableTimer.get() };
@@ -604,14 +588,17 @@ public:
 
 		auto hr = RunOnSimulatorThread([this, checkBreakpointsAtCurrentPC]
 			{
-				WI_ASSERT(!_running_info);
+				AssertDevicesUpToDateWithCPU();
 
 				auto start_time = _cpu->Time();
 				LARGE_INTEGER perf_counter;
 				QueryPerformanceCounter(&perf_counter);
 
 				if (!checkBreakpointsAtCurrentPC)
-					simulate_one_in_break_mode(); // and this should return a hr rather than calling events itself
+				{
+					bool advanced = _cpu->SimulateOne(nullptr);
+					WI_ASSERT(advanced);
+				}
 
 				_running_info = running_info { .start_time = start_time, .start_time_perf_counter = perf_counter };
 				return S_OK;
@@ -634,6 +621,26 @@ public:
 		return _running ? S_OK : S_FALSE;
 	}
 
+	void AssertDevicesUpToDateWithCPU()
+	{
+		#ifdef _DEBUG
+		WI_ASSERT(!_running_info);
+
+		// While simulation is not running devices are supposed to be up to date with the processor's time.
+		uint64_t cpuTime = _cpu->Time();
+		for (auto& d : _active_devices_)
+		{
+			uint64_t deviceTime = d->Time();
+			if (deviceTime < cpuTime)
+			{
+				d->SimulateTo(cpuTime);
+				uint64_t deviceNewTime = d->Time();
+				WI_ASSERT(deviceNewTime == deviceTime);
+			}
+		}
+		#endif
+	}
+
 	virtual HRESULT STDMETHODCALLTYPE SimulateOne() override
 	{
 		RETURN_HR_IF(E_UNEXPECTED, _running);
@@ -643,13 +650,21 @@ public:
 
 		auto hr = RunOnSimulatorThread ([this, &screen, &beam]
 			{
+				AssertDevicesUpToDateWithCPU();
+
 				if (!_cpu->Halted())
-					simulate_one_in_break_mode();
+				{
+					bool advanced = _cpu->SimulateOne(nullptr);
+					WI_ASSERT(advanced);
+					simulate_devices_to(_cpu->Time());
+				}
 				else
 				{
 					do
 					{
-						simulate_one_in_break_mode();
+						bool advanced = _cpu->SimulateOne(nullptr);
+						WI_ASSERT(advanced);
+						simulate_devices_to(_cpu->Time());
 					} while (_cpu->Halted());
 				}
 
