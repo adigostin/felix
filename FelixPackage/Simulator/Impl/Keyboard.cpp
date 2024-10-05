@@ -202,13 +202,32 @@ struct keyboard : IKeyboardDevice
 		if (vkey == VK_SHIFT)
 		{
 			process_vk_shift();
-			return S_OK;;
+			return S_OK;
+		}
+
+		if (vkey == VK_OEM_1)
+		{
+			// ; or : for US physical keyboard layout
+			if (modifiers & MK_SHIFT)
+			{
+				// If the user generated this with Left Shift (rather than with Right Shift),
+				// we have generated CS out of that. We need to clear the CS first.
+				keys_down[0] &= ~1; // clear CS
+				keys_down[7] |= 2; // SS
+				keys_down[0] |= 2; // Z
+			}
+			else
+			{
+				keys_down[7] |= 2; // SS
+				keys_down[5] |= 2; // O
+			}
+
+			return S_OK;
 		}
 
 		if (vkey == VK_OEM_7)
 		{
-			//  ' or " for US physical keyboard layout
-
+			// ' or " for US physical keyboard layout
 			if (modifiers & MK_SHIFT)
 			{
 				// If the user generated this with Left Shift (rather than with Right Shift),
@@ -222,7 +241,8 @@ struct keyboard : IKeyboardDevice
 				keys_down[7] |= 2; // SS
 				keys_down[4] |= 8; // 7
 			}
-			return S_OK;;
+
+			return S_OK;
 		}
 
 		if (vkey == VK_OEM_PLUS)
@@ -241,7 +261,8 @@ struct keyboard : IKeyboardDevice
 				keys_down[7] |= 2; // SS
 				keys_down[6] |= 2; // L
 			}
-			return S_OK;;
+
+			return S_OK;
 		}
 
 		return S_FALSE;
@@ -282,7 +303,25 @@ struct keyboard : IKeyboardDevice
 			if (GetKeyState(VK_RSHIFT) >> 15)
 				keys_down[7] |= 2;
 
-			return E_NOTIMPL;
+			return S_OK;
+		}
+
+		if (vkey == VK_OEM_1)
+		{
+			// ; or : for US physical keyboard layout
+			keys_down[7] &= ~2; // SS
+			keys_down[5] &= ~2; // O
+			keys_down[0] &= ~2; // Z
+
+			// Is Left Shift (CS) pressed now?
+			if (GetKeyState(VK_LSHIFT) >> 15)
+				keys_down[0] |= 1;
+
+			// ... or Right Shift (SS)?
+			if (GetKeyState(VK_RSHIFT) >> 15)
+				keys_down[7] |= 2;
+
+			return S_OK;
 		}
 
 		if (vkey == VK_SHIFT)
