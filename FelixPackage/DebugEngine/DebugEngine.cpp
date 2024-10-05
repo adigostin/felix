@@ -326,9 +326,7 @@ public:
 	static HRESULT SendLoadCompleteEvent (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program, IDebugThread2* thread)
 	{
 		// Must be stopping as per https://docs.microsoft.com/en-us/visualstudio/extensibility/debugger/supported-event-types?view=vs-2019
-		// Later edit: however, if we send IDebugLoadCompleteEvent2 (stopping) followed by IDebugEntryPointEvent2 (also stopping),
-		// VS calls IDebugProgram2::Continue twice! So let's send LoadComplete non-stopping. MIDebugEngine does the same.
-		using LCE = EventBase<IDebugLoadCompleteEvent2, EVENT_SYNCHRONOUS>;
+		using LCE = EventBase<IDebugLoadCompleteEvent2, EVENT_SYNC_STOP>;
 		auto e = com_ptr(new (std::nothrow) LCE()); RETURN_IF_NULL_ALLOC(e);
 		auto hr = e->Send(callback, engine, program, thread); RETURN_IF_FAILED(hr);
 		return S_OK;
