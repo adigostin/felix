@@ -11,6 +11,8 @@
 #pragma comment (lib, "Shlwapi")
 
 static constexpr UINT WM_MAIN_THREAD_WORK = WM_APP + 0;
+static constexpr UINT WM_SCREEN_COMPLETE  = WM_APP + 1;
+
 static ATOM wndClassAtom;
 
 HRESULT STDMETHODCALLTYPE MakeHC91ROM (Bus* memory_bus, Bus* io_bus, const wchar_t* folder, const wchar_t* BinaryFilename, wistd::unique_ptr<IMemoryDevice>* ppDevice);
@@ -65,6 +67,9 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler
 	wistd::unique_ptr<IDevice> _beeper;
 	vector_nothrow<IDevice*> _active_devices_;
 	bool _showCRTSnapshot = false;
+
+	// Passed via WM_SCREEN_COMPLETE from simulator thread to GUI thread while simulation is running.
+	unique_cotaskmem_bitmapinfo _screenComplete;
 
 public:
 	HRESULT InitInstance (LPCWSTR dir, LPCWSTR romFilename)
@@ -163,6 +168,23 @@ public:
 			auto work = p->_mainThreadWorkQueue.remove(p->_mainThreadWorkQueue.begin());
 			lock.reset();
 			work();
+		}
+		else if (msg == WM_SCREEN_COMPLETE)
+		{
+			auto p = reinterpret_cast<SimulatorImpl*>(GetWindowLongPtr (hwnd, GWLP_USERDATA));
+			WI_ASSERT(p);
+
+			auto lock = p->_mainThreadQueueLock.lock_exclusive();
+			if (p->_screenComplete)
+			{
+				auto screen = std::move(p->_screenComplete);
+				if (p->_screenCompleteHandler)
+				{
+					auto hr = p->_screenCompleteHandler->OnScreenComplete(screen.get(), { -1, -1 });
+					if (SUCCEEDED(hr))
+						screen.release();
+				}
+			}
 		}
 
 		return DefWindowProc (hwnd, msg, wparam, lparam);
@@ -341,24 +363,6 @@ public:
 		return 0;
 	}
 
-	HRESULT STDMETHODCALLTYPE PostWorkToMainThread (stdext::inplace_function<void()> work) 
-	{
-		WI_ASSERT(::GetCurrentThreadId() == GetThreadId(_cpuThread.get()));
-		auto lock = _mainThreadQueueLock.lock_exclusive();
-		bool pushed = _mainThreadWorkQueue.try_push_back(std::move(work)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-
-		BOOL posted = PostMessageW (_hwnd, WM_MAIN_THREAD_WORK, 0, 0);
-		if (!posted)
-		{
-			DWORD le = GetLastError();
-			LOG_LAST_ERROR();
-			_mainThreadWorkQueue.remove(_mainThreadWorkQueue.end() - 1);
-			return HRESULT_FROM_WIN32(le);
-		}
-
-		return S_OK;
-	}
-
 	class BreakpointEvent : public ISimulatorBreakpointEvent
 	{
 		ULONG _refCount = 0;
@@ -411,11 +415,13 @@ public:
 	{
 		auto bpsCopy = wil::make_unique_hlocal_nothrow<BreakpointsHit>(*bps); RETURN_IF_NULL_ALLOC(bpsCopy);
 
+		WI_ASSERT(_running_info);
+		_running_info.reset();
+
 		unique_cotaskmem_bitmapinfo screen;
 		POINT beam;
-		auto hr = _screen->CopyBuffer (_showCRTSnapshot, screen.addressof(), &beam); RETURN_IF_FAILED_EXPECTED(hr);
+		_screen->CopyBuffer (_showCRTSnapshot, screen.addressof(), &beam);
 
-		_running_info.reset();
 		auto work = [this, bps=std::move(bpsCopy), screen=std::move(screen), beam]() mutable
 			{
 				WI_ASSERT(_running);
@@ -425,15 +431,30 @@ public:
 				{
 					for (uint32_t i = 0; i < _eventHandlers.size(); i++)
 						_eventHandlers[i]->ProcessSimulatorEvent(bpEvent, __uuidof(ISimulatorBreakpointEvent));
-					if (_screenCompleteHandler)
-					{
-						auto hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
-						if (SUCCEEDED(hr))
-							screen.release();
-					}
+				}
+
+				_screenComplete = nullptr;
+				if (_screenCompleteHandler && screen)
+				{
+					auto hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
+					if (SUCCEEDED(hr))
+						screen.release();
 				}
 			};
-		hr = PostWorkToMainThread (std::move(work)); RETURN_IF_FAILED(hr);
+		auto lock = _mainThreadQueueLock.lock_exclusive();
+		bool pushed = _mainThreadWorkQueue.try_push_back(std::move(work));
+		if (pushed)
+		{
+			BOOL posted = PostMessageW (_hwnd, WM_MAIN_THREAD_WORK, 0, 0);
+			if (!posted)
+			{
+				DWORD le = GetLastError();
+				LOG_LAST_ERROR();
+				_mainThreadWorkQueue.remove(_mainThreadWorkQueue.end() - 1);
+				return HRESULT_FROM_WIN32(le);
+			}
+		}
+
 		return S_OK;
 	}
 
@@ -495,8 +516,25 @@ public:
 			});
 		RETURN_IF_FAILED(hr);
 
-		//if (!_running)
-		//	SendSimulateOneCompleteEvent();
+		_screenComplete = nullptr;
+
+		if (!_running)
+		{
+			//	SendSimulateOneCompleteEvent();
+
+			if (_screenCompleteHandler)
+			{
+				unique_cotaskmem_bitmapinfo screen;
+				POINT beam;
+				auto hr = _screen->CopyBuffer (_showCRTSnapshot, screen.addressof(), &beam);
+				if (SUCCEEDED(hr))
+				{
+					auto hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
+					if (SUCCEEDED(hr))
+						screen.release();
+				}
+			}
+		}
 
 		return S_OK;
 	}
@@ -551,16 +589,10 @@ public:
 		if (!_running)
 			return S_FALSE;
 
-		unique_cotaskmem_bitmapinfo screen;
-		POINT beam;
-
-		auto hr = RunOnSimulatorThread([this, &screen, &beam]
+		auto hr = RunOnSimulatorThread([this]
 			{
-				if(_running_info.has_value())
-				{
-					_running_info.reset();
-					auto hr = _screen->CopyBuffer (_showCRTSnapshot, screen.addressof(), &beam); LOG_IF_FAILED(hr);
-				}
+				WI_ASSERT(_running_info);
+				_running_info.reset();
 				return S_OK;
 			});
 		RETURN_IF_FAILED(hr);
@@ -568,15 +600,24 @@ public:
 		_running = false;
 
 		using BreakEvent = SimulatorEvent<ISimulatorBreakEvent>;
-		auto event = com_ptr(new (std::nothrow) BreakEvent()); RETURN_IF_NULL_ALLOC(event);
-		for (uint32_t i = 0; i < _eventHandlers.size(); i++)
-			_eventHandlers[i]->ProcessSimulatorEvent(event, __uuidof(event));
+		if (auto event = com_ptr(new (std::nothrow) BreakEvent()))
+		{
+			for (uint32_t i = 0; i < _eventHandlers.size(); i++)
+				_eventHandlers[i]->ProcessSimulatorEvent(event, __uuidof(event));
+		}
 
+		_screenComplete = nullptr;
 		if (_screenCompleteHandler)
 		{
-			hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
+			unique_cotaskmem_bitmapinfo screen;
+			POINT beam;
+			auto hr = _screen->CopyBuffer (_showCRTSnapshot, screen.addressof(), &beam);
 			if (SUCCEEDED(hr))
-				screen.release();
+			{
+				auto hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
+				if (SUCCEEDED(hr))
+					screen.release();
+			}
 		}
 
 		return S_OK;
@@ -605,7 +646,6 @@ public:
 			});
 		RETURN_IF_FAILED(hr);
 
-		WI_ASSERT(!_running);
 		_running = true;
 		using ResumeEvent = SimulatorEvent<ISimulatorResumeEvent>;
 		auto event = com_ptr(new (std::nothrow) ResumeEvent()); RETURN_IF_NULL_ALLOC(event);
@@ -645,10 +685,7 @@ public:
 	{
 		RETURN_HR_IF(E_UNEXPECTED, _running);
 
-		unique_cotaskmem_bitmapinfo screen;
-		POINT beam;
-
-		auto hr = RunOnSimulatorThread ([this, &screen, &beam]
+		auto hr = RunOnSimulatorThread ([this]
 			{
 				AssertDevicesUpToDateWithCPU();
 
@@ -668,7 +705,6 @@ public:
 					} while (_cpu->Halted());
 				}
 
-				auto hr = _screen->CopyBuffer (_showCRTSnapshot, screen.addressof(), &beam); LOG_IF_FAILED(hr);
 
 				return S_OK;
 			});
@@ -676,30 +712,23 @@ public:
 		
 		hr = SendSimulateOneCompleteEvent(); LOG_IF_FAILED(hr);
 
+		_screenComplete = nullptr;
 		if (_screenCompleteHandler)
 		{
-			hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
+			unique_cotaskmem_bitmapinfo screen;
+			POINT beam;
+			hr = _screen->CopyBuffer (_showCRTSnapshot, screen.addressof(), &beam);
 			if (SUCCEEDED(hr))
-				screen.release();
+			{
+				hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
+				if (SUCCEEDED(hr))
+					screen.release();
+			}
 		}
 
 		return S_OK;
 	}
-/*
-	virtual HRESULT STDMETHODCALLTYPE AdviseSimulatorEvents (ISimulatorEventHandler* handler) override
-	{
-		RETURN_HR_IF (E_INVALIDARG, _eventHandlers.contains(handler));
-		bool added = _eventHandlers.try_push_back(std::move(wr)); RETURN_HR_IF(E_OUTOFMEMORY, !added);
-		return S_OK;
-	}
 
-	virtual HRESULT STDMETHODCALLTYPE UnadviseSimulatorEvents (ISimulatorEventHandler* handler) override
-	{
-		RETURN_HR_IF (E_INVALIDARG, !_eventHandlers.contains(handler));
-		_eventHandlers.erase(it);
-		return S_OK;
-	}
-*/
 	/*
 	virtual HRESULT STDMETHODCALLTYPE LoadROM (LPCWSTR filename_relative_to_package, uint32_t address, BSTR* absolutePathOut) override
 	{
@@ -832,6 +861,11 @@ public:
 			});
 		RETURN_IF_FAILED(hr);
 
+		// TODO: do something to cause the GUI to refresh windows
+		//if (!_running)
+		//	SendSimulateOneCompleteEvent();
+
+		_screenComplete = nullptr;
 		if (screen && _screenCompleteHandler)
 		{
 			hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
@@ -1118,6 +1152,11 @@ public:
 			});
 		RETURN_IF_FAILED(hr);
 
+		// TODO: do something to cause the GUI to refresh windows
+		//if (!_running)
+		//	SendSimulateOneCompleteEvent();
+
+		_screenComplete = nullptr;
 		if (screen && _screenCompleteHandler)
 		{
 			hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
@@ -1143,7 +1182,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE LoadBinary (IStream* stream, DWORD address) override
 	{
-		RETURN_HR_IF(SIM_E_NOT_SUPPORTED_WHILE_SIMULATION_RUNNING, _running);
+		RETURN_HR_IF(E_UNEXPECTED, _running);
 
 		auto hr = stream->Seek ( { .QuadPart = 0 }, STREAM_SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
 
@@ -1277,27 +1316,27 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetPC (uint16_t* pc) override
 	{
-		RETURN_HR_IF(SIM_E_NOT_SUPPORTED_WHILE_SIMULATION_RUNNING, _running);
+		RETURN_HR_IF(E_UNEXPECTED, _running);
 		*pc = _cpu->GetPC();
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE SetPC (uint16_t pc) override
 	{
-		RETURN_HR_IF(SIM_E_NOT_SUPPORTED_WHILE_SIMULATION_RUNNING, _running);
+		RETURN_HR_IF(E_UNEXPECTED, _running);
 		return _cpu->SetPC(pc);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetStackStartAddress (UINT16* stackStartAddress) override
 	{
-		RETURN_HR_IF(SIM_E_NOT_SUPPORTED_WHILE_SIMULATION_RUNNING, _running);
+		RETURN_HR_IF(E_UNEXPECTED, _running);
 		*stackStartAddress = _cpu->GetStackStartAddress();
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetRegisters (z80_register_set* buffer, uint32_t size) override
 	{
-		RETURN_HR_IF(SIM_E_NOT_SUPPORTED_WHILE_SIMULATION_RUNNING, _running);
+		RETURN_HR_IF(E_UNEXPECTED, _running);
 		_cpu->GetZ80Registers(buffer);
 		return S_OK;
 	}
@@ -1359,15 +1398,17 @@ public:
 			auto hr = _screen->CopyBuffer (crt, screen.addressof(), nullptr);
 			if (SUCCEEDED(hr))
 			{
-				PostWorkToMainThread([this, buffer=std::move(screen)]() mutable
+				auto lock = _mainThreadQueueLock.lock_exclusive();
+				bool messagePosted = _screenComplete.is_valid();
+				_screenComplete = std::move(screen);
+				if (!messagePosted)
 				{
-					if (_screenCompleteHandler)
+					BOOL posted = PostMessageW (_hwnd, WM_SCREEN_COMPLETE, 0, 0);
+					if (!posted)
 					{
-						auto hr = _screenCompleteHandler->OnScreenComplete(buffer.get(), { -1, -1 });
-						if (SUCCEEDED(hr))
-							buffer.release();
+						// Ignoring this error condition for now, don't know how to handle it.
 					}
-				});
+				}
 			}
 		}
 	}
