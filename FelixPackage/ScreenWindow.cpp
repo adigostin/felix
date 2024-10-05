@@ -17,6 +17,7 @@ class ScreenWindowImpl
 	, public IVsWindowFrameNotify4
 	, public IVsWindowFrameNotify3
 	, public IOleCommandTarget
+	, public ISimulatorEventHandler
 	, public IScreenCompleteEventHandler
 	, public IVsBroadcastMessageEvents
 {
@@ -32,6 +33,7 @@ class ScreenWindowImpl
 	com_ptr<IVsSettingsManager> _sm;
 	DWORD _debugger_events_cookie = 0;
 	bool _advisingScreenCompleteEvents = false;
+	bool _advisingSimulatorEvents = false;
 	struct Rational { LONG numerator; LONG denominator; };
 	Rational _zoom;
 	wil::unique_hfont _debugFont;
@@ -82,6 +84,7 @@ public:
 			|| TryQI<IVsWindowFrameNotify4>(this, riid, ppvObject)
 			|| TryQI<IVsWindowFrameNotify3>(this, riid, ppvObject)
 			|| TryQI<IOleCommandTarget>(this, riid, ppvObject)
+			|| TryQI<ISimulatorEventHandler>(this, riid, ppvObject)
 			|| TryQI<IScreenCompleteEventHandler>(this, riid, ppvObject)
 			|| TryQI<IVsBroadcastMessageEvents>(this, riid, ppvObject)
 		)
@@ -429,6 +432,9 @@ public:
 		hr = _simulator->AdviseScreenComplete(this); RETURN_IF_FAILED(hr);
 		_advisingScreenCompleteEvents = true;
 
+		hr = _simulator->AdviseDebugEvents(this); RETURN_IF_FAILED(hr);
+		_advisingSimulatorEvents = true;
+
 		com_ptr<IVsDebugger> debugger;
 		hr = _sp->QueryService(SID_SVsShellDebugger, &debugger); RETURN_IF_FAILED(hr);
 		hr = debugger->AdviseDebuggerEvents(this, &_debugger_events_cookie); RETURN_IF_FAILED(hr);
@@ -499,6 +505,12 @@ public:
 			_debugger_events_cookie = 0;
 		}
 
+		if (_advisingSimulatorEvents)
+		{
+			_simulator->UnadviseDebugEvents(this);
+			_advisingSimulatorEvents = false;
+		}
+
 		if (_advisingScreenCompleteEvents)
 		{
 			_simulator->UnadviseScreenComplete(this);
@@ -547,6 +559,20 @@ public:
 				if (_hwnd)
 					::InvalidateRect(_hwnd, nullptr, TRUE);
 				break;
+		}
+
+		return S_OK;
+	}
+	#pragma endregion
+
+	#pragma region ISimulatorEventHandler
+	virtual HRESULT STDMETHODCALLTYPE ProcessSimulatorEvent (ISimulatorEvent* event, REFIID riidEvent) override
+	{
+		if (riidEvent == __uuidof(ISimulatorBreakEvent) || riidEvent == __uuidof(ISimulatorResumeEvent))
+		{
+			if (_hwnd)
+				InvalidateRect(_hwnd, NULL, TRUE);
+			return S_OK;
 		}
 
 		return S_OK;
