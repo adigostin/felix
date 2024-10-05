@@ -473,7 +473,20 @@ public:
 		}
 		else
 		{
-			hr = _simulator->LoadFile(exePath.get()); RETURN_IF_FAILED_EXPECTED(hr);
+			hr = _simulator->LoadFile(exePath.get());
+			if (FAILED(hr))
+			{
+				// The LoadFile function generates rich error info via SetErrorInfo.
+				// However, we are here deep in the call stack, and that error info will be lost
+				// because some of our callers will call ::GetErrorInfo before returning control
+				// to the GUI code. The GUI will eventually show a generic E_FAIL.
+				// So let's show that detailed error info here; the user will see two error messages,
+				// but that's not as bad as seeing a single one without detailed information.
+				com_ptr<IVsUIShell> uiShell;
+				serviceProvider->QueryService(SID_SVsUIShell, &uiShell);
+				uiShell->ReportErrorInfo(hr);
+				return hr;
+			}
 			com_ptr<IDebugModule2> ram_module;
 			hr = MakeModule (0x4000, 0xC000, exePath.get(), nullptr, true, this, _program, _callback, &ram_module); RETURN_IF_FAILED(hr);
 			hr = mcoll->AddModule(ram_module); RETURN_IF_FAILED(hr);
