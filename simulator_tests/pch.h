@@ -7,7 +7,10 @@
 #ifndef PCH_H
 #define PCH_H
 
+#define NOMINMAX // Windows Platform min and max macros cause problems for the Standard C++ Library
+
 #include <OCIdl.h>
+#include <algorithm>
 #include <wil/com.h>
 
 #endif //PCH_H
