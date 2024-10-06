@@ -1008,8 +1008,10 @@ namespace Z80SimulatorTests
 			regs->main.hl = 10;
 			regs->main.de = 20;
 			regs->main.bc = 2;
-			regs->main.f.val = 0xFF;
+			regs->main.a = 8;
 			memory.write(10, { 0x55, 0xAA });
+
+			regs->main.f.val = 0xFF;
 			cpu->SimulateOne(nullptr);
 			Assert::AreEqual(16ull, cpu->Time());
 			Assert::AreEqual<uint16_t>(11, regs->main.hl);
@@ -1017,13 +1019,14 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint16_t>(1, regs->main.bc);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
-			Assert::AreEqual<uint8_t>(0, regs->main.f.x5); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x5); // bit 1 of A+(HL)=0x5D
 			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
-			Assert::AreEqual<uint8_t>(0, regs->main.f.x3); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(1, regs->main.f.x3); // bit 3 of A+(HL)=0x5D
 			Assert::AreEqual<uint8_t>(1, regs->main.f.pv);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
 			Assert::AreEqual<uint8_t>(0x55, memory.read(20));
+
 			regs->main.f.val = 0;
 			cpu->SimulateOne(nullptr);
 			Assert::AreEqual(32ull, cpu->Time());
@@ -1032,9 +1035,9 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint16_t>(0, regs->main.bc);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
-			Assert::AreEqual<uint8_t>(1, regs->main.f.x5); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(1, regs->main.f.x5); // bit 1 of A+(HL)=0xB2
 			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
-			Assert::AreEqual<uint8_t>(1, regs->main.f.x3); // bit 3 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x3); // bit 3 of A+(HL)=0xB2
 			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
@@ -1049,6 +1052,7 @@ namespace Z80SimulatorTests
 			regs->main.hl = 11;
 			regs->main.de = 21;
 			regs->main.bc = 2;
+			regs->main.a = 8;
 			regs->main.f.val = 0xFF;
 			memory.write(10, { 0x55, 0xAA });
 			cpu->SimulateOne(nullptr);
@@ -1058,9 +1062,9 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint16_t>(1, regs->main.bc);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
-			Assert::AreEqual<uint8_t>(1, regs->main.f.x5); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(1, regs->main.f.x5); // bit 1 of A+(HL)=0xB2
 			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
-			Assert::AreEqual<uint8_t>(1, regs->main.f.x3); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x3); // bit 3 of A+(HL)=0xB2
 			Assert::AreEqual<uint8_t>(1, regs->main.f.pv);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
@@ -1073,9 +1077,9 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint16_t>(0, regs->main.bc);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
-			Assert::AreEqual<uint8_t>(0, regs->main.f.x5); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x5); // bit 1 of A+(HL)=0x5D
 			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
-			Assert::AreEqual<uint8_t>(0, regs->main.f.x3); // bit 3 of copied data
+			Assert::AreEqual<uint8_t>(1, regs->main.f.x3); // bit 3 of A+(HL)=0x5D
 			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
@@ -1089,6 +1093,7 @@ namespace Z80SimulatorTests
 			regs->main.hl = 10;
 			regs->main.de = 20;
 			regs->main.bc = 2;
+			regs->main.a = 2;
 			memory.write(10, { 0x55, 0xAA });
 
 			regs->main.f.val = 0xFF;
@@ -1100,9 +1105,9 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint16_t>(1, regs->main.bc);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
-			Assert::AreEqual<uint8_t>(0, regs->main.f.x5); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(1, regs->main.f.x5); // bit 1 of A+(HL)=0x57
 			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
-			Assert::AreEqual<uint8_t>(0, regs->main.f.x3); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x3); // bit 3 of A+(HL)=0x57
 			Assert::AreEqual<uint8_t>(1, regs->main.f.pv);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
@@ -1117,15 +1122,14 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint16_t>(0, regs->main.bc);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
-			Assert::AreEqual<uint8_t>(1, regs->main.f.x5); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x5); // bit 1 of A+(HL)=0xAC
 			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
-			Assert::AreEqual<uint8_t>(1, regs->main.f.x3); // bit 3 of copied data
+			Assert::AreEqual<uint8_t>(1, regs->main.f.x3); // bit 3 of A+(HL)=0xAC
 			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
 			Assert::AreEqual<uint8_t>(0xAA, memory.read(21));
 		}
-
 
 		TEST_METHOD(lddr)
 		{
@@ -1134,6 +1138,7 @@ namespace Z80SimulatorTests
 			regs->main.hl = 11;
 			regs->main.de = 21;
 			regs->main.bc = 2;
+			regs->main.a = 10;
 			memory.write(10, { 0x55, 0xAA });
 
 			regs->main.f.val = 0xFF;
@@ -1145,9 +1150,9 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint16_t>(1, regs->main.bc);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
-			Assert::AreEqual<uint8_t>(1, regs->main.f.x5); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x5); // bit 1 of A+(HL)=0xB4
 			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
-			Assert::AreEqual<uint8_t>(1, regs->main.f.x3); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x3); // bit 3 of A+(HL)=0xB4
 			Assert::AreEqual<uint8_t>(1, regs->main.f.pv);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
@@ -1162,9 +1167,9 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint16_t>(0, regs->main.bc);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
-			Assert::AreEqual<uint8_t>(0, regs->main.f.x5); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(1, regs->main.f.x5); // bit 1 of A+(HL)=0x5F
 			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
-			Assert::AreEqual<uint8_t>(0, regs->main.f.x3); // bit 3 of copied data
+			Assert::AreEqual<uint8_t>(1, regs->main.f.x3); // bit 3 of A+(HL)=0x5F
 			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.c);

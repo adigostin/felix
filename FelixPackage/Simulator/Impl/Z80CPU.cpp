@@ -1146,7 +1146,7 @@ public:
 		return true;
 	}
 
-	// ldi/ldd/ldir/lddr
+	// LDI/LDD/LDIR/LDDR
 	bool sim_eda0 (uint8_t opcode)
 	{
 		uint8_t data;
@@ -1161,7 +1161,8 @@ public:
 		regs.main.bc--;
 		cpu_time += 16;
 		regs.main.f.val = (regs.main.f.val & (z80_flag::s | z80_flag::z | z80_flag::c))
-			| (data & (z80_flag::r5 | z80_flag::r3))
+			| (((data + regs.main.a) & 2) ? z80_flag::r5 : 0)
+			| (((data + regs.main.a) & 8) ? z80_flag::r3 : 0)
 			| (regs.main.bc ? z80_flag::pv : 0);
 		bool repeat = opcode & 0x10;
 		if (repeat && regs.main.bc)
