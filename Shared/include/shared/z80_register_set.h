@@ -64,6 +64,7 @@ struct z80_register_set
 	uint16_t ix;
 	uint16_t iy;
 	bool iff1;
+	bool iff2;
 	bool halted;
 	uint8_t im;
 

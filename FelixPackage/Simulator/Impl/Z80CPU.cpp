@@ -6,6 +6,16 @@
 
 // For the P/V flag calculation, the "Parity/Overflow Flag" paragraph in the Z80 pdf has a good explanation.
 
+// From http://z80.info/z80info.htm:
+// d) About the R register:
+// This is not really an undocumented feature, although I have never seen any thorough description
+// of it anywhere. The R register is a counter that is updated every instruction, where DD, FD, ED 
+// and CB are to be regarded as separate instructions. So shifted instruction will increase R by two. 
+// There's an interesting exception: doubly-shifted opcodes, the DDCB and FDCB ones, increase R by 
+// two too. LDI increases R by two, LDIR increases it by 2 times BC, as does LDDR etcetera.
+// The sequence LD R,A/LD A,R increases A by two, except for the highest bit: this bit of the R
+// register is never changed.
+
 #pragma region pre-calculated values and flags
 // From https://github.com/Dotneteer/spectnetide/blob/master/v2/Core/Spect.Net.SpectrumEmu/Cpu/Z80AluHelpers.cs
 
@@ -1019,10 +1029,16 @@ public:
 		return true;
 	}
 
-	// ld a, i
+	// ld a, i (ED 57)
+	// ld a, r (ED 5F)
 	bool sim_ed57 (uint8_t opcode)
 	{
-		regs.main.a = regs.i;
+		regs.main.a = (opcode == 0x57) ? regs.i : regs.r;
+		regs.main.f.val = (regs.main.a & 0xA8) // S, X5, X3
+			| (regs.main.a ? 0 : 0x40) // Z
+			| (regs.iff2 ? 4 : 0) // P/V
+			| (regs.main.f.val & 1); // C
+		// TODO: If an interrupt occurs during execution of this instruction, the parity flag contains a 0.
 		cpu_time += 9;
 		return true;
 	}
@@ -1032,14 +1048,6 @@ public:
 	{
 		regs.im = 2;
 		cpu_time += 8;
-		return true;
-	}
-
-	// ld a, r
-	bool sim_ed5f (uint8_t opcode)
-	{
-		regs.main.a = regs.r;
-		cpu_time += 9;
 		return true;
 	}
 
@@ -1216,7 +1224,7 @@ public:
 		&sim_ed40, nullptr,  &sim_ed42, &sim_ed43, &sim_ed44, &sim_ed45, &sim_ed46, &sim_ed47, // 40 - 47
 		&sim_ed40, nullptr,  &sim_ed4a, &sim_ed4B, nullptr,   &sim_ed4d, nullptr,   &sim_ed4f, // 48 - 4f
 		&sim_ed40, nullptr,  &sim_ed42, &sim_ed43, nullptr,   nullptr,   &sim_ed56, &sim_ed57, // 50 - 57
-		&sim_ed40, nullptr,  &sim_ed4a, &sim_ed4B, nullptr,   nullptr,   &sim_ed5e, &sim_ed5f, // 58 - 5f
+		&sim_ed40, nullptr,  &sim_ed4a, &sim_ed4B, nullptr,   nullptr,   &sim_ed5e, &sim_ed57, // 58 - 5f
 		&sim_ed40, nullptr,  &sim_ed42, &sim_ed43, nullptr,   nullptr,   nullptr,   &sim_ed67, // 60 - 67
 		&sim_ed40, nullptr,  &sim_ed4a, &sim_ed4B, nullptr,   nullptr,   nullptr,   &sim_ed6f, // 68 - 6f
 		nullptr,   nullptr,  &sim_ed42, &sim_ed43, nullptr,   nullptr,   nullptr,   nullptr,   // 70 - 77
@@ -1633,17 +1641,21 @@ public:
 		{
 			xy = hl_ix_iy::ix;
 			opcode = decode_u8();
+			regs.r = (regs.r & 0x80) | ((regs.r + 1) & 0x7f);
 		}
 		else if (opcode == 0xFD)
 		{
 			xy = hl_ix_iy::iy;
 			opcode = decode_u8();
+			regs.r = (regs.r & 0x80) | ((regs.r + 1) & 0x7f);
 		}
 
 		bool executed;
 		if (opcode == 0xed)
 		{
 			opcode = decode_u8();
+			if (xy == hl_ix_iy::hl)
+				regs.r = (regs.r & 0x80) | ((regs.r + 1) & 0x7f);
 			auto handler = dispatch_ed[opcode];
 			if (!handler)
 			{
@@ -1657,6 +1669,8 @@ public:
 		{
 			uint16_t memhlxy_addr = decode_mem_hl(xy);
 			opcode = decode_u8();
+			if (xy == hl_ix_iy::hl)
+				regs.r = (regs.r & 0x80) | ((regs.r + 1) & 0x7f);
 			auto handler = dispatch_cb[opcode];
 			if (!handler)
 			{

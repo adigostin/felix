@@ -892,5 +892,112 @@ namespace Z80SimulatorTests
 			}
 		}
 
+		TEST_METHOD(R_REG_TEST)
+		{
+			memory.write(0, 0); // NOP
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual<uint8_t>(1, cpu->GetRegsPtr()->r);
+		}
+
+		TEST_METHOD(R_REG_TEST_DD_FD)
+		{
+			memory.write (0, { 0xDD, 0x21, 0, 0 }); // LD IX, 0
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual<uint8_t>(2, cpu->GetRegsPtr()->r);
+			memory.write (0, { 0xFD, 0x21, 0, 0 }); // LD IY, 0
+			cpu->SetPC(0);
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual<uint8_t>(4, cpu->GetRegsPtr()->r);
+		}
+
+		TEST_METHOD(R_REG_TEST_ED)
+		{
+			memory.write(0, { 0xED, 0x44 }); // NEG
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual<uint8_t>(2, cpu->GetRegsPtr()->r);
+		}
+
+		TEST_METHOD(R_REG_TEST_CB)
+		{
+			memory.write(0, { 0xCB, 0x27 }); // SLA A
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual<uint8_t>(2, cpu->GetRegsPtr()->r);
+		}
+
+		TEST_METHOD(R_REG_TEST_DD_CB_FD_CB)
+		{
+			memory.write(0, { 0xDD, 0xCB, 0x00, 0x4E }); // BIT 1, (IX + 0) 
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual<uint8_t>(2, cpu->GetRegsPtr()->r);
+			memory.write(0, { 0xFD, 0xCB, 0x00, 0x4E }); // BIT 1, (IX + 0) 
+			cpu->SetPC(0);
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual<uint8_t>(4, cpu->GetRegsPtr()->r);
+		}
+
+		TEST_METHOD(ld_a_i)
+		{
+			// PDF says: "If an interrupt occurs during execution of this instruction, the Parity flag contains a 0."
+			// We're not testing this at the moment.
+			auto* regs = cpu->GetRegsPtr();
+			memory.write (0, { 0xED, 0x57 });
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint64_t>(9, cpu->Time());
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(regs->iff2, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+
+			regs->main.f.c = 1;
+			regs->pc = 0;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
+
+			regs->i = 1;
+			regs->pc = 0;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+
+			regs->i = 0x80;
+			regs->pc = 0;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
+		}
+
+		TEST_METHOD(ld_a_r)
+		{
+			// PDF says: "If an interrupt occurs during execution of this instruction, the Parity flag contains a 0."
+			// We're not testing this at the moment.
+			auto* regs = cpu->GetRegsPtr();
+			memory.write (0, { 0xED, 0x5F });
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint64_t>(9, cpu->Time());
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(regs->iff2, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+
+			regs->main.f.c = 1;
+			regs->r = 0;
+			regs->pc = 0;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
+
+			regs->r = 1;
+			regs->pc = 0;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+
+			regs->r = 0x80;
+			regs->pc = 0;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
+		}
 	};
 }
