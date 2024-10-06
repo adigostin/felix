@@ -1159,20 +1159,17 @@ public:
 		regs.main.hl += increment;
 		regs.main.de += increment;
 		regs.main.bc--;
+		cpu_time += 16;
+		regs.main.f.val = (regs.main.f.val & (z80_flag::s | z80_flag::z | z80_flag::c))
+			| (data & (z80_flag::r5 | z80_flag::r3))
+			| (regs.main.bc ? z80_flag::pv : 0);
 		bool repeat = opcode & 0x10;
 		if (repeat && regs.main.bc)
 		{
-			cpu_time += 21;
 			regs.pc -= 2;
+			cpu_time += 5;
 		}
-		else
-		{
-			cpu_time += 16;
-			regs.main.f.h = 0;
-			regs.main.f.pv = 0;
-			regs.main.f.n = 0;
-		}
-		
+
 		return true;
 	}
 

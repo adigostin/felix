@@ -999,5 +999,176 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
 		}
+
+		TEST_METHOD(ldi)
+		{
+			auto* regs = cpu->GetRegsPtr();
+			memory.write(0, { 0xED, 0xA0 }); // LDI
+			memory.write(2, { 0xED, 0xA0 }); // LDI
+			regs->main.hl = 10;
+			regs->main.de = 20;
+			regs->main.bc = 2;
+			regs->main.f.val = 0xFF;
+			memory.write(10, { 0x55, 0xAA });
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual(16ull, cpu->Time());
+			Assert::AreEqual<uint16_t>(11, regs->main.hl);
+			Assert::AreEqual<uint16_t>(21, regs->main.de);
+			Assert::AreEqual<uint16_t>(1, regs->main.bc);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x5); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x3); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(1, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0x55, memory.read(20));
+			regs->main.f.val = 0;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual(32ull, cpu->Time());
+			Assert::AreEqual<uint16_t>(12, regs->main.hl);
+			Assert::AreEqual<uint16_t>(22, regs->main.de);
+			Assert::AreEqual<uint16_t>(0, regs->main.bc);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.x5); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.x3); // bit 3 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0xAA, memory.read(21));
+		}
+
+		TEST_METHOD(ldd)
+		{
+			auto* regs = cpu->GetRegsPtr();
+			memory.write(0, { 0xED, 0xA8 }); // LDD
+			memory.write(2, { 0xED, 0xA8 }); // LDD
+			regs->main.hl = 11;
+			regs->main.de = 21;
+			regs->main.bc = 2;
+			regs->main.f.val = 0xFF;
+			memory.write(10, { 0x55, 0xAA });
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual(16ull, cpu->Time());
+			Assert::AreEqual<uint16_t>(10, regs->main.hl);
+			Assert::AreEqual<uint16_t>(20, regs->main.de);
+			Assert::AreEqual<uint16_t>(1, regs->main.bc);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.x5); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.x3); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(1, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0xAA, memory.read(21));
+			regs->main.f.val = 0;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual(32ull, cpu->Time());
+			Assert::AreEqual<uint16_t>(9, regs->main.hl);
+			Assert::AreEqual<uint16_t>(19, regs->main.de);
+			Assert::AreEqual<uint16_t>(0, regs->main.bc);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x5); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x3); // bit 3 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0x55, memory.read(20));
+		}
+
+		TEST_METHOD(ldir)
+		{
+			auto* regs = cpu->GetRegsPtr();
+			memory.write(0, { 0xED, 0xB0 }); // LDIR
+			regs->main.hl = 10;
+			regs->main.de = 20;
+			regs->main.bc = 2;
+			memory.write(10, { 0x55, 0xAA });
+
+			regs->main.f.val = 0xFF;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual(21ull, cpu->Time());
+			Assert::AreEqual<uint16_t>(0, cpu->GetPC());
+			Assert::AreEqual<uint16_t>(11, regs->main.hl);
+			Assert::AreEqual<uint16_t>(21, regs->main.de);
+			Assert::AreEqual<uint16_t>(1, regs->main.bc);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x5); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x3); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(1, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0x55, memory.read(20));
+
+			regs->main.f.val = 0;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual(37ull, cpu->Time());
+			Assert::AreEqual<uint16_t>(2, cpu->GetPC());
+			Assert::AreEqual<uint16_t>(12, regs->main.hl);
+			Assert::AreEqual<uint16_t>(22, regs->main.de);
+			Assert::AreEqual<uint16_t>(0, regs->main.bc);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.x5); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.x3); // bit 3 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0xAA, memory.read(21));
+		}
+
+
+		TEST_METHOD(lddr)
+		{
+			auto* regs = cpu->GetRegsPtr();
+			memory.write(0, { 0xED, 0xB8 }); // LDDR
+			regs->main.hl = 11;
+			regs->main.de = 21;
+			regs->main.bc = 2;
+			memory.write(10, { 0x55, 0xAA });
+
+			regs->main.f.val = 0xFF;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual(21ull, cpu->Time());
+			Assert::AreEqual<uint16_t>(0, cpu->GetPC());
+			Assert::AreEqual<uint16_t>(10, regs->main.hl);
+			Assert::AreEqual<uint16_t>(20, regs->main.de);
+			Assert::AreEqual<uint16_t>(1, regs->main.bc);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.x5); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.x3); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(1, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0xAA, memory.read(21));
+
+			regs->main.f.val = 0;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual(37ull, cpu->Time());
+			Assert::AreEqual<uint16_t>(2, cpu->GetPC());
+			Assert::AreEqual<uint16_t>(9, regs->main.hl);
+			Assert::AreEqual<uint16_t>(19, regs->main.de);
+			Assert::AreEqual<uint16_t>(0, regs->main.bc);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x5); // bit 5 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x3); // bit 3 of copied data
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0x55, memory.read(20));
+		}
 	};
 }
