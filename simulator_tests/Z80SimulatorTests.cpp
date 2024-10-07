@@ -1176,7 +1176,7 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint8_t>(0x55, memory.read(20));
 		}
 
-		TEST_METHOD(add_a_r)
+		TEST_METHOD(add_a_c)
 		{
 			auto* regs = cpu->GetRegsPtr();
 			memory.write(0, 0x81); // ADD A, C
@@ -1277,5 +1277,603 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint8_t>(2, regs->r);
 			Assert::AreEqual<uint8_t>(0x56, regs->main.a);
 		}
+
+		TEST_METHOD(adc_a_c)
+		{
+			auto* regs = cpu->GetRegsPtr();
+			memory.write(0, 0x89); // ADC A, C
+			regs->main.a = 0xFF;
+			regs->main.bc = 0;
+			regs->main.f.c = 1;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual<uint64_t>(4, cpu->Time());
+			Assert::AreEqual<uint8_t>(0, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x5);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x3);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
+
+			regs->pc = 0;
+			regs->main.a = 0xFF;
+			regs->main.bc = 1;
+			regs->main.f.val = 0;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual<uint8_t>(0, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x5);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x3);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
+		}
+
+		#pragma region ADD A, Reg - Ported from https://github.com/Dotneteer/spectnetide.git
+		TEST_METHOD(ADD_A_B_WorksAsExpected)
+		{
+			memory.write (0, { 
+				0x3E, 0x12, // LD A,12H
+				0x06, 0x24, // LD B,24H
+				0x80        // ADD A,B
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x36, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint64_t>(18, cpu->Time());
+		}
+
+		TEST_METHOD(ADD_A_B_HandlesCarryFlag)
+		{
+			memory.write (0, {
+				0x3E, 0xF0, // LD A,F0H
+				0x06, 0xF0, // LD B,F0H
+				0x80        // ADD A,B
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0xE0, regs->main.a);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint64_t>(18, cpu->Time());
+		}
+
+		TEST_METHOD(ADD_A_B_HandlesZeroFlag)
+		{
+			memory.write(0, {
+				0x3E, 0x82, // LD A,82H
+				0x06, 0x7E, // LD B,7EH
+				0x80        // ADD A,B
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint64_t>(18, cpu->Time());
+		}
+
+		TEST_METHOD(ADD_A_B_HandlesSignFlag)
+		{
+			memory.write(0, {
+				0x3E, 0x44, // LD A,44H
+				0x06, 0x42, // LD B,42H
+				0x80        // ADD A,B
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x86, regs->main.a);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+		}
+
+		TEST_METHOD(ADD_A_C_WorksAsExpected)
+		{
+			memory.write(0, {
+				0x3E, 0x12, // LD A,12H
+				0x0E, 0x24, // LD C,24H
+				0x81        // ADD A,C
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x36, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+		}
+
+		TEST_METHOD(ADD_A_D_WorksAsExpected)
+		{
+			memory.write(0, {
+				0x3E, 0x12, // LD A,12H
+				0x16, 0x24, // LD D,24H
+				0x82        // ADD A,D
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x36, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+		}
+
+		TEST_METHOD(ADD_A_E_WorksAsExpected)
+		{
+			memory.write(0, {
+				0x3E, 0x12, // LD A,12H
+				0x1E, 0x24, // LD E,24H
+				0x83        // ADD A,E
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x36, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+		}
+
+		TEST_METHOD(ADD_A_H_WorksAsExpected)
+		{
+			memory.write(0, {
+				0x3E, 0x12, // LD A,12H
+				0x26, 0x24, // LD H,24H
+				0x84        // ADD A,H
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x36, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+		}
+
+		TEST_METHOD(ADD_A_L_WorksAsExpected)
+		{
+			memory.write(0, {
+				0x3E, 0x12, // LD A,12H
+				0x2E, 0x24, // LD L,24H
+				0x85        // ADD A,L
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x36, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+		}
+
+		TEST_METHOD(ADD_A_HLi_WorksAsExpected)
+		{
+			memory.write(0, {
+				0x3E, 0x12,        // LD A,12H
+				0x21, 0x00,  0x10, // LD HL,1000H
+				0x86               // ADD A,(HL)
+			});
+			memory.write(0x1000, 0x24);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x36, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+		}
+
+		TEST_METHOD(ADD_A_A_WorksAsExpected)
+		{
+			memory.write(0, {
+				0x3E, 0x12, // LD A,12H
+				0x87        // ADD A,A
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x24, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+		}
+		#pragma endregion
+
+		#pragma region ADC A, Reg - Ported from https://github.com/Dotneteer/spectnetide.git
+		TEST_METHOD(ADC_A_B_WorksAsExpected)
+		{
+			memory.write (0, {
+				0x3E, 0x12, // LD A,12H
+				0x06, 0x24, // LD B,24H
+				0x88        // ADC A,B
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x36, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint64_t>(18, cpu->Time());
+		}
+
+		TEST_METHOD(ADC_A_B_HandlesCarryFlag)
+		{
+			memory.write (0, {
+				0x3E, 0xF0, // LD A,F0H
+				0x06, 0xF0, // LD B,F0H
+				0x88        // ADC A,B
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0xE0, regs->main.a);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint64_t>(18, cpu->Time());
+		}
+
+		TEST_METHOD(ADC_A_B_HandlesZeroFlag)
+		{
+			memory.write (0, {
+				0x3E, 0x82, // LD A,82H
+				0x06, 0x7E, // LD B,7EH
+				0x88        // ADC A,B
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint64_t>(18, cpu->Time());
+		}
+
+		TEST_METHOD(ADC_A_B_HandlesSignFlag)
+		{
+			memory.write (0, {
+				0x3E, 0x44, // LD A,44H
+				0x06, 0x42, // LD B,42H
+				0x88        // ADC A,B
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x86, regs->main.a);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint64_t>(18, cpu->Time());
+		}
+
+		TEST_METHOD(ADC_A_B_WithCarryWorksAsExpected)
+		{
+			memory.write (0, {
+				0x3E, 0x12, // LD A,12H
+				0x06, 0x24, // LD B,24H
+				0x37,       // SCF
+				0x88        // ADC A,B
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x37, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint64_t>(22, cpu->Time());
+		}
+
+		TEST_METHOD(ADC_A_B_WithCarryHandlesCarryFlag)
+		{
+			memory.write (0, {
+				0x3E, 0xF0, // LD A,F0H
+				0x06, 0xF0, // LD B,F0H
+				0x37,       // SCF
+				0x88        // ADC A,B
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0xE1, regs->main.a);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint64_t>(22, cpu->Time());
+		}
+
+		TEST_METHOD(ADC_A_B_WithCarryHandlesZeroFlag)
+		{
+			memory.write (0, {
+				0x3E, 0x82, // LD A,82H
+				0x06, 0x7D, // LD B,7DH
+				0x37,       // SCF
+				0x88        // ADC A,B
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint64_t>(22, cpu->Time());
+		}
+
+		TEST_METHOD(ADC_A_B_WithCarryHandlesSignFlag)
+		{
+			memory.write (0, {
+				0x3E, 0x44, // LD A,44H
+				0x06, 0x42, // LD B,42H
+				0x37,       // SCF
+				0x88        // ADC A,B
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x87, regs->main.a);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint64_t>(22, cpu->Time());
+		}
+
+		TEST_METHOD(ADC_A_C_WithCarryWorksAsExpected)
+		{
+			memory.write (0, {
+				0x3E, 0x12, // LD A,12H
+				0x0E, 0x24, // LD C,24H
+				0x37,       // SCF
+				0x89        // ADC A,C
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x37, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint64_t>(22, cpu->Time());
+		}
+
+		TEST_METHOD(ADC_A_D_WithCarryWorksAsExpected)
+		{
+			memory.write (0, {
+				0x3E, 0x12, // LD A,12H
+				0x16, 0x24, // LD D,24H
+				0x37,       // SCF
+				0x8A        // ADC A,D
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x37, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint64_t>(22, cpu->Time());
+		}
+
+		TEST_METHOD(ADC_A_E_WithCarryWorksAsExpected)
+		{
+			memory.write (0, {
+				0x3E, 0x12, // LD A,12H
+				0x1E, 0x24, // LD E,24H
+				0x37,       // SCF
+				0x8B        // ADC A,E
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x37, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint64_t>(22, cpu->Time());
+		}
+
+		TEST_METHOD(ADC_A_H_WithCarryWorksAsExpected)
+		{
+			memory.write (0, {
+				0x3E, 0x12, // LD A,12H
+				0x26, 0x24, // LD H,24H
+				0x37,       // SCF
+				0x8C        // ADC A,H
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x37, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint64_t>(22, cpu->Time());
+		}
+
+		TEST_METHOD(ADC_A_L_WithCarryWorksAsExpected)
+		{
+			memory.write (0, {
+				0x3E, 0x12, // LD A,12H
+				0x2E, 0x24, // LD L,24H
+				0x37,       // SCF
+				0x8D        // ADC A,L
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x37, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint64_t>(22, cpu->Time());
+		}
+
+		TEST_METHOD(ADC_A_HLi_WorksAsExpected)
+		{
+			memory.write (0, {
+				0x3E, 0x12,        // LD A,12H
+				0x21, 0x00,  0x10, // LD HL,1000H
+				0x37,              // SCF
+				0x8E               // ADD A,(HL)
+			});
+			memory.write(0x1000, 0x24);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x37, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint64_t>(28, cpu->Time());
+		}
+
+		TEST_METHOD(ADC_A_A_WithCarryWorksAsExpected)
+		{
+			memory.write (0, {
+				0x3E, 0x12, // LD A,12H
+				0x37,       // SCF
+				0x8F        // ADC A,A
+			});
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			cpu->SimulateOne(nullptr);
+			auto* regs = cpu->GetRegsPtr();
+			Assert::AreEqual<uint8_t>(0x25, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint64_t>(15, cpu->Time());
+		}
+		#pragma endregion
 	};
 }
