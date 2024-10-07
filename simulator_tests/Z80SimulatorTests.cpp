@@ -1290,5 +1290,18 @@ namespace Z80SimulatorTests
 			Assert::AreEqual(0, regs->main.f.n);
 			Assert::AreEqual(1, regs->main.f.c);
 		}
+
+		TEST_METHOD(add_a_ix_d)
+		{
+			auto regs = cpu->GetRegsPtr();
+			memory.write (0, { 0xDD, 0x86, 2 });
+			regs->main.a = 1;
+			regs->ix = 10;
+			memory.write (12, 0x55);
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual (19, cpu->Time());
+			Assert::AreEqual (2, regs->r);
+			Assert::AreEqual (0x56, regs->main.a);
+		}
 	};
 }
