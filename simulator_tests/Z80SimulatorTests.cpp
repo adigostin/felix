@@ -1201,5 +1201,94 @@ namespace Z80SimulatorTests
 			Assert::AreEqual(0, regs->main.f.c);
 			Assert::AreEqual(0x55, memory.read(20));
 		}
+
+		TEST_METHOD(add_a_r)
+		{
+			auto* regs = cpu->GetRegsPtr();
+			memory.write(0, 0x81); // ADD A, C
+			regs->main.a = 1;
+			regs->main.bc = 2;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual(4, cpu->Time());
+			Assert::AreEqual(3, regs->main.a);
+			Assert::AreEqual(0, regs->main.f.s);
+			Assert::AreEqual(0, regs->main.f.z);
+			Assert::AreEqual(0, regs->main.f.x5);
+			Assert::AreEqual(0, regs->main.f.h);
+			Assert::AreEqual(0, regs->main.f.x3);
+			Assert::AreEqual(0, regs->main.f.pv);
+			Assert::AreEqual(0, regs->main.f.n);
+			Assert::AreEqual(0, regs->main.f.c);
+
+			regs->main.a = 5;
+			regs->main.bc = 10;
+			regs->pc = 0;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual(15, regs->main.a);
+			Assert::AreEqual(0, regs->main.f.s);
+			Assert::AreEqual(0, regs->main.f.z);
+			Assert::AreEqual(0, regs->main.f.x5);
+			Assert::AreEqual(0, regs->main.f.h);
+			Assert::AreEqual(1, regs->main.f.x3);
+			Assert::AreEqual(0, regs->main.f.pv);
+			Assert::AreEqual(0, regs->main.f.n);
+			Assert::AreEqual(0, regs->main.f.c);
+
+			regs->main.a = 6;
+			regs->main.bc = 10;
+			regs->pc = 0;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual(16, regs->main.a);
+			Assert::AreEqual(0, regs->main.f.s);
+			Assert::AreEqual(0, regs->main.f.z);
+			Assert::AreEqual(0, regs->main.f.x5);
+			Assert::AreEqual(1, regs->main.f.h);
+			Assert::AreEqual(0, regs->main.f.x3);
+			Assert::AreEqual(0, regs->main.f.pv);
+			Assert::AreEqual(0, regs->main.f.n);
+			Assert::AreEqual(0, regs->main.f.c);
+
+			regs->main.a = 31;
+			regs->main.bc = 1;
+			regs->pc = 0;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual(32ui8, regs->main.a);
+			Assert::AreEqual(0, regs->main.f.s);
+			Assert::AreEqual(0, regs->main.f.z);
+			Assert::AreEqual(1, regs->main.f.x5);
+			Assert::AreEqual(1, regs->main.f.h);
+			Assert::AreEqual(0, regs->main.f.x3);
+			Assert::AreEqual(0, regs->main.f.pv);
+			Assert::AreEqual(0, regs->main.f.n);
+			Assert::AreEqual(0, regs->main.f.c);
+
+			regs->main.a = 0x7f;
+			regs->main.bc = 1;
+			regs->pc = 0;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual(0x80, regs->main.a);
+			Assert::AreEqual(1, regs->main.f.s);
+			Assert::AreEqual(0, regs->main.f.z);
+			Assert::AreEqual(0, regs->main.f.x5);
+			Assert::AreEqual(1, regs->main.f.h);
+			Assert::AreEqual(0, regs->main.f.x3);
+			Assert::AreEqual(1, regs->main.f.pv);
+			Assert::AreEqual(0, regs->main.f.n);
+			Assert::AreEqual(0, regs->main.f.c);
+
+			regs->main.a = 0x80; // -128
+			regs->main.bc = 0x80; // -128
+			regs->pc = 0;
+			cpu->SimulateOne(nullptr);
+			Assert::AreEqual(0, regs->main.a);
+			Assert::AreEqual(0, regs->main.f.s);
+			Assert::AreEqual(1, regs->main.f.z);
+			Assert::AreEqual(0, regs->main.f.x5);
+			Assert::AreEqual(0, regs->main.f.h);
+			Assert::AreEqual(0, regs->main.f.x3);
+			Assert::AreEqual(1, regs->main.f.pv);
+			Assert::AreEqual(0, regs->main.f.n);
+			Assert::AreEqual(1, regs->main.f.c);
+		}
 	};
 }
