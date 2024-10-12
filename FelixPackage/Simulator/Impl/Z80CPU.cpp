@@ -289,7 +289,8 @@ public:
 
 		default: // cp
 			uint8_t after = regs.main.a - other;
-			regs.main.f.val = (after & 0xA8) // S, R5, R3
+			regs.main.f.val = (after & 0x80) // S
+				| (other & 0x28) // R5, R3
 				| (after ? 0 : z80_flag::z)  // Z
 				| (((before & 0x0F) - (other & 0x0F)) & 0x10) // H
 				| ((!same_sign(before, other) && !same_sign(before, after)) ? z80_flag::pv : 0) // P/V

@@ -876,7 +876,9 @@ namespace Z80SimulatorTests
 								Assert::Fail();
 							if (regs->main.a != X) 
 								Assert::Fail();
-							if (regs->main.f.val != flags) 
+							uint8_t flagsCP = flags & ~(z80_flag::r3 | z80_flag::r5)
+								| (Y & (z80_flag::r3 | z80_flag::r5));
+							if (regs->main.f.val != flagsCP) 
 								Assert::Fail();
 						}
 						
