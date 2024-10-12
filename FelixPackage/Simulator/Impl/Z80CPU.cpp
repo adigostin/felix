@@ -333,18 +333,16 @@ public:
 		return true;
 	}
 
-	// inc/dec r
+	// inc r
 	bool sim_04 (hl_ix_iy xy, uint8_t opcode)
 	{
-		bool dec = opcode & 1;
 		uint8_t i = (opcode >> 3) & 7;
-		
 		uint8_t before;
 		uint8_t after;
 		if (i != 6)
 		{
 			before = regs.r8(i, xy);
-			after = before + (dec ? (uint8_t)0xff : (uint8_t)1);
+			after = before + 1;
 			regs.r8(i, xy) = after;
 			cpu_time += ((xy == hl_ix_iy::hl) ? 4 : 8);
 		}
@@ -353,16 +351,49 @@ public:
 			uint16_t addr = decode_mem_hl(xy);
 			if (!memory->try_read_request(addr, before, cpu_time))
 				return false;
-			after = before + (dec ? (uint8_t)0xff : (uint8_t)1);
+			after = before + 1;
 			memory->write (addr, after);
 			cpu_time += ((xy == hl_ix_iy::hl) ? 11 : 23);
 		}
 
-		regs.main.f.s = ((after & 0x80) ? 1 : 0);
-		regs.main.f.z = (after ? 0 : 1);
-		regs.main.f.h = (before & 0x10) != (after & 0x10);
-		regs.main.f.pv = dec ? (before == 0x80) : (before == 0x7f);
-		regs.main.f.n = dec ? 1 : 0;
+		regs.main.f.val = (after & 0xA8) // S, X5, X3
+			| (after ? 0 : z80_flag::z) // Z
+			| (((before & 0x10) != (after & 0x10)) ? z80_flag::h : 0) // H
+			| ((before == 0x7f) ? z80_flag::pv : 0) // P/V
+			| (regs.main.f.val & 1); // C
+		
+		return true;
+	}
+
+	// dec r
+	bool sim_05 (hl_ix_iy xy, uint8_t opcode)
+	{
+		uint8_t i = (opcode >> 3) & 7;
+		uint8_t before;
+		uint8_t after;
+		if (i != 6)
+		{
+			before = regs.r8(i, xy);
+			after = before - 1;
+			regs.r8(i, xy) = after;
+			cpu_time += ((xy == hl_ix_iy::hl) ? 4 : 8);
+		}
+		else
+		{
+			uint16_t addr = decode_mem_hl(xy);
+			if (!memory->try_read_request(addr, before, cpu_time))
+				return false;
+			after = before - 1;
+			memory->write (addr, after);
+			cpu_time += ((xy == hl_ix_iy::hl) ? 11 : 23);
+		}
+
+		regs.main.f.val = (after & 0xA8) // S, X5, X3
+			| (after ? 0 : z80_flag::z) // Z
+			| (((before & 0x10) != (after & 0x10)) ? z80_flag::h : 0) // H
+			| ((before == 0x80) ? z80_flag::pv : 0) // P/V
+			| z80_flag::n // N
+			| (regs.main.f.val & 1); // C
 		return true;
 	}
 
@@ -917,14 +948,14 @@ public:
 	}
 
 	static constexpr handler_t dispatch[] = {
-		&sim_00,  &sim_01,  &sim_02,  &sim_03,  &sim_04,  &sim_04,  &sim_06,  &sim_07,  // 00 - 07
-		&sim_08,  &sim_09,  &sim_0a,  &sim_0b,  &sim_04,  &sim_04,  &sim_06,  &sim_0f,  // 08 - 0f
-		&sim_10,  &sim_01,  &sim_02,  &sim_03,  &sim_04,  &sim_04,  &sim_06,  &sim_17,  // 10 - 17
-		&sim_18,  &sim_09,  &sim_0a,  &sim_0b,  &sim_04,  &sim_04,  &sim_06,  &sim_1f,  // 18 - 1f
-		&sim_20,  &sim_01,  &sim_22,  &sim_03,  &sim_04,  &sim_04,  &sim_06,  &sim_27,  // 20 - 27
-		&sim_20,  &sim_09,  &sim_2a,  &sim_0b,  &sim_04,  &sim_04,  &sim_06,  &sim_2f,  // 28 - 2f
-		&sim_20,  &sim_01,  &sim_32,  &sim_03,  &sim_04,  &sim_04,  &sim_06,  &sim_37,  // 30 - 37
-		&sim_20,  &sim_09,  &sim_3a,  &sim_0b,  &sim_04,  &sim_04,  &sim_06,  &sim_3f,  // 38 - 3f
+		&sim_00,  &sim_01,  &sim_02,  &sim_03,  &sim_04,  &sim_05,  &sim_06,  &sim_07,  // 00 - 07
+		&sim_08,  &sim_09,  &sim_0a,  &sim_0b,  &sim_04,  &sim_05,  &sim_06,  &sim_0f,  // 08 - 0f
+		&sim_10,  &sim_01,  &sim_02,  &sim_03,  &sim_04,  &sim_05,  &sim_06,  &sim_17,  // 10 - 17
+		&sim_18,  &sim_09,  &sim_0a,  &sim_0b,  &sim_04,  &sim_05,  &sim_06,  &sim_1f,  // 18 - 1f
+		&sim_20,  &sim_01,  &sim_22,  &sim_03,  &sim_04,  &sim_05,  &sim_06,  &sim_27,  // 20 - 27
+		&sim_20,  &sim_09,  &sim_2a,  &sim_0b,  &sim_04,  &sim_05,  &sim_06,  &sim_2f,  // 28 - 2f
+		&sim_20,  &sim_01,  &sim_32,  &sim_03,  &sim_04,  &sim_05,  &sim_06,  &sim_37,  // 30 - 37
+		&sim_20,  &sim_09,  &sim_3a,  &sim_0b,  &sim_04,  &sim_05,  &sim_06,  &sim_3f,  // 38 - 3f
 
 		&sim_40,  &sim_40,  &sim_40,  &sim_40,  &sim_40,  &sim_40,  &sim_40,  &sim_40,  // 40 - 47
 		&sim_40,  &sim_40,  &sim_40,  &sim_40,  &sim_40,  &sim_40,  &sim_40,  &sim_40,  // 48 - 4f

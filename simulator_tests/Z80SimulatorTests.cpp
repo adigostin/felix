@@ -88,6 +88,12 @@ namespace Z80SimulatorTests
 			ram = std::move(r);
 		}
 
+		void SimulateOne()
+		{
+			bool res = cpu->SimulateOne(nullptr);
+			Assert::IsTrue(res);
+		}
+
 		TEST_METHOD_INITIALIZE(MethodInitialize)
 		{
 			cpu->Reset();
@@ -1875,5 +1881,75 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint64_t>(15, cpu->Time());
 		}
 		#pragma endregion
+
+		TEST_METHOD(inc_a)
+		{
+			auto* regs = cpu->GetRegsPtr();
+			memory.write(0, 0x3C); // INC A
+			regs->main.a = 0x7E;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x7F, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.x5);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.x3);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.c);
+			regs->pc = 0;
+			regs->main.f.c = 1;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x80, regs->main.a);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x5);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x3);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
+			regs->pc = 0;
+			regs->main.a = 0xFF;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0, regs->main.a);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x5);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.h);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.x3);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.pv);
+			Assert::AreEqual<uint8_t>(0, regs->main.f.n);
+			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
+		}
+
+		TEST_METHOD(dec_a)
+		{
+			auto* regs = cpu->GetRegsPtr();
+			memory.write(0, 0x3D); // DEC A
+			regs->main.a = 0x81;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x80, regs->main.a);
+			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::n, regs->main.f.val);
+			regs->pc = 0;
+			regs->main.f.c = 1;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x7F, regs->main.a);
+			Assert::AreEqual<uint8_t>(z80_flag::r5 | z80_flag::h | z80_flag::r3 | z80_flag::pv | z80_flag::n | z80_flag::c, regs->main.f.val);
+			regs->pc = 0;
+			regs->main.f.c = 0;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x7E, regs->main.a);
+			Assert::AreEqual<uint8_t>(z80_flag::r5 | z80_flag::r3 | z80_flag::n, regs->main.f.val);
+			regs->pc = 0;
+			regs->main.a = 1;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0, regs->main.a);
+			Assert::AreEqual<uint8_t>(z80_flag::z | z80_flag::n, regs->main.f.val);
+			regs->pc = 0;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0xFF, regs->main.a);
+			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::r5 | z80_flag::h | z80_flag::r3 | z80_flag::n, regs->main.f.val);
+		}
 	};
 }
