@@ -613,10 +613,10 @@ public:
 	bool sim_2f (hl_ix_iy xy, uint8_t opcode)
 	{
 		regs.main.a = ~regs.main.a;
-		regs.main.f.x5 = regs.main.a & (1 << 5);
 		regs.main.f.h = 1;
-		regs.main.f.x3 = regs.main.a & (1 << 3);
 		regs.main.f.n = 1;
+		regs.main.f.val = regs.main.f.val & ~(z80_flag::r3 | z80_flag::r5)
+			| (regs.main.a & (z80_flag::r3 | z80_flag::r5));
 		cpu_time += 4;
 		return true;
 	}
