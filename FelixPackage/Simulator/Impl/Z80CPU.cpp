@@ -334,6 +334,26 @@ public:
 		return true;
 	}
 
+	// ld (bc)/(de), a
+	bool sim_02 (hl_ix_iy xy, uint8_t opcode)
+	{
+		uint8_t i = (opcode >> 4) & 1;
+		uint16_t addr = i ? regs.main.de : regs.main.bc;
+		if (!memory->try_write_request(addr, regs.main.a, cpu_time))
+			return false;
+		cpu_time += 7;
+		return true;
+	}
+
+	// inc bc/de/hl/sp
+	bool sim_03 (hl_ix_iy xy, uint8_t opcode)
+	{
+		uint8_t i = (opcode >> 4) & 3;
+		regs.bc_de_hl_sp(xy, i)++;
+		cpu_time += 6;
+		return true;
+	}
+	
 	// inc r
 	bool sim_04 (hl_ix_iy xy, uint8_t opcode)
 	{
@@ -464,26 +484,6 @@ public:
 			return false;
 		regs.main.a = value;
 		cpu_time += 7;
-		return true;
-	}
-
-	// ld (bc)/(de), a
-	bool sim_02 (hl_ix_iy xy, uint8_t opcode)
-	{
-		uint8_t i = (opcode >> 4) & 1;
-		uint16_t addr = i ? regs.main.de : regs.main.bc;
-		if (!memory->try_write_request(addr, regs.main.a, cpu_time))
-			return false;
-		cpu_time += 7;
-		return true;
-	}
-
-	// inc bc/de/hl/sp
-	bool sim_03 (hl_ix_iy xy, uint8_t opcode)
-	{
-		uint8_t i = (opcode >> 4) & 3;
-		regs.bc_de_hl_sp(xy, i)++;
-		cpu_time += 6;
 		return true;
 	}
 
