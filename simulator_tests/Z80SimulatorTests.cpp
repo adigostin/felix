@@ -1953,5 +1953,25 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint8_t>(0xFF, regs->main.a);
 			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::r5 | z80_flag::h | z80_flag::r3 | z80_flag::n, regs->main.f.val);
 		}
+
+		TEST_METHOD(neg)
+		{
+			memory.write(0, { 0xED, 0x44 }); // NEG
+			auto* regs = cpu->GetRegsPtr();
+			regs->main.a = 3;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0xFD, regs->main.a);
+			Assert::AreEqual<uint8_t>(0b1011'1011, regs->main.f.val);
+			regs->pc = 0;
+			regs->main.a = 0;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0, regs->main.a);
+			Assert::AreEqual<uint8_t>(0b0100'0010, regs->main.f.val);
+			regs->pc = 0;
+			regs->main.a = 0x80;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x80, regs->main.a);
+			Assert::AreEqual<uint8_t>(0b1000'0111, regs->main.f.val);
+		}
 	};
 }

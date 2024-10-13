@@ -613,7 +613,9 @@ public:
 	bool sim_2f (hl_ix_iy xy, uint8_t opcode)
 	{
 		regs.main.a = ~regs.main.a;
+		regs.main.f.x5 = regs.main.a & (1 << 5);
 		regs.main.f.h = 1;
+		regs.main.f.x3 = regs.main.a & (1 << 3);
 		regs.main.f.n = 1;
 		cpu_time += 4;
 		return true;
@@ -1010,12 +1012,12 @@ public:
 	{
 		uint8_t before = regs.main.a;
 		regs.main.a = 0 - regs.main.a;
-		regs.main.f.s = (regs.main.a & 0x80) ? 1 : 0;
-		regs.main.f.z = regs.main.a ? 0 : 1;
-		// TODO: H
-		regs.main.f.pv = (before == 0x80);
-		regs.main.f.n = 1;
-		regs.main.f.c = !!before;
+		regs.main.f.val = (regs.main.a & 0xA8) // S, R5, R3
+			| (regs.main.a ? 0 : z80_flag::z) // Z
+			| ((0 - (before & 0xF)) & 0x10) // H
+			| ((before == 0x80) ? z80_flag::pv : 0) // P/V
+			| z80_flag::n // N
+			| (before ? z80_flag::c : 0); // C
 		cpu_time += 8;
 		return true;
 	}
