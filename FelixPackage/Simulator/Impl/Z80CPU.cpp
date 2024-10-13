@@ -637,6 +637,8 @@ public:
 		regs.main.f.h = 0;
 		regs.main.f.n = 0;
 		regs.main.f.c = 1;
+		regs.main.f.val = regs.main.f.val & ~(z80_flag::r3 | z80_flag::r5)
+			| (regs.main.a & (z80_flag::r3 | z80_flag::r5));
 		cpu_time += 4;
 		return true;
 	}
@@ -659,6 +661,8 @@ public:
 		regs.main.f.h = regs.main.f.c;
 		regs.main.f.n = 0;
 		regs.main.f.c = !regs.main.f.c;
+		regs.main.f.val = regs.main.f.val & ~(z80_flag::r3 | z80_flag::r5)
+			| (regs.main.a & (z80_flag::r3 | z80_flag::r5));
 		cpu_time += 4;
 		return true;
 	}
