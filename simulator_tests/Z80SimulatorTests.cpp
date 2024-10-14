@@ -2007,5 +2007,37 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint8_t>(0x80, regs->main.a);
 			Assert::AreEqual<uint8_t>(0b1000'0111, regs->main.f.val);
 		}
+
+		TEST_METHOD(inc_rr)
+		{
+			memory.write (0, 3); // INC BC
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(1, regs->main.bc);
+			Assert::AreEqual<uint16_t>(1, regs->pc);
+			Assert::AreEqual<uint64_t>(6, cpu->Time());
+
+			regs->pc = 0;
+			memory.write (0, { 0xDD, 0x23 }); // INC IX
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(1, regs->ix);
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint64_t>(16, cpu->Time());
+		}
+
+		TEST_METHOD(dec_rr)
+		{
+			memory.write (0, 0x1B); // DEC DE
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(0xFFFF, regs->main.de);
+			Assert::AreEqual<uint16_t>(1, regs->pc);
+			Assert::AreEqual<uint64_t>(6, cpu->Time());
+
+			regs->pc = 0;
+			memory.write (0, { 0xFD, 0x2B }); // DEC IY
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(0xFFFF, regs->iy);
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint64_t>(16, cpu->Time());
+		}
 	};
 }

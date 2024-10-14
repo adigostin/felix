@@ -350,7 +350,7 @@ public:
 	{
 		uint8_t i = (opcode >> 4) & 3;
 		regs.bc_de_hl_sp(xy, i)++;
-		cpu_time += 6;
+		cpu_time += ((xy == hl_ix_iy::hl) ? 6 : 10);
 		return true;
 	}
 	
@@ -494,7 +494,7 @@ public:
 	{
 		uint8_t i = (opcode >> 4) & 3;
 		regs.bc_de_hl_sp(xy, i)--;
-		cpu_time += 6;
+		cpu_time += ((xy == hl_ix_iy::hl) ? 6 : 10);
 		return true;
 	}
 
