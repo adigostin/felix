@@ -467,10 +467,12 @@ public:
 		uint16_t other = regs.bc_de_hl_sp(xy, i);
 		uint16_t after = before + other;
 		regs.hl(xy) = after;
-		cpu_time += 11;
-		regs.main.f.h = ((before & 0x0FFF) + (other & 0x0FFF)) >> 12;
-		regs.main.f.n = 0;
-		regs.main.f.c = after < before;
+		cpu_time += ((xy != hl_ix_iy::hl) ? 15 : 11);
+		regs.main.f.val = (regs.main.f.val & (z80_flag::s | z80_flag::z | z80_flag::pv)) // S, Z, P/V
+			| ((after >> 8) & (z80_flag::r3 | z80_flag::r5)) // R3, R5
+			| ((((before & 0x0FFF) + (other & 0x0FFF)) >> 8) & z80_flag::h) // H
+			| 0 // N
+			| ((after < before) ? z80_flag::c : 0); // C
 		return true;
 	}
 

@@ -672,18 +672,36 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD (add_hl_bc)
 		{
-			memory.write(0, 9);
+			memory.write(0, 9); // ADD HL, BC
 			regs->main.bc = 0x0FFF;
-			cpu->SimulateOne(nullptr);
+			SimulateOne();
 			Assert::AreEqual<uint16_t>(0x0FFF, regs->main.hl);
-			Assert::AreEqual<uint8_t>(0, regs->main.f.val);
+			Assert::AreEqual<uint8_t>(z80_flag::r3, regs->main.f.val);
+			Assert::AreEqual<uint64_t>(11, cpu->Time());
 
 			regs->pc = 0;
 			regs->main.hl = 1;
 			regs->main.bc = 0xFFFF;
-			cpu->SimulateOne(nullptr);
+			SimulateOne();
 			Assert::AreEqual<uint16_t>(0, regs->main.hl);
 			Assert::AreEqual<uint8_t>(z80_flag::c | z80_flag::h, regs->main.f.val);
+
+			regs->pc = 0;
+			regs->main.hl = 1;
+			regs->main.bc = 0x0FFF;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(0x1000, regs->main.hl);
+			Assert::AreEqual<uint8_t>(z80_flag::h, regs->main.f.val);
+		}
+
+		TEST_METHOD(add_ix_ix)
+		{
+			memory.write(0, { 0xDD, 0x29 }); // ADD IX, IX
+			regs->ix = 0x8000;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(0, regs->ix);
+			Assert::AreEqual<uint8_t>(z80_flag::c, regs->main.f.val);
+			Assert::AreEqual<uint64_t>(15, cpu->Time());
 		}
 
 		TEST_METHOD(adc_hl_de)
