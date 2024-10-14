@@ -2001,5 +2001,62 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint16_t>(2, regs->pc);
 			Assert::AreEqual<uint64_t>(16, cpu->Time());
 		}
+
+		TEST_METHOD(rlc_b)
+		{
+			memory.write (0, { 0xCB, 0x00 }); // RLC B
+			regs->b() = 0x55;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0xAA, regs->b());
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint64_t>(8, cpu->Time());
+			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::r5 | z80_flag::r3 | z80_flag::pv, regs->main.f.val);
+
+			regs->pc = 0;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x55, regs->b());
+			Assert::AreEqual<uint8_t>(z80_flag::pv | z80_flag::c, regs->main.f.val);
+
+			regs->pc = 0;
+			regs->b() = 0;
+			regs->main.f.val = 0xFF;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0, regs->b());
+			Assert::AreEqual<uint8_t>(z80_flag::z | z80_flag::pv, regs->main.f.val);
+		}
+
+		TEST_METHOD(rlc_hl)
+		{
+			memory.write (0, { 0xCB, 0x06 }); // RLC (HL)
+			memory.write (0x10, 0x80);
+			regs->main.hl = 0x10;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(1, memory.read(0x10));
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint64_t>(15, cpu->Time());
+			Assert::AreEqual<uint8_t>(z80_flag::c, regs->main.f.val);
+		}
+
+		TEST_METHOD(rlc_ix_plus_d)
+		{
+			memory.write (0, { 0xDD, 0xCB, 6, 0x06 }); // RLC (IX + 6)
+			memory.write (0x10, 0x80);
+			regs->ix = 10;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(1, memory.read(0x10));
+			Assert::AreEqual<uint16_t>(4, regs->pc);
+			Assert::AreEqual<uint64_t>(23, cpu->Time());
+			Assert::AreEqual<uint8_t>(z80_flag::c, regs->main.f.val);
+
+			regs->pc = 0;
+			memory.write (0, { 0xDD, 0xCB, 0x80, 0x06 }); // RLC (IX - 128)
+			memory.write (0x10, 0x80);
+			regs->ix = 128 + 0x10;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(1, memory.read(0x10));
+			Assert::AreEqual<uint16_t>(4, regs->pc);
+			Assert::AreEqual<uint64_t>(23 + 23, cpu->Time());
+			Assert::AreEqual<uint8_t>(z80_flag::c, regs->main.f.val);
+		}
 	};
 }

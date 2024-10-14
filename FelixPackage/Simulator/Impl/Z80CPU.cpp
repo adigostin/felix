@@ -1312,12 +1312,12 @@ public:
 			cpu_time += ((xy == hl_ix_iy::hl) ? 15 : 23);
 		}
 
-		regs.main.f.s = (value & 0x80) ? 1 : 0;
-		regs.main.f.z = value ? 0 : 1;
-		regs.main.f.h = 0;
-		// TODO: P/V
-		regs.main.f.n = 0;
-		regs.main.f.c = value & 1;
+		regs.main.f.val = value & (z80_flag::s | z80_flag::r5 | z80_flag::r3) // S, R5, R3
+			| 0 // H, N
+			| (value ? 0 : z80_flag::z) // Z
+			| ((__popcnt(value) & 1) ? 0 : z80_flag::pv) // P/V
+			| (value & 1); // C
+		
 		return true;
 	}
 
