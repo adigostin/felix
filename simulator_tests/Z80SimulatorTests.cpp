@@ -981,7 +981,6 @@ namespace Z80SimulatorTests
 		{
 			// PDF says: "If an interrupt occurs during execution of this instruction, the Parity flag contains a 0."
 			// We're not testing this at the moment.
-			auto* regs = cpu->GetRegsPtr();
 			memory.write (0, { 0xED, 0x57 });
 			cpu->SimulateOne(nullptr);
 			Assert::AreEqual<uint16_t>(2, regs->pc);
@@ -1013,7 +1012,6 @@ namespace Z80SimulatorTests
 		{
 			// PDF says: "If an interrupt occurs during execution of this instruction, the Parity flag contains a 0."
 			// We're not testing this at the moment.
-			auto* regs = cpu->GetRegsPtr();
 			memory.write (0, { 0xED, 0x5F });
 			cpu->SimulateOne(nullptr);
 			Assert::AreEqual<uint16_t>(2, regs->pc);
@@ -1044,7 +1042,6 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(ldi)
 		{
-			auto* regs = cpu->GetRegsPtr();
 			memory.write(0, { 0xED, 0xA0 }); // LDI
 			memory.write(2, { 0xED, 0xA0 }); // LDI
 			regs->main.hl = 10;
@@ -1088,7 +1085,6 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(ldd)
 		{
-			auto* regs = cpu->GetRegsPtr();
 			memory.write(0, { 0xED, 0xA8 }); // LDD
 			memory.write(2, { 0xED, 0xA8 }); // LDD
 			regs->main.hl = 11;
@@ -1130,7 +1126,6 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(ldir)
 		{
-			auto* regs = cpu->GetRegsPtr();
 			memory.write(0, { 0xED, 0xB0 }); // LDIR
 			regs->main.hl = 10;
 			regs->main.de = 20;
@@ -1175,7 +1170,6 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(lddr)
 		{
-			auto* regs = cpu->GetRegsPtr();
 			memory.write(0, { 0xED, 0xB8 }); // LDDR
 			regs->main.hl = 11;
 			regs->main.de = 21;
@@ -1220,7 +1214,6 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(add_a_c)
 		{
-			auto* regs = cpu->GetRegsPtr();
 			memory.write(0, 0x81); // ADD A, C
 			regs->main.a = 1;
 			regs->main.bc = 2;
@@ -1309,7 +1302,6 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(add_a_ix_d)
 		{
-			auto regs = cpu->GetRegsPtr();
 			memory.write (0, { 0xDD, 0x86, 2 });
 			regs->main.a = 1;
 			regs->ix = 10;
@@ -1322,7 +1314,6 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(adc_a_c)
 		{
-			auto* regs = cpu->GetRegsPtr();
 			memory.write(0, 0x89); // ADC A, C
 			regs->main.a = 0xFF;
 			regs->main.bc = 0;
@@ -1366,7 +1357,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x36, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1387,7 +1377,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0xE0, regs->main.a);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1408,7 +1397,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
@@ -1429,7 +1417,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x86, regs->main.a);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1449,7 +1436,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x36, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1469,7 +1455,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x36, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1489,7 +1474,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x36, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1509,7 +1493,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x36, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1529,7 +1512,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x36, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1550,7 +1532,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x36, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1569,7 +1550,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x24, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1591,7 +1571,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x36, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1612,7 +1591,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0xE0, regs->main.a);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1633,7 +1611,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
@@ -1654,7 +1631,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x86, regs->main.a);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1677,7 +1653,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x37, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1700,7 +1675,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0xE1, regs->main.a);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1723,7 +1697,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
@@ -1746,7 +1719,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x87, regs->main.a);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1769,7 +1741,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x37, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1792,7 +1763,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x37, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1815,7 +1785,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x37, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1838,7 +1807,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x37, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1861,7 +1829,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x37, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1885,7 +1852,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x37, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1906,7 +1872,6 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
 			cpu->SimulateOne(nullptr);
-			auto* regs = cpu->GetRegsPtr();
 			Assert::AreEqual<uint8_t>(0x25, regs->main.a);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.s);
 			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
@@ -1920,7 +1885,6 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(inc_a)
 		{
-			auto* regs = cpu->GetRegsPtr();
 			memory.write(0, 0x3C); // INC A
 			regs->main.a = 0x7E;
 			SimulateOne();
@@ -1961,7 +1925,6 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(dec_a)
 		{
-			auto* regs = cpu->GetRegsPtr();
 			memory.write(0, 0x3D); // DEC A
 			regs->main.a = 0x81;
 			SimulateOne();
@@ -1991,7 +1954,6 @@ namespace Z80SimulatorTests
 		TEST_METHOD(neg)
 		{
 			memory.write(0, { 0xED, 0x44 }); // NEG
-			auto* regs = cpu->GetRegsPtr();
 			regs->main.a = 3;
 			SimulateOne();
 			Assert::AreEqual<uint8_t>(0xFD, regs->main.a);
