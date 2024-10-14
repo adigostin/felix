@@ -729,6 +729,22 @@ namespace Z80SimulatorTests
 			cpu->SimulateOne(nullptr);
 			Assert::AreEqual<uint16_t>(0, regs->main.hl);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.c);
+
+			regs->pc = 0;
+			regs->main.hl = 0x0FFF;
+			regs->main.de = 0;
+			regs->main.f.val = z80_flag::c;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(0x1000, regs->main.hl);
+			Assert::AreEqual<uint8_t>(z80_flag::h, regs->main.f.val);
+
+			regs->pc = 0;
+			regs->main.hl = 0x0FFF;
+			regs->main.de = 0;
+			regs->main.f.val = 0;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(0x0FFF, regs->main.hl);
+			Assert::AreEqual<uint8_t>(z80_flag::r3, regs->main.f.val);
 		}
 
 		TEST_METHOD(sbc_hl_de)

@@ -1119,7 +1119,7 @@ public:
 		cpu_time += 15;
 		regs.main.f.val = ((regs.main.hl >> 8) & 0x80) // S
 			| (regs.main.hl ? 0 : z80_flag::z) // Z
-			| (regs.main.hl & 0x28) // R3, R5
+			| ((regs.main.hl >> 8) & (z80_flag::r5 | z80_flag::r3)) // R3, R5
 			| ((((before & 0x0FFF) + (other & 0xFFF) + regs.main.f.c) & 0x1000) >> 8) // H
 			| ((same_sign(before, other) && !same_sign(before, regs.main.hl)) ? z80_flag::pv : 0) // P/V
 			| 0 // N
