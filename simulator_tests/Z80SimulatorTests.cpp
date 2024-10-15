@@ -2162,5 +2162,34 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint8_t>(0xA0, memory.read(0x10));
 			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::r5 | z80_flag::pv , regs->main.f.val);
 		}
+
+		TEST_METHOD(sla_h)
+		{
+			memory.write (0, { 0xCB, 0x24 }); // SLA H
+			regs->h() = 0xFF;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint64_t>(8, cpu->Time());
+			Assert::AreEqual<uint8_t>(0xFE, regs->h());
+			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::r5 | z80_flag::r3 | z80_flag::c, regs->main.f.val);
+		}
+
+		TEST_METHOD(sra_a)
+		{
+			memory.write (0, { 0xCB, 0x2F }); // SRA A
+			regs->main.a = 0xFF;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint64_t>(8, cpu->Time());
+			Assert::AreEqual<uint8_t>(0xFF, regs->main.a);
+			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::r5 | z80_flag::r3 | z80_flag::pv | z80_flag::c, regs->main.f.val);
+
+			regs->pc = 0;
+			regs->main.a = 1;
+			regs->main.f.val = 0xFF;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0, regs->main.a);
+			Assert::AreEqual<uint8_t>(z80_flag::z | z80_flag::pv | z80_flag::c, regs->main.f.val);
+		}
 	};
 }

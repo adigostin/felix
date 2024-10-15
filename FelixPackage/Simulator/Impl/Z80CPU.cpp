@@ -1309,12 +1309,20 @@ public:
 				after = (before >> 1) | (c << 7);
 				c = before & 1;
 				break;
+			case 0x20: // SLA
+				after = before << 1;
+				c = before >> 7;
+				break;
+			case 0x28: // SRA
+				after = (uint8_t)((int8_t)before >> 1);
+				c = before & 1;
+				break;
 			default:
 				FAIL_FAST();
 		}
 	}
 
-	// rlc/rrc/rl/rr r8
+	// rlc/rrc/rl/rr/sla/sra r8
 	bool sim_cb00 (hl_ix_iy xy, uint16_t memhlxy_addr, uint8_t opcode)
 	{
 		uint8_t i = opcode & 7;
@@ -1339,65 +1347,6 @@ public:
 		}
 
 		regs.main.f.val = s_z_pv_flags.flags[after] | c;
-		return true;
-	}
-
-	// sla r8
-	bool sim_cb20 (hl_ix_iy xy, uint16_t memhlxy_addr, uint8_t opcode)
-	{
-		uint8_t i = opcode & 7;
-		uint8_t before, after;
-		if (i != 6)
-		{
-			// Let's not bother with the undocumented instructions from DDCB and FDCB.
-			before = regs.r8(i, hl_ix_iy::hl);
-			after = before << 1;
-			regs.r8(i, hl_ix_iy::hl) = after;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 8 : 23);
-		}
-		else
-		{
-			if (!memory->try_read_request(memhlxy_addr, before, cpu_time))
-				return false;
-			after = before << 1;
-			if (!memory->try_write_request(memhlxy_addr, after, cpu_time))
-				return false;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 15 : 23);
-		}
-
-		regs.main.f.val = s_z_pv_flags.flags[after] | (before >> 7);
-		return true;
-	}
-
-	// sra r8
-	bool sim_cb28 (hl_ix_iy xy, uint16_t memhlxy_addr, uint8_t opcode)
-	{
-		uint8_t i = opcode & 7;
-		uint8_t before, after;
-		if (i != 6)
-		{
-			// Let's not bother with the undocumented instructions from DDCB and FDCB.
-			before = regs.r8(i, hl_ix_iy::hl);
-			after = (uint8_t)((int8_t)before >> 1);
-			regs.r8(i, hl_ix_iy::hl) = after;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 8 : 23);
-		}
-		else
-		{
-			if (!memory->try_read_request(memhlxy_addr, before, cpu_time))
-				return false;
-			after = (uint8_t)((int8_t)before >> 1);
-			if (!memory->try_write_request(memhlxy_addr, after, cpu_time))
-				return false;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 15 : 23);
-		}
-
-		regs.main.f.s = 0;
-		regs.main.f.z = after ? 0 : 1;
-		regs.main.f.h = 0;
-		// TODO: P/V
-		regs.main.f.n = 0;
-		regs.main.f.c = before & 1;
 		return true;
 	}
 
@@ -1500,8 +1449,8 @@ public:
 		&sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, // 08 - 0f
 		&sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, // 10 - 17
 		&sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, // 18 - 1f
-		&sim_cb20, &sim_cb20, &sim_cb20, &sim_cb20, &sim_cb20, &sim_cb20, &sim_cb20, &sim_cb20, // 20 - 27
-		&sim_cb28, &sim_cb28, &sim_cb28, &sim_cb28, &sim_cb28, &sim_cb28, &sim_cb28, &sim_cb28, // 28 - 2f
+		&sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, // 20 - 27
+		&sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, // 28 - 2f
 		nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // 30 - 37
 		&sim_cb38, &sim_cb38, &sim_cb38, &sim_cb38, &sim_cb38, &sim_cb38, &sim_cb38, &sim_cb38, // 38 - 3f
 
