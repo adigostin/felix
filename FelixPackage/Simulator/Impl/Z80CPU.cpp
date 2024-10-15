@@ -1317,12 +1317,20 @@ public:
 				after = (uint8_t)((int8_t)before >> 1);
 				c = before & 1;
 				break;
+			case 0x30: // SLL (undocumented)
+				after = (before << 1) | 1;
+				c = before >> 7;
+				break;
+			case 0x38: // SRL
+				after = before >> 1;
+				c = before & 1;
+				break;
 			default:
 				FAIL_FAST();
 		}
 	}
 
-	// rlc/rrc/rl/rr/sla/sra r8
+	// rlc/rrc/rl/rr/sla/sra/sll/srl r8
 	bool sim_cb00 (hl_ix_iy xy, uint16_t memhlxy_addr, uint8_t opcode)
 	{
 		uint8_t i = opcode & 7;
@@ -1347,38 +1355,6 @@ public:
 		}
 
 		regs.main.f.val = s_z_pv_flags.flags[after] | c;
-		return true;
-	}
-
-	// srl r8
-	bool sim_cb38 (hl_ix_iy xy, uint16_t memhlxy_addr, uint8_t opcode)
-	{
-		uint8_t i = opcode & 7;
-		uint8_t before, after;
-		if (i != 6)
-		{
-			// Let's not bother with the undocumented instructions from DDCB and FDCB.
-			before = regs.r8(i, hl_ix_iy::hl);
-			after = before >> 1;
-			regs.r8(i, hl_ix_iy::hl) = after;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 8 : 23);
-		}
-		else
-		{
-			if (!memory->try_read_request(memhlxy_addr, before, cpu_time))
-				return false;
-			after = before >> 1;
-			if (!memory->try_write_request(memhlxy_addr, after, cpu_time))
-				return false;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 15 : 23);
-		}
-
-		regs.main.f.s = 0;
-		regs.main.f.z = after ? 0 : 1;
-		regs.main.f.h = 0;
-		// TODO: P/V
-		regs.main.f.n = 0;
-		regs.main.f.c = before & 1;
 		return true;
 	}
 
@@ -1443,44 +1419,6 @@ public:
 
 		return true;
 	}
-
-	static constexpr cb_handler_t dispatch_cb[256] = {
-		&sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, // 00 - 07
-		&sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, // 08 - 0f
-		&sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, // 10 - 17
-		&sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, // 18 - 1f
-		&sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, // 20 - 27
-		&sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, // 28 - 2f
-		nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // 30 - 37
-		&sim_cb38, &sim_cb38, &sim_cb38, &sim_cb38, &sim_cb38, &sim_cb38, &sim_cb38, &sim_cb38, // 38 - 3f
-
-		&sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, // 40 - 47
-		&sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, // 48 - 4f
-		&sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, // 50 - 57
-		&sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, // 58 - 5f
-		&sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, // 60 - 67
-		&sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, // 68 - 6f
-		&sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, // 70 - 77
-		&sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, &sim_cb40, // 78 - 7f
-
-		&sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, // 80 - 87
-		&sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, // 88 - 8f
-		&sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, // 90 - 97
-		&sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, // 98 - 9f
-		&sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, // a0 - a7
-		&sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, // a8 - af
-		&sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, // b0 - b7
-		&sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, // b8 - bf
-
-		&sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, // c0 - c7
-		&sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, // c8 - cf
-		&sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, // d0 - d7
-		&sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, // d8 - df
-		&sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, // e0 - e7
-		&sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, // e8 - ef
-		&sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, // f0 - f7
-		&sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, &sim_cb80, // f8 - ff
-	};
 	#pragma endregion
 
 	virtual bool SimulateOne (BreakpointsHit* bps) override
@@ -1593,13 +1531,13 @@ public:
 			opcode = decode_u8();
 			if (xy == hl_ix_iy::hl)
 				regs.r = (regs.r & 0x80) | ((regs.r + 1) & 0x7f);
-			auto handler = dispatch_cb[opcode];
-			if (!handler)
-			{
-				cpu_time += 8; // dummy duration; will do this property when we implement the undocumented instructions
-				return true;
-			}
-
+			cb_handler_t handler;
+			if ((opcode & 0xC0) == 0x00)
+				handler = &cpu::sim_cb00;
+			else if ((opcode & 0xC0) == 0x40)
+				handler = &cpu::sim_cb40;
+			else
+				handler = &cpu::sim_cb80;
 			executed = (this->*handler) (xy, memhlxy_addr, opcode);
 		}
 		else

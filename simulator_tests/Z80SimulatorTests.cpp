@@ -2191,5 +2191,76 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint8_t>(0, regs->main.a);
 			Assert::AreEqual<uint8_t>(z80_flag::z | z80_flag::pv | z80_flag::c, regs->main.f.val);
 		}
+
+		TEST_METHOD(sll_e)
+		{
+			memory.write (0, { 0xCB, 0x33 }); // SLL E
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint64_t>(8, cpu->Time());
+			Assert::AreEqual<uint8_t>(1, regs->e());
+			Assert::AreEqual<uint8_t>(0, regs->main.f.val);
+
+			regs->pc = 0;
+			SimulateOne();
+			regs->pc = 0;
+			SimulateOne();
+			regs->pc = 0;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x0F, regs->e());
+			Assert::AreEqual<uint8_t>(z80_flag::r3 | z80_flag::pv, regs->main.f.val);
+
+			regs->pc = 0;
+			SimulateOne();
+			regs->pc = 0;
+			SimulateOne();
+			regs->pc = 0;
+			SimulateOne();
+			regs->pc = 0;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0xFF, regs->e());
+
+			regs->pc = 0;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0xFF, regs->e());
+			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::r5 | z80_flag::r3 | z80_flag::pv | z80_flag::c, regs->main.f.val);
+		}
+
+		TEST_METHOD(srl_d)
+		{
+			memory.write (0, { 0xCB, 0x3A }); // SRL D
+			regs->d() = 0xFF;
+			regs->main.f.val = 0xFF;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint64_t>(8, cpu->Time());
+			Assert::AreEqual<uint8_t>(0x7F, regs->d());
+			Assert::AreEqual<uint8_t>(z80_flag::r5 | z80_flag::r3 | z80_flag::c, regs->main.f.val);
+
+			regs->pc = 0;
+			SimulateOne();
+			regs->pc = 0;
+			SimulateOne();
+			regs->pc = 0;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x0F, regs->d());
+			Assert::AreEqual<uint8_t>(z80_flag::r3 | z80_flag::pv | z80_flag::c, regs->main.f.val);
+
+			regs->pc = 0;
+			SimulateOne();
+			regs->pc = 0;
+			SimulateOne();
+			regs->pc = 0;
+			SimulateOne();
+			regs->pc = 0;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0, regs->d());
+			Assert::AreEqual<uint8_t>(z80_flag::z | z80_flag::pv | z80_flag::c, regs->main.f.val);
+
+			regs->pc = 0;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0, regs->d());
+			Assert::AreEqual<uint8_t>(z80_flag::z | z80_flag::pv, regs->main.f.val);
+		}
 	};
 }
