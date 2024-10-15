@@ -1289,55 +1289,42 @@ public:
 	#pragma endregion
 
 	#pragma region CB group
-	// rlc r8
+	static void do_cb_rotate_shift_operation (uint8_t& before, uint8_t& after, uint8_t& c, uint8_t opcode)
+	{
+		switch(opcode & 0x38)
+		{
+			case 0: // RLC
+				after = (before << 1) | (before >> 7);
+				c = before >> 7;
+				break;
+			case 8: // RRC
+				after = (before >> 1) | (before << 7);
+				c = before & 1;
+				break;
+			case 0x10: // RL
+				after = (before << 1) | c;
+				c = before >> 7;
+				break;
+			case 0x18: // RR
+				after = (before >> 1) | (c << 7);
+				c = before & 1;
+				break;
+			default:
+				FAIL_FAST();
+		}
+	}
+
+	// rlc/rrc/rl/rr r8
 	bool sim_cb00 (hl_ix_iy xy, uint16_t memhlxy_addr, uint8_t opcode)
 	{
 		uint8_t i = opcode & 7;
-		bool rrc = opcode & 8;
-		uint8_t value;
-		if (i != 6)
-		{
-			// Let's not bother with the undocumented instructions from DDCB and FDCB.
-			value = regs.r8(i, hl_ix_iy::hl);
-			if (!rrc)
-				value = (value << 1) | (value >> 7);
-			else
-				value = (value >> 1) | (value << 7);
-			regs.r8(i, hl_ix_iy::hl) = value;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 8 : 23);
-		}
-		else
-		{
-			if (!memory->try_read_request(memhlxy_addr, value, cpu_time))
-				return false;
-			if (!rrc)
-				value = (value << 1) | (value >> 7);
-			else
-				value = (value >> 1) | (value << 7);
-			if (!memory->try_write_request(memhlxy_addr, value, cpu_time))
-				return false;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 15 : 23);
-		}
-
-		regs.main.f.val = value & (z80_flag::s | z80_flag::r5 | z80_flag::r3) // S, R5, R3
-			| 0 // H, N
-			| (value ? 0 : z80_flag::z) // Z
-			| ((__popcnt(value) & 1) ? 0 : z80_flag::pv) // P/V
-			| (rrc ? ((value >> 7) & 1) : (value & 1)); // C
-		
-		return true;
-	}
-
-	// rl r8
-	bool sim_cb10 (hl_ix_iy xy, uint16_t memhlxy_addr, uint8_t opcode)
-	{
-		uint8_t i = opcode & 7;
 		uint8_t before, after;
+		uint8_t c = regs.main.f.c;
 		if (i != 6)
 		{
 			// Let's not bother with the undocumented instructions from DDCB and FDCB.
 			before = regs.r8(i, hl_ix_iy::hl);
-			after = (before << 1) | regs.main.f.c;
+			do_cb_rotate_shift_operation(before, after, c, opcode);
 			regs.r8(i, hl_ix_iy::hl) = after;
 			cpu_time += ((xy == hl_ix_iy::hl) ? 8 : 23);
 		}
@@ -1345,40 +1332,13 @@ public:
 		{
 			if (!memory->try_read_request(memhlxy_addr, before, cpu_time))
 				return false;
-			after= (before << 1) | regs.main.f.c;
+			do_cb_rotate_shift_operation(before, after, c, opcode);
 			if (!memory->try_write_request(memhlxy_addr, after, cpu_time))
 				return false;
 			cpu_time += ((xy == hl_ix_iy::hl) ? 15 : 23);
 		}
 
-		regs.main.f.val = s_z_pv_flags.flags[after] | (before >> 7);
-		return true;
-	}
-
-	// rr r8
-	bool sim_cb18 (hl_ix_iy xy, uint16_t memhlxy_addr, uint8_t opcode)
-	{
-		uint8_t i = opcode & 7;
-		uint8_t before, after;
-		if (i != 6)
-		{
-			// Let's not bother with the undocumented instructions from DDCB and FDCB.
-			before = regs.r8(i, hl_ix_iy::hl);
-			after = (before >> 1) | (regs.main.f.c << 7);
-			regs.r8(i, hl_ix_iy::hl) = after;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 8 : 23);
-		}
-		else
-		{
-			if (!memory->try_read_request(memhlxy_addr, before, cpu_time))
-				return false;
-			after = (before >> 1) | (regs.main.f.c << 7);
-			if (!memory->try_write_request(memhlxy_addr, after, cpu_time))
-				return false;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 15 : 23);
-		}
-
-		regs.main.f.val = s_z_pv_flags.flags[after] | (before & 1);
+		regs.main.f.val = s_z_pv_flags.flags[after] | c;
 		return true;
 	}
 
@@ -1538,8 +1498,8 @@ public:
 	static constexpr cb_handler_t dispatch_cb[256] = {
 		&sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, // 00 - 07
 		&sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, // 08 - 0f
-		&sim_cb10, &sim_cb10, &sim_cb10, &sim_cb10, &sim_cb10, &sim_cb10, &sim_cb10, &sim_cb10, // 10 - 17
-		&sim_cb18, &sim_cb18, &sim_cb18, &sim_cb18, &sim_cb18, &sim_cb18, &sim_cb18, &sim_cb18, // 18 - 1f
+		&sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, // 10 - 17
+		&sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, // 18 - 1f
 		&sim_cb20, &sim_cb20, &sim_cb20, &sim_cb20, &sim_cb20, &sim_cb20, &sim_cb20, &sim_cb20, // 20 - 27
 		&sim_cb28, &sim_cb28, &sim_cb28, &sim_cb28, &sim_cb28, &sim_cb28, &sim_cb28, &sim_cb28, // 28 - 2f
 		nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // 30 - 37

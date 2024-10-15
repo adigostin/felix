@@ -2104,5 +2104,63 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint64_t>(23, cpu->Time());
 			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::c, regs->main.f.val);
 		}
+
+		TEST_METHOD(rl_b)
+		{
+			memory.write (0, { 0xCB, 0x10 }); // RL B
+			regs->b() = 0x55;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0xAA, regs->b());
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint64_t>(8, cpu->Time());
+			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::r5 | z80_flag::r3 | z80_flag::pv, regs->main.f.val);
+
+			regs->pc = 0;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x54, regs->b());
+			Assert::AreEqual<uint8_t>(z80_flag::c, regs->main.f.val);
+
+			regs->pc = 0;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0xA9, regs->b());
+			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::r5 | z80_flag::r3 | z80_flag::pv, regs->main.f.val);
+
+			regs->pc = 0;
+			regs->b() = 0;
+			regs->main.f.val = 0xFF;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(1, regs->b());
+			Assert::AreEqual<uint8_t>(0, regs->main.f.val);
+		}
+
+		TEST_METHOD(rr_m)
+		{
+			memory.write (0, { 0xCB, 0x1E }); // RR (HL)
+			memory.write (0x10, 1);
+			regs->main.hl = 0x10;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint64_t>(15, cpu->Time());
+			Assert::AreEqual<uint8_t>(0, memory.read(0x10));
+			Assert::AreEqual<uint8_t>(z80_flag::z | z80_flag::pv | z80_flag::c, regs->main.f.val);
+
+			regs->pc = 0;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x80, memory.read(0x10));
+			Assert::AreEqual<uint8_t>(z80_flag::s, regs->main.f.val);
+
+			cpu->Reset();
+			regs->iy = 8;
+			memory.write (0, { 0xFD, 0xCB, 8, 0x1E }); // RR (IY + 8)
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x40, memory.read(0x10));
+			Assert::AreEqual<uint8_t>(0, regs->main.f.val);
+
+			regs->pc = 0;
+			regs->main.f.c = 1;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0xA0, memory.read(0x10));
+			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::r5 | z80_flag::pv , regs->main.f.val);
+		}
 	};
 }
