@@ -285,21 +285,29 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint8_t>(0xFD, memory.read(0x10));
 		}
 
-		TEST_METHOD(bit_1_b)
+		TEST_METHOD(bit_n_c)
 		{
-			memory.write(0, { 0xCB, 0x48 }); // bit 1, b
-			regs->b()= 0xFF;
-			cpu->SimulateOne(nullptr);
-			Assert::AreEqual<uint16_t>(2, regs->pc);
-			Assert::AreEqual<uint64_t>(8, cpu->Time());
-			Assert::AreEqual<uint8_t>(0, regs->main.f.z);
-
-			memory.write(2, { 0xCB, 0x48 }); // bit 1, b
-			regs->b()= 0;
-			cpu->SimulateOne(nullptr);
-			Assert::AreEqual<uint16_t>(4, regs->pc);
-			Assert::AreEqual<uint64_t>(16, cpu->Time());
-			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
+			for (uint16_t value = 0; value < 256; value += 255)
+			{
+				regs->c() = (uint8_t)value;
+				for (uint8_t bit = 0; bit < 8; bit++)
+				{
+					memory.write(0, 0xCB);
+					memory.write(1, 0x41 | (bit << 3)); // BIT b, C
+					regs->pc = 0;
+					regs->main.f.c = bit & 1;
+					uint64_t prevTime = cpu->Time();
+					cpu->SimulateOne(nullptr);
+					Assert::AreEqual<uint16_t>(2, regs->pc);
+					Assert::AreEqual<uint64_t>(8, cpu->Time() - prevTime);
+					uint8_t andres = value & (1 << bit);
+					uint8_t expectedf = andres & (z80_flag::s | z80_flag::r5 | z80_flag::r3)
+						| (andres ? 0 : (z80_flag::z | z80_flag::pv))
+						| z80_flag::h
+						| ((bit & 1) ? z80_flag::c : 0);
+					Assert::AreEqual<uint8_t>(expectedf, regs->main.f.val);
+				}
+			}
 		}
 
 		TEST_METHOD(bit_1_hl)

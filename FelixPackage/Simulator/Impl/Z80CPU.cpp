@@ -1364,28 +1364,32 @@ public:
 	// bit b, r8
 	bool sim_cb40 (hl_ix_iy xy, uint16_t memhlxy_addr, uint8_t opcode)
 	{
-		// Let's not bother with the undocumented instructions from DDCB and FDCB.
-
 		uint8_t reg = opcode & 7;
 		uint8_t mask = 1 << ((opcode >> 3) & 7);
 		uint8_t value;
-		if (reg != 6)
+
+		if (xy == hl_ix_iy::hl)
 		{
-			// Let's not bother with the undocumented instructions from DDCB and FDCB.
-			value = regs.r8(reg, hl_ix_iy::hl);
-			cpu_time += 8;
+			if (reg != 6)
+			{
+				value = regs.r8(reg, hl_ix_iy::hl);
+				cpu_time += 8;
+			}
+			else
+			{
+				if (!memory->try_read_request(memhlxy_addr, value, cpu_time))
+					return false;
+				cpu_time += 12;
+			}
 		}
 		else
 		{
 			if (!memory->try_read_request(memhlxy_addr, value, cpu_time))
 				return false;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 12 : 20);
+			cpu_time += 20;
 		}
 
-		regs.main.f.z = (value & mask) ? 0 : 1;
-		regs.main.f.h = 1;
-		regs.main.f.n = 0;
-
+		regs.main.f.val = s_z_pv_flags.flags[value & mask] | z80_flag::h | (regs.main.f.val & 1);
 		return true;
 	}
 
