@@ -1293,12 +1293,16 @@ public:
 	bool sim_cb00 (hl_ix_iy xy, uint16_t memhlxy_addr, uint8_t opcode)
 	{
 		uint8_t i = opcode & 7;
+		bool rrc = opcode & 8;
 		uint8_t value;
 		if (i != 6)
 		{
 			// Let's not bother with the undocumented instructions from DDCB and FDCB.
 			value = regs.r8(i, hl_ix_iy::hl);
-			value = (value << 1) | (value >> 7);
+			if (!rrc)
+				value = (value << 1) | (value >> 7);
+			else
+				value = (value >> 1) | (value << 7);
 			regs.r8(i, hl_ix_iy::hl) = value;
 			cpu_time += ((xy == hl_ix_iy::hl) ? 8 : 23);
 		}
@@ -1306,7 +1310,10 @@ public:
 		{
 			if (!memory->try_read_request(memhlxy_addr, value, cpu_time))
 				return false;
-			value = (value << 1) | (value >> 7);
+			if (!rrc)
+				value = (value << 1) | (value >> 7);
+			else
+				value = (value >> 1) | (value << 7);
 			if (!memory->try_write_request(memhlxy_addr, value, cpu_time))
 				return false;
 			cpu_time += ((xy == hl_ix_iy::hl) ? 15 : 23);
@@ -1316,40 +1323,8 @@ public:
 			| 0 // H, N
 			| (value ? 0 : z80_flag::z) // Z
 			| ((__popcnt(value) & 1) ? 0 : z80_flag::pv) // P/V
-			| (value & 1); // C
+			| (rrc ? ((value >> 7) & 1) : (value & 1)); // C
 		
-		return true;
-	}
-
-	// rrc r8
-	bool sim_cb08 (hl_ix_iy xy, uint16_t memhlxy_addr, uint8_t opcode)
-	{
-		uint8_t i = opcode & 7;
-		uint8_t value;
-		if (i != 6)
-		{
-			// Let's not bother with the undocumented instructions from DDCB and FDCB.
-			value = regs.r8(i, hl_ix_iy::hl);
-			value = (value >> 1) | (value << 7);
-			regs.r8(i, hl_ix_iy::hl) = value;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 8 : 23);
-		}
-		else
-		{
-			if (!memory->try_read_request(memhlxy_addr, value, cpu_time))
-				return false;
-			value = (value >> 1) | (value << 7);
-			if (!memory->try_write_request(memhlxy_addr, value, cpu_time))
-				return false;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 15 : 23);
-		}
-
-		regs.main.f.s = (value & 0x80) ? 1 : 0;
-		regs.main.f.z = value ? 0 : 1;
-		regs.main.f.h = 0;
-		// TODO: P/V
-		regs.main.f.n = 0;
-		regs.main.f.c = value >> 7;
 		return true;
 	}
 
@@ -1562,7 +1537,7 @@ public:
 
 	static constexpr cb_handler_t dispatch_cb[256] = {
 		&sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, // 00 - 07
-		&sim_cb08, &sim_cb08, &sim_cb08, &sim_cb08, &sim_cb08, &sim_cb08, &sim_cb08, &sim_cb08, // 08 - 0f
+		&sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, &sim_cb00, // 08 - 0f
 		&sim_cb10, &sim_cb10, &sim_cb10, &sim_cb10, &sim_cb10, &sim_cb10, &sim_cb10, &sim_cb10, // 10 - 17
 		&sim_cb18, &sim_cb18, &sim_cb18, &sim_cb18, &sim_cb18, &sim_cb18, &sim_cb18, &sim_cb18, // 18 - 1f
 		&sim_cb20, &sim_cb20, &sim_cb20, &sim_cb20, &sim_cb20, &sim_cb20, &sim_cb20, &sim_cb20, // 20 - 27
