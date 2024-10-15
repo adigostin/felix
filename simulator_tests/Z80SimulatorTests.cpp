@@ -2262,5 +2262,45 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint8_t>(0, regs->d());
 			Assert::AreEqual<uint8_t>(z80_flag::z | z80_flag::pv, regs->main.f.val);
 		}
+
+		TEST_METHOD(rld)
+		{
+			memory.write(0, { 0xED, 0x6F }); // RLD
+			regs->main.a = 0x7A;
+			memory.write(0x5000, 0x31);
+			regs->main.hl = 0x5000;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint64_t>(18, cpu->Time());
+			Assert::AreEqual<uint8_t>(0x73, regs->main.a);
+			Assert::AreEqual<uint8_t>(0x1A, memory.read(0x5000));
+			Assert::AreEqual<uint8_t>(z80_flag::r5, regs->main.f.val);
+
+			regs->pc = 0;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x71, regs->main.a);
+			Assert::AreEqual<uint8_t>(0xA3, memory.read(0x5000));
+			Assert::AreEqual<uint8_t>(z80_flag::r5 | z80_flag::pv, regs->main.f.val);
+		}
+
+		TEST_METHOD(rrd)
+		{
+			memory.write(0, { 0xED, 0x67 }); // RRD
+			regs->main.a = 0x84;
+			memory.write(0x5000, 0x20);
+			regs->main.hl = 0x5000;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint64_t>(18, cpu->Time());
+			Assert::AreEqual<uint8_t>(0x80, regs->main.a);
+			Assert::AreEqual<uint8_t>(0x42, memory.read(0x5000));
+			Assert::AreEqual<uint8_t>(z80_flag::s, regs->main.f.val);
+
+			regs->pc = 0;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x82, regs->main.a);
+			Assert::AreEqual<uint8_t>(0x04, memory.read(0x5000));
+			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::pv, regs->main.f.val);
+		}
 	};
 }

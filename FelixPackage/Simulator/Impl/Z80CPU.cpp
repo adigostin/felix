@@ -1163,21 +1163,24 @@ public:
 		return sim_c9(hl_ix_iy::hl, 0xc9);
 	}
 
-	// rrd 
+	// rrd/rld
 	bool sim_ed67 (uint8_t opcode)
 	{
-		WI_ASSERT(false);
-		return false;
-	}
-
-	// rld
-	bool sim_ed6f (uint8_t opcode)
-	{
+		bool is_rld = opcode & 8;
 		uint8_t mem;
 		if (!memory->try_read_request(regs.main.hl, mem, cpu_time))
 			return false;
-		uint8_t new_a = (regs.main.a & 0xF0) | (mem >> 4);
-		mem = (mem << 4) | (regs.main.a & 0x0F);
+		uint8_t new_a;
+		if (is_rld)
+		{
+			new_a = (regs.main.a & 0xF0) | (mem >> 4);
+			mem = (mem << 4) | (regs.main.a & 0x0F);
+		}
+		else
+		{
+			new_a = (regs.main.a & 0xF0) | (mem & 0x0F);
+			mem = (mem >> 4) | (regs.main.a << 4);
+		}
 		if (!memory->try_write_request(regs.main.hl, mem, cpu_time))
 			return false;
 		regs.main.a = new_a;
@@ -1264,7 +1267,7 @@ public:
 		&sim_ed40, nullptr,  &sim_ed42, &sim_ed43, nullptr,   nullptr,   &sim_ed56, &sim_ed57, // 50 - 57
 		&sim_ed40, nullptr,  &sim_ed4a, &sim_ed4B, nullptr,   nullptr,   &sim_ed5e, &sim_ed57, // 58 - 5f
 		&sim_ed40, nullptr,  &sim_ed42, &sim_ed43, nullptr,   nullptr,   nullptr,   &sim_ed67, // 60 - 67
-		&sim_ed40, nullptr,  &sim_ed4a, &sim_ed4B, nullptr,   nullptr,   nullptr,   &sim_ed6f, // 68 - 6f
+		&sim_ed40, nullptr,  &sim_ed4a, &sim_ed4B, nullptr,   nullptr,   nullptr,   &sim_ed67, // 68 - 6f
 		nullptr,   nullptr,  &sim_ed42, &sim_ed43, nullptr,   nullptr,   nullptr,   nullptr,   // 70 - 77
 		&sim_ed40, nullptr,  &sim_ed4a, &sim_ed4B, nullptr,   nullptr,   nullptr,   nullptr,   // 78 - 7f
 
