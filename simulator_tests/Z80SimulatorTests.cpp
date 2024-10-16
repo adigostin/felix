@@ -2812,5 +2812,111 @@ namespace Z80SimulatorTests
 				Assert::AreEqual<uint8_t>(expected, io_bus.read (0x1234));
 			}
 		}
+
+		// ----------------
+
+		TEST_METHOD(ini)
+		{
+			memory.write(0, { 0xED, 0xA2 }); // INI
+			memory.write(2, { 0xED, 0xA2 }); // INI
+			regs->main.hl = 10;     // memory address is 10
+			regs->main.bc = 0x02FE; // io address is 0xFE
+
+			io_bus.write(regs->main.bc, 0x55); // data is 0x55
+			regs->main.f.val = 0xFF;
+			SimulateOne();
+			Assert::AreEqual(16ull, cpu->Time());
+			Assert::AreEqual<uint16_t>(11, regs->main.hl);
+			Assert::AreEqual<uint16_t>(0x01FE, regs->main.bc);
+			Assert::AreEqual<uint8_t>(0x55, memory.read(10));
+			Assert::AreEqual<uint8_t>(z80_flag::n | z80_flag::c, regs->main.f.val & ~(z80_flag::h | z80_flag::pv));
+			
+			io_bus.write(regs->main.bc, 0xAA); // data is 0xAA
+			regs->main.f.val = 0;
+			SimulateOne();
+			Assert::AreEqual(32ull, cpu->Time());
+			Assert::AreEqual<uint16_t>(12, regs->main.hl);
+			Assert::AreEqual<uint16_t>(0x00FE, regs->main.bc);
+			Assert::AreEqual<uint8_t>(0xAA, memory.read(11));
+			Assert::AreEqual<uint8_t>(z80_flag::z | z80_flag::n, regs->main.f.val & ~(z80_flag::h | z80_flag::pv));
+		}
+		
+		TEST_METHOD(ind)
+		{
+			memory.write(0, { 0xED, 0xAA }); // IND
+			memory.write(2, { 0xED, 0xAA }); // IND
+			regs->main.hl = 11;
+			regs->main.bc = 0x02FE;
+
+			io_bus.write(regs->main.bc, 0x55); // data is 0x55
+			regs->main.f.val = 0xFF;
+			SimulateOne();
+			Assert::AreEqual(16ull, cpu->Time());
+			Assert::AreEqual<uint16_t>(10, regs->main.hl);
+			Assert::AreEqual<uint16_t>(0x01FE, regs->main.bc);
+			Assert::AreEqual<uint8_t>(0x55, memory.read(11));
+			Assert::AreEqual<uint8_t>(z80_flag::n | z80_flag::c, regs->main.f.val & ~(z80_flag::h | z80_flag::pv));
+
+			io_bus.write(regs->main.bc, 0xAA); // data is 0xAA
+			regs->main.f.val = 0;
+			SimulateOne();
+			Assert::AreEqual(32ull, cpu->Time());
+			Assert::AreEqual<uint16_t>(9, regs->main.hl);
+			Assert::AreEqual<uint16_t>(0x00FE, regs->main.bc);
+			Assert::AreEqual<uint8_t>(0xAA, memory.read(10));
+			Assert::AreEqual<uint8_t>(z80_flag::z | z80_flag::n, regs->main.f.val & ~(z80_flag::h | z80_flag::pv));
+		}
+		
+		TEST_METHOD(inir)
+		{
+			memory.write(0, { 0xED, 0xB2 }); // INIR
+			regs->main.hl = 10;
+			regs->main.bc = 0x02FE;
+
+			io_bus.write(regs->main.bc, 0x55); // data is 0x55
+			regs->main.f.val = 0xFF;
+			SimulateOne();
+			Assert::AreEqual(21ull, cpu->Time());
+			Assert::AreEqual<uint16_t>(0, cpu->GetPC());
+			Assert::AreEqual<uint16_t>(11, regs->main.hl);
+			Assert::AreEqual<uint16_t>(0x01FE, regs->main.bc);
+			Assert::AreEqual<uint8_t>(0x55, memory.read(10));
+			Assert::AreEqual<uint8_t>(z80_flag::n | z80_flag::c, regs->main.f.val & ~(z80_flag::h | z80_flag::pv));
+
+			io_bus.write(regs->main.bc, 0xAA); // data is 0xAA
+			SimulateOne();
+			Assert::AreEqual(37ull, cpu->Time());
+			Assert::AreEqual<uint16_t>(2, cpu->GetPC());
+			Assert::AreEqual<uint16_t>(12, regs->main.hl);
+			Assert::AreEqual<uint16_t>(0x00FE, regs->main.bc);
+			Assert::AreEqual<uint8_t>(0xAA, memory.read(11));
+			Assert::AreEqual<uint8_t>(z80_flag::z | z80_flag::n | z80_flag::c, regs->main.f.val & ~(z80_flag::h | z80_flag::pv));
+		}
+		
+		TEST_METHOD(indr)
+		{
+			memory.write(0, { 0xED, 0xBA }); // INDR
+			regs->main.hl = 11;
+			regs->main.bc = 0x02FE;
+			
+			io_bus.write(regs->main.bc, 0x55); // data is 0x55
+			regs->main.f.val = 0xFF;
+			SimulateOne();
+			Assert::AreEqual(21ull, cpu->Time());
+			Assert::AreEqual<uint16_t>(0, cpu->GetPC());
+			Assert::AreEqual<uint16_t>(10, regs->main.hl);
+			Assert::AreEqual<uint16_t>(0x01FE, regs->main.bc);
+			Assert::AreEqual<uint8_t>(0x55, memory.read(11));
+			Assert::AreEqual<uint8_t>(z80_flag::n | z80_flag::c, regs->main.f.val & ~(z80_flag::h | z80_flag::pv));
+
+			io_bus.write(regs->main.bc, 0xAA); // data is 0xAA
+			SimulateOne();
+			Assert::AreEqual(37ull, cpu->Time());
+			Assert::AreEqual<uint16_t>(2, cpu->GetPC());
+			Assert::AreEqual<uint16_t>(9, regs->main.hl);
+			Assert::AreEqual<uint16_t>(0x00FE, regs->main.bc);
+			Assert::AreEqual<uint8_t>(0xAA, memory.read(10));
+			Assert::AreEqual<uint8_t>(z80_flag::z | z80_flag::n | z80_flag::c, regs->main.f.val & ~(z80_flag::h | z80_flag::pv));
+		}
 	};
 }

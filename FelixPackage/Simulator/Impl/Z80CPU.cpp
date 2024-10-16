@@ -1258,6 +1258,32 @@ public:
 		return true;
 	}
 
+	// INI/IND/INIR/INDR
+	bool sim_eda2 (uint8_t opcode)
+	{
+		uint8_t value;
+		if (!io->try_read_request (regs.main.bc, value, cpu_time))
+			return false;
+		if (!memory->try_write_request (regs.main.hl, value, cpu_time))
+			return false;
+
+		uint16_t increment = (opcode & 8) ? -1 : 1;
+		regs.main.hl += increment;
+		regs.b()--;
+		regs.main.f.val = regs.b() & (z80_flag::s | z80_flag::r5 | z80_flag::r3) // S, R5, R3
+			| (regs.b() ? 0 : z80_flag::z) // Z
+			| z80_flag::n // N
+			| (regs.main.f.val & 1); // C
+		cpu_time += 16;
+		bool repeat = opcode & 0x10;
+		if (repeat && regs.b())
+		{
+			regs.pc -= 2;
+			cpu_time += 5;
+		}
+		return true;
+	}
+
 	static constexpr ed_handler_t dispatch_ed[256] = {
 		nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // 00 - 07
 		nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // 08 - 0f
@@ -1277,14 +1303,14 @@ public:
 		nullptr,   &sim_ed41,  &sim_ed42, &sim_ed43, nullptr,   nullptr,   nullptr,   nullptr,   // 70 - 77
 		&sim_ed40, &sim_ed41,  &sim_ed4a, &sim_ed4B, nullptr,   nullptr,   nullptr,   nullptr,   // 78 - 7f
 
-		nullptr,   nullptr,   nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // 80 - 87
-		nullptr,   nullptr,   nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // 88 - 8f
-		nullptr,   nullptr,   nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // 90 - 97
-		nullptr,   nullptr,   nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // 98 - 9f
-		&sim_eda0, &sim_eda1, nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // a0 - a7
-		&sim_eda0, &sim_eda1, nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // a8 - af
-		&sim_eda0, &sim_eda1, nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // b0 - b7
-		&sim_eda0, &sim_eda1, nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // b8 - bf
+		nullptr,     nullptr,   nullptr, nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // 80 - 87
+		nullptr,     nullptr,   nullptr, nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // 88 - 8f
+		nullptr,     nullptr,   nullptr, nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // 90 - 97
+		nullptr,     nullptr,   nullptr, nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // 98 - 9f
+		&sim_eda0, &sim_eda1, &sim_eda2, nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // a0 - a7
+		&sim_eda0, &sim_eda1, &sim_eda2, nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // a8 - af
+		&sim_eda0, &sim_eda1, &sim_eda2, nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // b0 - b7
+		&sim_eda0, &sim_eda1, &sim_eda2, nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // b8 - bf
 
 		nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // c0 - c7
 		nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // c8 - cf
