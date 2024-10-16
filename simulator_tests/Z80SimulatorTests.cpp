@@ -2518,5 +2518,36 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint16_t>(0, regs->pc);
 			Assert::AreEqual(8ui64, cpu->Time());
 		}
+
+		TEST_METHOD(djnz_e)
+		{
+			memory.write (0, { 0x10, 256 - 128 }); // DJNZ -128
+			SimulateOne();
+			Assert::AreEqual(255ui8, regs->b());
+			Assert::AreEqual((uint16_t)(2 - 128), regs->pc);
+			Assert::AreEqual(13ui64, cpu->Time());
+
+			cpu->Reset();
+			regs->b() = 1;
+			SimulateOne();
+			Assert::AreEqual(0ui8, regs->b());
+			Assert::AreEqual((uint16_t)2, regs->pc);
+			Assert::AreEqual(8ui64, cpu->Time());
+
+			cpu->Reset();
+			memory.write (0, { 0x10, 127 }); // DJNZ +127
+			regs->b() = 255;
+			SimulateOne();
+			Assert::AreEqual(254ui8, regs->b());
+			Assert::AreEqual((uint16_t)(2 + 127), regs->pc);
+			Assert::AreEqual(13ui64, cpu->Time());
+
+			cpu->Reset();
+			regs->b() = 1;
+			SimulateOne();
+			Assert::AreEqual(0ui8, regs->b());
+			Assert::AreEqual((uint16_t)2, regs->pc);
+			Assert::AreEqual(8ui64, cpu->Time());
+		}
 	};
 }
