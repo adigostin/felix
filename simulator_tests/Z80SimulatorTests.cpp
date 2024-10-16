@@ -2764,5 +2764,53 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint16_t>(2, regs->pc);
 			Assert::AreEqual<uint8_t>(0x80, io_bus.read (0x8010));
 		}
+
+		TEST_METHOD(in_r_c)
+		{
+			io_bus.write (0x1234, 0xA9);
+
+			for (uint8_t reg = 0; reg < 8; reg++)
+			{
+				if (reg == 6)
+					continue;
+
+				cpu->Reset();
+				memory.write (0, { 0xED, (uint8_t)(0x40 | (reg << 3)) }); // IN reg, (C)
+				regs->main.bc = 0x1234;
+				SimulateOne();
+				uint8_t val = regs->r8(reg, hl_ix_iy::hl);
+				Assert::AreEqual<uint8_t>(0xA9, val);
+				Assert::AreEqual<uint64_t>(12, cpu->Time());
+				Assert::AreEqual<uint16_t>(2, regs->pc);
+				uint8_t flags_from_a9 = z80_flag::s | z80_flag::r5 | z80_flag::r3 | z80_flag::pv;
+				Assert::AreEqual<uint8_t>(flags_from_a9, regs->main.f.val);
+			}
+		}
+
+		TEST_METHOD(out_c_r)
+		{
+			for (uint8_t reg = 0; reg < 8; reg++)
+			{
+				if (reg == 6)
+					continue;
+
+				cpu->Reset();
+				iodevice->Reset();
+				memory.write (0, { 0xED, (uint8_t)(0x41 | (reg << 3)) }); // OUT (C), reg
+				regs->r8(reg, hl_ix_iy::hl) = 0x55;
+				regs->main.bc = 0x1234;
+				SimulateOne();
+				Assert::AreEqual<uint64_t>(12, cpu->Time());
+				Assert::AreEqual<uint16_t>(2, regs->pc);
+				uint8_t expected;
+				if (reg == 0)
+					expected = 0x12;
+				else if (reg == 1)
+					expected = 0x34;
+				else
+					expected = 0x55;
+				Assert::AreEqual<uint8_t>(expected, io_bus.read (0x1234));
+			}
+		}
 	};
 }

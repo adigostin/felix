@@ -1004,11 +1004,18 @@ public:
 			return false;
 		uint8_t i = (opcode >> 3) & 7;
 		regs.r8(i, hl_ix_iy::hl) = value;
-		regs.main.f.s = (regs.main.a & 0x80) ? 1 : 0;
-		regs.main.f.z = regs.main.a ? 0 : 1;
-		regs.main.f.h = 0;
-		// TODO: P/V
-		regs.main.f.n = 0;
+		regs.main.f.val = s_z_pv_flags.flags[value];
+		cpu_time += 12;
+		return true;
+	}
+
+	// out (c), r
+	bool sim_ed41 (uint8_t opcode)
+	{
+		uint8_t i = (opcode >> 3) & 7;
+		uint8_t value = regs.r8(i, hl_ix_iy::hl);
+		if (!io->try_write_request(regs.main.bc, value, cpu_time))
+			return false;
 		cpu_time += 12;
 		return true;
 	}
@@ -1261,14 +1268,14 @@ public:
 		nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // 30 - 37
 		nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // 38 - 3f
 
-		&sim_ed40, nullptr,  &sim_ed42, &sim_ed43, &sim_ed44, &sim_ed45, &sim_ed46, &sim_ed47, // 40 - 47
-		&sim_ed40, nullptr,  &sim_ed4a, &sim_ed4B, nullptr,   &sim_ed4d, nullptr,   &sim_ed4f, // 48 - 4f
-		&sim_ed40, nullptr,  &sim_ed42, &sim_ed43, nullptr,   nullptr,   &sim_ed56, &sim_ed57, // 50 - 57
-		&sim_ed40, nullptr,  &sim_ed4a, &sim_ed4B, nullptr,   nullptr,   &sim_ed5e, &sim_ed57, // 58 - 5f
-		&sim_ed40, nullptr,  &sim_ed42, &sim_ed43, nullptr,   nullptr,   nullptr,   &sim_ed67, // 60 - 67
-		&sim_ed40, nullptr,  &sim_ed4a, &sim_ed4B, nullptr,   nullptr,   nullptr,   &sim_ed67, // 68 - 6f
-		nullptr,   nullptr,  &sim_ed42, &sim_ed43, nullptr,   nullptr,   nullptr,   nullptr,   // 70 - 77
-		&sim_ed40, nullptr,  &sim_ed4a, &sim_ed4B, nullptr,   nullptr,   nullptr,   nullptr,   // 78 - 7f
+		&sim_ed40, &sim_ed41,  &sim_ed42, &sim_ed43, &sim_ed44, &sim_ed45, &sim_ed46, &sim_ed47, // 40 - 47
+		&sim_ed40, &sim_ed41,  &sim_ed4a, &sim_ed4B, nullptr,   &sim_ed4d, nullptr,   &sim_ed4f, // 48 - 4f
+		&sim_ed40, &sim_ed41,  &sim_ed42, &sim_ed43, nullptr,   nullptr,   &sim_ed56, &sim_ed57, // 50 - 57
+		&sim_ed40, &sim_ed41,  &sim_ed4a, &sim_ed4B, nullptr,   nullptr,   &sim_ed5e, &sim_ed57, // 58 - 5f
+		&sim_ed40, &sim_ed41,  &sim_ed42, &sim_ed43, nullptr,   nullptr,   nullptr,   &sim_ed67, // 60 - 67
+		&sim_ed40, &sim_ed41,  &sim_ed4a, &sim_ed4B, nullptr,   nullptr,   nullptr,   &sim_ed67, // 68 - 6f
+		nullptr,   &sim_ed41,  &sim_ed42, &sim_ed43, nullptr,   nullptr,   nullptr,   nullptr,   // 70 - 77
+		&sim_ed40, &sim_ed41,  &sim_ed4a, &sim_ed4B, nullptr,   nullptr,   nullptr,   nullptr,   // 78 - 7f
 
 		nullptr,   nullptr,   nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // 80 - 87
 		nullptr,   nullptr,   nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  // 88 - 8f
