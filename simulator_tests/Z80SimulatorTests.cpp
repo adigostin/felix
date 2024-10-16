@@ -3,6 +3,7 @@
 #include "Impl/Z80CPU.h"
 #include "Simulator.h"
 #include "shared/string_builder.h"
+#include "shared/unordered_map_nothrow.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -41,7 +42,7 @@ public:
 
 	virtual UINT64 STDMETHODCALLTYPE Time() override { return _time; }
 
-	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { return false; }
+	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { Assert::Fail(); return false; }
 
 	virtual bool SimulateTo (UINT64 requested_time) override
 	{
@@ -66,6 +67,69 @@ public:
 	}
 };
 
+class TestIODevice : public IDevice
+{
+	Bus* _io_bus;
+	UINT64 _time = 0;
+	unordered_map_nothrow<uint16_t, uint8_t> _data;
+
+public:
+	HRESULT InitInstance (Bus* io_bus)
+	{
+		_io_bus = io_bus;
+		bool pushed = _io_bus->read_responders.try_push_back({ this, &process_io_read_request }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		pushed = _io_bus->write_responders.try_push_back({ this, &process_io_write_request }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		return S_OK;
+	}
+
+	~TestIODevice()
+	{
+		_io_bus->write_responders.remove([this](auto& d) { return d.Device == this; });
+		_io_bus->read_responders.remove([this](auto& d) { return d.Device == this; });
+	}
+
+	virtual void STDMETHODCALLTYPE Reset() override
+	{
+		_time = 0;
+		_data.clear();
+	}
+
+	virtual UINT64 STDMETHODCALLTYPE Time() override { return _time; }
+
+	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { Assert::Fail(); return false; }
+
+	virtual bool SimulateTo (UINT64 requested_time) override
+	{
+		// Only a bus write can change the state of this device. If there are still write-capable devices
+		// whose timepoint is in the timespan we want to jump over (_time to requested_time), we can't jump.
+		if (_io_bus->writer_behind_of(requested_time))
+			return false;
+		_time = requested_time;
+		return true;
+	}
+
+	static uint8_t process_io_read_request (IDevice* d, uint16_t address)
+	{
+		auto* iod = static_cast<TestIODevice*>(d);
+		auto it = iod->_data.find(address);
+		if (it != iod->_data.end())
+			return it->second;
+		return 0xFF;
+	}
+
+	static void process_io_write_request (IDevice* d, uint16_t address, uint8_t value)
+	{
+		auto* iod = static_cast<TestIODevice*>(d);
+		auto it = iod->_data.find(address);
+		if (it != iod->_data.end())
+			it->second = value;
+		else
+		{
+			bool inserted = iod->_data.try_insert({ address, value }); THROW_HR_IF(E_OUTOFMEMORY, !inserted);
+		}
+	}
+};
+
 namespace Z80SimulatorTests
 {
 	TEST_CLASS(Z80SimulatorTests)
@@ -75,6 +139,7 @@ namespace Z80SimulatorTests
 		dummy_irq_line irq_line;
 		wistd::unique_ptr<IZ80CPU> cpu;
 		wistd::unique_ptr<IDevice> ram;
+		wistd::unique_ptr<IDevice> iodevice;
 		z80_register_set* regs;
 
 	public:
@@ -86,6 +151,10 @@ namespace Z80SimulatorTests
 			auto r = wil::make_unique_nothrow<TestRAM>(); THROW_IF_NULL_ALLOC(r);
 			hr = r->InitInstance(&memory); THROW_IF_FAILED(hr);
 			ram = std::move(r);
+
+			auto iod = wil::make_unique_nothrow<TestIODevice>(); THROW_IF_NULL_ALLOC(iod);
+			hr = iod->InitInstance(&io_bus); THROW_IF_FAILED(hr);
+			iodevice = std::move(iod);
 		}
 
 		void SimulateOne()
@@ -2673,6 +2742,27 @@ namespace Z80SimulatorTests
 			Assert::AreEqual (0x1234ui16, regs->pc);
 			Assert::AreEqual (0ui16, regs->sp);
 			Assert::AreEqual<bool>(1, regs->iff1);
+		}
+
+		TEST_METHOD(in_a_n)
+		{
+			memory.write (0, { 0xDB, 0x10 }); // IN A, (10h)
+			regs->main.a = 0x80; // A is put on the upper 8 bits, so address will be 0x8010
+			io_bus.write (0x8010, 0x55);
+			SimulateOne();
+			Assert::AreEqual<uint64_t>(11, cpu->Time());
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint8_t>(0x55, regs->main.a);
+		}
+
+		TEST_METHOD(out_n_a)
+		{
+			memory.write (0, { 0xD3, 0x10 }); // OUT A, (10h)
+			regs->main.a = 0x80; // A is put on the upper 8 bits, so address will be 0x8010
+			SimulateOne();
+			Assert::AreEqual<uint64_t>(11, cpu->Time());
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint8_t>(0x80, io_bus.read (0x8010));
 		}
 	};
 }
