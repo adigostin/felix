@@ -213,11 +213,15 @@ struct DECLSPEC_NOVTABLE Bus
 		{
 			if (d.Device->Time() < requested_time)
 			{
-				//d->simulate_to(requested_time);
-				//if (d->behind_of(requested_time))
+				// Comment from try_read_request applies here too.
+				bool advanced = d.Device->SimulateTo(requested_time);
+				if (!advanced || (d.Device->Time() < requested_time))
 					return false;
 			}
 		}
+
+		// We want this operation to write either to all responders, or to none of them.
+		// If we got past the above "for", we know we can write to all of them.
 
 		for (auto& d : write_responders)
 			d.ProcessWriteRequest(d.Device, address, value);
