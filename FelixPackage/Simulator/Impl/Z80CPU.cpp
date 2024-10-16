@@ -1031,8 +1031,7 @@ public:
 	// retn
 	bool sim_ed45 (uint8_t opcode)
 	{
-		// TODO: implement this
-		//regs.iff1 = regs.iff2;
+		regs.iff1 = regs.iff2;
 		cpu_time += 4;
 		return sim_c9(hl_ix_iy::hl, 0xc9);
 	}

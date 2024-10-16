@@ -2641,5 +2641,38 @@ namespace Z80SimulatorTests
 				Assert::AreEqual<uint16_t>(0xFFFE, regs->sp);
 			}
 		}
+
+		TEST_METHOD(reti)
+		{
+			memory.write (0, { 0xED, 0x4D }); // RETI
+			memory.write (0xFFFE, { 0x34, 0x12 });
+			regs->sp = 0xFFFE;
+			SimulateOne();
+			Assert::AreEqual (14ui64, cpu->Time());
+			Assert::AreEqual (0x1234ui16, regs->pc);
+			Assert::AreEqual (0ui16, regs->sp);
+		}
+
+		TEST_METHOD(retn)
+		{
+			memory.write (0, { 0xED, 0x45 }); // RETN
+			memory.write (0xFFFE, { 0x34, 0x12 });
+			regs->sp = 0xFFFE;
+			regs->iff1 = 1;
+			SimulateOne();
+			Assert::AreEqual (14ui64, cpu->Time());
+			Assert::AreEqual (0x1234ui16, regs->pc);
+			Assert::AreEqual (0ui16, regs->sp);
+			Assert::AreEqual<bool>(0, regs->iff1);
+
+			cpu->Reset();
+			regs->sp = 0xFFFE;
+			regs->iff2 = 1;
+			SimulateOne();
+			Assert::AreEqual (14ui64, cpu->Time());
+			Assert::AreEqual (0x1234ui16, regs->pc);
+			Assert::AreEqual (0ui16, regs->sp);
+			Assert::AreEqual<bool>(1, regs->iff1);
+		}
 	};
 }
