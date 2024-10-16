@@ -304,14 +304,14 @@ public:
 	{
 		switch(cc)
 		{
-			case 0:  return !regs.main.f.z; // nz
-			case 1:  return  regs.main.f.z; // z
-			case 2:  return !regs.main.f.c; // nc
-			case 3:  return  regs.main.f.c; // c
-			case 4:  WI_ASSERT(false); // return !regs.main.f.pv; // po not yet generated correctly
-			case 5:  WI_ASSERT(false); // return  regs.main.f.pv; // pe not yet generated correctly
-			case 6:  return !regs.main.f.s; // p
-			default: return  regs.main.f.s; // m
+			case 0:  return !regs.main.f.z;  // nz
+			case 1:  return  regs.main.f.z;  // z
+			case 2:  return !regs.main.f.c;  // nc
+			case 3:  return  regs.main.f.c;  // c
+			case 4:  return !regs.main.f.pv; // po
+			case 5:  return  regs.main.f.pv; // pe
+			case 6:  return !regs.main.f.s;  // p
+			default: return  regs.main.f.s;  // m
 		}
 	}
 
