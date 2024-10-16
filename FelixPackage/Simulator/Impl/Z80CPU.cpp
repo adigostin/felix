@@ -915,7 +915,7 @@ public:
 	bool sim_e9 (hl_ix_iy xy, uint8_t opcode)
 	{
 		regs.pc = regs.hl(xy);
-		cpu_time == (xy == hl_ix_iy::hl) ? 4 : 8;
+		cpu_time += ((xy == hl_ix_iy::hl) ? 4 : 8);
 		return true;
 	}
 

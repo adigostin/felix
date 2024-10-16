@@ -2498,5 +2498,25 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint16_t>((uint16_t)(2 - 100), regs->pc);
 			Assert::AreEqual(12ui64, cpu->Time());
 		}
+
+		TEST_METHOD(jp_hl_ix_iy)
+		{
+			memory.write (0, 0xE9); // JP (HL)
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(0, regs->pc);
+			Assert::AreEqual(4ui64, cpu->Time());
+
+			cpu->Reset();
+			memory.write (0, { 0xDD, 0xE9 }); // JP (IX)
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(0, regs->pc);
+			Assert::AreEqual(8ui64, cpu->Time());
+
+			cpu->Reset();
+			memory.write (0, { 0xFD, 0xE9 }); // JP (IY)
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(0, regs->pc);
+			Assert::AreEqual(8ui64, cpu->Time());
+		}
 	};
 }
