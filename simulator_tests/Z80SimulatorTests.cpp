@@ -2549,5 +2549,97 @@ namespace Z80SimulatorTests
 			Assert::AreEqual((uint16_t)2, regs->pc);
 			Assert::AreEqual(8ui64, cpu->Time());
 		}
+
+		TEST_METHOD(call_nn)
+		{
+			memory.write (0, { 0xCD, 0x34, 0x12 }); // CALL 1234h
+			SimulateOne();
+			Assert::AreEqual<uint64_t>(17, cpu->Time());
+			Assert::AreEqual<uint16_t>(0x1234, regs->pc);
+			Assert::AreEqual<uint16_t>(0xFFFE, regs->sp);
+			Assert::AreEqual<uint16_t>(3, memory.read_uint16(0xFFFE));
+		}
+
+		TEST_METHOD(call_cc_nn)
+		{
+			static const uint8_t ccmask[] = { z80_flag::z, z80_flag::c, z80_flag::pv, z80_flag::s };
+
+			for (uint8_t i = 0; i < 8; i++)
+			{
+				// call must be taken
+				cpu->Reset();
+				memory.write (0, { (uint8_t)(0xC4 | (i << 3)), 0x34, 0x12 }); // CALL cc, 1234h
+				if (i & 1)
+				{
+					// Z, C, PE, M
+					regs->main.f.val |= ccmask[i / 2];
+				}
+				SimulateOne();
+				Assert::AreEqual<uint16_t>(0x1234, regs->pc);
+				Assert::AreEqual<uint64_t>(17, cpu->Time());
+				Assert::AreEqual<uint16_t>(0xFFFE, regs->sp);
+				Assert::AreEqual<uint16_t>(3, memory.read_uint16(0xFFFE));
+
+				// call must not be taken
+				cpu->Reset();
+				if ((i & 1) == 0)
+				{
+					// NZ, NC, PO, P
+					regs->main.f.val |= ccmask[i / 2];
+				}
+				SimulateOne();
+				Assert::AreEqual<uint16_t>(3, regs->pc);
+				Assert::AreEqual<uint64_t>(10, cpu->Time());
+				Assert::AreEqual<uint16_t>(0, regs->sp);
+			}
+		}
+
+		TEST_METHOD(ret)
+		{
+			memory.write(0, 0xC9); // RET
+			memory.write(0xFFFE, { 0x34, 0x12 }); // return address is 0x1234
+			regs->sp = 0xFFFE;
+			SimulateOne();
+			Assert::AreEqual (10ui64, cpu->Time());
+			Assert::AreEqual (0x1234ui16, regs->pc);
+			Assert::AreEqual (0ui16, regs->sp);
+		}
+
+		TEST_METHOD(ret_cc)
+		{
+			static const uint8_t ccmask[] = { z80_flag::z, z80_flag::c, z80_flag::pv, z80_flag::s };
+
+			memory.write(0xFFFE, { 0x34, 0x12 }); // return address is 0x1234
+
+			for (uint8_t i = 0; i < 8; i++)
+			{
+				// must return
+				cpu->Reset();
+				memory.write (0, (uint8_t)(0xC0 | (i << 3))); // RET cc
+				regs->sp = 0xFFFE;
+				if (i & 1)
+				{
+					// Z, C, PE, M
+					regs->main.f.val |= ccmask[i / 2];
+				}
+				SimulateOne();
+				Assert::AreEqual<uint16_t>(0x1234, regs->pc);
+				Assert::AreEqual<uint16_t>(0, regs->sp);
+				Assert::AreEqual<uint64_t>(11, cpu->Time());
+
+				// must not return
+				cpu->Reset();
+				regs->sp = 0xFFFE;
+				if ((i & 1) == 0)
+				{
+					// NZ, NC, PO, P
+					regs->main.f.val |= ccmask[i / 2];
+				}
+				SimulateOne();
+				Assert::AreEqual<uint16_t>(1, regs->pc);
+				Assert::AreEqual<uint64_t>(5, cpu->Time());
+				Assert::AreEqual<uint16_t>(0xFFFE, regs->sp);
+			}
+		}
 	};
 }
