@@ -2324,10 +2324,12 @@ namespace Z80SimulatorTests
 			memory.write (0, { 0xC2, 0x34, 0x12 }); // JP NZ, 1234h
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(0x1234, regs->pc);
+			Assert::AreEqual(10ui64, cpu->Time());
 			regs->pc = 0;
 			regs->main.f.z = 1;
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(3, regs->pc);
+			Assert::AreEqual(20ui64, cpu->Time());
 		}
 
 		TEST_METHOD(jp_z_nn)
@@ -2335,10 +2337,12 @@ namespace Z80SimulatorTests
 			memory.write (0, { 0xCA, 0x34, 0x12 }); // JP Z, 1234h
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(3, regs->pc);
+			Assert::AreEqual(10ui64, cpu->Time());
 			regs->pc = 0;
 			regs->main.f.z = 1;
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(0x1234, regs->pc);
+			Assert::AreEqual(20ui64, cpu->Time());
 		}
 
 		TEST_METHOD(jp_nc_nn)
@@ -2346,10 +2350,12 @@ namespace Z80SimulatorTests
 			memory.write (0, { 0xD2, 0x34, 0x12 }); // JP NC, 1234h
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(0x1234, regs->pc);
+			Assert::AreEqual(10ui64, cpu->Time());
 			regs->pc = 0;
 			regs->main.f.c = 1;
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(3, regs->pc);
+			Assert::AreEqual(20ui64, cpu->Time());
 		}
 
 		TEST_METHOD(jp_c_nn)
@@ -2357,10 +2363,12 @@ namespace Z80SimulatorTests
 			memory.write (0, { 0xDA, 0x34, 0x12 }); // JP C, 1234h
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(3, regs->pc);
+			Assert::AreEqual(10ui64, cpu->Time());
 			regs->pc = 0;
 			regs->main.f.c = 1;
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(0x1234, regs->pc);
+			Assert::AreEqual(20ui64, cpu->Time());
 		}
 
 		TEST_METHOD(jp_po_nn)
@@ -2368,10 +2376,12 @@ namespace Z80SimulatorTests
 			memory.write (0, { 0xE2, 0x34, 0x12 }); // JP PO, 1234h
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(0x1234, regs->pc);
+			Assert::AreEqual(10ui64, cpu->Time());
 			regs->pc = 0;
 			regs->main.f.pv = 1;
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(3, regs->pc);
+			Assert::AreEqual(20ui64, cpu->Time());
 		}
 
 		TEST_METHOD(jp_pe_nn)
@@ -2379,10 +2389,12 @@ namespace Z80SimulatorTests
 			memory.write (0, { 0xEA, 0x34, 0x12 }); // JP PE, 1234h
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(3, regs->pc);
+			Assert::AreEqual(10ui64, cpu->Time());
 			regs->pc = 0;
 			regs->main.f.pv = 1;
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(0x1234, regs->pc);
+			Assert::AreEqual(20ui64, cpu->Time());
 		}
 
 		TEST_METHOD(jp_p)
@@ -2390,10 +2402,12 @@ namespace Z80SimulatorTests
 			memory.write (0, { 0xF2, 0x34, 0x12 }); // JP P, 1234h
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(0x1234, regs->pc);
+			Assert::AreEqual(10ui64, cpu->Time());
 			regs->pc = 0;
 			regs->main.f.s = 1;
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(3, regs->pc);
+			Assert::AreEqual(20ui64, cpu->Time());
 		}
 
 		TEST_METHOD(jp_m_nn)
@@ -2401,10 +2415,88 @@ namespace Z80SimulatorTests
 			memory.write (0, { 0xFA, 0x34, 0x12 }); // JP M, 1234h
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(3, regs->pc);
+			Assert::AreEqual(10ui64, cpu->Time());
 			regs->pc = 0;
 			regs->main.f.s = 1;
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(0x1234, regs->pc);
+			Assert::AreEqual(20ui64, cpu->Time());
+		}
+
+		TEST_METHOD(jr_e)
+		{
+			memory.write (0, { 0x18, 0x7F }); // JR +127
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(2 + 127, regs->pc);
+			Assert::AreEqual (12ui64, cpu->Time());
+
+			regs->pc = 0;
+			memory.write (0, { 0x18, 0 }); // JR +0
+			SimulateOne();
+			Assert::AreEqual ((uint16_t)2, regs->pc);
+			Assert::AreEqual (24ui64, cpu->Time());
+
+			regs->pc = 0;
+			memory.write (0, { 0x18, 0x80 }); // JR -128
+			SimulateOne();
+			Assert::AreEqual ((uint16_t)(2 - 128), regs->pc);
+			Assert::AreEqual (36ui64, cpu->Time());
+		}
+
+		TEST_METHOD(jr_nz_e)
+		{
+			memory.write (0, { 0x20, 100 }); // JR NZ, +100
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(2 + 100, regs->pc);
+			Assert::AreEqual(12ui64, cpu->Time());
+			
+			cpu->Reset();
+			regs->main.f.z = 1;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual(7ui64, cpu->Time());
+		}
+
+		TEST_METHOD(jr_z_e)
+		{
+			memory.write (0, { 0x28, 256 - 100 }); // JR NZ, -100
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual(7ui64, cpu->Time());
+
+			cpu->Reset();
+			regs->main.f.z = 1;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>((uint16_t)(2 - 100), regs->pc);
+			Assert::AreEqual(12ui64, cpu->Time());
+		}
+
+		TEST_METHOD(jr_nc_e)
+		{
+			memory.write (0, { 0x30, 100 }); // JR NC, +100
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(2 + 100, regs->pc);
+			Assert::AreEqual(12ui64, cpu->Time());
+
+			cpu->Reset();
+			regs->main.f.c = 1;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual(7ui64, cpu->Time());
+		}
+
+		TEST_METHOD(jr_c_e)
+		{
+			memory.write (0, { 0x38, 256 - 100 }); // JR C, -100
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual(7ui64, cpu->Time());
+
+			cpu->Reset();
+			regs->main.f.c = 1;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>((uint16_t)(2 - 100), regs->pc);
+			Assert::AreEqual(12ui64, cpu->Time());
 		}
 	};
 }
