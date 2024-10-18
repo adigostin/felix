@@ -1104,7 +1104,7 @@ public:
 		POINT beam;
 
 		// It's ok to catch by reference since the call to RunOnSimulatorThread is blocking (returns when the work is complete).
-		hr = RunOnSimulatorThread ([this, &header, buffer=outBuffer.get(), &screen, &beam]
+		hr = RunOnSimulatorThread ([this, pc, &header, buffer=outBuffer.get(), &screen, &beam]
 			{
 				HRESULT hr;
 
@@ -1133,8 +1133,7 @@ public:
 				regs.main.f.val = header.f;
 				regs.sp      = header.sp;
 				regs.im      = header.im;
-				regs.pc = memoryBus.read_uint16(regs.sp);
-				regs.sp += 2;
+				regs.pc = pc;
 				_cpu->SetZ80Registers(&regs);
 
 				if (_running_info)
