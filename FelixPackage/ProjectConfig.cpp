@@ -694,7 +694,7 @@ public:
 	{
 		com_ptr<IProjectConfigAssemblerProperties> props;
 		auto hr = AssemblerPageProperties_CreateInstance (&props); RETURN_IF_FAILED(hr);
-		hr = props->put_SaveListing (_saveListing); RETURN_IF_FAILED(hr);
+		hr = props->put_SaveListing (_saveListing ? VARIANT_TRUE : VARIANT_FALSE); RETURN_IF_FAILED(hr);
 		hr = props->put_SaveListingFilename (_listingFilename.get()); RETURN_IF_FAILED(hr);
 		*ppDispatch = props.detach();
 		return S_OK;
@@ -885,8 +885,6 @@ public:
 		RETURN_HR(E_NOTIMPL);
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE NeedSerialization (DISPID dispidProperty) override { return S_OK; }
-
 	virtual HRESULT STDMETHODCALLTYPE GetIDOfName (ITypeInfo* typeInfo, LPCWSTR name, MEMBERID* pMemId) override
 	{
 		if (!wcscmp(name, L"GeneralProperties"))
@@ -916,7 +914,7 @@ struct AssemblerPageProperties
 {
 	ULONG _refCount = 0;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
-	bool _saveListing;
+	bool _saveListing = false;
 	wil::unique_bstr _listingFilename;
 
 	static HRESULT CreateInstance (IProjectConfigAssemblerProperties** to)

@@ -22,10 +22,6 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("45B35EF7-DC2B-4EE3-BB44-EC25D607BFCE") I
 	// Creates a child object assignable to the property "dispidProperty", from the given xmlElementName, with default values for its properties.
 	virtual HRESULT STDMETHODCALLTYPE CreateChild (DISPID dispidProperty, PCWSTR xmlElementName, IDispatch** childOut) = 0;
 
-	// This function chooses whether a property needs to be serialized to XML or not.
-	// Return S_OK to serialize the property. Return S_FALSE to not serialize it. Return an error code to abort serialization.
-	virtual HRESULT STDMETHODCALLTYPE NeedSerialization (DISPID dispidProperty) = 0;
-
 	// Used for retaining backward compatibility, see an implementation for more info.
 	virtual HRESULT STDMETHODCALLTYPE GetIDOfName (ITypeInfo* typeInfo, LPCWSTR name, MEMBERID* pMemId) = 0;
 };

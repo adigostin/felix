@@ -3,7 +3,9 @@
 #define Z80_PACKAGE_DISPIDS_H_INCLDUDED
 
 // Common to all XxxProperties interfaces.
-#define dispid__name 1
+// Visual Studio wants a property named "__name" to show it at the top of the Properties Window.
+// Our XML saving code ignores properties with the dispid equal to DISPID_VALUE.
+#define dispid__name DISPID_VALUE
 
 #define dispidLoadAddress          2
 #define dispidEntryPointAddress    3

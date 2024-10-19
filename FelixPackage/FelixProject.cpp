@@ -2400,14 +2400,6 @@ public:
 		RETURN_HR(E_NOTIMPL);
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE NeedSerialization (DISPID dispidProperty) override
-	{
-		if (dispidProperty == dispid__name)
-			return S_FALSE;
-
-		return S_OK;
-	}
-
 	virtual HRESULT STDMETHODCALLTYPE GetIDOfName (ITypeInfo* typeInfo, LPCWSTR name, MEMBERID* pMemId) override
 	{
 		return typeInfo->GetIDsOfNames(&const_cast<LPOLESTR&>(name), 1, pMemId);
