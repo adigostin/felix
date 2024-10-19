@@ -406,13 +406,20 @@ public:
 
 		virtual ULONG GetBreakpointCount() override { return _bps.size(); }
 
-		virtual HRESULT GetBreakpointAt(ULONG i, SIM_BP_COOKIE* ppKey) override { *ppKey = _bps[i]; return S_OK; }
+		virtual HRESULT GetBreakpointAt(ULONG i, SIM_BP_COOKIE* ppKey) override
+		{
+			*ppKey = _bps[i];
+			return S_OK;
+		}
 		#pragma endregion
 	};
 
 	// Called when simulation was running and the CPU reached a breakpoint.
 	HRESULT on_bp_hit (const BreakpointsHit* bps)
 	{
+		for (uint32_t i = 0; i < bps->size; i++)
+			WI_ASSERT(bps->bps[i] != 0);
+
 		auto bpsCopy = wil::make_unique_hlocal_nothrow<BreakpointsHit>(*bps); RETURN_IF_NULL_ALLOC(bpsCopy);
 
 		WI_ASSERT(_running_info);
@@ -1293,12 +1300,18 @@ public:
 
 		return RunOnSimulatorThread([this, type, address, pCookie]
 			{
-				return _cpu->AddBreakpoint(type, (uint16_t)address, pCookie);
+				auto hr = _cpu->AddBreakpoint(type, (uint16_t)address, pCookie);
+				if (FAILED(hr))
+					return hr;
+				WI_ASSERT(*pCookie != 0);
+				return S_OK;
 			});
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE RemoveBreakpoint (SIM_BP_COOKIE cookie) override
 	{
+		RETURN_HR_IF(E_INVALIDARG, cookie == 0);
+		
 		return RunOnSimulatorThread([this, cookie]
 			{
 				return _cpu->RemoveBreakpoint(cookie);

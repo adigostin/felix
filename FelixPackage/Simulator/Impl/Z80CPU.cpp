@@ -1510,7 +1510,7 @@ public:
 				else if (regs.im == 1)
 				{
 					if (!memory->try_write_request (regs.sp - 2, regs.pc, cpu_time))
-						return S_FALSE;
+						return false;
 					regs.sp -= 2;
 					regs.pc = 0x38;
 					regs.iff1 = false;
@@ -1521,9 +1521,9 @@ public:
 				{
 					uint16_t addr = (regs.i << 8) | (irq_address & 0xFE);
 					if (!memory->try_read_request (addr, addr, cpu_time))
-						return S_FALSE;
+						return false;
 					if (!memory->try_write_request (regs.sp - 2, regs.pc, cpu_time))
-						return S_FALSE;
+						return false;
 					regs.sp -= 2;
 					regs.pc = addr;
 					regs.iff1 = false;
@@ -1547,7 +1547,7 @@ public:
 			{
 				bps->address = regs.pc;
 				bps->size = std::min((uint32_t)_countof(BreakpointsHit::bps), it->second.size());
-				memcpy(bps->bps, it->second.data(), bps->size);
+				memcpy(bps->bps, it->second.data(), bps->size * sizeof(SIM_BP_COOKIE));
 				return false;
 			}
 		}
@@ -1650,15 +1650,7 @@ public:
 		_start_of_stack = 0;
 		cpu_time = 0;
 	}
-	/*
-	virtual HRESULT STDMETHODCALLTYPE GetRegisters (IRegisterGroup** ppRegs) override
-	{
-		com_ptr<Z80RegisterGroup> rg = new (std::nothrow) Z80RegisterGroup(); RETURN_IF_NULL_ALLOC(rg);
-		auto hr = rg->InitInstance(regs); RETURN_IF_FAILED(hr);
-		*ppRegs = rg.detach();
-		return S_OK;
-	}
-*/
+
 	virtual void GetZ80Registers (z80_register_set* pRegs) override
 	{
 		*pRegs = regs;
@@ -1693,14 +1685,15 @@ public:
 			if (it == code_bps.end())
 			{
 				bool added = code_bps.try_insert({ address, vector_nothrow<SIM_BP_COOKIE>{ } });
-				RETURN_HR_IF(E_OUTOFMEMORY, !added);
+				if (!added)
+					return E_OUTOFMEMORY;
 
 				auto it = code_bps.find(address);
 				added = it->second.try_push_back(_nextBpCookie);
 				if (!added)
 				{
 					code_bps.remove(it);
-					RETURN_HR(E_OUTOFMEMORY);
+					return E_OUTOFMEMORY;
 				}
 				*pCookie = _nextBpCookie;
 				_nextBpCookie++;
@@ -1708,7 +1701,8 @@ public:
 			else
 			{
 				bool added = it->second.try_push_back(_nextBpCookie);
-				RETURN_HR_IF(E_OUTOFMEMORY, !added);
+				if (!added)
+					return E_OUTOFMEMORY;
 				*pCookie = _nextBpCookie;
 				_nextBpCookie++;
 			}
@@ -1716,7 +1710,7 @@ public:
 			return S_OK;
 		}
 		else
-			RETURN_HR(E_NOTIMPL);
+			return E_NOTIMPL;
 	}
 
 	virtual HRESULT RemoveBreakpoint (SIM_BP_COOKIE cookie) override
@@ -1734,7 +1728,7 @@ public:
 
 		// TODO: search data breakpoints
 
-		RETURN_HR(E_INVALIDARG);
+		return E_INVALIDARG;
 	}
 
 	virtual BOOL HasBreakpoints() override
