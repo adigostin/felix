@@ -69,6 +69,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="Templates\Items\include.inc">
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Templates\Items\source.asm">
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>

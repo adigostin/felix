@@ -63,8 +63,7 @@ library ATLProject1Lib
 	[object, uuid(D529C72D-D7B3-40EF-9FF9-31595F4518D2), dual, nonextensible, pointer_default(unique)]
 	interface IProjectConfigDebugProperties : IDispatch
 	{
-		[id(dispid__name), propget]
-		HRESULT __id ([out, retval] BSTR* value);
+		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
 
 		[id(dispidLoadAddress), bindable, propget, helpstring("This is where the debugger loads the binary file. For now only numbers are supported, not symbol names.")]
 		HRESULT LoadAddress ([out, retval] unsigned long* value);
@@ -84,12 +83,12 @@ library ATLProject1Lib
 	};
 
 	[object, uuid(A2EE7852-34B1-49A9-A3DB-36232AC6680C), dual, nonextensible, pointer_default(unique)]
-	interface IZ80ProjectItem : IDispatch
+	interface IProjectItem : IDispatch
 	{
 		VSITEMID GetItemId();
 		HRESULT GetMkDocument (BSTR* pbstrMkDocument); // returns the full path
-		IZ80ProjectItem* Next(); // TODO: keep an unordered_map with itemid/itemptr, then get rid of Next, SetNext, FindDescendant
-		void SetNext (IZ80ProjectItem* next);
+		IProjectItem* Next(); // TODO: keep an unordered_map with itemid/itemptr, then get rid of Next, SetNext, FindDescendant
+		void SetNext (IProjectItem* next);
 		HRESULT GetProperty (VSHPROPID propid, VARIANT* pvar);
 		HRESULT SetProperty (VSHPROPID propid, REFVARIANT var);
 		HRESULT GetGuidProperty (VSHPROPID propid, GUID* pguid);
@@ -100,10 +99,10 @@ library ATLProject1Lib
 	}
 
 	[object, uuid(D930CCA1-E515-4569-8DC6-959CD6367654), nonextensible, pointer_default(unique)]
-	interface IZ80ProjectItemParent : IUnknown
+	interface IProjectItemParent : IUnknown
 	{
-		IZ80ProjectItem* FirstChild();
-		void SetFirstChild (IZ80ProjectItem* next);
+		IProjectItem* FirstChild();
+		void SetFirstChild (IProjectItem* next);
 	}
 
 	// IID Same as the pkgdef entry [$RootKey$\Projects\{D438161C-F032-4014-BC5C-20A80EAFF59B}]
@@ -115,23 +114,30 @@ library ATLProject1Lib
 		[id(dispidConfigurations), propget] HRESULT Configurations ([out, ref, retval] SAFEARRAY(IDispatch*)* configs);
 		[id(dispidConfigurations), propput] HRESULT Configurations (SAFEARRAY(IDispatch*) configs);
 
-		[id(dispidItems), propget] HRESULT Items ([out, ref, retval] SAFEARRAY(IZ80ProjectItem*)* items);
-		[id(dispidItems), propput] HRESULT Items (SAFEARRAY(IZ80ProjectItem*) items);
+		[id(dispidItems), propget] HRESULT Items ([out, ref, retval] SAFEARRAY(IProjectItem*)* items);
+		[id(dispidItems), propput] HRESULT Items (SAFEARRAY(IProjectItem*) items);
 
 		[id(dispidProjectGuid), propget] HRESULT Guid ([out, retval] BSTR* value);
 		[id(dispidProjectGuid), propput] HRESULT Guid (BSTR value);
 	}
 
-	[object, uuid(680DBE9B-ABED-41BE-8A26-30446EEC47FB), dual, nonextensible, pointer_default(unique)]
-	interface IZ80SourceFile : IZ80ProjectItem
-	{
-		[propget] HRESULT Path ([out, retval] BSTR* value);
-		[propput] HRESULT Path (BSTR value); // possible to use LPWSTR here? (VT_LPWSTR in VARIANT)
-	};
+	[uuid(AB38EBF9-C445-45EB-8C14-8656CA98A741)]
+	enum BuildToolKind { None, Assembler };
 
-	[object, uuid(9E7C4743-BF65-4436-BB48-E0B52FF8D6C1), dual, nonextensible, pointer_default(unique)]
-	interface IZ80AsmFile : IZ80SourceFile
+	[object, uuid(680DBE9B-ABED-41BE-8A26-30446EEC47FB), dual, nonextensible, pointer_default(unique)]
+	interface IProjectFile : IProjectItem
 	{
+		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
+
+		[id(dispidPath), propget, helpstring("Path relative to the project directory.")]
+		HRESULT Path ([out, retval] BSTR* value);
+		[id(dispidPath), propput]
+		HRESULT Path (BSTR value);
+
+		[id(dispidBuildToolKind), propget]
+		HRESULT BuildTool ([out, retval] enum BuildToolKind* value);
+		[id(dispidBuildToolKind), propput]
+		HRESULT BuildTool (enum BuildToolKind value);
 	};
 
 	[object, uuid(588F7F04-8B74-404D-A80B-F7CCE9FA3E27), dual, nonextensible, pointer_default(unique)]

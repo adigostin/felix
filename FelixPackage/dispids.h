@@ -19,5 +19,7 @@
 #define dispidListingFilename      11
 #define dispidProjectDir           12
 #define dispidOutputFileType       13
+#define dispidPath                 14
+#define dispidBuildToolKind        15
 
 #endif

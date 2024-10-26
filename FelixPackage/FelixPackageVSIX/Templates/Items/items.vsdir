@@ -1,1 +1,2 @@
-﻿source.asm|{768bc57b-42a8-42ab-b389-457946c4fc6a}|ASM File|5|A file with Z80 Assembler source code.|{768bc57b-42a8-42ab-b389-457946c4fc6a}|403|0|AsmFile
+﻿source.asm|{768bc57b-42a8-42ab-b389-457946c4fc6a}|ASM File|5|A source code file with Z80 Assembler.|{768bc57b-42a8-42ab-b389-457946c4fc6a}|403|0|AsmFile
+include.inc|{768bc57b-42a8-42ab-b389-457946c4fc6a}|INC File|6|An include file with Z80 Assembler declarations.|{768bc57b-42a8-42ab-b389-457946c4fc6a}|404|0|IncFile

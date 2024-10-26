@@ -6,20 +6,25 @@
 #include "shared/com.h"
 #include "../FelixPackageUi/resource.h"
 #include "dispids.h"
+#include "guids.h"
 
-struct Z80AsmFile 
-	: IZ80AsmFile
+struct ProjectFile 
+	: IProjectFile
 	, IProvideClassInfo
 	, IOleCommandTarget
-	, IVsGetCfgProvider
+	, IVsPerPropertyBrowsing
 {
 	VSITEMID _itemId;
 	ULONG _refCount = 0;
 	com_ptr<IVsUIHierarchy> _hier;
-	wil::com_ptr_nothrow<IZ80ProjectItem> _next;
+	wil::com_ptr_nothrow<IProjectItem> _next;
 	VSITEMID _parentItemId = VSITEMID_NIL;
 	VSCOOKIE _docCookie = VSDOCCOOKIE_NIL;
 	wil::unique_hlocal_string _pathRelativeToProjectDir;
+	BuildToolKind _buildTool = BuildToolKind::None;
+	static inline HINSTANCE _uiLibrary;
+	static inline wil::unique_hicon _iconAsmFile;
+	static inline wil::unique_hicon _iconIncFile;
 	
 public:
 	HRESULT InitInstance (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentItemId)
@@ -27,6 +32,14 @@ public:
 		_itemId = itemId;
 		_hier = hier;
 		_parentItemId = parentItemId;
+		if (!_uiLibrary)
+		{
+			wil::com_ptr_nothrow<IVsShell> shell;
+			auto hr = serviceProvider->QueryService(SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
+			hr = shell->LoadUILibrary(CLSID_FelixPackage, 0, (DWORD_PTR*)&_uiLibrary); RETURN_IF_FAILED(hr);
+			_iconAsmFile.reset(LoadIcon(_uiLibrary, MAKEINTRESOURCE(IDI_ASM_FILE))); WI_ASSERT(_iconAsmFile);
+			_iconIncFile.reset(LoadIcon(_uiLibrary, MAKEINTRESOURCE(IDI_INC_FILE))); WI_ASSERT(_iconAsmFile);
+		}
 		return S_OK;
 	}
 
@@ -37,16 +50,16 @@ public:
 		*ppvObject = nullptr;
 
 		if (   TryQI<IUnknown>(static_cast<IDispatch*>(this), riid, ppvObject)
-			|| TryQI<IZ80AsmFile>(this, riid, ppvObject)
-			|| TryQI<IZ80SourceFile>(this, riid, ppvObject)
-			|| TryQI<IZ80ProjectItem>(this, riid, ppvObject)
+			|| TryQI<IProjectFile>(this, riid, ppvObject)
+			|| TryQI<IProjectItem>(this, riid, ppvObject)
 			|| TryQI<IDispatch>(this, riid, ppvObject)
 			|| TryQI<IProvideClassInfo>(this, riid, ppvObject)
 			|| TryQI<IOleCommandTarget>(this, riid, ppvObject)
-			|| TryQI<IVsGetCfgProvider>(this, riid, ppvObject)
-			)
+			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
+		)
 			return S_OK;
 
+		#ifdef _DEBUG
 		if (riid == IID_IPerPropertyBrowsing)
 			return E_NOINTERFACE;
 
@@ -82,6 +95,7 @@ public:
 			|| riid == IID_SolutionProperties
 			)
 			return E_NOINTERFACE;
+		#endif
 
 		return E_NOINTERFACE;
 	}
@@ -91,9 +105,9 @@ public:
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IZ80AsmFile);
+	IMPLEMENT_IDISPATCH(IID_IProjectFile);
 
-	#pragma region IZ80ProjectItem
+	#pragma region IProjectItem
 	virtual VSITEMID STDMETHODCALLTYPE GetItemId() override { return _itemId; }
 
 	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (BSTR* pbstrMkDocument) override
@@ -109,9 +123,9 @@ public:
 		return S_OK;
 	}
 	
-	virtual IZ80ProjectItem* STDMETHODCALLTYPE Next() override { return _next.get(); }
+	virtual IProjectItem* STDMETHODCALLTYPE Next() override { return _next.get(); }
 
-	virtual void STDMETHODCALLTYPE SetNext (IZ80ProjectItem* next) override
+	virtual void STDMETHODCALLTYPE SetNext (IProjectItem* next) override
 	{
 		//WI_ASSERT (!_next);
 		_next = next;
@@ -120,7 +134,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE GetProperty (VSHPROPID propid, VARIANT* pvar) override
 	{
 		/*
-		OutputDebugStringA("Z80AsmFile::GetProperty propid=");
+		OutputDebugStringA("ProjectFile::GetProperty propid=");
 		char buffer[20];
 		sprintf_s(buffer, "%d", propid);
 		OutputDebugStringA(buffer);
@@ -134,17 +148,14 @@ public:
 		*/
 		switch (propid)
 		{
-			case VSHPROPID_IsHiddenItem: // -2043
-				return InitVariantFromBoolean (FALSE, pvar);
+			case VSHPROPID_Parent: // -1000
+				return InitVariantFromInt32 (_parentItemId, pvar);
 
-			case VSHPROPID_NextVisibleSibling:
+			case VSHPROPID_FirstChild: // -1001
+				return InitVariantFromInt32 (VSITEMID_NIL, pvar);
+
+			case VSHPROPID_NextSibling: // -1002
 				return InitVariantFromInt32 (_next ? _next->GetItemId() : VSITEMID_NIL, pvar);
-
-			case VSHPROPID_NextSibling:
-				return InitVariantFromInt32 (_next ? _next->GetItemId() : VSITEMID_NIL, pvar);
-
-			case VSHPROPID_Expandable: // -2006
-				return InitVariantFromBoolean (FALSE, pvar);
 
 			case VSHPROPID_SaveName: // -2002
 			case VSHPROPID_Caption: // -2003
@@ -153,46 +164,49 @@ public:
 			case VSHPROPID_DescriptiveName: // -2108
 				return InitVariantFromString (PathFindFileName(_pathRelativeToProjectDir.get()), pvar);
 
-			case VSHPROPID_ProvisionalViewingStatus: // -2112
-				return InitVariantFromUInt32 (PVS_Disabled, pvar);
+			case VSHPROPID_Expandable: // -2006
+				return InitVariantFromBoolean (FALSE, pvar);
 
-			case VSHPROPID_BrowseObject: // -2018
+			case VSHPROPID_IconHandle: // -2013
 			{
-				//wil::com_ptr_nothrow<IDispatch> props;
-				//auto hr = Z80AsmFileProperties::CreateInstance (this, &props); RETURN_IF_FAILED(hr);
-				//hr = InitVariantFromDispatch (props.get(), pvar); RETURN_IF_FAILED(hr);
-				//return S_OK;
+				auto ext = PathFindExtension(_pathRelativeToProjectDir.get());
+
+				if (!_wcsicmp(ext, L".asm"))
+				{
+					V_VT(pvar) = VT_VS_INT_PTR;
+					V_VS_INT_PTR(pvar) = (INT_PTR)_iconAsmFile.get();
+					return S_OK;
+				}
+
+				if (!_wcsicmp(ext, L".inc"))
+				{
+					V_VT(pvar) = VT_VS_INT_PTR;
+					V_VS_INT_PTR(pvar) = (INT_PTR)_iconIncFile.get();
+					return S_OK;
+				}
+
 				return E_NOTIMPL;
 			}
 
-			case VSHPROPID_Parent: // -1000
-				return InitVariantFromInt32 (_parentItemId, pvar);
+			case VSHPROPID_BrowseObject: // -2018
+				return InitVariantFromDispatch (this, pvar);
 
 			case VSHPROPID_ItemDocCookie: // -2034
 				return InitVariantFromInt32 (_docCookie, pvar);
 
-			case VSHPROPID_HasEnumerationSideEffects: // -2062
-				return InitVariantFromBoolean (FALSE, pvar);
-
-			case VSHPROPID_KeepAliveDocument: // -2075
-				return E_NOTIMPL;
-
-			case VSHPROPID_FirstChild:
+			case VSHPROPID_FirstVisibleChild: // -2041
 				return InitVariantFromInt32 (VSITEMID_NIL, pvar);
 
-			case VSHPROPID_FirstVisibleChild:
-				return InitVariantFromInt32 (VSITEMID_NIL, pvar);
+			case VSHPROPID_NextVisibleSibling: // -2042
+				return InitVariantFromInt32 (_next ? _next->GetItemId() : VSITEMID_NIL, pvar);
 
-			case VSHPROPID_IsNonSearchable: // -2051
+			case VSHPROPID_IsHiddenItem: // -2043
 				return InitVariantFromBoolean (FALSE, pvar);
 
 			case VSHPROPID_IsNonMemberItem: // -2044
 				return InitVariantFromBoolean (FALSE, pvar);
 
-			case VSHPROPID_ExtObject: // -2027
-				return E_NOTIMPL;
-
-			case VSHPROPID_ExternalItem: // -2103
+			case VSHPROPID_IsNonSearchable: // -2051
 				return InitVariantFromBoolean (FALSE, pvar);
 
 			case VSHPROPID_IsNewUnsavedItem: // -2057
@@ -201,14 +215,24 @@ public:
 			case VSHPROPID_ShowOnlyItemCaption: // -2058
 				return InitVariantFromBoolean (TRUE, pvar);
 
+			case VSHPROPID_HasEnumerationSideEffects: // -2062
+				return InitVariantFromBoolean (FALSE, pvar);
+
+			case VSHPROPID_ExternalItem: // -2103
+				return InitVariantFromBoolean (FALSE, pvar);
+
+			case VSHPROPID_ProvisionalViewingStatus: // -2112
+				return InitVariantFromUInt32 (PVS_Disabled, pvar);
+
+			case VSHPROPID_IconIndex: // -2005
+			case VSHPROPID_OpenFolderIconHandle: // -2014
+			case VSHPROPID_OpenFolderIconIndex: // -2015
 			case VSHPROPID_AltHierarchy: // -2019
+			case VSHPROPID_ExtObject: // -2027
 			case VSHPROPID_StateIconIndex: // -2029
 			case VSHPROPID_OverlayIconIndex: // -2048
+			case VSHPROPID_KeepAliveDocument: // -2075
 			case VSHPROPID_ProjectTreeCapabilities: // -2146
-			case VSHPROPID_IconIndex:
-			case VSHPROPID_IconHandle:
-			case VSHPROPID_OpenFolderIconHandle:
-			case VSHPROPID_OpenFolderIconIndex:
 			case VSHPROPID_IsSharedItemsImportFile: // -2154
 			case VSHPROPID_SupportsIconMonikers: // -2159
 				return E_NOTIMPL;
@@ -301,7 +325,7 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region IZ80SourceFile
+	#pragma region IProjectFile
 	virtual HRESULT STDMETHODCALLTYPE get_Path (BSTR *pbstr) override
 	{
 		*pbstr = SysAllocString(_pathRelativeToProjectDir.get()); RETURN_IF_NULL_ALLOC(*pbstr);
@@ -315,13 +339,40 @@ public:
 		// TODO: notification
 		return S_OK;
 	}
-	#pragma endregion
 
+	virtual HRESULT STDMETHODCALLTYPE get___id (BSTR *value) override
+	{
+		// Shown by VS at the top of the Properties Window.
+		auto name = PathFindFileName(_pathRelativeToProjectDir.get());
+		*value = SysAllocString(name); RETURN_IF_NULL_ALLOC(*value);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_BuildTool (enum BuildToolKind *value) override
+	{
+		*value = _buildTool;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_BuildTool (enum BuildToolKind value) override
+	{
+		if (_buildTool != value)
+		{
+			_buildTool = value;
+			if (auto sink = wil::try_com_query_nothrow<IPropertyNotifySink>(_hier))
+				sink->OnChanged(DISPID_UNKNOWN);
+			if (auto sink = wil::try_com_query_failfast<IVsHierarchyEvents>(_hier))
+				sink->OnPropertyChanged(_itemId, VSHPROPID_IconHandle, 0);
+		}
+
+		return S_OK;
+	}
+	#pragma endregion
 
 	#pragma region IProvideClassInfo
 	virtual HRESULT STDMETHODCALLTYPE GetClassInfo (ITypeInfo** ppTI) override
 	{
-		return E_NOTIMPL;
+		return GetTypeInfo(0, 0, ppTI);
 	}
 	#pragma endregion
 
@@ -362,7 +413,6 @@ public:
 						case cmdidFileOpen: // 222
 						case cmdidSaveSolution: // 224
 						case cmdidGoto: // 231
-						case cmdidPropertyPages: // 232
 						case cmdidOpen: // 261
 						case cmdidFindInFiles: // 277
 						case cmdidViewCode: // 333
@@ -398,6 +448,7 @@ public:
 						case cmdidGenerateChangeScript: // 173
 						case cmdidRunQuery: // 201
 						case cmdidClearQuery: // 202
+						case cmdidPropertyPages: // 232
 						case cmdidInsertValuesQuery: // 309
 							prgCmds[i].cmdf = 0;
 							break;
@@ -668,11 +719,46 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region IVsGetCfgProvider
-	virtual HRESULT STDMETHODCALLTYPE GetCfgProvider (IVsCfgProvider** ppCfgProvider) override
+	#pragma region IVsPerPropertyBrowsing
+	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL *pfHide) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE DisplayChildProperties (DISPID dispid, BOOL *pfDisplay) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE GetLocalizedPropertyInfo (DISPID dispid, LCID localeID, BSTR *pbstrLocalizedName, BSTR *pbstrLocalizeDescription) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE HasDefaultValue (DISPID dispid, BOOL *fDefault) override
 	{
-		return _hier->QueryInterface(ppCfgProvider);
+		if (dispid == dispidBuildToolKind || dispid == dispidPath)
+		{
+			*fDefault = FALSE;
+			return S_OK;
+		}
+
+		return E_NOTIMPL;
 	}
+
+	virtual HRESULT STDMETHODCALLTYPE IsPropertyReadOnly (DISPID dispid, BOOL *fReadOnly) override
+	{
+		if (dispid == dispidPath)
+		{
+			*fReadOnly = TRUE;
+			return S_OK;
+		}
+
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetClassName (BSTR *pbstrClassName) override
+	{
+		// Shown by VS at the top of the Properties Window.
+		*pbstrClassName = SysAllocString(L"File");
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE CanResetPropertyValue (DISPID dispid, BOOL* pfCanReset) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE ResetPropertyValue (DISPID dispid) override { return E_NOTIMPL; }
+
 	#pragma endregion
 
 	HRESULT RenameFile (BSTR newName)
@@ -759,6 +845,11 @@ public:
 		// Tell packages that care that it happened. No error checking here.
 		trackProjectDocs->OnAfterRenameFile (project, oldFullPath.get(), newFullPath.get(), VSRENAMEFILEFLAGS_NoFlags);
 
+		// This line was changing the build tool when the user renamed the file.
+		// I eventually commented it out, to get behavior similar to that in VS projects
+		// (build tool remains unchanged when renaming for example from .cpp to .h)
+		//_buildTool = _wcsicmp(PathFindExtension(_pathRelativeToProjectDir.get()), L".asm") ? BuildToolKind::None : BuildToolKind::Assembler;
+
 		com_ptr<IVsHierarchyEvents> events;
 		hr = _hier->QueryInterface(&events); LOG_IF_FAILED(hr);
 		if (SUCCEEDED(hr))
@@ -768,16 +859,16 @@ public:
 			events->OnPropertyChanged(_itemId, VSHPROPID_SaveName, 0);
 			events->OnPropertyChanged(_itemId, VSHPROPID_DescriptiveName, 0);
 			events->OnPropertyChanged(_itemId, VSHPROPID_StateIconIndex, 0);
+			events->OnPropertyChanged(_itemId, VSHPROPID_IconHandle, 0);
 		}
 
-		// TODO: repro this
-		// Make sure the property browser is updated
-		//com_ptr<IVsUIShell> uiShell;
-		//hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell); LOG_IF_FAILED(hr);
-		//if (SUCCEEDED(hr))
-		//	uiShell->RefreshPropertyBrowser(DISPID_VALUE); // return value ignored on purpose
+		// Make sure the property browser is updated.
+		com_ptr<IVsUIShell> uiShell;
+		hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell); LOG_IF_FAILED(hr);
+		if (SUCCEEDED(hr))
+			uiShell->RefreshPropertyBrowser(DISPID_UNKNOWN); // refresh all properties
 
-		// mark project as dirty
+		// Mark project as dirty.
 		com_ptr<IPropertyNotifySink> pns;
 		hr = _hier->QueryInterface(&pns); LOG_IF_FAILED(hr);
 		if (SUCCEEDED(hr))
@@ -792,9 +883,9 @@ public:
 
 // ============================================================================
 
-HRESULT MakeZ80AsmFile (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentItemId, IZ80AsmFile** file)
+HRESULT MakeProjectFile (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentItemId, IProjectFile** file)
 {
-	com_ptr<Z80AsmFile> p = new (std::nothrow) Z80AsmFile(); RETURN_IF_NULL_ALLOC(p);
+	com_ptr<ProjectFile> p = new (std::nothrow) ProjectFile(); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance(itemId, hier, parentItemId); RETURN_IF_FAILED(hr);
 	*file = p.detach();
 	return S_OK;

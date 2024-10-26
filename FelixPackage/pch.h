@@ -14,13 +14,14 @@
 
 // Windows Platform headers
 #include <Windows.h>
+#undef GetClassName
+#undef GetClassInfo
 #include <Shlobj.h>
 #include <Shlwapi.h>
 #include <PathCch.h>
 #include <propvarutil.h>
 #include <xmllite.h>
 #include <OCIdl.h>
-
 #include <Psapi.h>
 #undef EnumProcesses
 

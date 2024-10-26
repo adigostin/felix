@@ -510,10 +510,25 @@ public:
 		RETURN_HR_IF(E_FAIL, childItemId.vt != VT_VSITEMID);
 		while (V_VSITEMID(&childItemId) != VSITEMID_NIL)
 		{
-			wil::unique_variant asmFileRelativePath;
-			_hier->GetProperty(V_VSITEMID(&childItemId), VSHPROPID_SaveName, &asmFileRelativePath); RETURN_IF_FAILED(hr);
-			RETURN_HR_IF(E_FAIL, asmFileRelativePath.vt != VT_BSTR);
-			cmdLine << ' ' << asmFileRelativePath.bstrVal;
+			wil::unique_variant browseObjectVariant;
+			hr = _hier->GetProperty(V_VSITEMID(&childItemId), VSHPROPID_BrowseObject, &browseObjectVariant);
+			if (SUCCEEDED(hr) && (browseObjectVariant.vt == VT_DISPATCH))
+			{
+				com_ptr<IProjectFile> file;
+				hr = browseObjectVariant.pdispVal->QueryInterface(&file);
+				if (SUCCEEDED(hr))
+				{
+					BuildToolKind tool;
+					hr = file->get_BuildTool(&tool);
+					if (SUCCEEDED(hr) && (tool == BuildToolKind::Assembler))
+					{
+						wil::unique_bstr fileRelativePath;
+						hr = file->get_Path(&fileRelativePath);
+						if (SUCCEEDED(hr))
+							cmdLine << ' ' << fileRelativePath.get();
+					}
+				}
+			}
 
 			hr = _hier->GetProperty(V_VSITEMID(&childItemId), VSHPROPID_NextSibling, &childItemId); RETURN_IF_FAILED(hr);
 			RETURN_HR_IF(E_FAIL, childItemId.vt != VT_VSITEMID);

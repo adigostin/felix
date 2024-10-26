@@ -15,7 +15,7 @@
 
 static constexpr wchar_t ProjectElementName[] = L"Z80Project";
 static constexpr wchar_t ConfigurationElementName[] = L"Configuration";
-static constexpr wchar_t Z80AsmElementName[] = L"AsmFile";
+static constexpr wchar_t FileElementName[] = L"File";
 
 // What MPF implements: https://docs.microsoft.com/en-us/visualstudio/extensibility/internals/project-model-core-components?view=vs-2022
 class Z80Project
@@ -35,7 +35,7 @@ class Z80Project
 	//, IVsProjectBuildSystem
 	//, IVsBuildPropertyStorage
 	//, IVsBuildPropertyStorage2
-	, IZ80ProjectItemParent
+	, IProjectItemParent
 	, IPropertyNotifySink
 	, IVsHierarchyEvents // this implementation only forwards calls to subscribed sinks
 {
@@ -51,7 +51,7 @@ class Z80Project
 	bool _noScribble = false;
 	wil::com_ptr_nothrow<IVsUIHierarchy> _parentHierarchy;
 	VSITEMID _parentHierarchyItemId = VSITEMID_NIL; // item id of this project in the parent hierarchy
-	com_ptr<IZ80ProjectItem> _firstChild;
+	com_ptr<IProjectItem> _firstChild;
 	static inline VSITEMID _nextFileItemId = 1000; // VS uses 1..2..3 etc for the Solution item. I'll deal with this later.
 	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsCfgProviderEvents>> _cfgProviderEventSinks;
 	VSCOOKIE _nextCfgProviderEventCookie = 1;
@@ -222,7 +222,7 @@ public:
 	// If not found, return S_FALSE and ppItem is null.
 	// If error during enumeration, returns an error code.
 	// The filter function must return S_OK for a match (enumeration stops), S_FALSE for non-match (enumeration continues), or an error code (enumeration stops).
-	HRESULT FindDescendant (const stdext::inplace_function<HRESULT(IZ80ProjectItem*), 32>& filter, IZ80ProjectItem** ppItem, IZ80ProjectItem** ppPrevSibling = nullptr, IZ80ProjectItemParent** ppParent = nullptr)
+	HRESULT FindDescendant (const stdext::inplace_function<HRESULT(IProjectItem*), 32>& filter, IProjectItem** ppItem, IProjectItem** ppPrevSibling = nullptr, IProjectItemParent** ppParent = nullptr)
 	{
 		*ppItem = nullptr;
 		if (ppPrevSibling)
@@ -230,7 +230,7 @@ public:
 		if (ppParent)
 			*ppParent = nullptr;
 
-		IZ80ProjectItem* prev = nullptr;
+		IProjectItem* prev = nullptr;
 		for (auto c = _firstChild.get(); c; c = c->Next())
 		{
 			wil::unique_variant fc;
@@ -267,10 +267,10 @@ public:
 		return S_FALSE;
 	}
 	
-	IZ80ProjectItem* FindDescendant (VSITEMID itemid, IZ80ProjectItem** ppPrevSibling = nullptr, IZ80ProjectItemParent** ppParent = nullptr)
+	IProjectItem* FindDescendant (VSITEMID itemid, IProjectItem** ppPrevSibling = nullptr, IProjectItemParent** ppParent = nullptr)
 	{
-		auto sameId = [itemid](IZ80ProjectItem* item) { return (item->GetItemId() == itemid) ? S_OK : S_FALSE; };
-		wil::com_ptr_nothrow<IZ80ProjectItem> item;
+		auto sameId = [itemid](IProjectItem* item) { return (item->GetItemId() == itemid) ? S_OK : S_FALSE; };
+		wil::com_ptr_nothrow<IProjectItem> item;
 		auto hr = FindDescendant(sameId, &item, ppPrevSibling, ppParent); WI_ASSERT(SUCCEEDED(hr));
 		return item.get();
 	}
@@ -499,7 +499,9 @@ public:
 				return OLECMDERR_E_NOTSUPPORTED;
 			
 			if (nCmdID == cmdidAddNewItem) // 220
-				return ProcessCommandAddNewItem();
+				return ProcessCommandAddNewItem(TRUE);
+			if (nCmdID == cmdidAddExistingItem) // 244
+				return ProcessCommandAddNewItem(FALSE);
 
 			//BreakIntoDebugger();
 			return OLECMDERR_E_NOTSUPPORTED;
@@ -560,15 +562,21 @@ public:
 		return OLECMDERR_E_UNKNOWNGROUP;
 	}
 
-	HRESULT ProcessCommandAddNewItem()
+	HRESULT ProcessCommandAddNewItem (BOOL fAddNewItem)
 	{
 		wil::com_ptr_nothrow<IVsAddProjectItemDlg> dlg;
 		auto hr = _sp->QueryService(SID_SVsAddProjectItemDlg, &dlg); RETURN_IF_FAILED(hr);
+		VSADDITEMFLAGS flags;
+		if (fAddNewItem)
+			flags = VSADDITEM_AddNewItems | VSADDITEM_SuggestTemplateName | VSADDITEM_NoOnlineTemplates; /* | VSADDITEM_ShowLocationField */
+		else
+			flags = VSADDITEM_AddExistingItems | VSADDITEM_AllowMultiSelect | VSADDITEM_AllowStickyFilter;
+
 		// TODO: To specify a sticky behavior for the location field, which is the recommended behavior, remember the last location field value and pass it back in when you open the dialog box again.
 		// TODO: To specify sticky behavior for the filter field, which is the recommended behavior, remember the last filter field value and pass it back in when you open the dialog box again.
-		hr = dlg->AddProjectItemDlg (VSITEMID_ROOT, __uuidof(IZ80ProjectProperties), this, VSADDITEM_AddNewItems, nullptr, nullptr, nullptr, nullptr, nullptr);
+		hr = dlg->AddProjectItemDlg (VSITEMID_ROOT, __uuidof(IZ80ProjectProperties), this, flags, nullptr, nullptr, nullptr, nullptr, nullptr);
 		if (FAILED(hr) && (hr != OLE_E_PROMPTSAVECANCELLED))
-			RETURN_HR(hr);
+			return hr;
 
 		return S_OK;
 	}
@@ -604,7 +612,7 @@ public:
 			//|| TryQI<IVsProjectBuildSystem>(this, riid, ppvObject)
 			//|| TryQI<IVsBuildPropertyStorage>(this, riid, ppvObject)
 			//|| TryQI<IVsBuildPropertyStorage2>(this, riid, ppvObject)
-			|| TryQI<IZ80ProjectItemParent>(this, riid, ppvObject)
+			|| TryQI<IProjectItemParent>(this, riid, ppvObject)
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
 			|| TryQI<IVsHierarchyEvents>(this, riid, ppvObject)
 		)
@@ -1011,6 +1019,9 @@ public:
 			if (propid == VSHPROPID_OutputType) // -2118
 				return E_NOTIMPL; // "This property is optional."
 
+			if (propid == VSHPROPID_TypeName) // -2030
+				return InitVariantFromString (L"Z80", pvar); // Called by 17.11.5 from Help -> About.
+
 			if (propid == VSHPROPID_ImplantHierarchy) // -2037
 				return E_NOTIMPL; // "This property is optional."
 
@@ -1177,8 +1188,8 @@ public:
 			return S_OK;
 		}
 
-		com_ptr<IZ80ProjectItem> c;
-		hr = FindDescendant([pszName](IZ80ProjectItem* c)
+		com_ptr<IProjectItem> c;
+		hr = FindDescendant([pszName](IProjectItem* c)
 			{
 				wil::unique_bstr childCN;
 				auto hr = c->GetCanonicalName(&childCN); RETURN_IF_FAILED(hr);
@@ -1460,7 +1471,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE GetFormatList(LPOLESTR* ppszFormatList) override
 	{
 		// Keep this in sync with DisplayProjectFileExtensions from the .pkgdef file.
-		static constexpr wchar_t list[] = L"Z80 Project Files (*.z80proj)\n*.z80proj\n";
+		static constexpr wchar_t list[] = L"Z80 Project Files (*.flx)\n*.flx\n";
 		*ppszFormatList = (wchar_t*)CoTaskMemAlloc(sizeof(list));
 		if (!*ppszFormatList)
 			return E_OUTOFMEMORY;
@@ -1476,9 +1487,9 @@ public:
 
 		bool isRelative = PathIsRelative(pszMkDocument);
 
-		wil::com_ptr_nothrow<IZ80ProjectItem> c;
+		wil::com_ptr_nothrow<IProjectItem> c;
 		auto hr = FindDescendant(
-			[pszMkDocument, isRelative](IZ80ProjectItem* c)
+			[pszMkDocument, isRelative](IProjectItem* c)
 			{
 				wil::unique_bstr path;
 				if (isRelative)
@@ -1582,6 +1593,90 @@ public:
 		RETURN_HR(E_FAIL);
 	}
 
+	HRESULT AddNewFile (VSITEMID itemidLoc, LPCTSTR pszFullPathSource, LPCTSTR pszNewFileName, IProjectItem** ppNewNode)
+	{
+		RETURN_HR_IF_NULL(E_INVALIDARG, pszFullPathSource);
+		RETURN_HR_IF_NULL(E_INVALIDARG, pszNewFileName);
+		RETURN_HR_IF_NULL(E_POINTER, ppNewNode);
+
+		wil::unique_hlocal_string dest;
+		DWORD flags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
+		auto hr = PathAllocCombine (_location.get(), pszNewFileName, flags, &dest); RETURN_IF_FAILED(hr);
+		COPYFILE2_EXTENDED_PARAMETERS params = { 
+			.dwSize = (DWORD)sizeof(params), 
+			.dwCopyFlags = COPY_FILE_ALLOW_DECRYPTED_DESTINATION | COPY_FILE_FAIL_IF_EXISTS
+		};
+		hr = CopyFile2 (pszFullPathSource, dest.get(), &params); RETURN_IF_FAILED_EXPECTED(hr);
+		// TODO: if the file exists, ask user whether to overwrite
+
+		// template was read-only, but our file should not be
+		SetFileAttributes(dest.get(), FILE_ATTRIBUTE_ARCHIVE);
+
+		return AddExistingFile (itemidLoc, dest.get(), ppNewNode);
+	}
+
+	HRESULT AddExistingFile (VSITEMID itemidLoc, LPCTSTR pszFullPathSource, IProjectItem** ppNewFile, BOOL fSilent = FALSE, BOOL fLoad = FALSE)
+	{
+		HRESULT hr;
+
+		// Check if the item exists in the project already.
+		wchar_t relativeUgly[MAX_PATH];
+		BOOL bRes = PathRelativePathTo (relativeUgly, _location.get(), FILE_ATTRIBUTE_DIRECTORY, pszFullPathSource, 0);
+		if (!bRes)
+			return SetErrorInfo(E_INVALIDARG, L"Can't make a relative path from '%s' relative to '%s'.", pszFullPathSource, _location.get());
+		wil::unique_hlocal_string relative;
+		hr = PathAllocCanonicalize (relativeUgly, 0, relative.addressof());
+		if (FAILED(hr))
+			return SetErrorInfo(hr, L"Can't make a relative path from '%s' relative to '%s'.", pszFullPathSource, _location.get());
+
+		com_ptr<IProjectItem> existing;
+		hr = FindDescendant([relative=relative.get()](IProjectItem* c)
+			{
+				if (auto sf = wil::try_com_query_nothrow<IProjectFile>(c))
+				{
+					wil::unique_bstr rel;
+					auto hr = sf->get_Path(&rel); RETURN_IF_FAILED(hr);
+					if (!_wcsicmp(relative, rel.get()))
+						return S_OK;
+					else
+						return S_FALSE;
+				}
+
+				return S_FALSE;
+			}, &existing); RETURN_IF_FAILED(hr);
+		if (hr == S_OK)
+			return SetErrorInfo(HRESULT_FROM_WIN32(ERROR_FILE_EXISTS), L"File already in project:\r\n\r\n%s", pszFullPathSource);
+
+		com_ptr<IProjectFile> file;
+		VSITEMID itemId = _nextFileItemId++;
+		hr = MakeProjectFile (itemId, this, itemidLoc, &file); RETURN_IF_FAILED(hr);
+		auto path = wil::make_bstr_nothrow(pszFullPathSource); RETURN_IF_NULL_ALLOC(path);
+		hr = file->put_Path(relative.get()); RETURN_IF_FAILED(hr);
+		auto buildTool = _wcsicmp(PathFindExtension(path.get()), L".asm") ? BuildToolKind::None : BuildToolKind::Assembler;
+		hr = file->put_BuildTool(buildTool); RETURN_IF_FAILED(hr);
+
+		if (!_firstChild)
+			_firstChild = file;
+		else
+		{
+			IProjectItem* last = _firstChild;
+			while(last->Next())
+				last = last->Next();
+			last->SetNext(file);
+		}
+
+		_isDirty = true;
+
+		for (auto& sink : _hierarchyEventSinks)
+			sink.second->OnItemsAppended(itemidLoc);
+
+		com_ptr<IVsWindowFrame> frame;
+		hr = this->OpenItem(itemId, LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &frame);
+		if (SUCCEEDED(hr))
+			frame->Show();
+		return S_OK;
+	}
+
 	virtual HRESULT STDMETHODCALLTYPE AddItem(VSITEMID itemidLoc, VSADDITEMOPERATION dwAddItemOperation, LPCOLESTR pszItemName, ULONG cFilesToOpen, LPCOLESTR rgpszFilesToOpen[], HWND hwndDlgOwner, VSADDRESULT* pResult) override
 	{
 		HRESULT hr;
@@ -1589,50 +1684,33 @@ public:
 		if (itemidLoc != VSITEMID_ROOT)
 			RETURN_HR(E_NOTIMPL);
 
-		if (cFilesToOpen != 1)
-			RETURN_HR(E_NOTIMPL);
-
 		switch(dwAddItemOperation)
 		{
 			case VSADDITEMOP_CLONEFILE:
 			{
-				wil::unique_hlocal_string dest;
-				DWORD flags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
-				hr = PathAllocCombine (_location.get(), pszItemName, flags, &dest); RETURN_IF_FAILED(hr);
-				COPYFILE2_EXTENDED_PARAMETERS params = { 
-					.dwSize = (DWORD)sizeof(params), 
-					.dwCopyFlags = COPY_FILE_ALLOW_DECRYPTED_DESTINATION | COPY_FILE_FAIL_IF_EXISTS
-				};
-				hr = CopyFile2 (rgpszFilesToOpen[0], dest.get(), &params); RETURN_IF_FAILED(hr);
-				
-				com_ptr<IZ80AsmFile> file;
-				VSITEMID itemId = _nextFileItemId++;
-				hr = MakeZ80AsmFile (itemId, this, itemidLoc, &file); RETURN_IF_FAILED(hr);
-				auto path = wil::make_bstr_nothrow(pszItemName); RETURN_IF_NULL_ALLOC(path);
-				hr = file->put_Path(path.get()); RETURN_IF_FAILED(hr);
-
-				if (!_firstChild)
-					_firstChild = file;
-				else
-				{
-					IZ80ProjectItem* last = _firstChild;
-					while(last->Next())
-						last = last->Next();
-					last->SetNext(file);
-				}
-
-				_isDirty = true;
-
-				for (auto& sink : _hierarchyEventSinks)
-					sink.second->OnItemsAppended(itemidLoc);
-
-				com_ptr<IVsWindowFrame> frame;
-				hr = this->OpenItem(itemId, LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &frame);
-				if (SUCCEEDED(hr))
-					frame->Show();
-
+				// Add New File
+				RETURN_HR_IF(E_INVALIDARG, cFilesToOpen != 1);
+				com_ptr<IProjectItem> pNewNode;
+				hr = AddNewFile (itemidLoc, rgpszFilesToOpen[0], pszItemName, &pNewNode); RETURN_IF_FAILED_EXPECTED(hr);
 				*pResult = ADDRESULT_Success;
 				return S_OK;
+			}
+
+			case VSADDITEMOP_LINKTOFILE:
+				// Because we are a reference-based project system our handling for LINKTOFILE is the same as OPENFILE.
+				// A storage-based project system which handles OPENFILE by copying the file into the project directory
+				// would have distinct handling for LINKTOFILE vs. OPENFILE.
+			case VSADDITEMOP_OPENFILE:
+			{
+				// Add Existing File
+				for (DWORD i = 0; i < cFilesToOpen; i++)
+				{
+					com_ptr<IProjectItem> pNewNode;
+					hr = AddExistingFile(itemidLoc, rgpszFilesToOpen[i], &pNewNode); RETURN_IF_FAILED_EXPECTED(hr);
+				}
+
+				*pResult = ADDRESULT_Success;
+				return hr;
 			}
 
 			default:
@@ -2073,8 +2151,8 @@ public:
 
 		for (ULONG i = 0; i < cItems; i++)
 		{
-			com_ptr<IZ80ProjectItem> prevSibling;
-			com_ptr<IZ80ProjectItemParent> parent;
+			com_ptr<IProjectItem> prevSibling;
+			com_ptr<IProjectItemParent> parent;
 			auto d = FindDescendant(itemid[i], &prevSibling, &parent); RETURN_HR_IF_NULL(E_INVALIDARG, d);
 
 			wil::unique_bstr mk;
@@ -2302,7 +2380,7 @@ public:
 		_firstChild = nullptr;
 		if (ubound >= 0)
 		{
-			vector_nothrow<com_ptr<IZ80ProjectItem>> items;
+			vector_nothrow<com_ptr<IProjectItem>> items;
 			bool resized = items.try_resize(ubound + 1); RETURN_HR_IF(E_OUTOFMEMORY, !resized);
 
 			for (LONG i = 0; i <= ubound; i++)
@@ -2360,10 +2438,10 @@ public:
 
 		if (dispidProperty == dispidItems)
 		{
-			wil::com_ptr_nothrow<IZ80AsmFile> z80AsmFile;
-			if (SUCCEEDED(child->QueryInterface(&z80AsmFile)))
+			wil::com_ptr_nothrow<IProjectFile> sourceFile;
+			if (SUCCEEDED(child->QueryInterface(&sourceFile)))
 			{
-				*xmlElementNameOut = SysAllocString(Z80AsmElementName); RETURN_IF_NULL_ALLOC(*xmlElementNameOut);
+				*xmlElementNameOut = SysAllocString(FileElementName); RETURN_IF_NULL_ALLOC(*xmlElementNameOut);
 				return S_OK;
 			}
 
@@ -2385,11 +2463,17 @@ public:
 
 		if (dispidProperty == dispidItems)
 		{
-			if (!wcscmp(xmlElementName, Z80AsmElementName))
+			// Files saved by newer versions use "File" for the name of the XML element.
+			// For backward compatibility, we also recognize the name "AsmFile".
+			// When we'll have directories, they'll use a different XML element name.
+
+			if (!wcscmp(xmlElementName, FileElementName) || !wcscmp(xmlElementName, L"AsmFile"))
 			{
-				wil::com_ptr_nothrow<IZ80AsmFile> file;
+				wil::com_ptr_nothrow<IProjectFile> file;
 				VSITEMID itemId = _nextFileItemId++;
-				auto hr = MakeZ80AsmFile (itemId, this, VSITEMID_ROOT, &file); RETURN_IF_FAILED(hr);
+				auto hr = MakeProjectFile (itemId, this, VSITEMID_ROOT, &file); RETURN_IF_FAILED(hr);
+				if (!wcscmp(xmlElementName, L"AsmFile"))
+					file->put_BuildTool(BuildToolKind::Assembler);
 				*childOut = file.detach();
 				return S_OK;
 			}
@@ -2406,13 +2490,13 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region IZ80ProjectItemParent
-	virtual IZ80ProjectItem* STDMETHODCALLTYPE FirstChild() override
+	#pragma region IProjectItemParent
+	virtual IProjectItem* STDMETHODCALLTYPE FirstChild() override
 	{
 		return _firstChild;
 	}
 
-	virtual void STDMETHODCALLTYPE SetFirstChild (IZ80ProjectItem *next) override
+	virtual void STDMETHODCALLTYPE SetFirstChild (IProjectItem *next) override
 	{
 		_firstChild = next;
 	}
