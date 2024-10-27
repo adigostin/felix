@@ -23,7 +23,7 @@ class Z80Project
 	, IVsProject2              // includes IVsProject
 	, IVsUIHierarchy           // includes IVsHierarchy
 	, IPersistFileFormat       // includes IPersist
-	, IVsPersistHierarchyItem2 // includes IVsPersistHierarchyItem
+	, IVsPersistHierarchyItem
 	, IVsGetCfgProvider
 	, IVsCfgProvider2          // includes IVsCfgProvider
 	, IProvideClassInfo
@@ -606,7 +606,6 @@ public:
 			//|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
 			|| TryQI<IVsHierarchyDeleteHandler3>(this, riid, ppvObject)
 			|| TryQI<IVsPersistHierarchyItem>(this, riid, ppvObject)
-			|| TryQI<IVsPersistHierarchyItem2>(this, riid, ppvObject)
 			|| TryQI<IPreferPropertyPagesWithTreeControl>(this, riid, ppvObject)
 			|| TryQI<IXmlParent>(this, riid, ppvObject)
 			//|| TryQI<IVsProjectBuildSystem>(this, riid, ppvObject)
@@ -962,6 +961,7 @@ public:
 				|| propid == VSHPROPID_OpenFolderIconHandle       // -2014
 				|| propid == VSHPROPID_OpenFolderIconIndex        // -2015
 				|| propid == VSHPROPID_AltHierarchy               // -2019
+				|| propid == VSHPROPID_SortPriority               // -2022 - requested when reverting in Git an open project file
 				|| propid == VSHPROPID_ExtObject                  // -2027
 				|| propid == VSHPROPID_StateIconIndex             // -2029
 				|| propid == VSHPROPID_ConfigurationProvider      // -2036
@@ -2214,23 +2214,6 @@ public:
 		//}
 
 		//RETURN_HR(E_NOTIMPL);
-	}
-	#pragma endregion
-
-	#pragma region IVsPersistHierarchyItem2
-	virtual HRESULT STDMETHODCALLTYPE IsItemReloadable (VSITEMID itemid, BOOL *pfReloadable) override
-	{
-		RETURN_HR(E_NOTIMPL);
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE ReloadItem (VSITEMID itemid, DWORD dwReserved) override
-	{
-		RETURN_HR(E_NOTIMPL);
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE IgnoreItemFileChanges (VSITEMID itemid, BOOL fIgnore) override
-	{
-		RETURN_HR(E_NOTIMPL);
 	}
 	#pragma endregion
 
