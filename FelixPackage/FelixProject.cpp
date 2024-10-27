@@ -869,23 +869,14 @@ public:
 			if (propid == VSHPROPID_Caption) // -2003
 				return InitVariantFromString (_caption.get(), pvar);
 
-			if (propid == VSHPROPID_IconIndex) // -2005
-				return E_NOTIMPL;
-
 			if (propid == VSHPROPID_Expandable) // -2006
 				return InitVariantFromBoolean (_firstChild ? TRUE : FALSE, pvar);
 
+			if (propid == VSHPROPID_ExpandByDefault) // -2011
+				return InitVariantFromBoolean (TRUE, pvar);
+
 			if (propid == VSHPROPID_Name) // -2012
 				return InitVariantFromString (_filename.get(), pvar);
-
-			if (propid == VSHPROPID_IconHandle) // -2013
-				return E_NOTIMPL;
-
-			if (propid == VSHPROPID_OpenFolderIconHandle) // -2014
-				return E_NOTIMPL;
-
-			if (propid == VSHPROPID_OpenFolderIconIndex) // -2015
-				return E_NOTIMPL;
 
 			if (propid == VSHPROPID_BrowseObject) // -2018
 			{
@@ -898,6 +889,9 @@ public:
 				return S_OK;
 			}
 
+			if (propid == VSHPROPID_ProjectDir) //-2021
+				return InitVariantFromString (_location.get(), pvar);
+
 			if (propid == VSHPROPID_EditLabel) // -2026,
 			{
 				const wchar_t* ext = ::PathFindExtension(_filename.get());
@@ -907,11 +901,8 @@ public:
 				return S_OK;
 			}
 
-			if (propid == VSHPROPID_ExtObject) // -2027
-				return E_NOTIMPL;
-
-			if (propid == VSHPROPID_StateIconIndex) // -2029
-				return E_NOTIMPL;
+			if (propid == VSHPROPID_TypeName) // -2030
+				return InitVariantFromString (L"Z80", pvar); // Called by 17.11.5 from Help -> About.
 
 			if (propid == VSHPROPID_HandlesOwnReload) // -2031
 				return InitVariantFromBoolean (FALSE, pvar);
@@ -919,20 +910,23 @@ public:
 			if (propid == VSHPROPID_ItemDocCookie) // -2034
 				return InitVariantFromInt32 (_itemDocCookie, pvar);
 
-			if (propid == VSHPROPID_FirstVisibleChild) // -2041
-				return E_NOTIMPL; // We show all children, so no need to handle this.
-
 			if (propid == VSHPROPID_IsHiddenItem) // -2043
 				return InitVariantFromBoolean (FALSE, pvar);
 
 			if (propid == VSHPROPID_IsNonLocalStorage) // -2045
 				return InitVariantFromBoolean (FALSE, pvar);
 
-			if (propid == VSHPROPID_OverlayIconIndex) // -2048
-				return E_NOTIMPL;
+			if (propid == VSHPROPID_IsNonSearchable) // -2051
+				return InitVariantFromBoolean (TRUE, pvar);
 
 			if (propid == VSHPROPID_CanBuildFromMemory) // -2053
 				return InitVariantFromBoolean (FALSE, pvar);
+
+			if (propid == VSHPROPID_IsNewUnsavedItem) // -2057
+				return InitVariantFromBoolean (FALSE, pvar);
+
+			if (propid == VSHPROPID_ShowOnlyItemCaption) // -2058
+				return InitVariantFromBoolean (TRUE, pvar);
 
 			if (propid == VSHPROPID_HasEnumerationSideEffects) // -2062
 				return InitVariantFromBoolean (FALSE, pvar);
@@ -943,12 +937,6 @@ public:
 			if (propid == VSHPROPID_DefaultEnableDeployProjectCfg) // -2064
 				return InitVariantFromBoolean (FALSE, pvar);
 
-			if (propid == VSHPROPID_StatusBarClientText) // -2072
-				return E_NOTIMPL;
-
-			if (propid == VSHPROPID_DebuggeeProcessId) // -2073
-				return E_NOTIMPL;
-
 			// See the related VSHPROPID_ProjectDesignerEditor.
 			if (propid == VSHPROPID_SupportsProjectDesigner) // -2076
 				return InitVariantFromBoolean (FALSE, pvar);
@@ -956,102 +944,58 @@ public:
 			if (propid == VSHPROPID_EnableDataSourceWindow) // -2083
 				return InitVariantFromBoolean (FALSE, pvar);
 
-			if (propid == VSHPROPID_DebuggerSourcePaths) // -2085
-				return E_NOTIMPL;
-
-			if (propid == VSHPROPID_NoDefaultNestedHierSorting) // -2090,
-				return E_NOTIMPL; // Default should be good enough
-
-			if (propid == VSHPROPID_ProductBrandName) // -2099,
-				return E_NOTIMPL; // Default should be good enough
-
-			if (propid == VSHPROPID_TargetFrameworkMoniker) // -2102
-				return E_NOTIMPL; // We'll never support this
-
-			if (propid == VSHPROPID_ExternalItem) // -2103
-				return E_NOTIMPL; // MPF doesn't implement this
-
 			if (propid == VSHPROPID_TargetPlatformIdentifier) // -2114
 				return InitVariantFromString (L"ZX Spectrum", pvar);
 
 			if (propid == VSHPROPID_TargetPlatformVersion) // -2115
 				return InitVariantFromString (L"100K", pvar);
 
-			if (propid == VSHPROPID_TargetRuntime) // -2116
-				return E_NOTIMPL; // We'll never support this as it has values only for JS, CLR, Native
-
-			if (propid == VSHPROPID_AppContainer) // -2117
-				return E_NOTIMPL; // Something about .Net
-
 			if (propid == VSHPROPID_IsFaulted) // -2122
 				return InitVariantFromBoolean (FALSE, pvar);
-
-			if (propid == VSHPROPID_ProjectCapabilities) // -2124
-				return E_NOTIMPL; // MPF doesn't implement this
 
 			if (propid == VSHPROPID_MonikerSameAsPersistFile) // -2130
 				return InitVariantFromBoolean (TRUE, pvar);
 
-			if (propid == VSHPROPID_ProjectRetargeting) // -2134
-				return E_NOTIMPL; // We won't be supporting IVsRetargetProject
-
-			if (propid == VSHPROPID_Subcaption) // -2136
-				return E_NOTIMPL; // This is shown on the project node between parentheses after the project name.
-
-			if (propid == VSHPROPID_ProjectTreeCapabilities) // -2146
-				return E_NOTIMPL; // MPF doesn't implement this, so we'll probably not implement it either
-
-			if (propid == VSHPROPID_OneAppCapabilities) // -2149
-				return E_NOTIMPL; // Virtually no info about this one. We probably don't need it.
-
-			if (propid == VSHPROPID_SupportsIconMonikers) // -2159
-				return E_NOTIMPL;
-
-			if (propid == VSHPROPID_ProjectCapabilitiesChecker) // -2173
-				return E_NOTIMPL;
-
-			if (propid == VSHPROPID_ExpandByDefault) // -2011
-				return InitVariantFromBoolean (TRUE, pvar);
-
-			if (propid == VSHPROPID_ProjectDir) //-2021
-				return InitVariantFromString (_location.get(), pvar);
-
-			if (propid == VSHPROPID_OutputType) // -2118
-				return E_NOTIMPL; // "This property is optional."
-
-			if (propid == VSHPROPID_TypeName) // -2030
-				return InitVariantFromString (L"Z80", pvar); // Called by 17.11.5 from Help -> About.
-
-			if (propid == VSHPROPID_ImplantHierarchy) // -2037
-				return E_NOTIMPL; // "This property is optional."
-
-			if (propid == VSHPROPID_DemandLoadDependencies) // -2121
-				return E_NOTIMPL; // Much later, if ever
-
-			if (propid == VSHPROPID_IsNonSearchable) // -2051
-				return InitVariantFromBoolean (TRUE, pvar);
-
-			if (propid == VSHPROPID_IsNewUnsavedItem) // -2057
-				return InitVariantFromBoolean (FALSE, pvar);
-
-			if (propid == VSHPROPID_ShowOnlyItemCaption) // -2058
-				return InitVariantFromBoolean (TRUE, pvar);
-
-			if (propid == VSHPROPID_CanBuildQuickCheck) // -2156
-				return E_NOTIMPL; // Much later, if ever
-
-			if (propid == VSHPROPID_SharedAssetsProject // -2153
+			#ifdef _DEBUG
+			if (   propid == VSHPROPID_IconIndex                  // -2005
+				|| propid == VSHPROPID_IconHandle                 // -2013
+				|| propid == VSHPROPID_OpenFolderIconHandle       // -2014
+				|| propid == VSHPROPID_OpenFolderIconIndex        // -2015
+				|| propid == VSHPROPID_AltHierarchy               // -2019
+				|| propid == VSHPROPID_ExtObject                  // -2027
+				|| propid == VSHPROPID_StateIconIndex             // -2029
+				|| propid == VSHPROPID_ConfigurationProvider      // -2036
+				|| propid == VSHPROPID_ImplantHierarchy           // -2037 - "This property is optional."
+				|| propid == VSHPROPID_FirstVisibleChild          // -2041 - We show all children, so no need to handle this.
+				|| propid == VSHPROPID_OverlayIconIndex           // -2048
+				|| propid == VSHPROPID_StatusBarClientText        // -2072
+				|| propid == VSHPROPID_DebuggeeProcessId          // -2073
+				|| propid == VSHPROPID_DebuggerSourcePaths        // -2085
+				|| propid == VSHPROPID_NoDefaultNestedHierSorting // -2090 - Default should be good enough
+				|| propid == VSHPROPID_ProductBrandName           // -2099 - Default should be good enough
+				|| propid == VSHPROPID_TargetFrameworkMoniker     // -2102 - We'll never support this
+				|| propid == VSHPROPID_ExternalItem               // -2103 - MPF doesn't implement this
+				|| propid == VSHPROPID_DescriptiveName            // -2108
+				|| propid == VSHPROPID_ProvisionalViewingStatus   // -2112
+				|| propid == VSHPROPID_TargetRuntime              // -2116 - We'll never support this as it has values only for JS, CLR, Native
+				|| propid == VSHPROPID_AppContainer               // -2117 - Something about .Net
+				|| propid == VSHPROPID_OutputType                 // -2118 - "This property is optional."
+				|| propid == VSHPROPID_ProjectUnloadStatus        // -2120
+				|| propid == VSHPROPID_DemandLoadDependencies     // -2121 - Much later, if ever
+				|| propid == VSHPROPID_ProjectCapabilities        // -2124 - MPF doesn't implement this
+				|| propid == VSHPROPID_ProjectRetargeting         // -2134 - We won't be supporting IVsRetargetProject
+				|| propid == VSHPROPID_Subcaption                 // -2136 - This is shown on the project node between parentheses after the project name.
 				|| propid == VSHPROPID_SharedItemsImportFullPaths // -2145
-				|| propid == VSHPROPID_ProjectUnloadStatus // -2120
-				|| propid == VSHPROPID_AltHierarchy // -2019
-				|| propid == VSHPROPID_DescriptiveName // -2108
-				|| propid == VSHPROPID_ProvisionalViewingStatus // -2112
-				|| propid == -9089 // VSHPROPID_SlowEnumeration
-				|| propid == VSHPROPID_ConfigurationProvider // -2036
+				|| propid == VSHPROPID_ProjectTreeCapabilities    // -2146 - MPF doesn't implement this, so we'll probably not implement it either
+				|| propid == VSHPROPID_OneAppCapabilities         // -2149 - Virtually no info about this one. We probably don't need it.
+				|| propid == VSHPROPID_SharedAssetsProject        // -2153
+				|| propid == VSHPROPID_CanBuildQuickCheck         // -2156 - Much later, if ever
+				|| propid == VSHPROPID_SupportsIconMonikers       // -2159
+				|| propid == VSHPROPID_ProjectCapabilitiesChecker // -2173
+				|| propid == -9089 // VSHPROPID_SlowEnumeration   // -9089
 			)
 				return E_NOTIMPL;
 
-			#ifdef _DEBUG
 			RETURN_HR(E_NOTIMPL);
 			#else
 			return E_NOTIMPL;
