@@ -38,6 +38,7 @@ class Z80Project
 	, IProjectItemParent
 	, IPropertyNotifySink
 	, IVsHierarchyEvents // this implementation only forwards calls to subscribed sinks
+	, IVsPerPropertyBrowsing
 {
 	wil::com_ptr_nothrow<IServiceProvider> _sp;
 	ULONG _refCount = 0;
@@ -614,6 +615,7 @@ public:
 			|| TryQI<IProjectItemParent>(this, riid, ppvObject)
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
 			|| TryQI<IVsHierarchyEvents>(this, riid, ppvObject)
+			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -696,7 +698,6 @@ public:
 			return E_NOINTERFACE;
 
 		if (   riid == IID_IPerPropertyBrowsing
-			|| riid == IID_IVsPerPropertyBrowsing
 //			|| riid == IID_IVSMDPerPropertyBrowsing
 			//|| riid == IID_IProvidePropertyBuilder
 			|| riid == IID_IVsFilterAddProjectItemDlg
@@ -2475,6 +2476,39 @@ public:
 		RETURN_HR(E_NOTIMPL);
 	}
 	#pragma endregion
+
+	#pragma region IVsPerPropertyBrowsing
+	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL *pfHide) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE DisplayChildProperties (DISPID dispid, BOOL *pfDisplay) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE GetLocalizedPropertyInfo (DISPID dispid, LCID localeID, BSTR *pbstrLocalizedName, BSTR *pbstrLocalizeDescription) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE HasDefaultValue (DISPID dispid, BOOL *fDefault) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE IsPropertyReadOnly (DISPID dispid, BOOL *fReadOnly) override
+	{
+		if (dispid == dispidProjectGuid)
+		{
+			*fReadOnly = TRUE;
+			return S_OK;
+		}
+
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetClassName (BSTR *pbstrClassName) override
+	{
+		// Shown by VS at the top of the Properties Window.
+		*pbstrClassName = SysAllocString(L"Project");
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE CanResetPropertyValue (DISPID dispid, BOOL* pfCanReset) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE ResetPropertyValue (DISPID dispid) override { return E_NOTIMPL; }
+	#pragma endregion
+
 };
 
 HRESULT MakeFelixProject (IServiceProvider* sp, LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject)

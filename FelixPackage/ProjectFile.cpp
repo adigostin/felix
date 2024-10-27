@@ -758,7 +758,6 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE CanResetPropertyValue (DISPID dispid, BOOL* pfCanReset) override { return E_NOTIMPL; }
 
 	virtual HRESULT STDMETHODCALLTYPE ResetPropertyValue (DISPID dispid) override { return E_NOTIMPL; }
-
 	#pragma endregion
 
 	HRESULT RenameFile (BSTR newName)
