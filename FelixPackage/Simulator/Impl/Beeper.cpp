@@ -39,7 +39,7 @@ public:
 
 		bool pushed = _io_bus->write_responders.try_push_back({ this, &process_io_write_request }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 
-		auto hr = XAudio2Create (&_xaudio2, 0, XAUDIO2_USE_DEFAULT_PROCESSOR); RETURN_IF_FAILED(hr);
+		auto hr = XAudio2Create (&_xaudio2, 0, XAUDIO2_DEFAULT_PROCESSOR); RETURN_IF_FAILED(hr);
 		
 		//XAUDIO2_DEBUG_CONFIGURATION xadc = { };
 		//xadc.TraceMask = XAUDIO2_LOG_WARNINGS | XAUDIO2_LOG_DETAIL;
@@ -72,8 +72,17 @@ public:
 
 	~Beeper()
 	{
-		_source_voice->DestroyVoice(); _source_voice = nullptr;
-		_mastering_voice->DestroyVoice(); _mastering_voice = nullptr;
+		if (_source_voice)
+		{
+			_source_voice->DestroyVoice();
+			_source_voice = nullptr;
+		}
+
+		if (_mastering_voice)
+		{
+			_mastering_voice->DestroyVoice();
+			_mastering_voice = nullptr;
+		}
 	}
 
 	#pragma region IDevice

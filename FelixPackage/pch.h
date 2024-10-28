@@ -2,7 +2,8 @@
 #pragma once
 
 #define STRICT
-#define _WIN32_WINNT  _WIN32_WINNT_WIN10
+#define _WIN32_WINNT    _WIN32_WINNT_WIN10
+#define NTDDI_VERSION   NTDDI_WIN10_RS5
 #define NOMINMAX // Windows Platform min and max macros cause problems for the Standard C++ Library
 #define WIN32_LEAN_AND_MEAN	// Exclude rarely-used stuff from the Windows Platform headers
 #define _COM_NO_STANDARD_GUIDS_
