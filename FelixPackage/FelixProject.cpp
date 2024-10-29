@@ -747,8 +747,11 @@ public:
 	{
 		_parentHierarchy = nullptr;
 		_parentHierarchyItemId = VSITEMID_NIL;
-		_firstChild->Close();
-		_firstChild = nullptr;
+		if (_firstChild)
+		{
+			_firstChild->Close();
+			_firstChild = nullptr;
+		}
 		_configs.clear();
 		_closed = true;
 		return S_OK;
