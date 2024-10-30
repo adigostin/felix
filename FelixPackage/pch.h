@@ -63,6 +63,7 @@
 #include <venuscmddef.h>
 #include <sccmnid.h>
 #include <vsshlids.h>
+#include <sharedids.h>
 
 // WIL
 #define RESULT_DIAGNOSTICS_LEVEL 4

@@ -1,8 +1,6 @@
 
+import "docobj.idl";
 #include "dispids.h"
-
-import "servprov.idl";
-import "ocidl.idl";
 
 //cpp_quote("#ifdef __midl")
 typedef DWORD VSITEMID;
@@ -96,6 +94,8 @@ library ATLProject1Lib
 		HRESULT GetCanonicalName (BSTR* pbstrName); // returns the path relative to project if possible, otherwise the full path -- all lowercase
 		HRESULT IsItemDirty (IUnknown *punkDocData, BOOL *pfDirty);
 		HRESULT Close();
+		HRESULT QueryStatus (const GUID* pguidCmdGroup, ULONG cCmds, OLECMD prgCmds[], OLECMDTEXT *pCmdText);
+		HRESULT Exec (const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT* pvaIn, VARIANT* pvaOut);
 	}
 
 	[object, uuid(D930CCA1-E515-4569-8DC6-959CD6367654), nonextensible, pointer_default(unique)]

@@ -972,6 +972,7 @@ public:
 				|| propid == VSHPROPID_ImplantHierarchy           // -2037 - "This property is optional."
 				|| propid == VSHPROPID_FirstVisibleChild          // -2041 - We show all children, so no need to handle this.
 				|| propid == VSHPROPID_OverlayIconIndex           // -2048
+				|| propid == VSHPROPID_ShowProjInSolutionPage     // -2055
 				|| propid == VSHPROPID_StatusBarClientText        // -2072
 				|| propid == VSHPROPID_DebuggeeProcessId          // -2073
 				|| propid == VSHPROPID_DebuggerSourcePaths        // -2085
@@ -1286,11 +1287,7 @@ public:
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
 
 		if (auto d = FindDescendant(itemid))
-		{
-			wil::com_ptr_nothrow<IOleCommandTarget> ct;
-			auto hr = d->QueryInterface(&ct); RETURN_IF_FAILED(hr);
-			return ct->QueryStatus (pguidCmdGroup, cCmds, prgCmds, pCmdText);
-		}
+			return d->QueryStatus (pguidCmdGroup, cCmds, prgCmds, pCmdText);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
@@ -1304,13 +1301,7 @@ public:
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
 
 		if (auto d = FindDescendant(itemid))
-		{
-			wil::com_ptr_nothrow<IOleCommandTarget> ct;
-			auto hr = d->QueryInterface(&ct);
-			if (FAILED(hr))
-				return hr;
-			return ct->Exec (pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
-		}
+			return d->Exec (pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
