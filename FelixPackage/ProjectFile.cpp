@@ -580,11 +580,6 @@ public:
 			//)
 			//	return OLECMDERR_E_NOTSUPPORTED;
 
-			if (nCmdID == cmdidBuildSel)
-			{
-				return OLECMDERR_E_NOTSUPPORTED;
-			}
-			
 			if (nCmdID == cmdidOpen) // 261
 			{
 				com_ptr<IVsProject2> vsp;

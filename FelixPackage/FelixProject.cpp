@@ -528,20 +528,6 @@ public:
 
 		if (*pguidCmdGroup == GUID_VsUIHierarchyWindowCmds)
 		{
-			if (nCmdID == UIHWCMDID_RightClick)
-			{
-				POINTS pts;
-				memcpy (&pts, &pvaIn->uintVal, 4);
-
-				wil::com_ptr_nothrow<IVsUIShell> shell;
-				auto hr = _sp->QueryService(SID_SVsUIShell, &shell);
-				if (FAILED(hr))
-					return hr;
-
-				return shell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_PROJNODE, pts, this);
-			}
-
-			//BreakIntoDebugger();
 			return OLECMDERR_E_NOTSUPPORTED;
 		}
 
@@ -1283,8 +1269,8 @@ public:
 		if (itemid == VSITEMID_ROOT)
 			return QueryStatus (pguidCmdGroup, cCmds, prgCmds, pCmdText);
 
-		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
-		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
+		RETURN_HR_IF_EXPECTED(OLECMDERR_E_NOTSUPPORTED, itemid == VSITEMID_SELECTION);
+		RETURN_HR_IF_EXPECTED(OLECMDERR_E_NOTSUPPORTED, itemid == VSITEMID_NIL);
 
 		if (auto d = FindDescendant(itemid))
 			return d->QueryStatus (pguidCmdGroup, cCmds, prgCmds, pCmdText);
@@ -1294,16 +1280,93 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE ExecCommand (VSITEMID itemid, const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT* pvaIn, VARIANT* pvaOut) override
 	{
+		// Some commands such as UIHWCMDID_RightClick apply to items of all kinds.
+		if (*pguidCmdGroup == GUID_VsUIHierarchyWindowCmds && nCmdID == UIHWCMDID_RightClick)
+			return ShowContextMenu(itemid, pvaIn);
+
 		if (itemid == VSITEMID_ROOT)
 			return ExecInternal (pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
 
-		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
-		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
+		// We need to return OLECMDERR_E_NOTSUPPORTED. If we return something else, VS won't like it.
+		// For example, if the user selects two project items in the Solution Explorer and hits Escape,
+		// and if we return E_NOTIMPL for VSITEMID_SELECTION, VS will say "operation cannot be completed".
+		RETURN_HR_IF_EXPECTED(OLECMDERR_E_NOTSUPPORTED, itemid == VSITEMID_SELECTION);
+		RETURN_HR_IF_EXPECTED(OLECMDERR_E_NOTSUPPORTED, itemid == VSITEMID_NIL);
 
 		if (auto d = FindDescendant(itemid))
 			return d->Exec (pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
+	}
+
+	HRESULT ShowContextMenu (VSITEMID itemid, const VARIANT* pvaIn)
+	{
+		POINTS pts;
+		memcpy (&pts, &pvaIn->uintVal, 4);
+
+		com_ptr<IVsUIShell> shell;
+		auto hr = _sp->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
+
+		if (itemid == VSITEMID_ROOT)
+		{
+			return shell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_PROJNODE, pts, nullptr);
+		}
+		else if (itemid == VSITEMID_SELECTION)
+		{
+			// It seems if we have any kind of selection across multiple projects/hierachies in a solution,
+			// the right-click is handled somewhere else, so we get here only with selections from 
+			// a single project/hierarchy. This means GetCurrentSelection returns non-null in first parameter.
+			com_ptr<IVsMonitorSelection> monsel;
+			auto hr = serviceProvider->QueryService(SID_SVsShellMonitorSelection, &monsel); RETURN_IF_FAILED(hr);
+			com_ptr<IVsHierarchy> hier;
+			VSITEMID selitemid;
+			com_ptr<IVsMultiItemSelect> mis;
+			com_ptr<ISelectionContainer> sc;
+			hr = monsel->GetCurrentSelection (&hier, &selitemid, &mis, &sc); RETURN_IF_FAILED(hr);
+			RETURN_HR_IF_NULL_EXPECTED(E_NOTIMPL, hier);
+			RETURN_HR_IF_EXPECTED(E_NOTIMPL, selitemid != VSITEMID_SELECTION);
+			ULONG cItems;
+			BOOL singleHier;
+			hr = mis->GetSelectionInfo(&cItems, &singleHier); RETURN_IF_FAILED(hr);
+			RETURN_HR_IF_EXPECTED(E_NOTIMPL, !singleHier);
+			auto items = wil::make_unique_nothrow<VSITEMSELECTION[]>(cItems); RETURN_IF_NULL_ALLOC(items);
+			hr = mis->GetSelectedItems (GSI_fOmitHierPtrs, cItems, items.get()); RETURN_IF_FAILED(hr);
+			bool projectNodeIncluded = false;
+			ULONG fileNodesIncluded = 0;
+			for (ULONG i = 0; i < cItems; i++)
+			{
+				if (items[i].itemid == VSITEMID_ROOT)
+					projectNodeIncluded = true;
+				else
+				{
+					if (auto d = FindDescendant(items[i].itemid))
+					{
+						if (wil::try_com_query_nothrow<IProjectFile>(d))
+							fileNodesIncluded++;
+					}
+				}
+			}
+
+			if (projectNodeIncluded && !fileNodesIncluded)
+				return shell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_PROJNODE, pts, nullptr);
+			else if (projectNodeIncluded && fileNodesIncluded)
+				return shell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_XPROJ_PROJITEM, pts, nullptr);
+			else if (!projectNodeIncluded && fileNodesIncluded)
+				return shell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_XPROJ_MULTIITEM, pts, nullptr);
+			return E_NOTIMPL;
+		}
+		else
+		{
+			if (auto d = com_ptr(FindDescendant(itemid)))
+			{
+				if (auto file = wil::try_com_query_nothrow<IProjectFile>(d))
+					return shell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_ITEMNODE, pts, nullptr);
+
+				return E_NOTIMPL;
+			}
+			else
+				return E_INVALIDARG;
+		}
 	}
 	#pragma endregion
 
