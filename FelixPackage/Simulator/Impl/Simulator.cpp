@@ -1,7 +1,6 @@
 
 #include "pch.h"
-#include "../Simulator.h"
-#include "Bus.h"
+#include "SimulatorInternal.h"
 #include "Z80CPU.h"
 #include "shared/unordered_map_nothrow.h"
 #include "shared/com.h"
@@ -218,7 +217,11 @@ public:
 			for (auto& d : _active_devices_)
 			{
 				if (d->Time() < time)
-					advanced |= d->SimulateTo(time);
+				{
+					uint64_t timeBefore = d->Time();
+					d->SimulateTo(time);
+					advanced |= (d->Time() > timeBefore);
+				}
 			}
 
 			if (!advanced)
@@ -341,8 +344,9 @@ public:
 					WI_ASSERT(device_to_sync_on);
 					if (device_to_sync_on->Time() < time_to_sync_to_ + 1)
 					{
-						bool res = device_to_sync_on->SimulateTo(time_to_sync_to_ + 1);
-						WI_ASSERT(res);
+						uint64_t timeBefore = device_to_sync_on->Time();
+						device_to_sync_on->SimulateTo(time_to_sync_to_ + 1);
+						WI_ASSERT(device_to_sync_on->Time() > timeBefore);
 					}
 					break;
 

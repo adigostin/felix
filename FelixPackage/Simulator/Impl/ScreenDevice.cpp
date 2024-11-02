@@ -1,6 +1,6 @@
 
 #include "pch.h"
-#include "Bus.h"
+#include "SimulatorInternal.h"
 #include <optional>
 
 // http://www.zxdesign.info/vidparam.shtml
@@ -129,7 +129,7 @@ public:
 		return (uint32_t*)bi->bmiColors + (screen_height - 1 - row) * screen_width + col;
 	}
 
-	virtual bool SimulateTo (UINT64 requested_time) override
+	virtual void SimulateTo (UINT64 requested_time) override
 	{
 		WI_ASSERT (_time < requested_time);
 
@@ -159,7 +159,7 @@ public:
 					if (requested_offset < offset_to_irq)
 					{
 						_time = requested_time;
-						return true;
+						return;
 					}
 
 					_time += offset_to_irq;
@@ -175,7 +175,7 @@ public:
 				if (requested_offset <= offset_to_border_row_0)
 				{
 					_time = requested_time;
-					return true;
+					return;
 				}
 
 				_time += offset_to_border_row_0;
@@ -193,7 +193,7 @@ public:
 				if (requested_offset <= offset_to_border_col_0)
 				{
 					_time = requested_time;
-					return true;
+					return;
 				}
 
 				_time += offset_to_border_col_0;
@@ -205,14 +205,14 @@ public:
 				// left border from top of screen to bottom of screen
 				WI_ASSERT (requested_time - _time < max_time_offset);
 				if (!try_read_border_color(argb))
-					return _time != initial_time;
+					return;
 				uint32_t* dest_pixel = get_dest_pixel (_screenData.get(), row - vsync_row_count, (col - hsync_col_count) * 2);
 				dest_pixel[0] = argb;
 				dest_pixel[1] = argb;
 				col++;
 				_time++;
 				if (_time == requested_time)
-					return true;
+					return;
 			}
 
 			if (col < hsync_col_count + border_size_left_ticks + 128)
@@ -226,14 +226,14 @@ public:
 					{
 						WI_ASSERT (requested_time - _time < max_time_offset);
 						if (!try_read_border_color(argb))
-							return _time != initial_time;
+							return;
 						uint32_t* dest_pixel = get_dest_pixel (_screenData.get(), row - vsync_row_count, (col - hsync_col_count) * 2);
 						dest_pixel[0] = argb;
 						dest_pixel[1] = argb;
 						col++;
 						_time++;
 						if (_time == requested_time)
-							return true;
+							return;
 					}
 				}
 				else
@@ -255,9 +255,9 @@ public:
 						
 						uint8_t data, attr;
 						if (!memory->try_read_request(src_pixel_data, data, _time))
-							return _time != initial_time;
+							return;
 						if (!memory->try_read_request(src_pixel_attr, attr, _time))
-							return _time != initial_time;
+							return;
 						//data = memory->read(src_pixel_data);
 						//attr = memory->read(src_pixel_attr);
 
@@ -275,7 +275,7 @@ public:
 						col += 4;
 						_time += 4;
 						if (requested_offset <= 4)
-							return true;
+							return;
 					}
 				}
 			}
@@ -284,7 +284,7 @@ public:
 			{
 				// right border from top of screen to bottom of screen
 				if (!try_read_border_color(argb))
-					return _time != initial_time;
+					return;
 				uint32_t* dest_pixel = get_dest_pixel (_screenData.get(), row - vsync_row_count, (col - hsync_col_count) * 2);
 				dest_pixel[0] = argb;
 				dest_pixel[1] = argb;
@@ -295,7 +295,7 @@ public:
 				col++;
 				_time++;
 				if (_time == requested_time)
-					return true;
+					return;
 			}
 
 			WI_ASSERT(col == ticks_per_row);

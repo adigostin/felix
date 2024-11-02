@@ -101,7 +101,7 @@ public:
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { return FALSE; }
 
-	virtual bool SimulateTo (UINT64 requested_time) override
+	virtual void SimulateTo (UINT64 requested_time) override
 	{
 		WI_ASSERT (_time < requested_time);
 
@@ -113,7 +113,7 @@ public:
 		while (_time < requested_time)
 		{
 			if (_io_bus->writer_behind_of(_time))
-				return _time > initial_time;
+				return;
 
 			// TODO: after a long pause, send a first buffer with double the normal size and double the normal delay.
 			// If we send this first buffer with the normal size and the normal delay,
@@ -169,8 +169,6 @@ public:
 
 			_time += increment;
 		}
-
-		return _time > initial_time;
 	}
 	#pragma endregion
 

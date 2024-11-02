@@ -9,11 +9,7 @@ struct DECLSPEC_NOVTABLE IDevice
 	virtual void Reset() = 0;
 	virtual uint64_t Time() = 0;
 	virtual BOOL NeedSyncWithRealTime (UINT64* sync_time) = 0;
-
-	// Returns true if it simulated something (thus advancing the device's time),
-	// even if it couldn't simulate to the "requested_time".
-	// Returs false if it couldn't simulate anything (thus the device's time didn't change).
-	virtual bool SimulateTo (UINT64 requested_time) = 0;
+	virtual void SimulateTo (UINT64 requested_time) = 0;
 };
 
 struct BreakpointsHit
@@ -194,7 +190,9 @@ struct DECLSPEC_NOVTABLE Bus
 				// in case the device is blocked on some other device that's also blocked.
 				// This kind of scenario is taken care of in the simulator class.
 
-				bool advanced = d.Device->SimulateTo(requested_time);
+				uint64_t timeBefore = d.Device->Time();
+				d.Device->SimulateTo(requested_time);
+				bool advanced = d.Device->Time() > timeBefore;
 				if (!advanced || (d.Device->Time() < requested_time))
 					return false;
 			}
@@ -214,7 +212,9 @@ struct DECLSPEC_NOVTABLE Bus
 			if (d.Device->Time() < requested_time)
 			{
 				// Comment from try_read_request applies here too.
-				bool advanced = d.Device->SimulateTo(requested_time);
+				uint64_t timeBefore = d.Device->Time();
+				d.Device->SimulateTo(requested_time);
+				bool advanced = d.Device->Time() > timeBefore;
 				if (!advanced || (d.Device->Time() < requested_time))
 					return false;
 			}

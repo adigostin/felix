@@ -1639,9 +1639,9 @@ public:
 
 	virtual BOOL NeedSyncWithRealTime (UINT64* sync_time) override { return false; }
 
-	virtual bool SimulateTo (UINT64 requested_time) override
+	virtual void SimulateTo (UINT64 requested_time) override
 	{
-		WI_ASSERT(false); return { };
+		WI_ASSERT(false);
 	}
 
 	virtual void Reset() override

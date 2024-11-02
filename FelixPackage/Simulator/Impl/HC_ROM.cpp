@@ -58,14 +58,13 @@ public:
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { return FALSE; }
 
-	virtual bool SimulateTo (UINT64 requested_time) override
+	virtual void SimulateTo (UINT64 requested_time) override
 	{
 		// Only a bus write can change the state of this device. If there are still write-capable devices
 		// whose timepoint is in the timespan we want to jump over (_time to requested_time), we can't jump.
 		if (_io_bus->writer_behind_of(requested_time))
-			return false;
+			return;
 		_time = requested_time;
-		return true;
 	}
 
 	static uint8_t process_mem_read_request (IDevice* d, uint16_t address)

@@ -28,7 +28,7 @@ struct keyboard : IKeyboardDevice
 		memset (keys_down, 0, sizeof(keys_down));
 	}
 
-	virtual bool SimulateTo (UINT64 requested_time) override
+	virtual void SimulateTo (UINT64 requested_time) override
 	{
 		// For testing purposes: The combination 1F9Y causes a hard crash on the simulator thread.
 		if ((keys_down[3] & 1) && (keys_down[1] & 8) && (keys_down[4] & 2) && (keys_down[5] & 16))
@@ -36,7 +36,6 @@ struct keyboard : IKeyboardDevice
 
 		WI_ASSERT (_time < requested_time);
 		_time = requested_time;
-		return true;
 	}
 
 	virtual UINT64 STDMETHODCALLTYPE Time() override
