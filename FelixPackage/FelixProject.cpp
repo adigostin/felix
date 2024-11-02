@@ -204,7 +204,7 @@ public:
 			_caption = wil::make_hlocal_string_nothrow(fn, ext - fn); RETURN_IF_NULL_ALLOC(_caption);
 
 			com_ptr<IStream> stream;
-			auto hr = SHCreateStreamOnFileEx(pszFilename, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, 0, nullptr, &stream); RETURN_IF_FAILED(hr);
+			auto hr = SHCreateStreamOnFileEx(pszFilename, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, 0, nullptr, &stream); RETURN_IF_FAILED_EXPECTED(hr);
 			hr = LoadFromXml (this, ProjectElementName, stream.get()); RETURN_IF_FAILED(hr);
 
 			_isDirty = false;

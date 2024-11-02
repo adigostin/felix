@@ -49,7 +49,7 @@ public:
 		*ppvProject = nullptr;
 		*pfCanceled = TRUE;
 
-		auto hr = MakeFelixProject (_sp.get(), pszFilename, pszLocation, pszName, grfCreateFlags, iidProject, ppvProject); RETURN_IF_FAILED(hr);
+		auto hr = MakeFelixProject (_sp.get(), pszFilename, pszLocation, pszName, grfCreateFlags, iidProject, ppvProject); RETURN_IF_FAILED_EXPECTED(hr);
 	
 		*pfCanceled = FALSE;
 		return S_OK;
