@@ -1,7 +1,7 @@
 
 #pragma once
 #include "shared/z80_register_set.h"
-#include "Bus.h"
+#include "SimulatorInternal.h"
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{97DCFDDE-9DCD-4FDB-A373-15FFB9EDF488}") IZ80CPU : ICPU
 {

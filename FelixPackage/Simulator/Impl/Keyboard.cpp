@@ -1,6 +1,6 @@
 
 #include "pch.h"
-#include "Bus.h"
+#include "SimulatorInternal.h"
 
 struct keyboard : IKeyboardDevice
 {

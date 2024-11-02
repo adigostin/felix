@@ -197,7 +197,7 @@
     <ClInclude Include="dispids.h" />
     <ClInclude Include="Guids.h" />
     <ClInclude Include="pch.h" />
-    <ClInclude Include="Simulator\Impl\Bus.h" />
+    <ClInclude Include="Simulator\Impl\SimulatorInternal.h" />
     <ClInclude Include="Simulator\Simulator.h" />
     <ClInclude Include="Simulator\Impl\Z80CPU.h" />
     <ClInclude Include="FelixPackage.h" />

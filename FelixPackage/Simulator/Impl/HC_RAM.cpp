@@ -1,6 +1,6 @@
 
 #include "pch.h"
-#include "Bus.h"
+#include "SimulatorInternal.h"
 
 // TODO: split the RAM into two IMemoryDevice's, one for the video memory area, one for the rest.
 // This will allow the CPU to work on non-video memory for a long time, without having to wait for

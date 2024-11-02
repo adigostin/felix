@@ -1,6 +1,6 @@
 
 #include "pch.h"
-#include "Bus.h"
+#include "SimulatorInternal.h"
 #include <xaudio2.h>
 
 class Beeper : public IDevice, IXAudio2VoiceCallback

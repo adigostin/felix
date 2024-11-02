@@ -1,6 +1,6 @@
 
 #include "pch.h"
-#include "Bus.h"
+#include "SimulatorInternal.h"
 #include "shared/com.h"
 
 class HC_ROM : public IMemoryDevice
