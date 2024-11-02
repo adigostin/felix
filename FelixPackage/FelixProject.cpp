@@ -268,12 +268,11 @@ public:
 		return S_FALSE;
 	}
 	
-	IProjectItem* FindDescendant (VSITEMID itemid, IProjectItem** ppPrevSibling = nullptr, IProjectItemParent** ppParent = nullptr)
+	// Returns S_OK when found, S_FALSE when not found, error code when it couldn't search.
+	HRESULT FindDescendant (VSITEMID itemid, IProjectItem** ppFoundItem, IProjectItem** ppPrevSibling = nullptr, IProjectItemParent** ppParent = nullptr)
 	{
 		auto sameId = [itemid](IProjectItem* item) { return (item->GetItemId() == itemid) ? S_OK : S_FALSE; };
-		wil::com_ptr_nothrow<IProjectItem> item;
-		auto hr = FindDescendant(sameId, &item, ppPrevSibling, ppParent); WI_ASSERT(SUCCEEDED(hr));
-		return item.get();
+		return FindDescendant (sameId, ppFoundItem, ppPrevSibling, ppParent);
 	}
 
 	HRESULT QueryStatusInternal (const GUID* pguidCmdGroup, ULONG cmdID, __RPC__out DWORD* cmdf, __RPC__out OLECMDTEXT *pCmdText)
@@ -791,7 +790,8 @@ public:
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
 
-		if (auto d = FindDescendant(itemid))
+		com_ptr<IProjectItem> d;
+		if (FindDescendant(itemid, &d) == S_OK)
 			return d->GetGuidProperty(propid, pguid);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
@@ -819,7 +819,8 @@ public:
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
 
-		if (auto d = FindDescendant(itemid))
+		com_ptr<IProjectItem> d;
+		if (FindDescendant(itemid, &d) == S_OK)
 			return d->SetGuidProperty(propid, rguid);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
@@ -999,7 +1000,8 @@ public:
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
 
-		if (auto d = FindDescendant(itemid))
+		com_ptr<IProjectItem> d;
+		if (FindDescendant(itemid, &d) == S_OK)
 			return d->GetProperty(propid, pvar);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
@@ -1069,7 +1071,8 @@ public:
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
 
-		if (auto d = FindDescendant(itemid))
+		com_ptr<IProjectItem> d;
+		if (FindDescendant(itemid, &d) == S_OK)
 			return d->SetProperty(propid, var);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
@@ -1107,7 +1110,8 @@ public:
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
 
-		if (auto d = FindDescendant(itemid))
+		com_ptr<IProjectItem> d;
+		if (FindDescendant(itemid, &d) == S_OK)
 			return d->GetCanonicalName(pbstrName);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
@@ -1275,7 +1279,8 @@ public:
 		RETURN_HR_IF_EXPECTED(OLECMDERR_E_NOTSUPPORTED, itemid == VSITEMID_SELECTION);
 		RETURN_HR_IF_EXPECTED(OLECMDERR_E_NOTSUPPORTED, itemid == VSITEMID_NIL);
 
-		if (auto d = FindDescendant(itemid))
+		com_ptr<IProjectItem> d;
+		if (FindDescendant(itemid, &d) == S_OK)
 			return d->QueryStatus (pguidCmdGroup, cCmds, prgCmds, pCmdText);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
@@ -1296,7 +1301,8 @@ public:
 		RETURN_HR_IF_EXPECTED(OLECMDERR_E_NOTSUPPORTED, itemid == VSITEMID_SELECTION);
 		RETURN_HR_IF_EXPECTED(OLECMDERR_E_NOTSUPPORTED, itemid == VSITEMID_NIL);
 
-		if (auto d = FindDescendant(itemid))
+		com_ptr<IProjectItem> d;
+		if (FindDescendant(itemid, &d) == S_OK)
 			return d->Exec (pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
@@ -1342,7 +1348,8 @@ public:
 					projectNodeIncluded = true;
 				else
 				{
-					if (auto d = FindDescendant(items[i].itemid))
+					com_ptr<IProjectItem> d;
+					if (FindDescendant(items[i].itemid, &d) == S_OK)
 					{
 						if (wil::try_com_query_nothrow<IProjectFile>(d))
 							fileNodesIncluded++;
@@ -1360,7 +1367,8 @@ public:
 		}
 		else
 		{
-			if (auto d = com_ptr(FindDescendant(itemid)))
+			com_ptr<IProjectItem> d;
+			if (FindDescendant(itemid, &d) == S_OK)
 			{
 				if (auto file = wil::try_com_query_nothrow<IProjectFile>(d))
 					return shell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_ITEMNODE, pts, nullptr);
@@ -1539,7 +1547,8 @@ public:
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
 
-		if (auto d = FindDescendant(itemid))
+		com_ptr<IProjectItem> d;
+		if (FindDescendant(itemid, &d) == S_OK)
 			return d->GetMkDocument(pbstrMkDocument);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
@@ -1547,7 +1556,9 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE OpenItem(VSITEMID itemid, REFGUID rguidLogicalView, IUnknown* punkDocDataExisting, IVsWindowFrame** ppWindowFrame) override
 	{
-		auto d = FindDescendant(itemid); RETURN_HR_IF(E_INVALIDARG, d == nullptr);
+		com_ptr<IProjectItem> d;
+		if (FindDescendant(itemid, &d) != S_OK)
+			return E_INVALIDARG;
 
 		wil::unique_bstr mkDocument;
 		auto hr = d->GetMkDocument(&mkDocument); RETURN_IF_FAILED(hr);
@@ -1744,7 +1755,9 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE ReopenItem(VSITEMID itemid, REFGUID rguidEditorType, LPCOLESTR pszPhysicalView, REFGUID rguidLogicalView, IUnknown* punkDocDataExisting, IVsWindowFrame** ppWindowFrame) override
 	{
-		auto d = FindDescendant(itemid); RETURN_HR_IF(E_INVALIDARG, d == nullptr);
+		com_ptr<IProjectItem> d;
+		if (FindDescendant(itemid, &d) != S_OK)
+			return E_INVALIDARG;
 
 		wil::unique_bstr mkDocument;
 		auto hr = d->GetMkDocument(&mkDocument); RETURN_IF_FAILED(hr);
@@ -2170,9 +2183,11 @@ public:
 
 		for (ULONG i = 0; i < cItems; i++)
 		{
+			com_ptr<IProjectItem> d;
 			com_ptr<IProjectItem> prevSibling;
 			com_ptr<IProjectItemParent> parent;
-			auto d = FindDescendant(itemid[i], &prevSibling, &parent); RETURN_HR_IF_NULL(E_INVALIDARG, d);
+			hr = FindDescendant(itemid[i], &d, &prevSibling, &parent); 
+			RETURN_HR_IF(E_INVALIDARG, hr != S_OK);
 
 			wil::unique_bstr mk;
 			hr = d->GetMkDocument(&mk); RETURN_IF_FAILED(hr);
@@ -2247,7 +2262,8 @@ public:
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
 
-		if (auto d = FindDescendant(itemid))
+		com_ptr<IProjectItem> d;
+		if (FindDescendant(itemid, &d) == S_OK)
 			return d->IsItemDirty(punkDocData, pfDirty);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
