@@ -946,7 +946,8 @@ public:
 				return InitVariantFromBoolean (TRUE, pvar);
 
 			#ifdef _DEBUG
-			if (   propid == VSHPROPID_IconIndex                  // -2005
+			if (   propid == VSHPROPID_NextSibling                // -1002 - VS asks for this when opening an empty project
+				|| propid == VSHPROPID_IconIndex                  // -2005
 				|| propid == VSHPROPID_IconHandle                 // -2013
 				|| propid == VSHPROPID_OpenFolderIconHandle       // -2014
 				|| propid == VSHPROPID_OpenFolderIconIndex        // -2015
@@ -983,6 +984,7 @@ public:
 				|| propid == VSHPROPID_CanBuildQuickCheck         // -2156 - Much later, if ever
 				|| propid == VSHPROPID_SupportsIconMonikers       // -2159
 				|| propid == VSHPROPID_ProjectCapabilitiesChecker // -2173
+				|| propid == -2177 // VSHPROPID_PreserveExpandCollapseState
 				|| propid == -9089 // VSHPROPID_SlowEnumeration   // -9089
 			)
 				return E_NOTIMPL;
@@ -1601,6 +1603,8 @@ public:
 		RETURN_HR_IF_NULL(E_INVALIDARG, pszNewFileName);
 		RETURN_HR_IF_NULL(E_POINTER, ppNewNode);
 
+		RETURN_HR_IF(E_NOTIMPL, itemidLoc != VSITEMID_ROOT);
+
 		wil::unique_hlocal_string dest;
 		DWORD flags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
 		auto hr = PathAllocCombine (_location.get(), pszNewFileName, flags, &dest); RETURN_IF_FAILED(hr);
@@ -1620,6 +1624,8 @@ public:
 	HRESULT AddExistingFile (VSITEMID itemidLoc, LPCTSTR pszFullPathSource, IProjectItem** ppNewFile, BOOL fSilent = FALSE, BOOL fLoad = FALSE)
 	{
 		HRESULT hr;
+
+		RETURN_HR_IF(E_NOTIMPL, itemidLoc != VSITEMID_ROOT);
 
 		// Check if the item exists in the project already.
 		wchar_t relativeUgly[MAX_PATH];
@@ -1657,20 +1663,30 @@ public:
 		auto buildTool = _wcsicmp(PathFindExtension(path.get()), L".asm") ? BuildToolKind::None : BuildToolKind::Assembler;
 		hr = file->put_BuildTool(buildTool); RETURN_IF_FAILED(hr);
 
+		VSITEMID prevLast;
 		if (!_firstChild)
+		{
 			_firstChild = file;
+			prevLast = VSITEMID_NIL;
+		}
 		else
 		{
 			IProjectItem* last = _firstChild;
 			while(last->Next())
 				last = last->Next();
 			last->SetNext(file);
+			prevLast = last->GetItemId();
 		}
 
 		_isDirty = true;
 
 		for (auto& sink : _hierarchyEventSinks)
-			sink.second->OnItemsAppended(itemidLoc);
+		{
+			sink.second->OnItemAdded (itemidLoc, prevLast, file->GetItemId());
+
+			// Since our expandable status may have changed, we need to refresh it in the UI.
+			sink.second->OnPropertyChanged (itemidLoc, VSHPROPID_Expandable, 0);
+		}
 
 		com_ptr<IVsWindowFrame> frame;
 		hr = this->OpenItem(itemId, LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &frame);
