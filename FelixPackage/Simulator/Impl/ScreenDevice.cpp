@@ -114,14 +114,6 @@ public:
 			return high_brightness_colors[spc];
 	}
 
-	bool try_read_border_color (uint32_t& argb) const
-	{
-		if (io->writer_behind_of(_time))
-			return false;
-		argb = spectrum_color_to_argb (_border, false);
-		return true;
-	};
-
 	static uint32_t* get_dest_pixel (BITMAPINFO* bi, uint32_t row, uint32_t col)
 	{
 		// We're going to draw the image with StretchDIBits(), which expects the bitmap to be flipped vertically.
@@ -140,7 +132,6 @@ public:
 		uint32_t frame_time = (uint32_t)(_time % (ticks_per_row * rows_per_frame));
 		uint32_t row = frame_time / ticks_per_row;
 		uint32_t col = frame_time % ticks_per_row; // column in clock cycles (one unit equals two pixels)
-		uint32_t argb;
 
 		uint64_t frame_number = _time / (ticks_per_row * rows_per_frame);
 
@@ -204,8 +195,7 @@ public:
 			{
 				// left border from top of screen to bottom of screen
 				WI_ASSERT (requested_time - _time < max_time_offset);
-				if (!try_read_border_color(argb))
-					return;
+				uint32_t argb = spectrum_color_to_argb (_border, false);
 				uint32_t* dest_pixel = get_dest_pixel (_screenData.get(), row - vsync_row_count, (col - hsync_col_count) * 2);
 				dest_pixel[0] = argb;
 				dest_pixel[1] = argb;
@@ -225,8 +215,7 @@ public:
 					while (col < hsync_col_count + border_size_left_ticks + 128)
 					{
 						WI_ASSERT (requested_time - _time < max_time_offset);
-						if (!try_read_border_color(argb))
-							return;
+						uint32_t argb = spectrum_color_to_argb (_border, false);
 						uint32_t* dest_pixel = get_dest_pixel (_screenData.get(), row - vsync_row_count, (col - hsync_col_count) * 2);
 						dest_pixel[0] = argb;
 						dest_pixel[1] = argb;
@@ -283,8 +272,7 @@ public:
 			while (col < hsync_col_count + border_size_left_ticks + 128 + border_size_right_ticks)
 			{
 				// right border from top of screen to bottom of screen
-				if (!try_read_border_color(argb))
-					return;
+				uint32_t argb = spectrum_color_to_argb (_border, false);
 				uint32_t* dest_pixel = get_dest_pixel (_screenData.get(), row - vsync_row_count, (col - hsync_col_count) * 2);
 				dest_pixel[0] = argb;
 				dest_pixel[1] = argb;

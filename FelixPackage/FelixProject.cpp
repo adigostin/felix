@@ -968,6 +968,7 @@ public:
 				|| propid == VSHPROPID_TargetFrameworkMoniker     // -2102 - We'll never support this
 				|| propid == VSHPROPID_ExternalItem               // -2103 - MPF doesn't implement this
 				|| propid == VSHPROPID_DescriptiveName            // -2108
+				|| propid == VSHPROPID_AlwaysBuildOnDebugLaunch   // -2109
 				|| propid == VSHPROPID_ProvisionalViewingStatus   // -2112
 				|| propid == VSHPROPID_TargetRuntime              // -2116 - We'll never support this as it has values only for JS, CLR, Native
 				|| propid == VSHPROPID_AppContainer               // -2117 - Something about .Net

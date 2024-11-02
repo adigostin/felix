@@ -177,15 +177,7 @@ public:
 		this->memory = memory;
 		this->io = io;
 		this->irq = irq;
-		bool pushed = memory->write_requesters.try_push_back(this); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-		pushed = io->write_requesters.try_push_back(this); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 		return S_OK;
-	}
-
-	~cpu()
-	{
-		memory->write_requesters.erase(memory->write_requesters.find(this));
-		io->write_requesters.erase(io->write_requesters.find(this));
 	}
 
 	uint8_t decode_u8()

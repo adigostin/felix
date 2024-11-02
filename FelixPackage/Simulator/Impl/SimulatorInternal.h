@@ -108,12 +108,6 @@ struct WriteResponder
 
 struct DECLSPEC_NOVTABLE Bus
 {
-	// Returns all devices that initiate read requests at the given address.
-	//virtual std::span<IDevice* const> read_requesters (uint16_t address) const = 0;
-
-	// All devices that initiate write requests.
-	vector_nothrow<IDevice*> write_requesters;
-
 	// All devices that respond to read requests.
 	vector_nothrow<ReadResponder> read_responders;
 
@@ -250,19 +244,6 @@ struct DECLSPEC_NOVTABLE Bus
 		}
 
 		return true;
-	}
-
-	IDevice* writer_behind_of (UINT64 time)
-	{
-		uint32_t count = this->write_requesters.size();
-		for (uint32_t i = 0; i < count; i++)
-		{
-			IDevice* d = this->write_requesters[i];
-			if (d->Time() < time)
-				return d;
-		}
-
-		return nullptr;
 	}
 };
 

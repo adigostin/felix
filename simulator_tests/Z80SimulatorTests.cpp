@@ -46,10 +46,6 @@ public:
 
 	virtual void SimulateTo (UINT64 requested_time) override
 	{
-		// Only a bus write can change the state of this device. If there are still write-capable devices
-		// whose timepoint is in the timespan we want to jump over (_time to requested_time), we can't jump.
-		if (_memory_bus->writer_behind_of(requested_time))
-			return;
 		_time = requested_time;
 	}
 
@@ -99,10 +95,6 @@ public:
 
 	virtual void SimulateTo (UINT64 requested_time) override
 	{
-		// Only a bus write can change the state of this device. If there are still write-capable devices
-		// whose timepoint is in the timespan we want to jump over (_time to requested_time), we can't jump.
-		if (_io_bus->writer_behind_of(requested_time))
-			return;
 		_time = requested_time;
 	}
 
