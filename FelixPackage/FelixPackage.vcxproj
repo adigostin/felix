@@ -61,7 +61,7 @@
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)wil\include;$(SolutionDir)shared\include;$(SolutionDir)third_party;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)wil\include;$(SolutionDir)shared\include;$(SolutionDir)third_party;$(SolutionDir)Simulator;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
@@ -104,7 +104,7 @@
     </Midl>
     <ClCompile>
       <AdditionalOptions>/Oxs /Zc:strictStrings-</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)wil\include;$(SolutionDir)shared\include;$(SolutionDir)third_party;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)wil\include;$(SolutionDir)shared\include;$(SolutionDir)third_party;$(SolutionDir)Simulator;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -169,13 +169,6 @@
     </ClCompile>
     <ClCompile Include="PGPropertyPage.cpp" />
     <ClCompile Include="ScreenWindow.cpp" />
-    <ClCompile Include="Simulator\Impl\Beeper.cpp" />
-    <ClCompile Include="Simulator\Impl\HC_RAM.cpp" />
-    <ClCompile Include="Simulator\Impl\HC_ROM.cpp" />
-    <ClCompile Include="Simulator\Impl\Keyboard.cpp" />
-    <ClCompile Include="Simulator\Impl\ScreenDevice.cpp" />
-    <ClCompile Include="Simulator\Impl\Simulator.cpp" />
-    <ClCompile Include="Simulator\Impl\Z80CPU.cpp" />
     <ClCompile Include="FelixPackage.cpp" />
     <ClCompile Include="FelixPackage_i.c">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
@@ -197,9 +190,6 @@
     <ClInclude Include="dispids.h" />
     <ClInclude Include="Guids.h" />
     <ClInclude Include="pch.h" />
-    <ClInclude Include="Simulator\Impl\SimulatorInternal.h" />
-    <ClInclude Include="Simulator\Simulator.h" />
-    <ClInclude Include="Simulator\Impl\Z80CPU.h" />
     <ClInclude Include="FelixPackage.h" />
     <ClInclude Include="FelixPackage_h.h" />
     <ClInclude Include="Z80Xml.h" />
@@ -213,6 +203,11 @@
   <ItemGroup>
     <Natvis Include="..\Shared\include\shared\string_builder.natvis" />
     <Natvis Include="..\wil\natvis\wil.natvis" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Simulator\Simulator.vcxproj">
+      <Project>{67a43810-6782-4b2c-9993-707117d1bcc0}</Project>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath)\Microsoft\VisualStudio\v17.0\VSSDK\Microsoft.VsSDK.Cpp.targets" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

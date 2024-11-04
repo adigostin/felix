@@ -1,6 +1,6 @@
 
 #pragma once
-#include "Simulator/Simulator.h"
+#include "Simulator.h"
 #include "../FelixPackage.h"
 
 // TODO: rename these to E_Z80_XXX

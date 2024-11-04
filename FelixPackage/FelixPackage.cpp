@@ -6,7 +6,7 @@
 #include "../FelixPackageUi/Resource.h"
 #include "shared/com.h"
 #include "shared/OtherGuids.h"
-#include "Simulator/Simulator.h"
+#include "Simulator.h"
 #include "DebugEngine/DebugEngine.h"
 #include "sentry.h"
 

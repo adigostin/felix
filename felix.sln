@@ -36,6 +36,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "shared", "shared", "{9141C0
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Z80SimulatorTests", "simulator_tests\Z80SimulatorTests.vcxproj", "{30A82360-4840-4562-A8B2-E020D0790EA6}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Simulator", "Simulator\Simulator.vcxproj", "{67A43810-6782-4B2C-9993-707117D1BCC0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -62,6 +64,10 @@ Global
 		{30A82360-4840-4562-A8B2-E020D0790EA6}.Debug|x64.Build.0 = Debug|x64
 		{30A82360-4840-4562-A8B2-E020D0790EA6}.Release|x64.ActiveCfg = Release|x64
 		{30A82360-4840-4562-A8B2-E020D0790EA6}.Release|x64.Build.0 = Release|x64
+		{67A43810-6782-4B2C-9993-707117D1BCC0}.Debug|x64.ActiveCfg = Debug|x64
+		{67A43810-6782-4B2C-9993-707117D1BCC0}.Debug|x64.Build.0 = Debug|x64
+		{67A43810-6782-4B2C-9993-707117D1BCC0}.Release|x64.ActiveCfg = Release|x64
+		{67A43810-6782-4B2C-9993-707117D1BCC0}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

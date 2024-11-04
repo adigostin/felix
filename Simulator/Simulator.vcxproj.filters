@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClInclude Include="Impl\pch.h" />
+    <ClInclude Include="Simulator.h" />
+    <ClInclude Include="Impl\SimulatorInternal.h" />
+    <ClInclude Include="Impl\Z80CPU.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Impl\pch.cpp" />
+    <ClCompile Include="Impl\Beeper.cpp" />
+    <ClCompile Include="Impl\HC_RAM.cpp" />
+    <ClCompile Include="Impl\HC_ROM.cpp" />
+    <ClCompile Include="Impl\Keyboard.cpp" />
+    <ClCompile Include="Impl\ScreenDevice.cpp" />
+    <ClCompile Include="Impl\Simulator.cpp" />
+    <ClCompile Include="Impl\Z80CPU.cpp" />
+  </ItemGroup>
+</Project>

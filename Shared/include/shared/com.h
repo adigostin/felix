@@ -126,6 +126,7 @@ public:
 
 	~ConnectionPointImpl()
 	{
+		WI_ASSERT(_cps.empty());
 		for (uint32_t i = 0; i < _cps.size(); i++)
 			_cps[i].pUnk->Release();
 	}

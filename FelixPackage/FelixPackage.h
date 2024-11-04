@@ -1,7 +1,7 @@
 
 #pragma once
 #include "FelixPackage_h.h"
-#include "Simulator/Simulator.h"
+#include "Simulator.h"
 
 using unique_safearray = wil::unique_any<SAFEARRAY*, decltype(SafeArrayDestroy), &SafeArrayDestroy>;
 
