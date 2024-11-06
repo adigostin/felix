@@ -24,7 +24,9 @@ struct ProjectFile
 	static inline HINSTANCE _uiLibrary;
 	static inline wil::unique_hicon _iconAsmFile;
 	static inline wil::unique_hicon _iconIncFile;
-	
+
+	static constexpr ULONG pathFlags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
+
 public:
 	HRESULT InitInstance (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentItemId)
 	{
@@ -159,7 +161,6 @@ public:
 			case VSHPROPID_Caption: // -2003
 			case VSHPROPID_Name: // -2012
 			case VSHPROPID_EditLabel: // -2026
-			case VSHPROPID_DescriptiveName: // -2108
 				return InitVariantFromString (PathFindFileName(_pathRelativeToProjectDir.get()), pvar);
 
 			case VSHPROPID_Expandable: // -2006
@@ -218,6 +219,17 @@ public:
 
 			case VSHPROPID_ExternalItem: // -2103
 				return InitVariantFromBoolean (FALSE, pvar);
+
+			case VSHPROPID_DescriptiveName: // -2108
+			{
+				// Tooltip when hovering the document tab with the mouse, maybe other things too.
+				wil::unique_variant loc;
+				auto hr = _hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &loc); RETURN_IF_FAILED(hr);
+				RETURN_HR_IF(E_FAIL, loc.vt != VT_BSTR);
+				wil::unique_hlocal_string path;
+				hr = PathAllocCombine (loc.bstrVal, _pathRelativeToProjectDir.get(), pathFlags, &path); RETURN_IF_FAILED(hr);
+				return InitVariantFromString (path.get(), pvar);
+			}
 
 			case VSHPROPID_ProvisionalViewingStatus: // -2112
 				return InitVariantFromUInt32 (PVS_Disabled, pvar);
@@ -761,14 +773,12 @@ public:
 	{
 		HRESULT hr;
 
-		ULONG flags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
-
 		wil::unique_variant projectDir;
 		hr = _hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
 
 		wil::unique_hlocal_string oldFullPath;
-		hr = PathAllocCombine (projectDir.bstrVal, _pathRelativeToProjectDir.get(), flags, oldFullPath.addressof()); RETURN_IF_FAILED(hr);
+		hr = PathAllocCombine (projectDir.bstrVal, _pathRelativeToProjectDir.get(), pathFlags, oldFullPath.addressof()); RETURN_IF_FAILED(hr);
 
 		VSQueryEditResult fEditVerdict;
 		com_ptr<IVsQueryEditQuerySave2> queryEdit;
@@ -802,8 +812,8 @@ public:
 		auto relativeDir = wil::make_hlocal_string_nothrow(_pathRelativeToProjectDir.get());
 		hr = PathCchRemoveFileSpec (relativeDir.get(), wcslen(_pathRelativeToProjectDir.get()) + 1); RETURN_IF_FAILED(hr);
 		wil::unique_hlocal_string newFullPath;
-		hr = PathAllocCombine (projectDir.bstrVal, relativeDir.get(), flags, newFullPath.addressof()); RETURN_IF_FAILED(hr);
-		hr = PathAllocCombine (newFullPath.get(), newName, flags, newFullPath.addressof()); RETURN_IF_FAILED(hr);
+		hr = PathAllocCombine (projectDir.bstrVal, relativeDir.get(), pathFlags, newFullPath.addressof()); RETURN_IF_FAILED(hr);
+		hr = PathAllocCombine (newFullPath.get(), newName, pathFlags, newFullPath.addressof()); RETURN_IF_FAILED(hr);
 
 		com_ptr<IVsTrackProjectDocuments2> trackProjectDocs;
 		hr = serviceProvider->QueryService (SID_SVsTrackProjectDocuments, &trackProjectDocs); RETURN_IF_FAILED(hr);
@@ -813,7 +823,7 @@ public:
 			return OLE_E_PROMPTSAVECANCELLED;
 
 		wil::unique_hlocal_string otherPathRelativeToProjectDir;
-		hr = PathAllocCombine (relativeDir.get(), newName, flags, otherPathRelativeToProjectDir.addressof()); RETURN_IF_FAILED(hr);
+		hr = PathAllocCombine (relativeDir.get(), newName, pathFlags, otherPathRelativeToProjectDir.addressof()); RETURN_IF_FAILED(hr);
 
 		if (!::MoveFile (oldFullPath.get(), newFullPath.get()))
 			return HRESULT_FROM_WIN32(GetLastError());

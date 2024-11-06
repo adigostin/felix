@@ -828,8 +828,6 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetProperty (VSITEMID itemid, VSHPROPID propid, VARIANT* pvar) override
 	{
-		// https://docs.microsoft.com/en-us/dotnet/api/microsoft.visualstudio.shell.interop.__vshpropid?view=visualstudiosdk-2017
-
 		if (_closed)
 			return E_UNEXPECTED;
 
