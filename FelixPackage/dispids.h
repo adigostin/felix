@@ -21,5 +21,6 @@
 #define dispidOutputFileType       13
 #define dispidPath                 14
 #define dispidBuildToolKind        15
+#define dispidGeneralProperties    20 // Same object as dispidAssemblerProperties, used for backward compatibility
 
 #endif

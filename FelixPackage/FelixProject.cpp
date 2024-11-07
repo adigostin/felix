@@ -2499,11 +2499,6 @@ public:
 
 		RETURN_HR(E_NOTIMPL);
 	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetIDOfName (ITypeInfo* typeInfo, LPCWSTR name, MEMBERID* pMemId) override
-	{
-		return typeInfo->GetIDsOfNames(&const_cast<LPOLESTR&>(name), 1, pMemId);
-	}
 	#pragma endregion
 
 	#pragma region IProjectItemParent

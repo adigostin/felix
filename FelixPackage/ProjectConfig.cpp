@@ -749,6 +749,11 @@ public:
 		return S_OK;
 	}
 
+	virtual HRESULT STDMETHODCALLTYPE put_GeneralProperties (IDispatch* pDispatch) override
+	{
+		return put_AssemblerProperties(pDispatch);
+	}
+
 	virtual HRESULT STDMETHODCALLTYPE get_DebuggingProperties (IDispatch** ppDispatch) override
 	{
 		com_ptr<IProjectConfigDebugProperties> props;
@@ -881,34 +886,13 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE CreateChild (DISPID dispidProperty, PCWSTR xmlElementName, IDispatch** childOut) override
 	{
-		if (dispidProperty == dispidAssemblerProperties)
-		{
-			com_ptr<IProjectConfigAssemblerProperties> pp;
-			auto hr = AssemblerPageProperties_CreateInstance (&pp); RETURN_IF_FAILED(hr);
-			*childOut = pp.detach();
-			return S_OK;
-		}
+		if (dispidProperty == dispidAssemblerProperties || dispidProperty == dispidGeneralProperties)
+			return AssemblerPageProperties_CreateInstance ((IProjectConfigAssemblerProperties**)childOut);
 
 		if (dispidProperty == dispidDebuggingProperties)
-		{
-			com_ptr<IProjectConfigDebugProperties> pp;
-			auto hr = DebuggingPageProperties_CreateInstance (&pp); RETURN_IF_FAILED(hr);
-			*childOut = pp.detach();
-			return S_OK;
-		}
+			return DebuggingPageProperties_CreateInstance ((IProjectConfigDebugProperties**)childOut);
 
 		RETURN_HR(E_NOTIMPL);
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetIDOfName (ITypeInfo* typeInfo, LPCWSTR name, MEMBERID* pMemId) override
-	{
-		if (!wcscmp(name, L"GeneralProperties"))
-		{
-			*pMemId = dispidAssemblerProperties;
-			return S_OK;
-		}
-
-		return typeInfo->GetIDsOfNames(&const_cast<LPOLESTR&>(name), 1, pMemId);
 	}
 	#pragma endregion
 };

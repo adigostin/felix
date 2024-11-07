@@ -125,7 +125,7 @@ static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, IXmlWriterL
 		auto hr = objAsDispatch->GetTypeInfo(0, 0x0409, &typeInfo); RETURN_IF_FAILED(hr);
 		TYPEATTR* typeAttr;
 		hr = typeInfo->GetTypeAttr(&typeAttr); RETURN_IF_FAILED(hr);
-		auto releaseTypeAttr = wil::scope_exit([typeInfo, typeAttr] { typeInfo->ReleaseTypeAttr(typeAttr); });
+		auto releaseTypeAttr = wil::scope_exit([ti=typeInfo.get(), typeAttr] { ti->ReleaseTypeAttr(typeAttr); });
 	
 		wil::com_ptr_nothrow<IVsPerPropertyBrowsing> ppb;
 		obj->QueryInterface(&ppb);
@@ -138,9 +138,9 @@ static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, IXmlWriterL
 		{
 			FUNCDESC* fd;
 			hr = typeInfo->GetFuncDesc(i, &fd); RETURN_IF_FAILED(hr);
+			auto releaseFundDesc = wil::scope_exit([ti=typeInfo.get(), fd] { ti->ReleaseFuncDesc(fd); });
 			if (fd->memid == DISPID_VALUE)
 				continue;
-			auto releaseFundDesc = wil::scope_exit([ti=typeInfo.get(), fd] { ti->ReleaseFuncDesc(fd); });
 			if (fd->invkind == INVOKE_PROPERTYGET)
 			{
 				wil::unique_bstr name;
@@ -496,7 +496,7 @@ static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDis
 				hr = reader->GetLocalName(&childElemName, nullptr); RETURN_IF_FAILED(hr);
 
 				MEMBERID memid;
-				auto hr = objAsParent->GetIDOfName(typeInfo, childElemName, &memid); RETURN_IF_FAILED(hr);
+				auto hr = typeInfo->GetIDsOfNames(&const_cast<LPOLESTR&>(childElemName), 1, &memid); RETURN_IF_FAILED(hr);
 				VARTYPE vt;
 				hr = FindPutFunction(memid, typeInfo.get(), typeAttr, &vt); RETURN_IF_FAILED(hr);
 

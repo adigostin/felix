@@ -21,9 +21,6 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("45B35EF7-DC2B-4EE3-BB44-EC25D607BFCE") I
 
 	// Creates a child object assignable to the property "dispidProperty", from the given xmlElementName, with default values for its properties.
 	virtual HRESULT STDMETHODCALLTYPE CreateChild (DISPID dispidProperty, PCWSTR xmlElementName, IDispatch** childOut) = 0;
-
-	// Used for retaining backward compatibility, see an implementation for more info.
-	virtual HRESULT STDMETHODCALLTYPE GetIDOfName (ITypeInfo* typeInfo, LPCWSTR name, MEMBERID* pMemId) = 0;
 };
 
 HRESULT SaveToXml (IDispatch* obj, PCWSTR elementName, IStream* stream, UINT nEncodingCodePage = CP_UTF8);

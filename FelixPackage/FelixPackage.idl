@@ -23,6 +23,9 @@ library ATLProject1Lib
 		[id(dispidAssemblerProperties), propget] HRESULT AssemblerProperties ([out, retval] IDispatch** ppDispatch);
 		[id(dispidAssemblerProperties), propput] HRESULT AssemblerProperties (IDispatch* pDispatch);
 
+		// Same object as AssemblerProperties, kept for backward compatibility
+		[id(dispidGeneralProperties), propput] HRESULT GeneralProperties (IDispatch* pDispatch);
+
 		[id(dispidDebuggingProperties), propget] HRESULT DebuggingProperties ([out, retval] IDispatch** ppDispatch);
 		[id(dispidDebuggingProperties), propput] HRESULT DebuggingProperties (IDispatch* pDispatch);
 
