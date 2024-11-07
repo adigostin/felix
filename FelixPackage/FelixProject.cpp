@@ -1421,7 +1421,7 @@ public:
 			// TODO: pause monitoring file change notifications
 			//CSuspendFileChanges suspendFileChanges(CString(pszFileName), TRUE);
 			com_ptr<IStream> stream;
-			hr = SHCreateStreamOnFile(filePath.get(), STGM_WRITE | STGM_SHARE_DENY_WRITE, &stream); RETURN_IF_FAILED(hr);
+			hr = SHCreateStreamOnFile(filePath.get(), STGM_CREATE | STGM_WRITE | STGM_SHARE_DENY_WRITE, &stream); RETURN_IF_FAILED(hr);
 			hr = SaveToXml(this, ProjectElementName, stream); RETURN_IF_FAILED(hr);
 			// TODO: resume monitoring file change notifications
 
@@ -1434,7 +1434,7 @@ public:
 				RETURN_HR(E_NOTIMPL);
 			_noScribble = true;
 			com_ptr<IStream> stream;
-			hr = SHCreateStreamOnFile(pszFilename, STGM_WRITE | STGM_SHARE_DENY_WRITE, &stream); RETURN_IF_FAILED(hr);
+			hr = SHCreateStreamOnFile(pszFilename, STGM_CREATE | STGM_WRITE | STGM_SHARE_DENY_WRITE, &stream); RETURN_IF_FAILED(hr);
 			hr = SaveToXml(this, ProjectElementName, stream.get()); RETURN_IF_FAILED(hr);
 
 			// If pszFileName is null, the implementation ignores the fRemember flag.
