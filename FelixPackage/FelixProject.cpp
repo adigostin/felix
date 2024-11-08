@@ -2326,7 +2326,7 @@ public:
 		SAFEARRAYBOUND bound;
 		bound.cElements = (ULONG)_configs.size();
 		bound.lLbound = 0;
-		auto sa = unique_safearray(SafeArrayCreate(VT_UNKNOWN, 1, &bound)); RETURN_HR_IF(E_OUTOFMEMORY, !sa);
+		auto sa = unique_safearray(SafeArrayCreate(VT_DISPATCH, 1, &bound)); RETURN_HR_IF(E_OUTOFMEMORY, !sa);
 		for (LONG i = 0; i < (LONG)bound.cElements; i++)
 		{
 			auto hr = SafeArrayPutElement(sa.get(), &i, _configs[i].get()); RETURN_IF_FAILED(hr);
@@ -2339,7 +2339,7 @@ public:
 	{
 		VARTYPE vt;
 		auto hr = SafeArrayGetVartype(sa, &vt); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(E_NOTIMPL, vt != VT_UNKNOWN);
+		RETURN_HR_IF(E_NOTIMPL, vt != VT_DISPATCH);
 		UINT dim = SafeArrayGetDim(sa);
 		RETURN_HR_IF(E_NOTIMPL, dim != 1);
 		LONG lbound;
@@ -2375,7 +2375,7 @@ public:
 		for (auto c = _firstChild.get(); c; c = c->Next())
 			bound.cElements++;
 
-		auto sa = unique_safearray(SafeArrayCreate(VT_UNKNOWN, 1, &bound)); RETURN_HR_IF(E_OUTOFMEMORY, !sa);
+		auto sa = unique_safearray(SafeArrayCreate(VT_DISPATCH, 1, &bound)); RETURN_HR_IF(E_OUTOFMEMORY, !sa);
 		LONG i = 0;
 		for (auto c = _firstChild.get(); c; c = c->Next())
 		{
@@ -2390,7 +2390,7 @@ public:
 	{
 		VARTYPE vt;
 		auto hr = SafeArrayGetVartype(sa, &vt); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(E_NOTIMPL, vt != VT_UNKNOWN);
+		RETURN_HR_IF(E_NOTIMPL, vt != VT_DISPATCH);
 		UINT dim = SafeArrayGetDim(sa);
 		RETURN_HR_IF(E_NOTIMPL, dim != 1);
 		LONG lbound;

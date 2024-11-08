@@ -1,19 +1,23 @@
 #pragma once
 
-// Error codes returned from XML-related functions
-
-#define Z80_E_ID_PROPERTY_MISSING             MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x201)
-#define Z80_E_ID_PROPERTY_EMPTY               MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x202)
-#define Z80_E_ID_PROPERTY_NOT_BSTR            MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x203)
-
+// Note AGO: Reason for this interface is the following: the XML loader needs a way to create objects
+// out of the XML elements it encounters. The "traditional" way is to register somehow factories
+// for each type of object, and pass these factories to the XML loader. This is already complicated,
+// and moreover brings the restriction that every class must be constructible without parameters.
+// (Declaring and using parameters to factories is overly complicated and not worth exploring.)
+//
+// After a lot of trial and error, I ended up with a model in which any serializable object which
+// owns other serializable objects in its properties implements this interface. While saving to XML,
+// the XML saving code calls GetChildXmlElementName. While loading from XML, the XML loading code
+// calls CreateChild.
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("45B35EF7-DC2B-4EE3-BB44-EC25D607BFCE") IXmlParent : IUnknown
 {
 	// For an object property (not a value and not a collection) that has a single possible implementation,
 	// this function can return a NULL name and S_OK to signal that the XML serializer should serialize
 	// the child object directly on the XML element that corresponds to the property. This improves the readability
 	// of the XML file. Normally, for such properties, the serializer creates something like this:
-	// <PropertyName>                                  <= name of the property that comes from the parent's type info
-	//   <xmlElementNameOut ... child attributes ...>  <= name that comes from this function
+	// <PropertyName>                                     <= name of the property that comes from the parent's type info
+	//   <ChildObjectClassName ... child attributes ...>  <= name that comes from this function
 	// </PropertyName>
 	// If this function returns a NULL name, the serializer can simplify this to:
 	// <PropertyName ... child attributes ...>

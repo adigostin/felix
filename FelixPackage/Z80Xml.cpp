@@ -61,8 +61,8 @@ struct Property
 };
 
 using ValueProperty = Property<wil::unique_bstr>;
-using ObjectProperty = Property<wil::com_ptr_nothrow<IUnknown>>;
-using ObjectCollectionProperty = Property<vector_nothrow<wil::com_ptr_nothrow<IUnknown>>>;
+using ObjectProperty = Property<com_ptr<IDispatch>>;
+using ObjectCollectionProperty = Property<vector_nothrow<com_ptr<IDispatch>>>;
 
 // VS runs out of memory if we templatize SaveToXmlInternal and have it call itself. So let's reinvent the wheel...
 struct EnsureElementCreated
@@ -221,7 +221,7 @@ static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, IXmlWriterL
 							SAFEARRAY* sa = V_ARRAY(&result);
 							VARTYPE vt;
 							hr = SafeArrayGetVartype(sa, &vt); RETURN_IF_FAILED(hr);
-							RETURN_HR_IF(E_NOTIMPL, vt != VT_UNKNOWN);
+							RETURN_HR_IF(E_NOTIMPL, vt != VT_DISPATCH);
 							UINT dim = SafeArrayGetDim(sa);
 							RETURN_HR_IF(E_NOTIMPL, dim != 1);
 							LONG lbound;
@@ -234,7 +234,7 @@ static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, IXmlWriterL
 
 							for (LONG i = 0; i <= ubound; i++)
 							{
-								wil::com_ptr_nothrow<IUnknown> obj;
+								com_ptr<IDispatch> obj;
 								hr = SafeArrayGetElement(sa, &i, &obj); RETURN_IF_FAILED(hr);
 								pushed = childCollections.back().value.try_push_back(std::move(obj)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 							}
@@ -372,7 +372,7 @@ static HRESULT LoadCollection (IXmlReader* reader, const wchar_t* collectionElem
 			hr = reader->GetLocalName(&endElementName, nullptr); RETURN_IF_FAILED(hr);
 			RETURN_HR_IF(E_UNEXPECTED, wcscmp(collectionElemName, endElementName));
 			SAFEARRAYBOUND sabound = { .cElements = (ULONG)children.size(), .lLbound = 0 };
-			SAFEARRAY* sa = SafeArrayCreate (VT_UNKNOWN, 1, &sabound); RETURN_IF_NULL_ALLOC(sa);
+			SAFEARRAY* sa = SafeArrayCreate (VT_DISPATCH, 1, &sabound); RETURN_IF_NULL_ALLOC(sa);
 			auto freeSafeArray = wil::scope_exit([&sa] { SafeArrayDestroy(sa); sa = nullptr; });
 			for (LONG i = 0; i < (LONG)children.size(); i++)
 			{
