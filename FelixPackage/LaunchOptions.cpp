@@ -56,7 +56,7 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_DebuggingProperties (IDispatch **ppDispatch) override
+	virtual HRESULT STDMETHODCALLTYPE get_DebuggingProperties (IProjectConfigDebugProperties** ppDispatch) override
 	{
 		*ppDispatch = _debuggingProperties;
 		if (_debuggingProperties)
@@ -64,9 +64,10 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_DebuggingProperties (IDispatch *pDispatch) override
+	virtual HRESULT STDMETHODCALLTYPE put_DebuggingProperties (IProjectConfigDebugProperties* pDispatch) override
 	{
-		return pDispatch->QueryInterface(&_debuggingProperties);
+		_debuggingProperties = pDispatch;
+		return S_OK;
 	}
 	#pragma endregion
 

@@ -216,13 +216,6 @@ static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, IXmlWriterL
 							break;
 						}
 
-						case VT_DISPATCH:
-						{
-							// child object
-							bool pushed = childObjects.try_push_back(ObjectProperty{ fd->memid, std::move(name), V_DISPATCH(&result) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-							break;
-						}
-
 						case VT_SAFEARRAY:
 						{
 							SAFEARRAY* sa = V_ARRAY(&result);
@@ -555,22 +548,7 @@ static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDis
 					readOnly = true;
 				}
 
-				if (vt == VT_DISPATCH)
-				{
-					RETURN_HR_IF(E_NOTIMPL, readOnly);
-					com_ptr<IDispatch> child;
-					hr = objAsParent->CreateChild(memid, childElemName, &child); RETURN_IF_FAILED(hr);
-					hr = LoadFromXmlInternal (reader, childElemName, child.get()); RETURN_IF_FAILED(hr);
-					wil::unique_variant value;
-					hr = InitVariantFromDispatch(child.get(), &value); RETURN_IF_FAILED(hr);
-					DISPID named = DISPID_PROPERTYPUT;
-					DISPPARAMS params = { .rgvarg = &value, .rgdispidNamedArgs=&named, .cArgs = 1, .cNamedArgs = 1 };
-					//wil::unique_variant result;
-					EXCEPINFO exception;
-					UINT uArgErr;
-					hr = typeInfo->Invoke (obj, memid, DISPATCH_PROPERTYPUT, &params, nullptr, &exception, &uArgErr); RETURN_IF_FAILED(hr);
-				}
-				else if (vt == VT_SAFEARRAY)
+				if (vt == VT_SAFEARRAY)
 				{
 					RETURN_HR_IF(E_NOTIMPL, readOnly);
 					SAFEARRAY* sa = nullptr;
@@ -588,14 +566,29 @@ static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDis
 				}
 				else if (vt == VT_PTR)
 				{
-					RETURN_HR_IF(E_NOTIMPL, !readOnly);
-					DISPPARAMS params = { };
-					wil::unique_variant result;
-					EXCEPINFO exception;
-					UINT uArgErr;
-					hr = typeInfo->Invoke (obj, memid, DISPATCH_PROPERTYGET, &params, &result, &exception, &uArgErr); RETURN_IF_FAILED(hr);
-					RETURN_HR_IF(E_UNEXPECTED, result.vt != VT_DISPATCH);
-					hr = LoadFromXmlInternal (reader, childElemName, V_DISPATCH(&result)); RETURN_IF_FAILED(hr);
+					if (!readOnly)
+					{
+						com_ptr<IDispatch> child;
+						hr = objAsParent->CreateChild(memid, childElemName, &child); RETURN_IF_FAILED(hr);
+						hr = LoadFromXmlInternal (reader, childElemName, child.get()); RETURN_IF_FAILED(hr);
+						wil::unique_variant value;
+						hr = InitVariantFromDispatch(child.get(), &value); RETURN_IF_FAILED(hr);
+						DISPID named = DISPID_PROPERTYPUT;
+						DISPPARAMS params = { .rgvarg = &value, .rgdispidNamedArgs=&named, .cArgs = 1, .cNamedArgs = 1 };
+						EXCEPINFO exception;
+						UINT uArgErr;
+						hr = typeInfo->Invoke (obj, memid, DISPATCH_PROPERTYPUT, &params, nullptr, &exception, &uArgErr); RETURN_IF_FAILED(hr);
+					}
+					else
+					{
+						DISPPARAMS params = { };
+						wil::unique_variant result;
+						EXCEPINFO exception;
+						UINT uArgErr;
+						hr = typeInfo->Invoke (obj, memid, DISPATCH_PROPERTYGET, &params, &result, &exception, &uArgErr); RETURN_IF_FAILED(hr);
+						RETURN_HR_IF(E_UNEXPECTED, result.vt != VT_DISPATCH);
+						hr = LoadFromXmlInternal (reader, childElemName, V_DISPATCH(&result)); RETURN_IF_FAILED(hr);
+					}
 				}
 				else
 				{

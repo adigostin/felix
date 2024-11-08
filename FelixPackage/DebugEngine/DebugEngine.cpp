@@ -592,10 +592,8 @@ public:
 		if (!exePath)
 			RETURN_HR(E_NO_EXE_FILENAME);
 
-		com_ptr<IDispatch> debugPropsDisp;
-		hr = _launchOptions->get_DebuggingProperties(&debugPropsDisp); RETURN_IF_FAILED(hr);
 		com_ptr<IProjectConfigDebugProperties> debugProps;
-		hr = debugPropsDisp->QueryInterface(&debugProps); RETURN_IF_FAILED(hr);
+		hr = _launchOptions->get_DebuggingProperties(&debugProps); RETURN_IF_FAILED(hr);
 		DWORD loadAddress;
 		hr = debugProps->get_LoadAddress(&loadAddress); RETURN_IF_FAILED(hr);
 		WORD launchAddress;

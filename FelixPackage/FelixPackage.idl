@@ -12,6 +12,9 @@ library ATLProject1Lib
 {
 	importlib("stdole2.tlb");
 
+	interface IProjectConfigAssemblerProperties;
+	interface IProjectConfigDebugProperties;
+
 	[uuid(15412FDD-6A57-420C-933E-0A89A1DF497D)]
 	enum OutputFileType { Binary, Sna };
 
@@ -20,14 +23,14 @@ library ATLProject1Lib
 	{
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
 
-		[id(dispidAssemblerProperties), propget] HRESULT AssemblerProperties ([out, retval] IDispatch** ppDispatch);
-		[id(dispidAssemblerProperties), propput] HRESULT AssemblerProperties (IDispatch* pDispatch);
+		[id(dispidAssemblerProperties), propget] HRESULT AssemblerProperties ([out, retval] IProjectConfigAssemblerProperties** ppProps);
+		[id(dispidAssemblerProperties), propput] HRESULT AssemblerProperties (IProjectConfigAssemblerProperties* pProps);
 
 		// Same object as AssemblerProperties, kept for backward compatibility
-		[id(dispidGeneralProperties), propput] HRESULT GeneralProperties (IDispatch* pDispatch);
+		[id(dispidGeneralProperties), propput] HRESULT GeneralProperties (IProjectConfigAssemblerProperties* pDispatch);
 
-		[id(dispidDebuggingProperties), propget] HRESULT DebuggingProperties ([out, retval] IDispatch** ppDispatch);
-		[id(dispidDebuggingProperties), propput] HRESULT DebuggingProperties (IDispatch* pDispatch);
+		[id(dispidDebuggingProperties), propget] HRESULT DebuggingProperties ([out, retval] IProjectConfigDebugProperties** ppDispatch);
+		[id(dispidDebuggingProperties), propput] HRESULT DebuggingProperties (IProjectConfigDebugProperties* pDispatch);
 
 		[propget] HRESULT ConfigName ([out, retval] BSTR* pbstr);
 		[propput] HRESULT ConfigName (BSTR pbstr);
@@ -171,7 +174,7 @@ library ATLProject1Lib
 		[id(dispidProjectDir), propget] HRESULT ProjectDir ([out, retval] BSTR* pbstr);
 		[id(dispidProjectDir), propput] HRESULT ProjectDir (BSTR pbstr);
 
-		[id(dispidDebuggingProperties), propget] HRESULT DebuggingProperties ([out, retval] IDispatch** ppDispatch);
-		[id(dispidDebuggingProperties), propput] HRESULT DebuggingProperties (IDispatch* pDispatch);
+		[id(dispidDebuggingProperties), propget] HRESULT DebuggingProperties ([out, retval] IProjectConfigDebugProperties** ppDispatch);
+		[id(dispidDebuggingProperties), propput] HRESULT DebuggingProperties (IProjectConfigDebugProperties* pDispatch);
 	}
 };

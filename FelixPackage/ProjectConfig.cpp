@@ -253,7 +253,7 @@ public:
 		RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
 		hr = opts->put_ProjectDir(projectDir.bstrVal); RETURN_IF_FAILED(hr);
 		
-		com_ptr<IDispatch> dbgProps;
+		com_ptr<IProjectConfigDebugProperties> dbgProps;
 		hr = this->get_DebuggingProperties(&dbgProps); RETURN_IF_FAILED(hr);
 		hr = opts->put_DebuggingProperties(dbgProps); RETURN_IF_FAILED(hr);
 
@@ -705,7 +705,7 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_AssemblerProperties (IDispatch** ppDispatch) override
+	virtual HRESULT STDMETHODCALLTYPE get_AssemblerProperties (IProjectConfigAssemblerProperties** ppDispatch) override
 	{
 		com_ptr<IProjectConfigAssemblerProperties> props;
 		auto hr = AssemblerPageProperties_CreateInstance (&props); RETURN_IF_FAILED(hr);
@@ -715,15 +715,12 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_AssemblerProperties (IDispatch* pDispatch) override
+	virtual HRESULT STDMETHODCALLTYPE put_AssemblerProperties (IProjectConfigAssemblerProperties* gp) override
 	{
-		wil::com_ptr_nothrow<IProjectConfigAssemblerProperties> gp;
-		auto hr = pDispatch->QueryInterface(&gp); RETURN_IF_FAILED(hr);
-
 		bool changed = false;
 
 		VARIANT_BOOL saveListing;
-		hr = gp->get_SaveListing(&saveListing); RETURN_IF_FAILED(hr);
+		auto hr = gp->get_SaveListing(&saveListing); RETURN_IF_FAILED(hr);
 		if (_saveListing != (saveListing == VARIANT_TRUE))
 		{
 			_saveListing = (saveListing == VARIANT_TRUE);
@@ -749,12 +746,12 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_GeneralProperties (IDispatch* pDispatch) override
+	virtual HRESULT STDMETHODCALLTYPE put_GeneralProperties (IProjectConfigAssemblerProperties* pDispatch) override
 	{
 		return put_AssemblerProperties(pDispatch);
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_DebuggingProperties (IDispatch** ppDispatch) override
+	virtual HRESULT STDMETHODCALLTYPE get_DebuggingProperties (IProjectConfigDebugProperties** ppDispatch) override
 	{
 		com_ptr<IProjectConfigDebugProperties> props;
 		auto hr = DebuggingPageProperties_CreateInstance (&props); RETURN_IF_FAILED(hr);
@@ -765,7 +762,7 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_DebuggingProperties (IDispatch* pDispatch) override
+	virtual HRESULT STDMETHODCALLTYPE put_DebuggingProperties (IProjectConfigDebugProperties* pDispatch) override
 	{
 		wil::com_ptr_nothrow<IProjectConfigDebugProperties> dp;
 		auto hr = pDispatch->QueryInterface(&dp); RETURN_IF_FAILED(hr);
