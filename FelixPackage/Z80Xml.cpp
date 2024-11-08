@@ -114,6 +114,13 @@ static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, IXmlWriterL
 	HRESULT hr;
 
 	EnsureElementCreated ensureElementCreated (elementName, writer, ensureOuterElementCreated);
+	
+	// If we are the outmost XML element, we must create it even if there's nothing to save to it.
+	// That's because XmlLite doesn't seem to support writing an empty document (WriteEndDocument() will fail).
+	if (!ensureOuterElementCreated)
+	{
+		hr = ensureElementCreated.CreateStartElement(); RETURN_IF_FAILED(hr);
+	}
 
 	wil::com_ptr_nothrow<IDispatch> objAsDispatch;
 	if (SUCCEEDED(obj->QueryInterface(&objAsDispatch)))
