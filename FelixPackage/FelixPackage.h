@@ -42,3 +42,5 @@ HRESULT GetDefaultProjectFileExtension (BSTR* ppExt);
 HRESULT SetErrorInfo1 (HRESULT errorHR, ULONG packageStringResId, LPCWSTR arg1);
 HRESULT AssemblerPageProperties_CreateInstance (IProjectConfigAssemblerProperties** to);
 HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to);
+HRESULT MakeCustomBuildToolProperties (ICustomBuildToolProperties** to);
+

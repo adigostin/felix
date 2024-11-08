@@ -196,6 +196,19 @@ static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, IXmlWriterL
 							break;
 						}
 
+						case VT_PTR:
+						{
+							// child object
+							wil::com_ptr_nothrow<ITypeInfo> refTypeInfo;
+							hr = typeInfo->GetRefTypeInfo(fd->elemdescFunc.tdesc.lptdesc->hreftype , &refTypeInfo); RETURN_IF_FAILED(hr);
+							TYPEATTR* refTypeAttr;
+							hr = refTypeInfo->GetTypeAttr(&refTypeAttr); RETURN_IF_FAILED(hr);
+							auto releaseRefTypeAttr = wil::scope_exit([ti=refTypeInfo.get(), refTypeAttr] { ti->ReleaseTypeAttr(refTypeAttr); });
+							RETURN_HR_IF(E_FAIL, refTypeAttr->typekind != TKIND_DISPATCH);
+							bool pushed = childObjects.try_push_back(ObjectProperty{ fd->memid, std::move(name), V_DISPATCH(&result) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+							break;
+						}
+
 						case VT_DISPATCH:
 						{
 							// child object
@@ -257,16 +270,23 @@ static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, IXmlWriterL
 
 		if (childObjects.size() || childCollections.size())
 		{
-			wil::com_ptr_nothrow<IXmlParent> objAsParent;
-			hr = obj->QueryInterface(&objAsParent); RETURN_IF_FAILED(hr);
+			com_ptr<IXmlParent> objAsParent;
+			obj->QueryInterface(&objAsParent);
 
 			for (auto& child : childObjects)
 			{
-				wil::unique_bstr childXmlElementName;
-				hr = objAsParent->GetChildXmlElementName(child.dispid, child.value.get(), &childXmlElementName); RETURN_IF_FAILED(hr);
-				if (childXmlElementName)
+				if (objAsParent)
 				{
-					RETURN_HR(E_NOTIMPL);
+					wil::unique_bstr childXmlElementName;
+					hr = objAsParent->GetChildXmlElementName(child.dispid, child.value.get(), &childXmlElementName); RETURN_IF_FAILED(hr);
+					if (childXmlElementName)
+					{
+						RETURN_HR(E_NOTIMPL);
+					}
+					else
+					{
+						hr = SaveToXmlInternal (child.value.get(), child.name.get(), writer, &ensureElementCreated); RETURN_IF_FAILED(hr);
+					}
 				}
 				else
 				{
@@ -382,8 +402,27 @@ static HRESULT FindPutFunction (MEMBERID memid, ITypeInfo* typeInfo, TYPEATTR* t
 		}
 	}
 
-	RETURN_HR(DISP_E_MEMBERNOTFOUND);
+	return DISP_E_MEMBERNOTFOUND;
 }
+
+static HRESULT FindGetFunction (MEMBERID memid, ITypeInfo* typeInfo, TYPEATTR* typeAttr, VARTYPE* pvt)
+{
+	for (WORD i = 0; i < typeAttr->cFuncs; i++)
+	{
+		FUNCDESC* fd;
+		auto hr = typeInfo->GetFuncDesc(i, &fd); RETURN_IF_FAILED(hr);
+		auto releaseFundDesc = wil::scope_exit([typeInfo, fd] { typeInfo->ReleaseFuncDesc(fd); });
+		if ((fd->invkind == INVOKE_PROPERTYGET) && (fd->memid == memid))
+		{
+			RETURN_HR_IF(E_FAIL, fd->cParams != 0);
+			*pvt = fd->elemdescFunc.tdesc.vt;
+			return S_OK;
+		}
+	}
+
+	return DISP_E_MEMBERNOTFOUND;
+}
+
 
 static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDispatch* obj)
 {
@@ -480,7 +519,7 @@ static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDis
 	if (!reader->IsEmptyElement())
 	{
 		com_ptr<IXmlParent> objAsParent;
-		hr = obj->QueryInterface(&objAsParent); RETURN_IF_FAILED(hr);
+		obj->QueryInterface(&objAsParent);
 
 		// Try to read child elements.
 		while (true)
@@ -496,12 +535,22 @@ static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDis
 				hr = reader->GetLocalName(&childElemName, nullptr); RETURN_IF_FAILED(hr);
 
 				MEMBERID memid;
+				bool readOnly = false;
 				auto hr = typeInfo->GetIDsOfNames(&const_cast<LPOLESTR&>(childElemName), 1, &memid); RETURN_IF_FAILED(hr);
 				VARTYPE vt;
-				hr = FindPutFunction(memid, typeInfo.get(), typeAttr, &vt); RETURN_IF_FAILED(hr);
+				hr = FindPutFunction(memid, typeInfo.get(), typeAttr, &vt); RETURN_HR_IF(hr, FAILED(hr) && hr != DISP_E_MEMBERNOTFOUND);
+
+				if (hr == DISP_E_MEMBERNOTFOUND)
+				{
+					// We have an XML element but no setter. Must be a read-only object property initialized by its owner.
+					// We should be able to find a getter and get a non-null value; otherwise we have a bug.
+					hr = FindGetFunction(memid, typeInfo.get(), typeAttr, &vt); RETURN_IF_FAILED(hr);
+					readOnly = true;
+				}
 
 				if (vt == VT_DISPATCH)
 				{
+					RETURN_HR_IF(E_NOTIMPL, readOnly);
 					com_ptr<IDispatch> child;
 					hr = objAsParent->CreateChild(memid, childElemName, &child); RETURN_IF_FAILED(hr);
 					hr = LoadFromXmlInternal (reader, childElemName, child.get()); RETURN_IF_FAILED(hr);
@@ -516,6 +565,7 @@ static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDis
 				}
 				else if (vt == VT_SAFEARRAY)
 				{
+					RETURN_HR_IF(E_NOTIMPL, readOnly);
 					SAFEARRAY* sa = nullptr;
 					hr = LoadCollection(reader, childElemName, obj, memid, &sa); RETURN_IF_FAILED(hr);
 					wil::unique_variant value;
@@ -528,6 +578,17 @@ static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDis
 					EXCEPINFO exception;
 					UINT uArgErr;
 					hr = typeInfo->Invoke (obj, memid, DISPATCH_PROPERTYPUT, &params, &result, &exception, &uArgErr); RETURN_IF_FAILED(hr);
+				}
+				else if (vt == VT_PTR)
+				{
+					RETURN_HR_IF(E_NOTIMPL, !readOnly);
+					DISPPARAMS params = { };
+					wil::unique_variant result;
+					EXCEPINFO exception;
+					UINT uArgErr;
+					hr = typeInfo->Invoke (obj, memid, DISPATCH_PROPERTYGET, &params, &result, &exception, &uArgErr); RETURN_IF_FAILED(hr);
+					RETURN_HR_IF(E_UNEXPECTED, result.vt != VT_DISPATCH);
+					hr = LoadFromXmlInternal (reader, childElemName, V_DISPATCH(&result)); RETURN_IF_FAILED(hr);
 				}
 				else
 				{

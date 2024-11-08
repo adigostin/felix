@@ -125,7 +125,26 @@ library ATLProject1Lib
 	}
 
 	[uuid(AB38EBF9-C445-45EB-8C14-8656CA98A741)]
-	enum BuildToolKind { None, Assembler };
+	enum BuildToolKind { None, Assembler, CustomBuildTool };
+
+	[object, uuid(8577A7D6-BE63-4D76-8D51-130E8218C065), dual, nonextensible, pointer_default(unique)]
+	interface ICustomBuildToolProperties : IDispatch
+	{
+		[id(dispidCommandLine), propget]
+		HRESULT CommandLine ([out, retval] BSTR* value);
+		[id(dispidCommandLine), propput]
+		HRESULT CommandLine (BSTR value);
+
+		[id(dispidDescription), propget]
+		HRESULT Description ([out, retval] BSTR* value);
+		[id(dispidDescription), propput]
+		HRESULT Description (BSTR value);
+
+		[id(dispidOutputs), propget]
+		HRESULT Outputs ([out, retval] BSTR* value);
+		[id(dispidOutputs), propput]
+		HRESULT Outputs (BSTR value);
+	}
 
 	[object, uuid(680DBE9B-ABED-41BE-8A26-30446EEC47FB), dual, nonextensible, pointer_default(unique)]
 	interface IProjectFile : IProjectItem
@@ -141,6 +160,9 @@ library ATLProject1Lib
 		HRESULT BuildTool ([out, retval] enum BuildToolKind* value);
 		[id(dispidBuildToolKind), propput]
 		HRESULT BuildTool (enum BuildToolKind value);
+
+		[id(dispidCustomBuildToolProps), propget]
+		HRESULT CustomBuildToolProperties ([out, retval] ICustomBuildToolProperties** ppProps);
 	};
 
 	[object, uuid(588F7F04-8B74-404D-A80B-F7CCE9FA3E27), dual, nonextensible, pointer_default(unique)]

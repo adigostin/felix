@@ -7,11 +7,13 @@
 #include "../FelixPackageUi/resource.h"
 #include "dispids.h"
 #include "guids.h"
+#include <vsmanaged.h>
 
 struct ProjectFile 
 	: IProjectFile
-	, IProvideClassInfo
 	, IVsPerPropertyBrowsing
+	, IConnectionPointContainer
+	, IPropertyNotifySink
 {
 	VSITEMID _itemId;
 	ULONG _refCount = 0;
@@ -21,6 +23,9 @@ struct ProjectFile
 	VSCOOKIE _docCookie = VSDOCCOOKIE_NIL;
 	wil::unique_hlocal_string _pathRelativeToProjectDir;
 	BuildToolKind _buildTool = BuildToolKind::None;
+	com_ptr<ICustomBuildToolProperties> _customBuildToolProps;
+	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
+	DWORD _propNotifyCookie = 0;
 	static inline HINSTANCE _uiLibrary;
 	static inline wil::unique_hicon _iconAsmFile;
 	static inline wil::unique_hicon _iconIncFile;
@@ -30,18 +35,50 @@ struct ProjectFile
 public:
 	HRESULT InitInstance (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentItemId)
 	{
+		HRESULT hr;
+
 		_itemId = itemId;
 		_hier = hier;
 		_parentItemId = parentItemId;
 		if (!_uiLibrary)
 		{
 			wil::com_ptr_nothrow<IVsShell> shell;
-			auto hr = serviceProvider->QueryService(SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
+			hr = serviceProvider->QueryService(SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
 			hr = shell->LoadUILibrary(CLSID_FelixPackage, 0, (DWORD_PTR*)&_uiLibrary); RETURN_IF_FAILED(hr);
 			_iconAsmFile.reset(LoadIcon(_uiLibrary, MAKEINTRESOURCE(IDI_ASM_FILE))); WI_ASSERT(_iconAsmFile);
 			_iconIncFile.reset(LoadIcon(_uiLibrary, MAKEINTRESOURCE(IDI_INC_FILE))); WI_ASSERT(_iconAsmFile);
 		}
+
+		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
+
+		hr = MakeCustomBuildToolProperties(&_customBuildToolProps); RETURN_IF_FAILED(hr);
+		com_ptr<IConnectionPointContainer> cont;
+		hr = _customBuildToolProps->QueryInterface(&cont);
+		if (SUCCEEDED(hr))
+		{
+			com_ptr<IConnectionPoint> cp;
+			cont->FindConnectionPoint(IID_IPropertyNotifySink, &cp);
+			if (SUCCEEDED(hr))
+				cp->Advise(static_cast<IPropertyNotifySink*>(this), &_propNotifyCookie);
+		}
+
 		return S_OK;
+	}
+
+	~ProjectFile()
+	{
+		if (_propNotifyCookie)
+		{
+			com_ptr<IConnectionPointContainer> cont;
+			auto hr = _customBuildToolProps->QueryInterface(&cont);
+			if (SUCCEEDED(hr))
+			{
+				com_ptr<IConnectionPoint> cp;
+				cont->FindConnectionPoint(IID_IPropertyNotifySink, &cp);
+				if (SUCCEEDED(hr))
+					cp->Unadvise(_propNotifyCookie);
+			}
+		}
 	}
 
 	#pragma region IUnknown
@@ -54,15 +91,13 @@ public:
 			|| TryQI<IProjectFile>(this, riid, ppvObject)
 			|| TryQI<IProjectItem>(this, riid, ppvObject)
 			|| TryQI<IDispatch>(this, riid, ppvObject)
-			|| TryQI<IProvideClassInfo>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
+			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
+			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
 		)
 			return S_OK;
 
 		#ifdef _DEBUG
-		if (riid == IID_IPerPropertyBrowsing)
-			return E_NOINTERFACE;
-
 		if (   riid == IID_IMarshal
 			|| riid == IID_INoMarshal
 			|| riid == IID_IAgileObject
@@ -72,12 +107,10 @@ public:
 			|| riid == IID_IExtendedObject // not in MPF either
 			|| riid == IID_IConvertible
 			|| riid == IID_ICustomTypeDescriptor
-			//|| riid == IID_IVSMDPerPropertyBrowsing
 			|| riid == IID_IComponent
-			)
-			return E_NOINTERFACE;
-
-		if (   riid == IID_ISpecifyPropertyPages
+			|| riid == IID_IPerPropertyBrowsing
+			|| riid == IID_IVSMDPerPropertyBrowsing
+			|| riid == IID_ISpecifyPropertyPages
 			|| riid == IID_ISupportErrorInfo
 			|| riid == IID_IVsAggregatableProject // will never support
 			|| riid == IID_IVsBuildPropertyStorage // something about MSBuild
@@ -87,13 +120,13 @@ public:
 			|| riid == IID_IVsSupportItemHandoff
 			|| riid == IID_IVsFilterAddProjectItemDlg
 			|| riid == IID_IVsHierarchy
-			//|| riid == IID_IUseImmediateCommitPropertyPages
+			|| riid == IID_IUseImmediateCommitPropertyPages
 			|| riid == IID_IVsParentProject3
 			|| riid == IID_IVsUIHierarchyEventsPrivate
 			|| riid == IID_INoIdea3
 			|| riid == IID_INoIdea4
 			|| riid == IID_SolutionProperties
-			)
+		)
 			return E_NOINTERFACE;
 		#endif
 
@@ -715,23 +748,35 @@ public:
 				sink->OnChanged(DISPID_UNKNOWN);
 			if (auto sink = wil::try_com_query_failfast<IVsHierarchyEvents>(_hier))
 				sink->OnPropertyChanged(_itemId, VSHPROPID_IconHandle, 0);
+			_propNotifyCP->NotifyPropertyChanged(dispidBuildToolKind);
+			_propNotifyCP->NotifyPropertyChanged(dispidCustomBuildToolProps);
 		}
 
 		return S_OK;
 	}
-	#pragma endregion
 
-	#pragma region IProvideClassInfo
-	virtual HRESULT STDMETHODCALLTYPE GetClassInfo (ITypeInfo** ppTI) override
+	virtual HRESULT get_CustomBuildToolProperties (ICustomBuildToolProperties** ppProps)
 	{
-		return GetTypeInfo(0, 0, ppTI);
+		return wil::com_query_to_nothrow(_customBuildToolProps, ppProps);
 	}
 	#pragma endregion
 
 	#pragma region IVsPerPropertyBrowsing
-	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL *pfHide) override { return E_NOTIMPL; }
+	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL *pfHide) override
+	{
+		if (dispid == dispidCustomBuildToolProps)
+			return *pfHide = (_buildTool != BuildToolKind::CustomBuildTool), S_OK;
 
-	virtual HRESULT STDMETHODCALLTYPE DisplayChildProperties (DISPID dispid, BOOL *pfDisplay) override { return E_NOTIMPL; }
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE DisplayChildProperties (DISPID dispid, BOOL *pfDisplay) override
+	{
+		if (dispid == dispidCustomBuildToolProps)
+			return *pfDisplay = (_buildTool == BuildToolKind::CustomBuildTool), S_OK;
+
+		return E_NOTIMPL;
+	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetLocalizedPropertyInfo (DISPID dispid, LCID localeID, BSTR *pbstrLocalizedName, BSTR *pbstrLocalizeDescription) override { return E_NOTIMPL; }
 
@@ -748,7 +793,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE IsPropertyReadOnly (DISPID dispid, BOOL *fReadOnly) override
 	{
-		if (dispid == dispidPath)
+		if (dispid == dispidPath || dispid == dispidCustomBuildToolProps)
 		{
 			*fReadOnly = TRUE;
 			return S_OK;
@@ -767,6 +812,35 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE CanResetPropertyValue (DISPID dispid, BOOL* pfCanReset) override { return E_NOTIMPL; }
 
 	virtual HRESULT STDMETHODCALLTYPE ResetPropertyValue (DISPID dispid) override { return E_NOTIMPL; }
+	#pragma endregion
+
+	#pragma region IConnectionPointContainer
+	virtual HRESULT STDMETHODCALLTYPE EnumConnectionPoints (IEnumConnectionPoints **ppEnum) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE FindConnectionPoint (REFIID riid, IConnectionPoint **ppCP) override
+	{
+		if (riid == IID_IPropertyNotifySink)
+			return wil::com_query_to_nothrow(_propNotifyCP, ppCP);
+
+		RETURN_HR(E_NOTIMPL);
+	}
+	#pragma endregion
+
+	#pragma region IPropertyNotifySink
+	virtual HRESULT STDMETHODCALLTYPE OnChanged (DISPID dispID) override
+	{
+		if (auto sink = wil::try_com_query_nothrow<IPropertyNotifySink>(_hier))
+			sink->OnChanged(DISPID_UNKNOWN);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnRequestEdit (DISPID dispID) override
+	{
+		return E_NOTIMPL;
+	}
 	#pragma endregion
 
 	HRESULT RenameFile (BSTR newName)
