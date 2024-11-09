@@ -433,31 +433,59 @@ public:
 		return E_NOTIMPL;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE StartBuildEx(DWORD dwBuildId, IVsOutputWindowPane * pIVsOutputWindowPane, DWORD dwOptions) override
+	struct InputFiles
 	{
-		HRESULT hr;
+		vector_nothrow<com_ptr<IProjectFile>> CustomBuild;
+		vector_nothrow<com_ptr<IProjectFile>> Asm;
+	};
 
-		for (auto& p : _buildStatusCallbacks)
+	HRESULT GetInputFiles (InputFiles& files)
+	{
+		wil::unique_variant childItemId;
+		auto hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &childItemId); RETURN_IF_FAILED(hr);
+		RETURN_HR_IF(E_FAIL, childItemId.vt != VT_VSITEMID);
+		while (V_VSITEMID(&childItemId) != VSITEMID_NIL)
 		{
-			BOOL fContinue;
-			hr = p.second->BuildBegin(&fContinue); RETURN_IF_FAILED(hr);
-			if (!fContinue)
-				RETURN_HR(OLECMDERR_E_CANCELED);
+			wil::unique_variant browseObjectVariant;
+			hr = _hier->GetProperty(V_VSITEMID(&childItemId), VSHPROPID_BrowseObject, &browseObjectVariant);
+			if (SUCCEEDED(hr) && (browseObjectVariant.vt == VT_DISPATCH))
+			{
+				com_ptr<IProjectFile> file;
+				if (SUCCEEDED(browseObjectVariant.pdispVal->QueryInterface(&file)))
+				{
+					BuildToolKind tool;
+					hr = file->get_BuildTool(&tool); RETURN_IF_FAILED(hr);
+					bool pushed;
+					switch(tool)
+					{
+						case BuildToolKind::None:
+							break;
+
+						case BuildToolKind::Assembler:
+							pushed = files.Asm.try_push_back (std::move(file)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+							break;
+					
+						case BuildToolKind::CustomBuildTool:
+							pushed = files.CustomBuild.try_push_back(std::move(file)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+							break;
+
+						default:
+							RETURN_HR(E_NOTIMPL);
+					}
+				}
+			}
+
+			hr = _hier->GetProperty(V_VSITEMID(&childItemId), VSHPROPID_NextSibling, &childItemId); RETURN_IF_FAILED(hr);
+			RETURN_HR_IF(E_FAIL, childItemId.vt != VT_VSITEMID);
 		}
 
-		wil::unique_variant project_dir;
-		hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &project_dir); RETURN_IF_FAILED(hr);
-		if (project_dir.vt != VT_BSTR)
-			return E_FAIL;
+		return S_OK;
+	}
 
-		wil::unique_bstr output_dir;
-		hr = this->GetOutputDirectory(&output_dir); RETURN_IF_FAILED(hr);
-
-		int win32err = SHCreateDirectoryExW (nullptr, output_dir.get(), nullptr);
-		if (win32err != ERROR_SUCCESS && win32err != ERROR_ALREADY_EXISTS)
-			RETURN_WIN32(win32err);
-
-		const DWORD pathFlags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
+	HRESULT MakeSjasmCommandLine (IProjectFile* const* files, uint32_t fileCount, LPCWSTR project_dir,
+		LPCWSTR output_dir, BSTR* ppCmdLine)
+	{
+		HRESULT hr;
 
 		wstring_builder cmdLine;
 
@@ -470,15 +498,16 @@ public:
 
 		cmdLine << " --fullpath";
 
-		auto addOutputPathParam = [&cmdLine, &output_dir, &project_dir](const char* paramName, const wchar_t* output_filename) -> HRESULT
+		auto addOutputPathParam = [&cmdLine, output_dir, project_dir](const char* paramName, const wchar_t* output_filename) -> HRESULT
 			{
 				wil::unique_hlocal_string outputFilePath;
-				auto hr = PathAllocCombine (output_dir.get(), output_filename, pathFlags, &outputFilePath); RETURN_IF_FAILED(hr);
+				const DWORD PathFlags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
+				auto hr = PathAllocCombine (output_dir, output_filename, PathFlags, &outputFilePath); RETURN_IF_FAILED(hr);
 				auto outputFilePathRelativeUgly = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(outputFilePathRelativeUgly);
-				BOOL bRes = PathRelativePathToW (outputFilePathRelativeUgly.get(), project_dir.bstrVal, FILE_ATTRIBUTE_DIRECTORY, outputFilePath.get(), 0); RETURN_HR_IF(CS_E_INVALID_PATH, !bRes);
+				BOOL bRes = PathRelativePathToW (outputFilePathRelativeUgly.get(), project_dir, FILE_ATTRIBUTE_DIRECTORY, outputFilePath.get(), 0); RETURN_HR_IF(CS_E_INVALID_PATH, !bRes);
 				size_t len = wcslen(outputFilePathRelativeUgly.get());
 				auto outputFilePathRelative = wil::make_hlocal_string_nothrow(nullptr, len); RETURN_IF_NULL_ALLOC(outputFilePathRelative);
-				hr = PathCchCanonicalizeEx (outputFilePathRelative.get(), len + 1, outputFilePathRelativeUgly.get(), pathFlags); RETURN_IF_FAILED(hr);
+				hr = PathCchCanonicalizeEx (outputFilePathRelative.get(), len + 1, outputFilePathRelativeUgly.get(), PathFlags); RETURN_IF_FAILED(hr);
 				cmdLine << paramName << outputFilePathRelative.get();
 				return S_OK;
 			};
@@ -505,37 +534,66 @@ public:
 		}
 
 		// input files
-		wil::unique_variant childItemId;
-		hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &childItemId); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(E_FAIL, childItemId.vt != VT_VSITEMID);
-		while (V_VSITEMID(&childItemId) != VSITEMID_NIL)
+		for (uint32_t i = 0; i < fileCount; i++)
 		{
-			wil::unique_variant browseObjectVariant;
-			hr = _hier->GetProperty(V_VSITEMID(&childItemId), VSHPROPID_BrowseObject, &browseObjectVariant);
-			if (SUCCEEDED(hr) && (browseObjectVariant.vt == VT_DISPATCH))
-			{
-				com_ptr<IProjectFile> file;
-				hr = browseObjectVariant.pdispVal->QueryInterface(&file);
-				if (SUCCEEDED(hr))
-				{
-					BuildToolKind tool;
-					hr = file->get_BuildTool(&tool);
-					if (SUCCEEDED(hr) && (tool == BuildToolKind::Assembler))
-					{
-						wil::unique_bstr fileRelativePath;
-						hr = file->get_Path(&fileRelativePath);
-						if (SUCCEEDED(hr))
-							cmdLine << ' ' << fileRelativePath.get();
-					}
-				}
-			}
-
-			hr = _hier->GetProperty(V_VSITEMID(&childItemId), VSHPROPID_NextSibling, &childItemId); RETURN_IF_FAILED(hr);
-			RETURN_HR_IF(E_FAIL, childItemId.vt != VT_VSITEMID);
+			IProjectFile* file = files[i];
+			wil::unique_bstr fileRelativePath;
+			hr = file->get_Path(&fileRelativePath);
+			if (SUCCEEDED(hr))
+				cmdLine << ' ' << fileRelativePath.get();
 		}
 
 		cmdLine << '\0';
 		RETURN_HR_IF(E_OUTOFMEMORY, cmdLine.out_of_memory());
+
+		*ppCmdLine = SysAllocStringLen (cmdLine.data(), cmdLine.size()); RETURN_IF_NULL_ALLOC(*ppCmdLine);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE StartBuildEx(DWORD dwBuildId, IVsOutputWindowPane* pIVsOutputWindowPane, DWORD dwOptions) override
+	{
+		HRESULT hr;
+
+		for (auto& p : _buildStatusCallbacks)
+		{
+			BOOL fContinue;
+			hr = p.second->BuildBegin(&fContinue); RETURN_IF_FAILED(hr);
+			if (!fContinue)
+				RETURN_HR(OLECMDERR_E_CANCELED);
+		}
+
+		wil::unique_variant project_dir;
+		hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &project_dir); RETURN_IF_FAILED(hr);
+		if (project_dir.vt != VT_BSTR)
+			return E_FAIL;
+
+		wil::unique_bstr output_dir;
+		hr = this->GetOutputDirectory(&output_dir); RETURN_IF_FAILED(hr);
+
+		int win32err = SHCreateDirectoryExW (nullptr, output_dir.get(), nullptr);
+		if (win32err != ERROR_SUCCESS && win32err != ERROR_ALREADY_EXISTS)
+			RETURN_WIN32(win32err);
+
+		InputFiles inputFiles;
+		hr = GetInputFiles(inputFiles); RETURN_IF_FAILED(hr);
+
+		// First build the files with a custom build tool. This is similar to what VS does.
+		//for (auto& f : inputFiles.CustomBuild)
+		//{
+		//	wstring_builder cmdLine;
+		//}
+
+		// Second launch sjasm to build all asm files.
+		wil::unique_bstr cmdLine;
+		hr = MakeSjasmCommandLine (inputFiles.Asm[0].addressof(), inputFiles.Asm.size(),
+			project_dir.bstrVal, output_dir.get(), &cmdLine); RETURN_IF_FAILED(hr);
+		hr = LaunchProcess (cmdLine.get(), project_dir.bstrVal, pIVsOutputWindowPane); RETURN_IF_FAILED(hr);
+		return S_OK;
+	}
+
+	HRESULT LaunchProcess (LPWSTR cmdLine, LPCWSTR project_dir, IVsOutputWindowPane* pIVsOutputWindowPane)
+	{
+		HRESULT hr;
 
 		// Create a pipe for the child process's STDOUT.
 		wil::unique_handle stdoutReadHandle;
@@ -552,12 +610,12 @@ public:
 		startupInfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
 		startupInfo.dwFlags |= STARTF_USESTDHANDLES;
 
-		pIVsOutputWindowPane->OutputString (cmdLine.data());
+		pIVsOutputWindowPane->OutputString (cmdLine);
 		pIVsOutputWindowPane->OutputString (L"\r\n");
 
 		wil::unique_process_information process_info;
-		bres = CreateProcess(NULL, const_cast<LPWSTR>(cmdLine.data()), NULL, NULL, TRUE, CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT, NULL,
-			project_dir.bstrVal, &startupInfo, &process_info); RETURN_IF_WIN32_BOOL_FALSE(bres);
+		bres = CreateProcess(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT, NULL,
+			project_dir, &startupInfo, &process_info); RETURN_IF_WIN32_BOOL_FALSE(bres);
 
 		wil::unique_event_nothrow exit_request;
 		hr = exit_request.create(wil::EventOptions::None); RETURN_IF_FAILED(hr);
