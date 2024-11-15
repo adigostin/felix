@@ -7,7 +7,7 @@
 static constexpr wchar_t wnd_class_name[] = L"ProjectConfig-{9838F078-469A-4F89-B08E-881AF33AE76D}";
 using unique_atom = wil::unique_any<ATOM, void(ATOM), [](ATOM a) { UnregisterClassW((LPCWSTR)a, (HINSTANCE)&__ImageBase); }>;
 static inline unique_atom atom;
-static constexpr UINT WM_BUILD_COMPLETE = WM_APP + 1; // lParam = ThreadData*
+static constexpr UINT WM_TASK_COMPLETE = WM_APP + 1; // lParam = TaskData*
 
 struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 {
@@ -15,26 +15,24 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 	com_ptr<IVsUIHierarchy> _hier;
 	com_ptr<IProjectConfig> _config;
 	wil::unique_bstr _projName;
-	com_ptr<IVsOutputWindowPane> _outputWindowPane;
-	com_ptr<IVsOutputWindowPane2> outputWindow2;
-	com_ptr<IVsLaunchPadFactory> launchPadFactory;
+	com_ptr<IVsOutputWindowPane> _outputWindow;
+	com_ptr<IVsOutputWindowPane2> _outputWindow2;
+	com_ptr<IVsLaunchPadFactory> _launchPadFactory;
 	HWND _hwnd;
 	com_ptr<IProjectConfigBuilderCallback> _callback;
 
-	struct ThreadData
+	struct TaskData
 	{
-		wil::unique_bstr cmdLine;
-		wil::unique_bstr workDir;
-		com_ptr<IVsLaunchPadFactory> launchPadFactory;
-		HWND hwnd;
-		com_ptr<IVsOutputWindowPane> outputWindow;
-		wil::unique_handle thread_handle;
+		ProjectConfigBuilder*      builder;
+		wil::unique_bstr           cmdLine;
+		wil::unique_bstr           workDir;
+		wil::unique_handle         thread_handle;
 		wil::slim_event_auto_reset thread_started_event;
-		wil::unique_bstr outputText;
-		DWORD exitCode;
+		wil::unique_bstr           outputText;
+		DWORD                      exitCode;
 	};
 
-	vector_nothrow<wistd::unique_ptr<ThreadData>> _threads;
+	vector_nothrow<wistd::unique_ptr<TaskData>> _runningTasks;
 
 	HRESULT InitInstance (IVsUIHierarchy* hier, IProjectConfig* config, IVsOutputWindowPane* outputWindowPane)
 	{
@@ -42,9 +40,9 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 
 		_hier = hier;
 		_config = config;
-		_outputWindowPane = outputWindowPane;
+		_outputWindow = outputWindowPane;
 
-		hr = outputWindowPane->QueryInterface(&outputWindow2); RETURN_IF_FAILED(hr);
+		hr = outputWindowPane->QueryInterface(&_outputWindow2); RETURN_IF_FAILED(hr);
 
 		wil::unique_variant projectName;
 		hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_Name, &projectName); RETURN_IF_FAILED(hr);
@@ -62,7 +60,7 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 
 		_hwnd = CreateWindowExW (0, wnd_class_name, L"", WS_CHILD, 0, 0, 0, 0, HWND_MESSAGE, 0, (HINSTANCE)&__ImageBase, this); RETURN_LAST_ERROR_IF(!_hwnd);
 		SetWindowLongPtr (_hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
-		hr = serviceProvider->QueryService(SID_SVsLaunchPadFactory, &launchPadFactory); RETURN_IF_FAILED(hr);
+		hr = serviceProvider->QueryService(SID_SVsLaunchPadFactory, &_launchPadFactory); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
@@ -237,28 +235,26 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 		hr = MakeSjasmCommandLine (inputFiles.Asm[0].addressof(), inputFiles.Asm.size(),
 			project_dir.bstrVal, output_dir.get(), &cmdLine); RETURN_IF_FAILED(hr);
 
-		auto td = wistd::unique_ptr<ThreadData>(new (std::nothrow) ThreadData()); RETURN_IF_NULL_ALLOC(td);
+		auto td = wistd::unique_ptr<TaskData>(new (std::nothrow) TaskData()); RETURN_IF_NULL_ALLOC(td);
+		td->builder = this;
 		td->cmdLine = std::move(cmdLine);
 		td->workDir = wil::unique_bstr(SysAllocString(project_dir.bstrVal));
-		td->launchPadFactory = launchPadFactory;
-		td->hwnd = _hwnd;
-		td->outputWindow = _outputWindowPane;
 		td->thread_handle = wil::unique_handle (CreateThread (nullptr, 0, ThreadProc, td.get(), 0, nullptr)); RETURN_LAST_ERROR_IF_NULL(td->thread_handle);
 		td->thread_started_event.wait();
-		_threads.try_push_back(std::move(td));
+		_runningTasks.try_push_back(std::move(td));
 		return S_OK;
 	}
 
 	static DWORD WINAPI ThreadProc (LPVOID arg)
 	{
-		ThreadData* data = static_cast<ThreadData*>(arg);
+		TaskData* data = static_cast<TaskData*>(arg);
 		data->thread_started_event.SetEvent();
 		com_ptr<IVsLaunchPad> lp;
-		auto hr = data->launchPadFactory->CreateLaunchPad(&lp);
+		auto hr = data->builder->_launchPadFactory->CreateLaunchPad(&lp);
 		if (FAILED(hr))
 		{
 			data->exitCode = hr;
-			PostMessageW (data->hwnd, WM_BUILD_COMPLETE, 0, reinterpret_cast<LPARAM>(data));
+			PostMessageW (data->builder->_hwnd, WM_TASK_COMPLETE, 0, reinterpret_cast<LPARAM>(data));
 			return hr;
 		}
 		
@@ -271,17 +267,17 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 		LAUNCHPAD_FLAGS flags = 0;
 
 		wil::unique_bstr output;
-		hr = lp->ExecCommand(nullptr, data->cmdLine.get(), data->workDir.get(), flags, data->outputWindow,
+		hr = lp->ExecCommand(nullptr, data->cmdLine.get(), data->workDir.get(), flags, data->builder->_outputWindow,
 			CAT_BUILDCOMPILE, BMP_COMPILE, L"", nullptr, &data->exitCode, &output);
 		if (FAILED(hr))
 		{
 			data->exitCode = hr;
-			PostMessageW (data->hwnd, WM_BUILD_COMPLETE, 0, reinterpret_cast<LPARAM>(data));
+			PostMessageW (data->builder->_hwnd, WM_TASK_COMPLETE, 0, reinterpret_cast<LPARAM>(data));
 			return hr;
 		}
 
 		data->outputText = std::move(output);
-		PostMessageW (data->hwnd, WM_BUILD_COMPLETE, 0, reinterpret_cast<LPARAM>(data));
+		PostMessageW (data->builder->_hwnd, WM_TASK_COMPLETE, 0, reinterpret_cast<LPARAM>(data));
 		return 0;
 	}
 
@@ -352,7 +348,7 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 
 						wil::unique_bstr taskFilename (SysAllocStringLen(line, (UINT)(filenameTo - line)));
 						ULONG lineNum = wcstoul(filenameTo + 1, nullptr, 10) - 1;
-						hr = outputWindow2->OutputTaskItemStringEx2(line, taskPrio, CAT_BUILDCOMPILE, L"", BMP_COMPILE,
+						hr = _outputWindow2->OutputTaskItemStringEx2(line, taskPrio, CAT_BUILDCOMPILE, L"", BMP_COMPILE,
 							taskFilename.get(), lineNum, 0, _projName.get(), taskItemText, L""); RETURN_IF_FAILED(hr);
 						addedTaskItem = true;
 						line = p;
@@ -372,7 +368,7 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 						p++;
 				}
 
-				hr = _outputWindowPane->OutputString(line); RETURN_IF_FAILED(hr);
+				hr = _outputWindow->OutputString(line); RETURN_IF_FAILED(hr);
 				line = p;
 			}
 		}
@@ -382,15 +378,15 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 
 	static LRESULT CALLBACK window_proc (HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
-		if (msg == WM_BUILD_COMPLETE)
+		if (msg == WM_TASK_COMPLETE)
 		{
 			auto p = reinterpret_cast<ProjectConfigBuilder*>(GetWindowLongPtr (hwnd, GWLP_USERDATA)); WI_ASSERT(p);
-			auto* td = reinterpret_cast<ThreadData*>(lparam);
+			auto* td = reinterpret_cast<TaskData*>(lparam);
 			wchar_t* outputText = td->outputText.get();
 			wchar_t* outputTextEnd = outputText + SysStringLen(td->outputText.get());
 			auto hr = p->ParseSjasmOutput(outputText, outputTextEnd); LOG_IF_FAILED(hr);
 			DWORD exitCode = td->exitCode;
-			p->_threads.remove([td](auto& u) { return u.get() == td; });
+			p->_runningTasks.remove([td](auto& u) { return u.get() == td; });
 			auto callback = std::move(p->_callback);
 			callback->OnBuildComplete(exitCode == 0);
 			return 0;
