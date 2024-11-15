@@ -13,8 +13,6 @@
 
 #pragma comment (lib, "Synchronization.lib")
 
-static const HINSTANCE hinstance = reinterpret_cast<HINSTANCE>(&__ImageBase);
-
 static constexpr DWORD LoadAddressDefaultValue = 0x8000;
 static constexpr WORD EntryPointAddressDefaultValue = 0x8000;
 static constexpr LaunchType LaunchTypeDefaultValue = LaunchType::PrintUsr;
@@ -26,6 +24,7 @@ struct ProjectConfig
 	, IVsBuildableProjectCfg2
 	, ISpecifyPropertyPages
 	, IXmlParent
+	, IProjectConfigBuilderCallback
 	//, public IVsProjectCfgDebugTargetSelection
 	//, public IVsProjectCfgDebugTypeSelection
 {
@@ -34,7 +33,7 @@ struct ProjectConfig
 	DWORD _threadId;
 	wil::unique_bstr _configName;
 	wil::unique_bstr _platformName;
-	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsBuildStatusCallback>> _buildStatusCallbacks;
+	unordered_map_nothrow<VSCOOKIE, com_ptr<IVsBuildStatusCallback>> _buildStatusCallbacks;
 	VSCOOKIE _buildStatusNextCookie = VSCOOKIE_NIL + 1;
 
 	DWORD _loadAddress = LoadAddressDefaultValue;
@@ -44,27 +43,7 @@ struct ProjectConfig
 	bool _saveListing = false;
 	wil::unique_bstr _listingFilename;
 
-	static constexpr wchar_t wnd_class_name[] = L"ProjectConfig-{9838F078-469A-4F89-B08E-881AF33AE76D}";
-	using unique_atom = wil::unique_any<ATOM, void(ATOM), [](ATOM a) { BOOL bres = UnregisterClassW((LPCWSTR)a, hinstance); LOG_IF_WIN32_BOOL_FALSE(bres); }>;
-	static inline unique_atom atom;
-	static constexpr UINT WM_OUTPUT_LINE = WM_APP + 0;
-	static constexpr UINT WM_BUILD_COMPLETE = WM_APP + 1;
-
-	struct pending_build_info_t
-	{
-		wil::slim_event_auto_reset thread_started_event;
-		wil::unique_event_nothrow exit_request_event;
-		wil::unique_handle stdoutReadHandle;
-		wil::com_ptr_nothrow<IVsOutputWindowPane> output_window;
-		wil::com_ptr_nothrow<IVsOutputWindowPaneNoPump> output_window_no_pump;
-		wil::unique_process_information process_info;
-		wil::unique_hwnd hwnd;
-		wil::unique_handle thread_handle;
-		vector_nothrow<vector_nothrow<wchar_t>> string_queue; // TODO: change this from vector to queue, or maybe a Win32 SList
-		wil::srwlock string_queue_lock;
-	};
-
-	wistd::unique_ptr<pending_build_info_t> _pending_build;
+	com_ptr<IProjectConfigBuilder> _pendingBuild;
 
 public:
 	HRESULT InitInstance (IVsUIHierarchy* hier)
@@ -72,49 +51,7 @@ public:
 		_hier = hier;
 		_threadId = GetCurrentThreadId();
 		_platformName = wil::make_bstr_nothrow(L"ZX Spectrum 48K"); RETURN_IF_NULL_ALLOC(_platformName);
-
-		if (!atom)
-		{
-			WNDCLASS wc = { };
-			wc.lpfnWndProc = window_proc;
-			wc.hInstance = hinstance;
-			wc.lpszClassName = wnd_class_name;
-			atom.reset (RegisterClassW(&wc)); RETURN_LAST_ERROR_IF(!atom);
-		}
-
 		return S_OK;
-	}
-
-	static LRESULT CALLBACK window_proc (HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
-	{
-		if (msg == WM_OUTPUT_LINE)
-		{
-			auto p = reinterpret_cast<ProjectConfig*>(GetWindowLongPtr (hwnd, GWLP_USERDATA)); WI_ASSERT(p);
-			auto lock = p->_pending_build->string_queue_lock.lock_exclusive();
-			auto str = p->_pending_build->string_queue.remove(p->_pending_build->string_queue.begin());
-			lock.reset();
-			if (p->_pending_build->output_window_no_pump)
-				p->_pending_build->output_window_no_pump->OutputStringNoPump(str.data());
-			else
-				p->_pending_build->output_window->OutputStringThreadSafe(str.data());
-			return 0;
-		}
-
-		if (msg == WM_BUILD_COMPLETE)
-		{
-			auto p = reinterpret_cast<ProjectConfig*>(GetWindowLongPtr (hwnd, GWLP_USERDATA)); WI_ASSERT(p);
-			WaitForSingleObject(p->_pending_build->thread_handle.get(), IsDebuggerPresent() ? INFINITE : 5000);
-			DWORD exit_code_hr = E_FAIL;
-			BOOL bres = GetExitCodeThread (p->_pending_build->thread_handle.get(), &exit_code_hr); LOG_IF_WIN32_BOOL_FALSE(bres);
-			p->_pending_build.reset();
-
-			for (auto rit = p->_buildStatusCallbacks.rbegin(); rit != p->_buildStatusCallbacks.rend(); rit++)
-				rit->second->BuildEnd(SUCCEEDED(exit_code_hr));
-
-			return 0;
-		}
-
-		return DefWindowProc (hwnd, msg, wparam, lparam);
 	}
 
 	#pragma region IUnknown
@@ -433,314 +370,36 @@ public:
 		return E_NOTIMPL;
 	}
 
-	struct InputFiles
-	{
-		vector_nothrow<com_ptr<IProjectFile>> CustomBuild;
-		vector_nothrow<com_ptr<IProjectFile>> Asm;
-	};
-
-	HRESULT GetInputFiles (InputFiles& files)
-	{
-		wil::unique_variant childItemId;
-		auto hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &childItemId); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(E_FAIL, childItemId.vt != VT_VSITEMID);
-		while (V_VSITEMID(&childItemId) != VSITEMID_NIL)
-		{
-			wil::unique_variant browseObjectVariant;
-			hr = _hier->GetProperty(V_VSITEMID(&childItemId), VSHPROPID_BrowseObject, &browseObjectVariant);
-			if (SUCCEEDED(hr) && (browseObjectVariant.vt == VT_DISPATCH))
-			{
-				com_ptr<IProjectFile> file;
-				if (SUCCEEDED(browseObjectVariant.pdispVal->QueryInterface(&file)))
-				{
-					BuildToolKind tool;
-					hr = file->get_BuildTool(&tool); RETURN_IF_FAILED(hr);
-					bool pushed;
-					switch(tool)
-					{
-						case BuildToolKind::None:
-							break;
-
-						case BuildToolKind::Assembler:
-							pushed = files.Asm.try_push_back (std::move(file)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-							break;
-					
-						case BuildToolKind::CustomBuildTool:
-							pushed = files.CustomBuild.try_push_back(std::move(file)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-							break;
-
-						default:
-							RETURN_HR(E_NOTIMPL);
-					}
-				}
-			}
-
-			hr = _hier->GetProperty(V_VSITEMID(&childItemId), VSHPROPID_NextSibling, &childItemId); RETURN_IF_FAILED(hr);
-			RETURN_HR_IF(E_FAIL, childItemId.vt != VT_VSITEMID);
-		}
-
-		return S_OK;
-	}
-
-	HRESULT MakeSjasmCommandLine (IProjectFile* const* files, uint32_t fileCount, LPCWSTR project_dir,
-		LPCWSTR output_dir, BSTR* ppCmdLine)
-	{
-		HRESULT hr;
-
-		wstring_builder cmdLine;
-
-		wil::unique_hlocal_string moduleFilename;
-		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, moduleFilename); RETURN_IF_FAILED(hr);
-		auto fnres = PathFindFileName(moduleFilename.get()); RETURN_HR_IF(CO_E_BAD_PATH, fnres == moduleFilename.get());
-		cmdLine << L'\"';
-		cmdLine.append(moduleFilename.get(), fnres - moduleFilename.get());
-		cmdLine << "sjasmplus.exe" << L'\"';
-
-		cmdLine << " --fullpath";
-
-		auto addOutputPathParam = [&cmdLine, output_dir, project_dir](const char* paramName, const wchar_t* output_filename) -> HRESULT
-			{
-				wil::unique_hlocal_string outputFilePath;
-				const DWORD PathFlags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
-				auto hr = PathAllocCombine (output_dir, output_filename, PathFlags, &outputFilePath); RETURN_IF_FAILED(hr);
-				auto outputFilePathRelativeUgly = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(outputFilePathRelativeUgly);
-				BOOL bRes = PathRelativePathToW (outputFilePathRelativeUgly.get(), project_dir, FILE_ATTRIBUTE_DIRECTORY, outputFilePath.get(), 0); RETURN_HR_IF(CS_E_INVALID_PATH, !bRes);
-				size_t len = wcslen(outputFilePathRelativeUgly.get());
-				auto outputFilePathRelative = wil::make_hlocal_string_nothrow(nullptr, len); RETURN_IF_NULL_ALLOC(outputFilePathRelative);
-				hr = PathCchCanonicalizeEx (outputFilePathRelative.get(), len + 1, outputFilePathRelativeUgly.get(), PathFlags); RETURN_IF_FAILED(hr);
-				cmdLine << paramName << outputFilePathRelative.get();
-				return S_OK;
-			};
-
-		// --raw=...
-		wil::unique_bstr output_filename;
-		hr = GetOutputFileName(&output_filename); RETURN_IF_FAILED(hr);
-		hr = addOutputPathParam (" --raw=", output_filename.get()); RETURN_IF_FAILED(hr);
-
-		// --sld=...
-		wil::unique_bstr sld_filename;
-		hr = GetSldFileName (&sld_filename); RETURN_IF_FAILED(hr);
-		hr = addOutputPathParam (" --sld=", sld_filename.get()); RETURN_IF_FAILED(hr);
-
-		// --outprefix
-		hr = addOutputPathParam (" --outprefix=", L""); RETURN_IF_FAILED(hr);
-
-		// --lst
-		if (_saveListing)
-		{
-			cmdLine << " --lst";
-			if (_listingFilename && _listingFilename.get()[0])
-				cmdLine << "=" << _listingFilename.get();
-		}
-
-		// input files
-		for (uint32_t i = 0; i < fileCount; i++)
-		{
-			IProjectFile* file = files[i];
-			wil::unique_bstr fileRelativePath;
-			hr = file->get_Path(&fileRelativePath);
-			if (SUCCEEDED(hr))
-				cmdLine << ' ' << fileRelativePath.get();
-		}
-
-		cmdLine << '\0';
-		RETURN_HR_IF(E_OUTOFMEMORY, cmdLine.out_of_memory());
-
-		*ppCmdLine = SysAllocStringLen (cmdLine.data(), cmdLine.size()); RETURN_IF_NULL_ALLOC(*ppCmdLine);
-		return S_OK;
-	}
-
 	virtual HRESULT STDMETHODCALLTYPE StartBuildEx(DWORD dwBuildId, IVsOutputWindowPane* pIVsOutputWindowPane, DWORD dwOptions) override
 	{
-		HRESULT hr;
+		auto hr = MakeProjectConfigBuilder (_hier, this, pIVsOutputWindowPane, &_pendingBuild); RETURN_IF_FAILED(hr);
 
-		for (auto& p : _buildStatusCallbacks)
+		for (auto& cb : _buildStatusCallbacks)
 		{
-			BOOL fContinue;
-			hr = p.second->BuildBegin(&fContinue); RETURN_IF_FAILED(hr);
-			if (!fContinue)
-				RETURN_HR(OLECMDERR_E_CANCELED);
+			BOOL fContinue = FALSE;
+			hr = cb.second->BuildBegin(&fContinue); RETURN_IF_FAILED(hr);
+			RETURN_HR_IF_EXPECTED(OLECMDERR_E_CANCELED, !fContinue);
 		}
 
-		wil::unique_variant project_dir;
-		hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &project_dir); RETURN_IF_FAILED(hr);
-		if (project_dir.vt != VT_BSTR)
-			return E_FAIL;
-
-		wil::unique_bstr output_dir;
-		hr = this->GetOutputDirectory(&output_dir); RETURN_IF_FAILED(hr);
-
-		int win32err = SHCreateDirectoryExW (nullptr, output_dir.get(), nullptr);
-		if (win32err != ERROR_SUCCESS && win32err != ERROR_ALREADY_EXISTS)
-			RETURN_WIN32(win32err);
-
-		InputFiles inputFiles;
-		hr = GetInputFiles(inputFiles); RETURN_IF_FAILED(hr);
-
-		// First build the files with a custom build tool. This is similar to what VS does.
-		//for (auto& f : inputFiles.CustomBuild)
-		//{
-		//	wstring_builder cmdLine;
-		//}
-
-		// Second launch sjasm to build all asm files.
-		wil::unique_bstr cmdLine;
-		hr = MakeSjasmCommandLine (inputFiles.Asm[0].addressof(), inputFiles.Asm.size(),
-			project_dir.bstrVal, output_dir.get(), &cmdLine); RETURN_IF_FAILED(hr);
-		hr = LaunchProcess (cmdLine.get(), project_dir.bstrVal, pIVsOutputWindowPane); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
-
-	HRESULT LaunchProcess (LPWSTR cmdLine, LPCWSTR project_dir, IVsOutputWindowPane* pIVsOutputWindowPane)
-	{
-		HRESULT hr;
-
-		// Create a pipe for the child process's STDOUT.
-		wil::unique_handle stdoutReadHandle;
-		wil::unique_handle stdoutWriteHandle;
-		SECURITY_ATTRIBUTES saAttr = { .nLength = sizeof(SECURITY_ATTRIBUTES), .bInheritHandle = TRUE, };
-		BOOL bres = CreatePipe(&stdoutReadHandle, &stdoutWriteHandle, &saAttr, 0); RETURN_IF_WIN32_BOOL_FALSE(bres);
-
-		// Ensure the read handle to the pipe for STDOUT is not inherited.
-		bres = SetHandleInformation(stdoutReadHandle.get(), HANDLE_FLAG_INHERIT, 0); RETURN_IF_WIN32_BOOL_FALSE(bres);
-
-		STARTUPINFO startupInfo = { .cb = sizeof(startupInfo) };
-		startupInfo.hStdError = stdoutWriteHandle.get();
-		startupInfo.hStdOutput = stdoutWriteHandle.get();
-		startupInfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-		startupInfo.dwFlags |= STARTF_USESTDHANDLES;
-
-		pIVsOutputWindowPane->OutputString (cmdLine);
-		pIVsOutputWindowPane->OutputString (L"\r\n");
-
-		wil::unique_process_information process_info;
-		bres = CreateProcess(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT, NULL,
-			project_dir, &startupInfo, &process_info); RETURN_IF_WIN32_BOOL_FALSE(bres);
-
-		wil::unique_event_nothrow exit_request;
-		hr = exit_request.create(wil::EventOptions::None); RETURN_IF_FAILED(hr);
-
-		auto hwnd = wil::unique_hwnd (CreateWindowExW (0, wnd_class_name, L"", WS_CHILD, 0, 0, 0, 0, HWND_MESSAGE, 0, hinstance, this)); RETURN_LAST_ERROR_IF(!hwnd);
-		SetWindowLongPtr (hwnd.get(), GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
-
-		auto thread_handle = wil::unique_handle (CreateThread (nullptr, 0, ReadBuildOutputThreadProcStatic, this, CREATE_SUSPENDED, nullptr)); RETURN_LAST_ERROR_IF_NULL(thread_handle);
-
-		wil::com_ptr_nothrow<IVsOutputWindowPaneNoPump> output_window_no_pump;
-		pIVsOutputWindowPane->QueryInterface(&output_window_no_pump); // we don't want error checking here
-
-		_pending_build.reset(new (std::nothrow) pending_build_info_t{ }); RETURN_IF_NULL_ALLOC(_pending_build);
-		_pending_build->output_window = pIVsOutputWindowPane;
-		_pending_build->output_window_no_pump = std::move(output_window_no_pump);
-		_pending_build->exit_request_event = std::move(exit_request);
-		_pending_build->process_info = std::move(process_info);
-		_pending_build->stdoutReadHandle = std::move(stdoutReadHandle);
-		_pending_build->hwnd = std::move(hwnd);
-		_pending_build->thread_handle = std::move(thread_handle);
-
-		DWORD dwres = ResumeThread (_pending_build->thread_handle.get());
-		if (dwres == (DWORD)-1)
+		hr = _pendingBuild->StartBuild(this);
+		if (FAILED(hr))
 		{
-			DWORD le = GetLastError();
-			_pending_build.reset();
-			RETURN_WIN32(le);
+			_pendingBuild = nullptr;
+			return hr;
 		}
-
-		WI_ASSERT(dwres == 1);
-
-		_pending_build->thread_started_event.wait();
 
 		return S_OK;
 	}
+	#pragma endregion
 
-	static DWORD WINAPI ReadBuildOutputThreadProcStatic (void* arg)
+	#pragma region IProjectConfigBuilderCallback
+	virtual HRESULT OnBuildComplete(BOOL fSuccess) override
 	{
-		auto cfg = static_cast<ProjectConfig*>(arg);
-		return cfg->ReadBuildOutputThreadProc();
-	}
+		for (auto& cb : _buildStatusCallbacks)
+			cb.second->BuildEnd(fSuccess);
 
-	DWORD ReadBuildOutputThreadProc()
-	{
-		_pending_build->thread_started_event.SetEvent();
-
-		const HANDLE handles[2] = { _pending_build->exit_request_event.get(), _pending_build->stdoutReadHandle.get() };
-
-		vector_nothrow<wchar_t> lineBuffer;
-
-		while(true)
-		{
-			DWORD wait_res = WaitForMultipleObjects (2, handles, FALSE, INFINITE);
-			if (wait_res == WAIT_OBJECT_0)
-			{
-				BOOL posted = PostMessageW (_pending_build->hwnd.get(), WM_BUILD_COMPLETE, 0, 0); LOG_IF_WIN32_BOOL_FALSE(posted);
-				return S_OK;
-			}
-			else if (wait_res == WAIT_OBJECT_0 + 1)
-			{
-				// Read all available data and split into lines.
-				while (true)
-				{
-					char buffer[100];
-					DWORD bytes_read;
-					BOOL bres = ReadFile (_pending_build->stdoutReadHandle.get(), buffer, (DWORD)sizeof(buffer), &bytes_read, nullptr);
-					if (!bres)
-					{
-						DWORD le = GetLastError();
-						if (le == ERROR_BROKEN_PIPE)
-						{
-							// The build process probably ended.
-							DWORD exit_code_process = 1;
-							bres = GetExitCodeProcess (_pending_build->process_info.hProcess, &exit_code_process); LOG_IF_WIN32_BOOL_FALSE(bres);
-							bres = PostMessageW (_pending_build->hwnd.get(), WM_BUILD_COMPLETE, 0, 0); LOG_IF_WIN32_BOOL_FALSE(bres);
-							return exit_code_process ? E_FAIL : S_OK;
-						}
-
-						LOG_WIN32(le);
-						BOOL posted = PostMessageW (_pending_build->hwnd.get(), WM_BUILD_COMPLETE, 0, 0); LOG_IF_WIN32_BOOL_FALSE(posted);
-						return HRESULT_FROM_WIN32(le);
-					}
-
-					// To keep things simple, reserve for the worst case: line ends at the end of the read buffer, plus nul-terminator
-					bool reserved = lineBuffer.try_reserve(lineBuffer.size() + sizeof(buffer) + 1);
-					if (!reserved)
-					{
-						BOOL posted = PostMessageW (_pending_build->hwnd.get(), WM_BUILD_COMPLETE, 0, 0); LOG_IF_WIN32_BOOL_FALSE(posted);
-						RETURN_HR(E_OUTOFMEMORY);
-					}
-
-					for (uint32_t i = 0; i < bytes_read; i++)
-					{
-						lineBuffer.try_push_back(buffer[i]); // Not optimal, I know. I'll sort this out later.
-						if (buffer[i] == '\x0A')
-						{
-							// We have one line. Forward it to the main thread.
-							lineBuffer.try_push_back('\0');
-
-							auto lock = _pending_build->string_queue_lock.lock_exclusive();
-							bool pushed = _pending_build->string_queue.try_push_back(std::move(lineBuffer));
-							if (!pushed)
-							{
-								BOOL posted = PostMessageW (_pending_build->hwnd.get(), WM_BUILD_COMPLETE, 0, 0); LOG_IF_WIN32_BOOL_FALSE(posted);
-								RETURN_HR(E_OUTOFMEMORY);
-							}
-
-							BOOL posted = PostMessageW (_pending_build->hwnd.get(), WM_OUTPUT_LINE, 0, 0);
-							if (!posted)
-							{
-								DWORD le = GetLastError();
-								_pending_build->string_queue.remove(_pending_build->string_queue.end() - 1);
-								RETURN_HR(HRESULT_FROM_WIN32(le));
-							}
-						}
-					}
-				}
-			}
-			else
-			{
-				DWORD le = GetLastError();
-				LOG_WIN32(le);
-				return HRESULT_FROM_WIN32(le);
-			}
-		}
+		_pendingBuild = nullptr;
+		return S_OK;
 	}
 	#pragma endregion
 

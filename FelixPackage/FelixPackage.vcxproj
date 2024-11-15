@@ -169,6 +169,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="PGPropertyPage.cpp" />
+    <ClCompile Include="ProjectConfigBuilder.cpp" />
     <ClCompile Include="ScreenWindow.cpp" />
     <ClCompile Include="FelixPackage.cpp" />
     <ClCompile Include="FelixPackage_i.c">

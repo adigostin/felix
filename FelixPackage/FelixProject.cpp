@@ -863,8 +863,14 @@ public:
 			if (propid == VSHPROPID_ExpandByDefault) // -2011
 				return InitVariantFromBoolean (TRUE, pvar);
 
-			if (propid == VSHPROPID_Name) // -2012
-				return InitVariantFromString (_filename.get(), pvar);
+			if (propid == VSHPROPID_Name || propid == VSHPROPID_EditLabel) // -2012, -2026
+			{
+				const wchar_t* ext = ::PathFindExtension(_filename.get());
+				BSTR bs = SysAllocStringLen(_filename.get(), (UINT)(ext - _filename.get())); RETURN_IF_NULL_ALLOC(bs);
+				pvar->vt = VT_BSTR;
+				pvar->bstrVal = bs;
+				return S_OK;
+			}
 
 			if (propid == VSHPROPID_BrowseObject) // -2018
 			{
@@ -879,15 +885,6 @@ public:
 
 			if (propid == VSHPROPID_ProjectDir) //-2021
 				return InitVariantFromString (_location.get(), pvar);
-
-			if (propid == VSHPROPID_EditLabel) // -2026,
-			{
-				const wchar_t* ext = ::PathFindExtension(_filename.get());
-				BSTR bs = SysAllocStringLen(_filename.get(), (UINT)(ext - _filename.get())); RETURN_IF_NULL_ALLOC(bs);
-				pvar->vt = VT_BSTR;
-				pvar->bstrVal = bs;
-				return S_OK;
-			}
 
 			if (propid == VSHPROPID_TypeName) // -2030
 				return InitVariantFromString (L"Z80", pvar); // Called by 17.11.5 from Help -> About.

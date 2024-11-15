@@ -5,6 +5,16 @@
 
 using unique_safearray = wil::unique_any<SAFEARRAY*, decltype(SafeArrayDestroy), &SafeArrayDestroy>;
 
+__interface IProjectConfigBuilderCallback : IUnknown
+{
+	HRESULT OnBuildComplete(BOOL fSuccess);
+};
+
+__interface IProjectConfigBuilder : IUnknown
+{
+	HRESULT StartBuild (IProjectConfigBuilderCallback* callback);
+};
+
 extern wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 
 extern GUID SID_Simulator;
@@ -43,4 +53,5 @@ HRESULT SetErrorInfo1 (HRESULT errorHR, ULONG packageStringResId, LPCWSTR arg1);
 HRESULT AssemblerPageProperties_CreateInstance (IProjectConfigAssemblerProperties** to);
 HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to);
 HRESULT MakeCustomBuildToolProperties (ICustomBuildToolProperties** to);
-
+HRESULT MakeProjectConfigBuilder (IVsUIHierarchy* hier, IProjectConfig* config,
+	IVsOutputWindowPane* outputWindowPane, IProjectConfigBuilder** to);
