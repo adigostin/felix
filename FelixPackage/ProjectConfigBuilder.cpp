@@ -2,7 +2,6 @@
 #include "pch.h"
 #include "FelixPackage.h"
 #include "shared/com.h"
-#include "shared/string_builder.h"
 
 static constexpr wchar_t wnd_class_name[] = L"ProjectConfig-{9838F078-469A-4F89-B08E-881AF33AE76D}";
 using unique_atom = wil::unique_any<ATOM, void(ATOM), [](ATOM a) { UnregisterClassW((LPCWSTR)a, (HINSTANCE)&__ImageBase); }>;
@@ -130,23 +129,46 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 		return S_OK;
 	}
 
+	static HRESULT Write (ISequentialStream* stream, wchar_t c)
+	{
+		return stream->Write(&c, sizeof(c), nullptr);
+	}
+
+	static HRESULT Write (ISequentialStream* stream, const wchar_t* psz)
+	{
+		return stream->Write(psz, (ULONG)wcslen(psz) * sizeof(wchar_t), nullptr);
+	}
+
+	static HRESULT Write (ISequentialStream* stream, const wchar_t* from, const wchar_t* to)
+	{
+		return stream->Write(from, (ULONG)(to - from) * sizeof(wchar_t), nullptr);
+	}
+
 	HRESULT MakeSjasmCommandLine (IProjectFile* const* files, uint32_t fileCount, LPCWSTR project_dir,
 		LPCWSTR output_dir, BSTR* ppCmdLine)
 	{
 		HRESULT hr;
 
-		wstring_builder cmdLine;
+		com_ptr<IStream> cmdLine;
+		hr = CreateStreamOnHGlobal (nullptr, TRUE, &cmdLine); RETURN_IF_FAILED(hr);
 
 		wil::unique_hlocal_string moduleFilename;
 		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, moduleFilename); RETURN_IF_FAILED(hr);
 		auto fnres = PathFindFileName(moduleFilename.get()); RETURN_HR_IF(CO_E_BAD_PATH, fnres == moduleFilename.get());
-		cmdLine << L'\"';
-		cmdLine.append(moduleFilename.get(), fnres - moduleFilename.get());
-		cmdLine << "sjasmplus.exe" << L'\"';
+		bool hasSpaces = !!wcschr(moduleFilename.get(), L' ');
+		if (hasSpaces)
+		{
+			hr = Write(cmdLine, L'\"'); RETURN_IF_FAILED(hr);
+		}
+		hr = Write(cmdLine, moduleFilename.get(), fnres); RETURN_IF_FAILED(hr);
+		hr = Write(cmdLine, L"sjasmplus.exe"); RETURN_IF_FAILED(hr);
+		if (hasSpaces)
+		{
+			hr = Write(cmdLine, L"\""); RETURN_IF_FAILED(hr);
+		}
+		hr = Write(cmdLine, L" --fullpath"); RETURN_IF_FAILED(hr);
 
-		cmdLine << " --fullpath";
-
-		auto addOutputPathParam = [&cmdLine, output_dir, project_dir](const char* paramName, const wchar_t* output_filename) -> HRESULT
+		auto addOutputPathParam = [&cmdLine, output_dir, project_dir](const wchar_t* paramName, const wchar_t* output_filename) -> HRESULT
 			{
 				wil::unique_hlocal_string outputFilePath;
 				const DWORD PathFlags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
@@ -156,22 +178,23 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 				size_t len = wcslen(outputFilePathRelativeUgly.get());
 				auto outputFilePathRelative = wil::make_hlocal_string_nothrow(nullptr, len); RETURN_IF_NULL_ALLOC(outputFilePathRelative);
 				hr = PathCchCanonicalizeEx (outputFilePathRelative.get(), len + 1, outputFilePathRelativeUgly.get(), PathFlags); RETURN_IF_FAILED(hr);
-				cmdLine << paramName << outputFilePathRelative.get();
+				hr = Write(cmdLine, paramName); RETURN_IF_FAILED(hr);
+				hr = Write(cmdLine, outputFilePathRelative.get()); RETURN_IF_FAILED(hr);
 				return S_OK;
 			};
 
 		// --raw=...
 		wil::unique_bstr output_filename;
 		hr = _config->GetOutputFileName(&output_filename); RETURN_IF_FAILED(hr);
-		hr = addOutputPathParam (" --raw=", output_filename.get()); RETURN_IF_FAILED(hr);
+		hr = addOutputPathParam (L" --raw=", output_filename.get()); RETURN_IF_FAILED(hr);
 
 		// --sld=...
 		wil::unique_bstr sld_filename;
 		hr = _config->GetSldFileName (&sld_filename); RETURN_IF_FAILED(hr);
-		hr = addOutputPathParam (" --sld=", sld_filename.get()); RETURN_IF_FAILED(hr);
+		hr = addOutputPathParam (L" --sld=", sld_filename.get()); RETURN_IF_FAILED(hr);
 
 		// --outprefix
-		hr = addOutputPathParam (" --outprefix=", L""); RETURN_IF_FAILED(hr);
+		hr = addOutputPathParam (L" --outprefix=", L""); RETURN_IF_FAILED(hr);
 
 		// --lst
 		com_ptr<IProjectConfigAssemblerProperties> asmProps;
@@ -181,10 +204,15 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 		if (saveListing)
 		{
 			wil::unique_bstr _listingFilename;
-			hr = asmProps->get_SaveListingFilename(&_listingFilename); RETURN_IF_FAILED(hr);
-			cmdLine << " --lst";
-			if (_listingFilename && _listingFilename.get()[0])
-				cmdLine << "=" << _listingFilename.get();
+			hr = asmProps->get_SaveListingFilename(&_listingFilename);
+			if (FAILED(hr) || !_listingFilename || !_listingFilename.get()[0])
+			{
+				hr = Write(cmdLine, L" --lst"); RETURN_IF_FAILED(hr);
+			}
+			else
+			{
+				hr = addOutputPathParam(L" --lst=", _listingFilename.get()); RETURN_IF_FAILED(hr);
+			}
 		}
 
 		// input files
@@ -194,13 +222,23 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 			wil::unique_bstr fileRelativePath;
 			hr = file->get_Path(&fileRelativePath);
 			if (SUCCEEDED(hr))
-				cmdLine << ' ' << fileRelativePath.get();
+			{
+				hr = Write(cmdLine, L" "); RETURN_IF_FAILED(hr);
+				hr = Write(cmdLine, fileRelativePath.get()); RETURN_IF_FAILED(hr);
+			}
 		}
 
-		cmdLine << '\0';
-		RETURN_HR_IF(E_OUTOFMEMORY, cmdLine.out_of_memory());
+		ULARGE_INTEGER size;
+		hr = cmdLine->Seek({ .QuadPart = 0 }, STREAM_SEEK_CUR, &size); RETURN_IF_FAILED(hr);
+		RETURN_HR_IF(ERROR_FILE_TOO_LARGE, !!size.HighPart);
 
-		*ppCmdLine = SysAllocStringLen (cmdLine.data(), cmdLine.size()); RETURN_IF_NULL_ALLOC(*ppCmdLine);
+		HGLOBAL hg;
+		hr = GetHGlobalFromStream(cmdLine, &hg); RETURN_IF_FAILED(hr);
+		auto buffer = GlobalLock(hg); WI_ASSERT(buffer);
+		*ppCmdLine = SysAllocStringLen((OLECHAR*)buffer, size.LowPart / 2);
+		GlobalUnlock (hg);
+		RETURN_IF_NULL_ALLOC(*ppCmdLine);
+
 		return S_OK;
 	}
 
