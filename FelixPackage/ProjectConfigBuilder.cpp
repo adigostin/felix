@@ -251,6 +251,20 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 		hr = MakeSjasmCommandLine (inputFiles.Asm[0].addressof(), inputFiles.Asm.size(),
 			project_dir.bstrVal, output_dir.get(), &cmdLine); RETURN_IF_FAILED(hr);
 
+		DWORD exitCode;
+		wil::unique_bstr outputStr;
+		RunTool(cmdLine.get(), project_dir.bstrVal, &exitCode, outputStr.addressof());
+
+		hr = ParseSjasmOutput (outputStr.get(), outputStr.get() + SysStringLen(outputStr.get())); RETURN_IF_FAILED(hr);
+
+		BOOL fSuccess = (exitCode == 0);
+		callback->OnBuildComplete(fSuccess);
+
+		return S_OK;
+	}
+
+	HRESULT RunTool (PWSTR cmdLine, PCWSTR workDir, DWORD* pExitCode, BSTR* pStrOutput)
+	{
 		// Create a pipe for the child process's STDOUT.
 		wil::unique_handle stdoutReadHandle;
 		wil::unique_handle stdoutWriteHandle;
@@ -267,9 +281,9 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 		startupInfo.dwFlags |= STARTF_USESTDHANDLES;
 
 		wil::unique_process_information processInfo;
-		bres = CreateProcess (NULL, cmdLine.get(), NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL,
-			project_dir.bstrVal, &startupInfo, &processInfo); RETURN_IF_WIN32_BOOL_FALSE(bres);
-		
+		bres = CreateProcess (NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL,
+			workDir, &startupInfo, &processInfo); RETURN_IF_WIN32_BOOL_FALSE(bres);
+
 		WaitForSingleObject(processInfo.hProcess, IsDebuggerPresent() ? INFINITE : 5000);
 		DWORD exitCode = E_FAIL;
 		GetExitCodeProcess (processInfo.hProcess, &exitCode);
@@ -296,15 +310,8 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 		}
 
 		// Let's assume UTF-8. Looking at its source code, sjasmplus seems to be ASCII-only.
-
-		wil::unique_bstr outputStr;
-		hr = MakeBstrFromString (output.get(), output.get() + outputSize, &outputStr); RETURN_IF_FAILED(hr);
-
-		hr = ParseSjasmOutput (outputStr.get(), outputStr.get() + SysStringLen(outputStr.get())); RETURN_IF_FAILED(hr);
-
-		BOOL fSuccess = (exitCode == 0);
-		callback->OnBuildComplete(fSuccess);
-
+		auto hr = MakeBstrFromString (output.get(), output.get() + outputSize, pStrOutput); RETURN_IF_FAILED(hr);
+		*pExitCode = exitCode;
 		return S_OK;
 	}
 
