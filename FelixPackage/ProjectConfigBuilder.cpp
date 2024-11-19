@@ -3,11 +3,6 @@
 #include "FelixPackage.h"
 #include "shared/com.h"
 
-static constexpr wchar_t wnd_class_name[] = L"ProjectConfig-{9838F078-469A-4F89-B08E-881AF33AE76D}";
-using unique_atom = wil::unique_any<ATOM, void(ATOM), [](ATOM a) { UnregisterClassW((LPCWSTR)a, (HINSTANCE)&__ImageBase); }>;
-static inline unique_atom atom;
-static constexpr UINT WM_TASK_COMPLETE = WM_APP + 1; // lParam = TaskData*
-
 struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 {
 	ULONG _refCount = 0;
@@ -16,50 +11,21 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 	wil::unique_bstr _projName;
 	com_ptr<IVsOutputWindowPane> _outputWindow;
 	com_ptr<IVsOutputWindowPane2> _outputWindow2;
-	com_ptr<IVsLaunchPadFactory> _launchPadFactory;
 	HWND _hwnd;
 	com_ptr<IProjectConfigBuilderCallback> _callback;
 
-	struct TaskData
-	{
-		ProjectConfigBuilder*      builder;
-		wil::unique_bstr           cmdLine;
-		wil::unique_bstr           workDir;
-		wil::unique_handle         thread_handle;
-		wil::slim_event_auto_reset thread_started_event;
-		wil::unique_bstr           outputText;
-		DWORD                      exitCode;
-	};
-
-	vector_nothrow<wistd::unique_ptr<TaskData>> _runningTasks;
-
 	HRESULT InitInstance (IVsUIHierarchy* hier, IProjectConfig* config, IVsOutputWindowPane* outputWindowPane)
 	{
-		HRESULT hr;
-
 		_hier = hier;
 		_config = config;
 		_outputWindow = outputWindowPane;
-
-		hr = outputWindowPane->QueryInterface(&_outputWindow2); RETURN_IF_FAILED(hr);
+		auto hr = outputWindowPane->QueryInterface(&_outputWindow2); RETURN_IF_FAILED(hr);
 
 		wil::unique_variant projectName;
 		hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_Name, &projectName); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_FAIL, projectName.vt != VT_BSTR);
 		_projName = wil::unique_bstr(projectName.release().bstrVal);
 
-		if (!atom)
-		{
-			WNDCLASS wc = { };
-			wc.lpfnWndProc = ProjectConfigBuilder::window_proc;
-			wc.hInstance = (HINSTANCE)&__ImageBase;
-			wc.lpszClassName = wnd_class_name;
-			atom.reset (RegisterClassW(&wc)); RETURN_LAST_ERROR_IF(!atom);
-		}
-
-		_hwnd = CreateWindowExW (0, wnd_class_name, L"", WS_CHILD, 0, 0, 0, 0, HWND_MESSAGE, 0, (HINSTANCE)&__ImageBase, this); RETURN_LAST_ERROR_IF(!_hwnd);
-		SetWindowLongPtr (_hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
-		hr = serviceProvider->QueryService(SID_SVsLaunchPadFactory, &_launchPadFactory); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
@@ -203,15 +169,13 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 		hr = asmProps->get_SaveListing(&saveListing); RETURN_IF_FAILED(hr);
 		if (saveListing)
 		{
-			wil::unique_bstr _listingFilename;
-			hr = asmProps->get_SaveListingFilename(&_listingFilename);
-			if (FAILED(hr) || !_listingFilename || !_listingFilename.get()[0])
+			hr = Write(cmdLine, L" --lst"); RETURN_IF_FAILED(hr);
+			wil::unique_bstr listingFilename;
+			hr = asmProps->get_SaveListingFilename(&listingFilename); RETURN_IF_FAILED(hr);
+			if (listingFilename && listingFilename.get()[0])
 			{
-				hr = Write(cmdLine, L" --lst"); RETURN_IF_FAILED(hr);
-			}
-			else
-			{
-				hr = addOutputPathParam(L" --lst=", _listingFilename.get()); RETURN_IF_FAILED(hr);
+				hr = Write(cmdLine, L"="); RETURN_IF_FAILED(hr);
+				hr = Write(cmdLine, listingFilename.get()); RETURN_IF_FAILED(hr);
 			}
 		}
 
@@ -246,8 +210,6 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 	{
 		HRESULT hr;
 
-		_callback = callback;
-
 		wil::unique_variant project_dir;
 		hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &project_dir); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_FAIL, project_dir.vt != VT_BSTR);
@@ -265,7 +227,23 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 		// First build the files with a custom build tool. This is similar to what VS does.
 		//for (auto& f : inputFiles.CustomBuild)
 		//{
-		//	wstring_builder cmdLine;
+		//	com_ptr<ICustomBuildToolProperties> props;
+		//	hr = f->get_CustomBuildToolProperties(&props);
+		//	if (SUCCEEDED(hr))
+		//	{
+		//		wil::unique_bstr cmdLine;
+		//		hr = props->get_CommandLine(&cmdLine);
+		//		if (SUCCEEDED(hr))
+		//		{
+		//			auto td = wistd::unique_ptr<TaskData>(new (std::nothrow) TaskData()); RETURN_IF_NULL_ALLOC(td);
+		//			td->builder = this;
+		//			td->cmdLine = std::move(cmdLine);
+		//			td->workDir = wil::unique_bstr(SysAllocString(project_dir.bstrVal));
+		//			td->thread_handle = wil::unique_handle (CreateThread (nullptr, 0, ThreadProc, td.get(), 0, nullptr)); RETURN_LAST_ERROR_IF_NULL(td->thread_handle);
+		//			td->thread_started_event.wait();
+		//			_runningTasks.try_push_back(std::move(td));
+		//		}
+		//	}
 		//}
 
 		// Second launch sjasm to build all asm files.
@@ -273,50 +251,61 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 		hr = MakeSjasmCommandLine (inputFiles.Asm[0].addressof(), inputFiles.Asm.size(),
 			project_dir.bstrVal, output_dir.get(), &cmdLine); RETURN_IF_FAILED(hr);
 
-		auto td = wistd::unique_ptr<TaskData>(new (std::nothrow) TaskData()); RETURN_IF_NULL_ALLOC(td);
-		td->builder = this;
-		td->cmdLine = std::move(cmdLine);
-		td->workDir = wil::unique_bstr(SysAllocString(project_dir.bstrVal));
-		td->thread_handle = wil::unique_handle (CreateThread (nullptr, 0, ThreadProc, td.get(), 0, nullptr)); RETURN_LAST_ERROR_IF_NULL(td->thread_handle);
-		td->thread_started_event.wait();
-		_runningTasks.try_push_back(std::move(td));
-		return S_OK;
-	}
+		// Create a pipe for the child process's STDOUT.
+		wil::unique_handle stdoutReadHandle;
+		wil::unique_handle stdoutWriteHandle;
+		SECURITY_ATTRIBUTES saAttr = { .nLength = sizeof(SECURITY_ATTRIBUTES), .bInheritHandle = TRUE, };
+		BOOL bres = CreatePipe(&stdoutReadHandle, &stdoutWriteHandle, &saAttr, 0); RETURN_IF_WIN32_BOOL_FALSE(bres);
 
-	static DWORD WINAPI ThreadProc (LPVOID arg)
-	{
-		TaskData* data = static_cast<TaskData*>(arg);
-		data->thread_started_event.SetEvent();
-		com_ptr<IVsLaunchPad> lp;
-		auto hr = data->builder->_launchPadFactory->CreateLaunchPad(&lp);
-		if (FAILED(hr))
-		{
-			data->exitCode = hr;
-			PostMessageW (data->builder->_hwnd, WM_TASK_COMPLETE, 0, reinterpret_cast<LPARAM>(data));
-			return hr;
-		}
+		// Ensure the read handle to the pipe for STDOUT is not inherited.
+		bres = SetHandleInformation(stdoutReadHandle.get(), HANDLE_FLAG_INHERIT, 0); RETURN_IF_WIN32_BOOL_FALSE(bres);
+
+		STARTUPINFO startupInfo = { .cb = sizeof(startupInfo) };
+		startupInfo.hStdError = stdoutWriteHandle.get();
+		startupInfo.hStdOutput = stdoutWriteHandle.get();
+		//startupInfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+		startupInfo.dwFlags |= STARTF_USESTDHANDLES;
+
+		wil::unique_process_information processInfo;
+		bres = CreateProcess (NULL, cmdLine.get(), NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL,
+			project_dir.bstrVal, &startupInfo, &processInfo); RETURN_IF_WIN32_BOOL_FALSE(bres);
 		
-		// LPF_PipeStdoutToOutputWindow, and possibly LPF_PipeStdoutToTaskList too,
-		// don't actually do anything. I debugged through the VS code and execution eventually
-		// gets to a function related to the Output Window that throws if not on GUI code.
-		// The same functionality does work in the VS2005 samples. I suspect this functionality
-		// was abandoned since then and nobody noticed cause nobody used it with a worker thread.
-		// So let's pass 0 here, and we parse the output ourselves.
-		LAUNCHPAD_FLAGS flags = 0;
+		WaitForSingleObject(processInfo.hProcess, IsDebuggerPresent() ? INFINITE : 5000);
+		DWORD exitCode = E_FAIL;
+		GetExitCodeProcess (processInfo.hProcess, &exitCode);
+		stdoutWriteHandle = nullptr;
 
-		wil::unique_bstr output;
-		hr = lp->ExecCommand(nullptr, data->cmdLine.get(), data->workDir.get(), flags, data->builder->_outputWindow,
-			CAT_BUILDCOMPILE, BMP_COMPILE, L"", nullptr, &data->exitCode, &output);
-		if (FAILED(hr))
+		const DWORD ReadSize = 100;
+		DWORD outputSize = 0;
+		wil::unique_cotaskmem_ansistring output;
+		while (true)
 		{
-			data->exitCode = hr;
-			PostMessageW (data->builder->_hwnd, WM_TASK_COMPLETE, 0, reinterpret_cast<LPARAM>(data));
-			return hr;
+			auto newBlock = (PSTR)CoTaskMemRealloc(output.get(), outputSize + ReadSize); RETURN_IF_NULL_ALLOC(newBlock);
+			output.release();
+			output.reset(newBlock);
+			DWORD bytesRead;
+			bres = ReadFile (stdoutReadHandle.get(), output.get() + outputSize, ReadSize, &bytesRead, nullptr);
+			if (!bres)
+			{
+				DWORD gle = GetLastError();
+				if (gle != ERROR_BROKEN_PIPE)
+					RETURN_WIN32(gle);
+				break;
+			}
+			outputSize += bytesRead;
 		}
 
-		data->outputText = std::move(output);
-		PostMessageW (data->builder->_hwnd, WM_TASK_COMPLETE, 0, reinterpret_cast<LPARAM>(data));
-		return 0;
+		// Let's assume UTF-8. Looking at its source code, sjasmplus seems to be ASCII-only.
+
+		wil::unique_bstr outputStr;
+		hr = MakeBstrFromString (output.get(), output.get() + outputSize, &outputStr); RETURN_IF_FAILED(hr);
+
+		hr = ParseSjasmOutput (outputStr.get(), outputStr.get() + SysStringLen(outputStr.get())); RETURN_IF_FAILED(hr);
+
+		BOOL fSuccess = (exitCode == 0);
+		callback->OnBuildComplete(fSuccess);
+
+		return S_OK;
 	}
 
 	static bool TryParsePrio (wchar_t*& p, VSTASKPRIORITY& prio)
@@ -412,25 +401,6 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 		}
 
 		return S_OK;
-	}
-
-	static LRESULT CALLBACK window_proc (HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
-	{
-		if (msg == WM_TASK_COMPLETE)
-		{
-			auto p = reinterpret_cast<ProjectConfigBuilder*>(GetWindowLongPtr (hwnd, GWLP_USERDATA)); WI_ASSERT(p);
-			auto* td = reinterpret_cast<TaskData*>(lparam);
-			wchar_t* outputText = td->outputText.get();
-			wchar_t* outputTextEnd = outputText + SysStringLen(td->outputText.get());
-			auto hr = p->ParseSjasmOutput(outputText, outputTextEnd); LOG_IF_FAILED(hr);
-			DWORD exitCode = td->exitCode;
-			p->_runningTasks.remove([td](auto& u) { return u.get() == td; });
-			auto callback = std::move(p->_callback);
-			callback->OnBuildComplete(exitCode == 0);
-			return 0;
-		}
-
-		return DefWindowProc (hwnd, msg, wparam, lparam);
 	}
 };
 
