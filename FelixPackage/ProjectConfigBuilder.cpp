@@ -225,41 +225,58 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 		hr = GetInputFiles(inputFiles); RETURN_IF_FAILED(hr);
 
 		// First build the files with a custom build tool. This is similar to what VS does.
-		//for (auto& f : inputFiles.CustomBuild)
-		//{
-		//	com_ptr<ICustomBuildToolProperties> props;
-		//	hr = f->get_CustomBuildToolProperties(&props);
-		//	if (SUCCEEDED(hr))
-		//	{
-		//		wil::unique_bstr cmdLine;
-		//		hr = props->get_CommandLine(&cmdLine);
-		//		if (SUCCEEDED(hr))
-		//		{
-		//			auto td = wistd::unique_ptr<TaskData>(new (std::nothrow) TaskData()); RETURN_IF_NULL_ALLOC(td);
-		//			td->builder = this;
-		//			td->cmdLine = std::move(cmdLine);
-		//			td->workDir = wil::unique_bstr(SysAllocString(project_dir.bstrVal));
-		//			td->thread_handle = wil::unique_handle (CreateThread (nullptr, 0, ThreadProc, td.get(), 0, nullptr)); RETURN_LAST_ERROR_IF_NULL(td->thread_handle);
-		//			td->thread_started_event.wait();
-		//			_runningTasks.try_push_back(std::move(td));
-		//		}
-		//	}
-		//}
+		for (auto& f : inputFiles.CustomBuild)
+		{
+			com_ptr<ICustomBuildToolProperties> props;
+			hr = f->get_CustomBuildToolProperties(&props);
+			if (SUCCEEDED(hr))
+			{
+				wil::unique_bstr cmdLine;
+				hr = props->get_CommandLine(&cmdLine);
+				if (SUCCEEDED(hr))
+				{
+					wil::unique_bstr desc;
+					hr = props->get_Description(&desc);
+					if (SUCCEEDED(hr))
+					{
+						hr = _outputWindow->OutputString(desc.get()); RETURN_IF_FAILED(hr);
+					}
+
+					DWORD exitCode;
+					wil::unique_bstr outputStr;
+					hr = RunTool(cmdLine.get(), project_dir.bstrVal, &exitCode, outputStr.addressof()); RETURN_IF_FAILED_EXPECTED(hr);
+					hr = _outputWindow->OutputString(outputStr.get()); RETURN_IF_FAILED(hr);
+
+					if (exitCode)
+					{
+						callback->OnBuildComplete(FALSE);
+						return S_OK;
+					}
+				}
+			}
+		}
 
 		// Second launch sjasm to build all asm files.
-		wil::unique_bstr cmdLine;
-		hr = MakeSjasmCommandLine (inputFiles.Asm[0].addressof(), inputFiles.Asm.size(),
-			project_dir.bstrVal, output_dir.get(), &cmdLine); RETURN_IF_FAILED(hr);
+		if (inputFiles.Asm.size())
+		{
+			wil::unique_bstr cmdLine;
+			hr = MakeSjasmCommandLine (inputFiles.Asm[0].addressof(), inputFiles.Asm.size(),
+				project_dir.bstrVal, output_dir.get(), &cmdLine); RETURN_IF_FAILED(hr);
 
-		DWORD exitCode;
-		wil::unique_bstr outputStr;
-		RunTool(cmdLine.get(), project_dir.bstrVal, &exitCode, outputStr.addressof());
+			DWORD exitCode;
+			wil::unique_bstr outputStr;
+			hr = RunTool(cmdLine.get(), project_dir.bstrVal, &exitCode, outputStr.addressof()); RETURN_IF_FAILED(hr);
 
-		hr = ParseSjasmOutput (outputStr.get(), outputStr.get() + SysStringLen(outputStr.get())); RETURN_IF_FAILED(hr);
+			hr = ParseSjasmOutput (outputStr.get(), outputStr.get() + SysStringLen(outputStr.get())); RETURN_IF_FAILED(hr);
 
-		BOOL fSuccess = (exitCode == 0);
-		callback->OnBuildComplete(fSuccess);
+			if (exitCode)
+			{
+				callback->OnBuildComplete(FALSE);
+				return S_OK;
+			}
+		}
 
+		callback->OnBuildComplete(TRUE);
 		return S_OK;
 	}
 
@@ -282,7 +299,9 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 
 		wil::unique_process_information processInfo;
 		bres = CreateProcess (NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL,
-			workDir, &startupInfo, &processInfo); RETURN_IF_WIN32_BOOL_FALSE(bres);
+			workDir, &startupInfo, &processInfo);
+		if(!bres)
+			return SetErrorInfo(HRESULT_FROM_WIN32(GetLastError()), L"Cannot create process with command line: %s\r\n", cmdLine);
 
 		WaitForSingleObject(processInfo.hProcess, IsDebuggerPresent() ? INFINITE : 5000);
 		DWORD exitCode = E_FAIL;

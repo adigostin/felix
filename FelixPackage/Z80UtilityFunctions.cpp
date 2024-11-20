@@ -234,6 +234,8 @@ HRESULT MakeBstrFromString (const char* name, size_t len, BSTR* bstr)
 
 HRESULT MakeBstrFromString (const char* sl_name_from, const char* sl_name_to, BSTR* to)
 {
+	if (sl_name_from == sl_name_to)
+		return (*to = nullptr), S_OK;
 	int ires = MultiByteToWideChar(CP_UTF8, 0, sl_name_from, (int)(sl_name_to - sl_name_from), nullptr, 0); RETURN_LAST_ERROR_IF(!ires);
 	auto wname = wil::make_hlocal_string_nothrow(nullptr, ires); RETURN_IF_NULL_ALLOC(wname);
 	int ires1 = MultiByteToWideChar (CP_UTF8, 0, sl_name_from, (int)(sl_name_to - sl_name_from), wname.get(), ires + 1); RETURN_LAST_ERROR_IF(!ires); RETURN_HR_IF(E_FAIL, ires1 != ires);
