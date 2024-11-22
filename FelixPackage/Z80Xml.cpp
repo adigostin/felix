@@ -568,6 +568,12 @@ static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDis
 				{
 					if (!readOnly)
 					{
+						// The code in this "if" branch deals with "child object" properties with a PUT function.
+						// As of this writing, we no longer have such properties. Maybe we'll have them again
+						// in the future, but by then this piece of code will likely be outdated. Better generate an
+						// error so we can see this right away if/when we add a Put function again.
+						RETURN_HR(E_NOTIMPL);
+						/*
 						com_ptr<IDispatch> child;
 						hr = objAsParent->CreateChild(memid, childElemName, &child); RETURN_IF_FAILED(hr);
 						hr = LoadFromXmlInternal (reader, childElemName, child.get()); RETURN_IF_FAILED(hr);
@@ -578,6 +584,7 @@ static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDis
 						EXCEPINFO exception;
 						UINT uArgErr;
 						hr = typeInfo->Invoke (obj, memid, DISPATCH_PROPERTYPUT, &params, nullptr, &exception, &uArgErr); RETURN_IF_FAILED(hr);
+						*/
 					}
 					else
 					{

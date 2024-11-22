@@ -25,6 +25,7 @@ struct ProjectConfig
 	, ISpecifyPropertyPages
 	, IXmlParent
 	, IProjectConfigBuilderCallback
+	, IPropertyNotifySink
 	//, public IVsProjectCfgDebugTargetSelection
 	//, public IVsProjectCfgDebugTypeSelection
 {
@@ -35,22 +36,27 @@ struct ProjectConfig
 	wil::unique_bstr _platformName;
 	unordered_map_nothrow<VSCOOKIE, com_ptr<IVsBuildStatusCallback>> _buildStatusCallbacks;
 	VSCOOKIE _buildStatusNextCookie = VSCOOKIE_NIL + 1;
-
-	DWORD _loadAddress = LoadAddressDefaultValue;
-	WORD _entryPointAddress = EntryPointAddressDefaultValue;
-	LaunchType _launchType = LaunchTypeDefaultValue;
-
-	bool _saveListing = false;
-	wil::unique_bstr _listingFilename;
+	com_ptr<IProjectConfigAssemblerProperties> _assemblerProps;
+	AdviseSinkToken _assemblerPropsAdviseToken;
+	com_ptr<IProjectConfigDebugProperties> _debugProps;
+	AdviseSinkToken _debugPropsAdviseToken;
 
 	com_ptr<IProjectConfigBuilder> _pendingBuild;
 
 public:
 	HRESULT InitInstance (IVsUIHierarchy* hier)
 	{
+		HRESULT hr;
 		_hier = hier;
 		_threadId = GetCurrentThreadId();
 		_platformName = wil::make_bstr_nothrow(L"ZX Spectrum 48K"); RETURN_IF_NULL_ALLOC(_platformName);
+		
+		hr = AssemblerPageProperties_CreateInstance(&_assemblerProps); RETURN_IF_FAILED(hr);
+		hr = AdviseSink<IPropertyNotifySink>(_assemblerProps, this, &_assemblerPropsAdviseToken); RETURN_IF_FAILED(hr);
+
+		hr = DebuggingPageProperties_CreateInstance(&_debugProps); RETURN_IF_FAILED(hr);
+		hr = AdviseSink<IPropertyNotifySink>(_debugProps, this, &_debugPropsAdviseToken); RETURN_IF_FAILED(hr);
+
 		return S_OK;
 	}
 
@@ -72,6 +78,7 @@ public:
 			|| TryQI<IVsBuildableProjectCfg>(this, riid, ppvObject)
 			|| TryQI<IVsBuildableProjectCfg2>(this, riid, ppvObject)
 			|| TryQI<ISpecifyPropertyPages>(this, riid, ppvObject)
+			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -422,103 +429,20 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_AssemblerProperties (IProjectConfigAssemblerProperties** ppDispatch) override
+	virtual HRESULT STDMETHODCALLTYPE get_AssemblerProperties (IProjectConfigAssemblerProperties** ppProps) override
 	{
-		com_ptr<IProjectConfigAssemblerProperties> props;
-		auto hr = AssemblerPageProperties_CreateInstance (&props); RETURN_IF_FAILED(hr);
-		hr = props->put_SaveListing (_saveListing ? VARIANT_TRUE : VARIANT_FALSE); RETURN_IF_FAILED(hr);
-		hr = props->put_SaveListingFilename (_listingFilename.get()); RETURN_IF_FAILED(hr);
-		*ppDispatch = props.detach();
+		return wil::com_copy_to_nothrow(_assemblerProps, ppProps);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_GeneralProperties (IProjectConfigAssemblerProperties* pProps) override
+	{
+		_assemblerProps = pProps;
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_AssemblerProperties (IProjectConfigAssemblerProperties* gp) override
+	virtual HRESULT STDMETHODCALLTYPE get_DebuggingProperties (IProjectConfigDebugProperties** ppProps) override
 	{
-		bool changed = false;
-
-		VARIANT_BOOL saveListing;
-		auto hr = gp->get_SaveListing(&saveListing); RETURN_IF_FAILED(hr);
-		if (_saveListing != (saveListing == VARIANT_TRUE))
-		{
-			_saveListing = (saveListing == VARIANT_TRUE);
-			changed = true;
-		}
-
-		wil::unique_bstr listingFilename;
-		hr = gp->get_SaveListingFilename(&listingFilename);
-		if (VarBstrCmp(_listingFilename.get(), listingFilename.get(), 0, 0) != VARCMP_EQ)
-		{
-			_listingFilename = std::move(listingFilename);
-			changed = true;
-		}
-
-		if (changed)
-		{
-			com_ptr<IPropertyNotifySink> pns;
-			hr = _hier->QueryInterface(&pns); LOG_IF_FAILED(hr);
-			if (SUCCEEDED(hr))
-				pns->OnChanged(dispidConfigurations);
-		}
-
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE put_GeneralProperties (IProjectConfigAssemblerProperties* pDispatch) override
-	{
-		return put_AssemblerProperties(pDispatch);
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE get_DebuggingProperties (IProjectConfigDebugProperties** ppDispatch) override
-	{
-		com_ptr<IProjectConfigDebugProperties> props;
-		auto hr = DebuggingPageProperties_CreateInstance (&props); RETURN_IF_FAILED(hr);
-		hr = props->put_LoadAddress(_loadAddress); RETURN_IF_FAILED(hr);
-		hr = props->put_EntryPointAddress(_entryPointAddress); RETURN_IF_FAILED(hr);
-		hr = props->put_LaunchType(_launchType); RETURN_IF_FAILED(hr);
-		*ppDispatch = props.detach();
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE put_DebuggingProperties (IProjectConfigDebugProperties* pDispatch) override
-	{
-		wil::com_ptr_nothrow<IProjectConfigDebugProperties> dp;
-		auto hr = pDispatch->QueryInterface(&dp); RETURN_IF_FAILED(hr);
-
-		bool changed = false;
-
-		WORD entryPointAddress;
-		hr = dp->get_EntryPointAddress(&entryPointAddress); RETURN_IF_FAILED(hr);
-		if (_entryPointAddress != entryPointAddress)
-		{
-			_entryPointAddress = entryPointAddress;
-			changed = true;
-		}
-
-		unsigned long loadAddress;
-		hr = dp->get_LoadAddress(&loadAddress); RETURN_IF_FAILED(hr);
-		if (_loadAddress != loadAddress)
-		{
-			_loadAddress = loadAddress;
-			changed = true;
-		}
-
-		LaunchType launchType;
-		hr = dp->get_LaunchType(&launchType); RETURN_IF_FAILED(hr);
-		if (_launchType != launchType)
-		{
-			_launchType = launchType;
-			changed = true;
-		}
-
-		if (changed)
-		{
-			com_ptr<IPropertyNotifySink> pns;
-			hr = _hier->QueryInterface(&pns); LOG_IF_FAILED(hr);
-			if (SUCCEEDED(hr))
-				pns->OnChanged(dispidConfigurations);
-		}
-
-		return S_OK;
+		return wil::com_copy_to_nothrow(_debugProps, ppProps);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_ConfigName (BSTR* pbstr) override
@@ -578,6 +502,15 @@ public:
 		*pbstr = SysAllocString(L"output.sld"); RETURN_IF_NULL_ALLOC(*pbstr);
 		return S_OK;
 	}
+
+	virtual HRESULT STDMETHODCALLTYPE Close() override
+	{
+		_assemblerPropsAdviseToken.reset();
+		_assemblerProps = nullptr;
+		_debugPropsAdviseToken.reset();
+		_debugProps = nullptr;
+		return S_OK;
+	}
 	#pragma endregion
 
 	#pragma region IXmlParent
@@ -606,6 +539,22 @@ public:
 		if (dispidProperty == dispidDebuggingProperties)
 			return DebuggingPageProperties_CreateInstance ((IProjectConfigDebugProperties**)childOut);
 
+		RETURN_HR(E_NOTIMPL);
+	}
+	#pragma endregion
+
+	#pragma region IPropertyNotifySink
+	virtual HRESULT STDMETHODCALLTYPE OnChanged (DISPID dispID) override
+	{
+		com_ptr<IPropertyNotifySink> pns;
+		auto hr = _hier->QueryInterface(&pns); LOG_IF_FAILED(hr);
+		if (SUCCEEDED(hr))
+			pns->OnChanged(dispidConfigurations);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnRequestEdit (DISPID dispID) override
+	{
 		RETURN_HR(E_NOTIMPL);
 	}
 	#pragma endregion

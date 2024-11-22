@@ -291,6 +291,60 @@ inline HRESULT MakeConnectionPointEnumerator (const CONNECTDATA* data, uint32_t 
 	return S_OK;
 }
 
+class AdviseSinkToken
+{
+	com_ptr<IConnectionPoint> _cp;
+	DWORD _dwCookie = 0;
+
+	template<typename ISink>
+	friend HRESULT AdviseSink (IUnknown* source, ISink* sink, AdviseSinkToken* pToken);
+
+public:
+	AdviseSinkToken() noexcept = default;
+
+	AdviseSinkToken(const AdviseSinkToken&) = delete;
+	AdviseSinkToken& operator=(const AdviseSinkToken&) = delete;
+
+	~AdviseSinkToken() noexcept
+	{
+		reset();
+	}
+
+	void reset() noexcept
+	{
+		if (_dwCookie)
+		{
+			auto hr = _cp->Unadvise(_dwCookie); LOG_IF_FAILED(hr);
+			_dwCookie = 0;
+			_cp = nullptr;
+		}
+		else
+			WI_ASSERT(!_cp);
+	}
+
+	AdviseSinkToken* operator&() noexcept
+	{
+		reset();
+		return this;
+	}
+
+};
+
+template<typename ISink>
+inline HRESULT AdviseSink (IUnknown* source, ISink* sink, AdviseSinkToken* pToken)
+{
+	com_ptr<IConnectionPointContainer> cpc;
+	auto hr = source->QueryInterface(&cpc); RETURN_IF_FAILED(hr);
+	com_ptr<IConnectionPoint> cp;
+	hr = cpc->FindConnectionPoint(__uuidof(ISink), &cp); RETURN_IF_FAILED(hr);
+	DWORD dwCookie;
+	hr = cp->Advise(sink, &dwCookie); RETURN_IF_FAILED(hr);
+	pToken->reset();
+	pToken->_cp = cp;
+	pToken->_dwCookie = dwCookie;
+	return S_OK;
+}
+
 // ============================================================================
 
 template<typename IEnumeratorType, typename IEntryType, typename IFromType = IEntryType>

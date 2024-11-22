@@ -81,7 +81,7 @@ struct CustomBuildToolProperties
 	{
 		if (VarBstrCmp(_commandLine.get(), value, 0, 0) != VARCMP_EQ)
 		{
-			_commandLine = wil::make_bstr_nothrow(value);
+			_commandLine = (value && value[0]) ? wil::make_bstr_nothrow(value) : nullptr;
 			_propNotifyCP->NotifyPropertyChanged(dispidCommandLine);
 		}
 
@@ -99,7 +99,7 @@ struct CustomBuildToolProperties
 	{
 		if (VarBstrCmp(_description.get(), value, 0, 0) != VARCMP_EQ)
 		{
-			_description = wil::make_bstr_nothrow(value);
+			_description = (value && value[0]) ? wil::make_bstr_nothrow(value) : nullptr;
 			_propNotifyCP->NotifyPropertyChanged(dispidDescription);
 		}
 
@@ -117,7 +117,7 @@ struct CustomBuildToolProperties
 	{
 		if (VarBstrCmp(_outputs.get(), value, 0, 0) != VARCMP_EQ)
 		{
-			_outputs = wil::make_bstr_nothrow(value);
+			_outputs = (value && value[0]) ? wil::make_bstr_nothrow(value) : nullptr;
 			_propNotifyCP->NotifyPropertyChanged(dispidOutputs);
 		}
 

@@ -4,6 +4,7 @@
 #include "guids.h"
 #include "shared/vector_nothrow.h"
 #include "shared/com.h"
+#include "Z80Xml.h"
 #include <vsmanaged.h>
 
 class ObjInfo
@@ -28,7 +29,18 @@ public:
 		UINT uArgErr;
 		hr = _parent->Invoke (dispid, IID_NULL, LANG_INVARIANT, DISPATCH_PROPERTYGET,
 			&params, &result, &exception, &uArgErr); RETURN_IF_FAILED(hr);
-		_child = std::move(V_DISPATCH(&result));
+		RETURN_HR_IF(E_UNEXPECTED, result.vt != VT_DISPATCH);
+
+		// In a property page we don't want to work directly on the selected object,
+		// because the user might change some properties and then click Cancel.
+		// So let's clone the selected object. See related comment in Apply() below.
+		auto stream = com_ptr(SHCreateMemStream(nullptr, 0)); RETURN_IF_NULL_ALLOC(stream);
+		hr = SaveToXml(result.pdispVal, L"Temp", stream); RETURN_IF_FAILED_EXPECTED(hr);
+		hr = stream->Seek({ 0 }, STREAM_SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
+		com_ptr<IXmlParent> xmlParent;
+		hr = _parent->QueryInterface(&xmlParent); RETURN_IF_FAILED(hr);
+		hr = xmlParent->CreateChild(dispid, nullptr, &_child); RETURN_IF_FAILED(hr);
+		hr = LoadFromXml(_child, L"Temp", stream); RETURN_IF_FAILED_EXPECTED(hr);
 
 		if (auto cpc = wil::try_com_query_nothrow<IConnectionPointContainer>(_child))
 		{
@@ -68,14 +80,36 @@ public:
 
 	HRESULT Apply()
 	{
-		wil::unique_variant value;
-		auto hr = InitVariantFromDispatch(_child, &value); RETURN_IF_FAILED(hr);
-		DISPID named = DISPID_PROPERTYPUT;
-		DISPPARAMS params = { .rgvarg = &value, .rgdispidNamedArgs=&named, .cArgs = 1, .cNamedArgs = 1 };
+		// Rather that doing a DISPATCH_PROPERTYPUT passing in our clone, let's mirror the operations
+		// we did in InitInstance: we save our clone to XML, and load the existing object from XML.
+		// This has the advantages:
+		//  - we don't change the value of the object property (might be a costly operation);
+		//  - we can edit an object coming from a read-only property (one that doesn't have a put_Prop).
+
+		DISPPARAMS params = { };
+		wil::unique_variant result;
 		EXCEPINFO exception;
 		UINT uArgErr;
-		hr = _parent->Invoke(_dispid, IID_NULL, LANG_INVARIANT, DISPATCH_PROPERTYPUT,
-			&params, nullptr, &exception, &uArgErr); RETURN_IF_FAILED(hr);
+		auto hr = _parent->Invoke (_dispid, IID_NULL, LANG_INVARIANT, DISPATCH_PROPERTYGET,
+			&params, &result, &exception, &uArgErr); RETURN_IF_FAILED(hr);
+		RETURN_HR_IF(E_UNEXPECTED, result.vt != VT_DISPATCH);
+
+		auto stream = com_ptr(SHCreateMemStream(0, 0)); RETURN_IF_NULL_ALLOC(stream);
+		hr = SaveToXml(_child, L"Temp", stream); RETURN_IF_FAILED_EXPECTED(hr);
+		hr = stream->Seek({ 0 }, STREAM_SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
+		hr = LoadFromXml(result.pdispVal, L"Temp", stream); RETURN_IF_FAILED_EXPECTED(hr);
+
+		// Note that the above won't work if the object creates and returns a clone from its
+		// GET function. If we'll have such getters, the code above will need updating. As of
+		// this writing, we don't have any such object. Let's check that this is indeed the case.
+		#ifdef _DEBUG
+		wil::unique_variant result2;
+		hr = _parent->Invoke (_dispid, IID_NULL, LANG_INVARIANT, DISPATCH_PROPERTYGET,
+			&params, &result2, &exception, &uArgErr); RETURN_IF_FAILED(hr);
+		RETURN_HR_IF(E_UNEXPECTED, result2.vt != VT_DISPATCH);
+		WI_ASSERT(V_DISPATCH(&result) == V_DISPATCH(&result2));
+		#endif
+
 		return S_OK;
 	}
 

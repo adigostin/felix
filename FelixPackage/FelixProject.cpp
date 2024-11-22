@@ -737,7 +737,11 @@ public:
 			_firstChild->Close();
 			_firstChild = nullptr;
 		}
-		_configs.clear();
+		while (_configs.size())
+		{
+			_configs.back()->Close();
+			_configs.remove_back();
+		}
 		_closed = true;
 		return S_OK;
 	}

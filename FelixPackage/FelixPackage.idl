@@ -24,13 +24,11 @@ library ATLProject1Lib
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
 
 		[id(dispidAssemblerProperties), propget] HRESULT AssemblerProperties ([out, retval] IProjectConfigAssemblerProperties** ppProps);
-		[id(dispidAssemblerProperties), propput] HRESULT AssemblerProperties (IProjectConfigAssemblerProperties* pProps);
 
 		// Same object as AssemblerProperties, kept for backward compatibility
 		[id(dispidGeneralProperties), propput] HRESULT GeneralProperties (IProjectConfigAssemblerProperties* pDispatch);
 
-		[id(dispidDebuggingProperties), propget] HRESULT DebuggingProperties ([out, retval] IProjectConfigDebugProperties** ppDispatch);
-		[id(dispidDebuggingProperties), propput] HRESULT DebuggingProperties (IProjectConfigDebugProperties* pDispatch);
+		[id(dispidDebuggingProperties), propget] HRESULT DebuggingProperties ([out, retval] IProjectConfigDebugProperties** ppProps);
 
 		[propget] HRESULT ConfigName ([out, retval] BSTR* pbstr);
 		[propput] HRESULT ConfigName (BSTR pbstr);
@@ -41,6 +39,7 @@ library ATLProject1Lib
 		HRESULT GetOutputDirectory ([out, retval] BSTR* pbstr);
 		HRESULT GetOutputFileName ([out, retval] BSTR* pbstr);
 		HRESULT GetSldFileName ([out, retval] BSTR* pbstr);
+		HRESULT Close();
 	};
 
 	[object, uuid(6109C4FD-C067-4120-9853-6A2D6682BCB0), dual, nonextensible, pointer_default(unique)]
