@@ -9,7 +9,6 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 	com_ptr<IVsUIHierarchy> _hier;
 	com_ptr<IProjectConfig> _config;
 	wil::unique_bstr _projName;
-	com_ptr<IVsOutputWindowPane> _outputWindow;
 	com_ptr<IVsOutputWindowPane2> _outputWindow2;
 	HWND _hwnd;
 	com_ptr<IProjectConfigBuilderCallback> _callback;
@@ -18,7 +17,6 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 	{
 		_hier = hier;
 		_config = config;
-		_outputWindow = outputWindowPane;
 		auto hr = outputWindowPane->QueryInterface(&_outputWindow2); RETURN_IF_FAILED(hr);
 
 		wil::unique_variant projectName;
@@ -239,13 +237,15 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 					hr = props->get_Description(&desc);
 					if (SUCCEEDED(hr))
 					{
-						hr = _outputWindow->OutputString(desc.get()); RETURN_IF_FAILED(hr);
+						hr = _outputWindow2->OutputTaskItemStringEx2 (desc.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
+							nullptr, 0, nullptr, 0, 0, _projName.get(), nullptr, nullptr); RETURN_IF_FAILED(hr);
 					}
 
 					DWORD exitCode;
 					wil::unique_bstr outputStr;
 					hr = RunTool(cmdLine.get(), project_dir.bstrVal, &exitCode, outputStr.addressof()); RETURN_IF_FAILED_EXPECTED(hr);
-					hr = _outputWindow->OutputString(outputStr.get()); RETURN_IF_FAILED(hr);
+					hr = _outputWindow2->OutputTaskItemStringEx2 (outputStr.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
+						nullptr, 0, nullptr, 0, 0, _projName.get(), nullptr, nullptr); RETURN_IF_FAILED(hr);
 
 					if (exitCode)
 					{
@@ -421,7 +421,8 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 						p++;
 				}
 
-				hr = _outputWindow->OutputString(line); RETURN_IF_FAILED(hr);
+				hr = _outputWindow2->OutputTaskItemStringEx2 (line, (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
+					nullptr, 0, nullptr, 0, 0, _projName.get(), nullptr, nullptr); RETURN_IF_FAILED(hr);
 				line = p;
 			}
 		}
