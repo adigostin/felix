@@ -43,7 +43,7 @@ ULONG ReleaseST (T* _this, ULONG& refCount)
 // ============================================================================
 
 template<typename I, std::enable_if_t<std::is_constructible_v<IUnknown*, I*>, int> = 0>
-class Z80ClassFactory : public IClassFactory
+class ClassObjectImpl : public IClassFactory
 {
 	ULONG _refCount = 0;
 
@@ -51,33 +51,18 @@ class Z80ClassFactory : public IClassFactory
 	create_t const _create;
 
 public:
-	Z80ClassFactory (create_t create)
+	ClassObjectImpl (create_t create)
 		: _create(create)
 	{ }
 
-	Z80ClassFactory (const Z80ClassFactory&) = delete;
-	Z80ClassFactory& operator= (const Z80ClassFactory&) = delete;
+	ClassObjectImpl (const ClassObjectImpl&) = delete;
+	ClassObjectImpl& operator= (const ClassObjectImpl&) = delete;
 
 	virtual HRESULT __stdcall QueryInterface(REFIID riid, void** ppvObject) override
 	{
-		if (!ppvObject)
-			RETURN_HR(E_POINTER);
-
-		*ppvObject = NULL;
-
-		if (riid == __uuidof(IUnknown))
-		{
-			*ppvObject = static_cast<IUnknown*>(this);
-			AddRef();
+		if (TryQI<IUnknown>(this, riid, ppvObject) || TryQI<IClassFactory>(this, riid, ppvObject))
 			return S_OK;
-		}
-		else if (riid == __uuidof(IClassFactory))
-		{
-			*ppvObject = static_cast<IClassFactory*>(this);
-			AddRef();
-			return S_OK;
-		}
-
+		*ppvObject = nullptr;
 		return E_NOINTERFACE;
 	}
 
