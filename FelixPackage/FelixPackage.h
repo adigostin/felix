@@ -55,3 +55,5 @@ HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** 
 HRESULT MakeCustomBuildToolProperties (ICustomBuildToolProperties** to);
 HRESULT MakeProjectConfigBuilder (IVsUIHierarchy* hier, IProjectConfig* config,
 	IVsOutputWindowPane* outputWindowPane, IProjectConfigBuilder** to);
+HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to);
+HRESULT ShowCommandLinePropertyBuilder (HWND hwndParent, BSTR valueBefore, BSTR* valueAfter);

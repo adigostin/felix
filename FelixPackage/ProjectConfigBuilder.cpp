@@ -44,6 +44,12 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
+	HRESULT OutputMessage (LPCOLESTR message)
+	{
+		return _outputWindow2->OutputTaskItemStringEx2 (message, (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
+			nullptr, 0, nullptr, 0, 0, _projName.get(), nullptr, nullptr);
+	}
+
 	struct InputFiles
 	{
 		vector_nothrow<com_ptr<IProjectFile>> CustomBuild;
@@ -204,13 +210,75 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 		return S_OK;
 	}
 
+	// This function extracts from the CommandLine property an array of lines separated by 0x0D/0x0A.
+	// It launches them one by one, stopping in case of a HRESULT error, or in case of a non-zero exit code.
+	// This function writes pExitCode only when it returns S_OK. When it writes pExitCode to non-zero,
+	// it additionally writes pbstrCmdLine with the command line whose execution returned that exit code.
+	HRESULT RunCommandLines (ICommandLineList* list, PCWSTR eventName, PCWSTR workDir, DWORD* pdwExitCode)
+	{
+		wil::unique_bstr cmdLines;
+		auto hr = list->get_CommandLine(&cmdLines); RETURN_IF_FAILED(hr);
+		if (!cmdLines)
+			return S_OK;
+
+		vector_nothrow<wil::unique_bstr> cls;
+		for (PCWSTR p = cmdLines.get(); *p; )
+		{
+			auto from = p;
+			while (*p && *p != 0x0D)
+				p++;
+			if (p > from)
+			{
+				auto line = SysAllocStringLen(from, (UINT)(p - from)); RETURN_IF_NULL_ALLOC(line);
+				bool pushed = cls.try_push_back(wil::unique_bstr(line)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+			}
+
+			if (p[0] == 0)
+				break;
+
+			p++;
+			if (*p == 0x0A)
+				p++;
+		}
+
+		if (cls.size())
+		{
+			wil::unique_bstr desc;
+			hr = list->get_Description(&desc); RETURN_IF_FAILED(hr);
+			if (desc)
+			{
+				hr = OutputMessage(desc.get()); RETURN_IF_FAILED(hr);
+			}
+
+			for (auto& cl : cls)
+			{
+				wil::unique_bstr outputStr;
+				hr = RunTool(cl.get(), workDir, pdwExitCode, outputStr.addressof()); RETURN_IF_FAILED_EXPECTED(hr);
+				hr = OutputMessage(outputStr.get()); RETURN_IF_FAILED(hr);
+				if (*pdwExitCode)
+				{
+					static const wchar_t Format[] = L"%s returned exit code %u: %s";
+					size_t bufferLen = wcslen(eventName) + _countof(Format) + 10 + SysStringLen(cl.get());
+					auto buffer = wil::make_hlocal_string_nothrow(nullptr, bufferLen); RETURN_IF_NULL_ALLOC(buffer);
+					swprintf_s (buffer.get(), bufferLen, Format, eventName, *pdwExitCode, cl.get());
+					OutputMessage(buffer.get());
+					return S_OK;
+				}
+			}
+		}
+
+		*pdwExitCode = 0;
+		return S_OK;
+	}
+
 	virtual HRESULT StartBuild (IProjectConfigBuilderCallback* callback) override
 	{
 		HRESULT hr;
+		DWORD exitCode;
 
-		wil::unique_variant project_dir;
-		hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &project_dir); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(E_FAIL, project_dir.vt != VT_BSTR);
+		wil::unique_variant projectDir;
+		hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
+		RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
 
 		wil::unique_bstr output_dir;
 		hr = _config->GetOutputDirectory(&output_dir); RETURN_IF_FAILED(hr);
@@ -219,6 +287,13 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 		if (win32err != ERROR_SUCCESS && win32err != ERROR_ALREADY_EXISTS)
 			RETURN_WIN32(win32err);
 
+		// Pre-Build Event
+		com_ptr<IProjectConfigPrePostBuildProperties> preBuildProps;
+		hr = _config->get_PreBuildProperties(&preBuildProps); RETURN_IF_FAILED(hr);
+		hr = RunCommandLines(preBuildProps, L"Pre-Build Event", projectDir.bstrVal, &exitCode); RETURN_IF_FAILED(hr);
+		if (exitCode)
+			return callback->OnBuildComplete(FALSE), S_OK;
+
 		InputFiles inputFiles;
 		hr = GetInputFiles(inputFiles); RETURN_IF_FAILED(hr);
 
@@ -226,34 +301,16 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 		for (auto& f : inputFiles.CustomBuild)
 		{
 			com_ptr<ICustomBuildToolProperties> props;
-			hr = f->get_CustomBuildToolProperties(&props);
-			if (SUCCEEDED(hr))
-			{
-				wil::unique_bstr cmdLine;
-				hr = props->get_CommandLine(&cmdLine);
-				if (SUCCEEDED(hr))
-				{
-					wil::unique_bstr desc;
-					hr = props->get_Description(&desc);
-					if (SUCCEEDED(hr))
-					{
-						hr = _outputWindow2->OutputTaskItemStringEx2 (desc.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
-							nullptr, 0, nullptr, 0, 0, _projName.get(), nullptr, nullptr); RETURN_IF_FAILED(hr);
-					}
-
-					DWORD exitCode;
-					wil::unique_bstr outputStr;
-					hr = RunTool(cmdLine.get(), project_dir.bstrVal, &exitCode, outputStr.addressof()); RETURN_IF_FAILED_EXPECTED(hr);
-					hr = _outputWindow2->OutputTaskItemStringEx2 (outputStr.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
-						nullptr, 0, nullptr, 0, 0, _projName.get(), nullptr, nullptr); RETURN_IF_FAILED(hr);
-
-					if (exitCode)
-					{
-						callback->OnBuildComplete(FALSE);
-						return S_OK;
-					}
-				}
-			}
+			hr = f->get_CustomBuildToolProperties(&props); RETURN_IF_FAILED(hr);
+			static const WCHAR Format[] = L"Custom Build Tool for file \"%s\"";
+			wil::unique_bstr path;
+			hr = f->get_Path(&path); RETURN_IF_FAILED(hr);
+			size_t eventNameLen = _countof(Format) + SysStringLen(path.get());
+			auto eventName = wil::make_hlocal_string_nothrow(nullptr, eventNameLen); RETURN_IF_NULL_ALLOC(eventName);
+			swprintf_s (eventName.get(), eventNameLen, Format, path.get());
+			hr = RunCommandLines(props, eventName.get(), projectDir.bstrVal, &exitCode); RETURN_IF_FAILED_EXPECTED(hr);
+			if (exitCode)
+				return callback->OnBuildComplete(FALSE), S_OK;
 		}
 
 		// Second launch sjasm to build all asm files.
@@ -261,26 +318,29 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 		{
 			wil::unique_bstr cmdLine;
 			hr = MakeSjasmCommandLine (inputFiles.Asm[0].addressof(), inputFiles.Asm.size(),
-				project_dir.bstrVal, output_dir.get(), &cmdLine); RETURN_IF_FAILED(hr);
+				projectDir.bstrVal, output_dir.get(), &cmdLine); RETURN_IF_FAILED(hr);
 
-			DWORD exitCode;
 			wil::unique_bstr outputStr;
-			hr = RunTool(cmdLine.get(), project_dir.bstrVal, &exitCode, outputStr.addressof()); RETURN_IF_FAILED(hr);
+			hr = RunTool(cmdLine.get(), projectDir.bstrVal, &exitCode, outputStr.addressof()); RETURN_IF_FAILED(hr);
 
 			hr = ParseSjasmOutput (outputStr.get(), outputStr.get() + SysStringLen(outputStr.get())); RETURN_IF_FAILED(hr);
-
 			if (exitCode)
-			{
-				callback->OnBuildComplete(FALSE);
-				return S_OK;
-			}
+				return callback->OnBuildComplete(FALSE), S_OK;
 		}
+
+		// Post-Build Event
+		com_ptr<IProjectConfigPrePostBuildProperties> postBuildProps;
+		hr = _config->get_PostBuildProperties(&postBuildProps); RETURN_IF_FAILED(hr);
+		hr = RunCommandLines(postBuildProps, L"Post-Build Event", projectDir.bstrVal, &exitCode); RETURN_IF_FAILED_EXPECTED(hr);
+		if (exitCode)
+			return callback->OnBuildComplete(FALSE), S_OK;
 
 		callback->OnBuildComplete(TRUE);
 		return S_OK;
 	}
 
-	HRESULT RunTool (PWSTR cmdLine, PCWSTR workDir, DWORD* pExitCode, BSTR* pStrOutput)
+	// This function writes pExitCode and pbstrOutput only when it returns S_OK.
+	HRESULT RunTool (PWSTR cmdLine, PCWSTR workDir, DWORD* pExitCode, BSTR* pbstrOutput)
 	{
 		// Create a pipe for the child process's STDOUT.
 		wil::unique_handle stdoutReadHandle;
@@ -329,7 +389,7 @@ struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
 		}
 
 		// Let's assume UTF-8. Looking at its source code, sjasmplus seems to be ASCII-only.
-		auto hr = MakeBstrFromString (output.get(), output.get() + outputSize, pStrOutput); RETURN_IF_FAILED(hr);
+		auto hr = MakeBstrFromString (output.get(), output.get() + outputSize, pbstrOutput); RETURN_IF_FAILED(hr);
 		*pExitCode = exitCode;
 		return S_OK;
 	}

@@ -17,20 +17,20 @@ class ObjInfo
 public:
 	ObjInfo() = default;
 
-	HRESULT InitInstance (IUnknown* parent, DISPID dispid, IPropertyNotifySink* sink)
+	HRESULT InitInstance (IDispatch* parent, DISPID dispid, IPropertyNotifySink* sink)
 	{
-		auto hr = parent->QueryInterface(&_parent); RETURN_IF_FAILED(hr);
-
+		_parent = parent;
 		_dispid = dispid;
 
 		DISPPARAMS params = { };
 		wil::unique_variant result;
 		EXCEPINFO exception;
 		UINT uArgErr;
-		hr = _parent->Invoke (dispid, IID_NULL, LANG_INVARIANT, DISPATCH_PROPERTYGET,
+		auto hr = _parent->Invoke (dispid, IID_NULL, LANG_INVARIANT, DISPATCH_PROPERTYGET,
 			&params, &result, &exception, &uArgErr); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_UNEXPECTED, result.vt != VT_DISPATCH);
-
+		RETURN_HR_IF(E_POINTER, V_DISPATCH(&result) == nullptr);
+		_child = V_DISPATCH(&result);
 		// In a property page we don't want to work directly on the selected object,
 		// because the user might change some properties and then click Cancel.
 		// So let's clone the selected object. See related comment in Apply() below.

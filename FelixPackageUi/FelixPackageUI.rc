@@ -77,6 +77,17 @@ IDI_INC_FILE            ICON                    "IncFile.ico"
 // Dialog
 //
 
+IDD_DIALOG_COMMAND_LINE_EDITOR DIALOGEX 0, 0, 310, 81
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Edit Command Line"
+FONT 11, "Segoe UI", 400, 0, 0xEE
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,199,63,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,255,63,50,14
+    EDITTEXT        IDC_EDIT_COMMANDS,4,17,301,41,ES_MULTILINE | ES_AUTOHSCROLL | ES_WANTRETURN | WS_VSCROLL
+    LTEXT           "Each line is a command invoked during the build.",IDC_STATIC,4,5,164,10
+END
+
 IDD_REPORT_ERROR DIALOGEX 0, 0, 312, 159
 STYLE DS_SETFONT | DS_MODALFRAME | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_OVERLAPPEDWINDOW
@@ -101,6 +112,14 @@ END
 #ifdef APSTUDIO_INVOKED
 GUIDELINES DESIGNINFO
 BEGIN
+    IDD_DIALOG_COMMAND_LINE_EDITOR, DIALOG
+    BEGIN
+        LEFTMARGIN, 4
+        RIGHTMARGIN, 305
+        TOPMARGIN, 5
+        BOTTOMMARGIN, 77
+    END
+
     IDD_REPORT_ERROR, DIALOG
     BEGIN
         RIGHTMARGIN, 311
@@ -114,6 +133,15 @@ END
 //
 // AFX_DIALOG_LAYOUT
 //
+
+IDD_DIALOG_COMMAND_LINE_EDITOR AFX_DIALOG_LAYOUT
+BEGIN
+    0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 100, 100,
+    0, 0, 0, 0
+END
 
 IDD_REPORT_ERROR AFX_DIALOG_LAYOUT
 BEGIN
@@ -137,6 +165,14 @@ BEGIN
     IDS_RENAMEFILEALREADYEXISTS "File already exists.\r\n\r\n%s"
     IDS_NOT_SUPPORTED_WHILE_SIMULATOR_RUNNING 
                             "This operation is not supported while the simulator is running."
+    IDS_PRE_BUILD_PROP_PAGE_TITLE "Pre-Build Event"
+    IDS_POST_BUILD_PROP_PAGE_TITLE "Post-Build Event"
+    IDS_PRE_BUILD_CMD_LINE_DESCRIPTION 
+                            "Optional command line to be executed before the files are compiled/built."
+    IDS_POST_BUILD_CMD_LINE_DESCRIPTION 
+                            "Optional command line to be executed after the files are compiled/built."
+    IDS_PRE_POST_BUILD_DESCRIPTION_DESCRIPTION 
+                            "Message to be printed to the Output Window (and to the build log) when this command is executed."
 END
 
 #endif    // English (United States) resources

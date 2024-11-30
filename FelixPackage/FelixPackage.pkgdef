@@ -78,6 +78,14 @@
 @="Debugging Property Page"
 "InprocServer32"="$PackageFolder$\FelixPackage.dll"
 
+[$RootKey$\CLSID\{545DCAA3-9611-4643-B105-F154FA59B45B}]
+@="Pre-Build Property Page"
+"InprocServer32"="$PackageFolder$\FelixPackage.dll"
+
+[$RootKey$\CLSID\{37D6F145-FDBC-4642-971D-FE72A392657E}]
+@="Post-Build Property Page"
+"InprocServer32"="$PackageFolder$\FelixPackage.dll"
+
 // ----------------------------------------------------------------------------
 // Debug Engine section
 

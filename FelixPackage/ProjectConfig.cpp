@@ -8,6 +8,7 @@
 #include "dispids.h"
 #include "guids.h"
 #include "Z80Xml.h"
+#include "../FelixPackageUi/resource.h"
 
 // Useful doc: https://learn.microsoft.com/en-us/visualstudio/extensibility/internals/managing-configuration-options?view=vs-2022
 
@@ -40,6 +41,10 @@ struct ProjectConfig
 	AdviseSinkToken _assemblerPropsAdviseToken;
 	com_ptr<IProjectConfigDebugProperties> _debugProps;
 	AdviseSinkToken _debugPropsAdviseToken;
+	com_ptr<IProjectConfigPrePostBuildProperties> _preBuildProps;
+	AdviseSinkToken _preBuildPropsAdviseToken;
+	com_ptr<IProjectConfigPrePostBuildProperties> _postBuildProps;
+	AdviseSinkToken _postBuildPropsAdviseToken;
 
 	com_ptr<IProjectConfigBuilder> _pendingBuild;
 
@@ -56,6 +61,12 @@ public:
 
 		hr = DebuggingPageProperties_CreateInstance(&_debugProps); RETURN_IF_FAILED(hr);
 		hr = AdviseSink<IPropertyNotifySink>(_debugProps, this, &_debugPropsAdviseToken); RETURN_IF_FAILED(hr);
+
+		hr = PrePostBuildPageProperties_CreateInstance(false, &_preBuildProps); RETURN_IF_FAILED(hr);
+		hr = AdviseSink<IPropertyNotifySink>(_preBuildProps, this, &_preBuildPropsAdviseToken); RETURN_IF_FAILED(hr);
+
+		hr = PrePostBuildPageProperties_CreateInstance(true, &_postBuildProps); RETURN_IF_FAILED(hr);
+		hr = AdviseSink<IPropertyNotifySink>(_postBuildProps, this, &_postBuildPropsAdviseToken); RETURN_IF_FAILED(hr);
 
 		return S_OK;
 	}
@@ -413,10 +424,12 @@ public:
 	#pragma region ISpecifyPropertyPages
 	virtual HRESULT STDMETHODCALLTYPE GetPages (CAUUID *pPages) override
 	{
-		pPages->pElems = (GUID*)CoTaskMemAlloc (2 * sizeof(GUID)); RETURN_IF_NULL_ALLOC(pPages->pElems);
-		pPages->pElems[0] = GeneralPropertyPage_CLSID;
+		pPages->pElems = (GUID*)CoTaskMemAlloc (4 * sizeof(GUID)); RETURN_IF_NULL_ALLOC(pPages->pElems);
+		pPages->pElems[0] = AssemblerPropertyPage_CLSID;
 		pPages->pElems[1] = DebugPropertyPage_CLSID;
-		pPages->cElems = 2;
+		pPages->pElems[2] = PreBuildPropertyPage_CLSID;
+		pPages->pElems[3] = PostBuildPropertyPage_CLSID;
+		pPages->cElems = 4;
 		return S_OK;
 	}
 	#pragma endregion
@@ -443,6 +456,16 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE get_DebuggingProperties (IProjectConfigDebugProperties** ppProps) override
 	{
 		return wil::com_copy_to_nothrow(_debugProps, ppProps);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_PreBuildProperties (IProjectConfigPrePostBuildProperties **ppProps) override
+	{
+		return wil::com_copy_to_nothrow(_preBuildProps, ppProps);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_PostBuildProperties (IProjectConfigPrePostBuildProperties **ppProps) override
+	{
+		return wil::com_copy_to_nothrow(_postBuildProps, ppProps);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_ConfigName (BSTR* pbstr) override
@@ -509,6 +532,10 @@ public:
 		_assemblerProps = nullptr;
 		_debugPropsAdviseToken.reset();
 		_debugProps = nullptr;
+		_preBuildPropsAdviseToken.reset();
+		_preBuildProps = nullptr;
+		_postBuildPropsAdviseToken.reset();
+		_postBuildProps = nullptr;
 		return S_OK;
 	}
 	#pragma endregion
@@ -516,19 +543,18 @@ public:
 	#pragma region IXmlParent
 	virtual HRESULT STDMETHODCALLTYPE GetChildXmlElementName (DISPID dispidProperty, IUnknown* child, BSTR* xmlElementNameOut) override
 	{
-		if (dispidProperty == dispidAssemblerProperties)
+		switch (dispidProperty)
 		{
-			*xmlElementNameOut = nullptr;
-			return S_OK;
-		}
+			case dispidAssemblerProperties:
+			case dispidDebuggingProperties:
+			case dispidPreBuildProperties:
+			case dispidPostBuildProperties:
+				*xmlElementNameOut = nullptr;
+				return S_OK;
 
-		if (dispidProperty == dispidDebuggingProperties)
-		{
-			*xmlElementNameOut = nullptr;
-			return S_OK;
+			default:
+				RETURN_HR(E_NOTIMPL);
 		}
-
-		RETURN_HR(E_NOTIMPL);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE CreateChild (DISPID dispidProperty, PCWSTR xmlElementName, IDispatch** childOut) override
@@ -538,6 +564,12 @@ public:
 
 		if (dispidProperty == dispidDebuggingProperties)
 			return DebuggingPageProperties_CreateInstance ((IProjectConfigDebugProperties**)childOut);
+
+		if (dispidProperty == dispidPreBuildProperties)
+			return PrePostBuildPageProperties_CreateInstance (false, (IProjectConfigPrePostBuildProperties**)childOut);
+
+		if (dispidProperty == dispidPostBuildProperties)
+			return PrePostBuildPageProperties_CreateInstance (true, (IProjectConfigPrePostBuildProperties**)childOut);
 
 		RETURN_HR(E_NOTIMPL);
 	}
@@ -570,7 +602,6 @@ HRESULT ProjectConfig_CreateInstance (IVsUIHierarchy* hier, IProjectConfig** to)
 
 struct AssemblerPageProperties
 	: IProjectConfigAssemblerProperties
-	, IProvideClassInfo
 	, IVsPerPropertyBrowsing
 	, IConnectionPointContainer
 {
@@ -602,7 +633,6 @@ struct AssemblerPageProperties
 		if (   TryQI<IUnknown>(static_cast<IDispatch*>(this), riid, ppvObject)
 			|| TryQI<IDispatch>(this, riid, ppvObject)
 			|| TryQI<IProjectConfigAssemblerProperties>(this, riid, ppvObject)
-			|| TryQI<IProvideClassInfo>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
 		)
@@ -647,12 +677,6 @@ struct AssemblerPageProperties
 
 	IMPLEMENT_IDISPATCH(IID_IProjectConfigAssemblerProperties);
 
-	#pragma region IProvideClassInfo
-	virtual HRESULT STDMETHODCALLTYPE GetClassInfo (ITypeInfo **ppTI) override
-	{
-		return GetTypeInfo(0, 0, ppTI);
-	}
-	#pragma endregion
 
 	#pragma region IVsPerPropertyBrowsing
 	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL* pfHide) override { return E_NOTIMPL; }
@@ -794,7 +818,6 @@ struct AssemblerPageProperties
 
 struct DebuggingPageProperties
 	: IProjectConfigDebugProperties
-	, IProvideClassInfo
 	, IVsPerPropertyBrowsing
 	, IConnectionPointContainer
 {
@@ -825,7 +848,6 @@ struct DebuggingPageProperties
 		if (   TryQI<IUnknown>(static_cast<IDispatch*>(this), riid, ppvObject)
 			|| TryQI<IDispatch>(this, riid, ppvObject)
 			|| TryQI<IProjectConfigDebugProperties>(this, riid, ppvObject)
-			|| TryQI<IProvideClassInfo>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
 		)
@@ -867,12 +889,6 @@ struct DebuggingPageProperties
 
 	IMPLEMENT_IDISPATCH(IID_IProjectConfigDebugProperties)
 
-	#pragma region IProvideClassInfo
-	virtual HRESULT STDMETHODCALLTYPE GetClassInfo (ITypeInfo **ppTI) override
-	{
-		return GetTypeInfo(0, 0, ppTI);
-	}
-	#pragma endregion
 
 	#pragma region IVsPerPropertyBrowsing
 	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL* pfHide) override { return E_NOTIMPL; }
@@ -1003,3 +1019,223 @@ HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** 
 	return DebuggingPageProperties::CreateInstance(to);
 }
 
+struct PrePostBuildPageProperties
+	: IProjectConfigPrePostBuildProperties
+	, IVsPerPropertyBrowsing
+	, IConnectionPointContainer
+	, IProvidePropertyBuilder
+{
+	ULONG _refCount = 0;
+	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
+	bool _post;
+	wil::unique_bstr _commandLine;
+	wil::unique_bstr _description;
+
+	static HRESULT CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to)
+	{
+		com_ptr<PrePostBuildPageProperties> p = new (std::nothrow) PrePostBuildPageProperties(); RETURN_IF_NULL_ALLOC(p);
+		auto hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(p, &p->_propNotifyCP); RETURN_IF_FAILED(hr);
+		p->_post = post;
+		*to = p.detach();
+		return S_OK;
+	}
+
+	#pragma region IUnknown
+	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
+	{
+		if (   TryQI<IUnknown>(static_cast<IDispatch*>(this), riid, ppvObject)
+			|| TryQI<IDispatch>(this, riid, ppvObject)
+			|| TryQI<IProjectConfigPrePostBuildProperties>(this, riid, ppvObject)
+			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
+			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
+			|| TryQI<IProvidePropertyBuilder>(this, riid, ppvObject)
+		)
+			return S_OK;
+
+		return E_NOINTERFACE;
+	}
+
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
+
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
+	#pragma endregion
+
+	IMPLEMENT_IDISPATCH(IID_IProjectConfigPrePostBuildProperties)
+
+	#pragma region IVsPerPropertyBrowsing
+	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL* pfHide) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE DisplayChildProperties (DISPID dispid, BOOL *pfDisplay) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE GetLocalizedPropertyInfo (DISPID dispid, LCID localeID, BSTR *pbstrLocalizedName, BSTR *pbstrLocalizeDescription) override
+	{
+		if (dispid == dispidCommandLine)
+		{
+			if (pbstrLocalizeDescription)
+			{
+				wil::com_ptr_nothrow<IVsShell> shell;
+				auto hr = serviceProvider->QueryService(SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
+				ULONG resid = _post ? IDS_POST_BUILD_CMD_LINE_DESCRIPTION : IDS_PRE_BUILD_CMD_LINE_DESCRIPTION;
+				return shell->LoadPackageString(CLSID_FelixPackage, resid, pbstrLocalizeDescription);
+			}
+
+			return E_NOTIMPL;
+		}
+
+		if (dispid == dispidDescription)
+		{
+			if (pbstrLocalizeDescription)
+			{
+				wil::com_ptr_nothrow<IVsShell> shell;
+				auto hr = serviceProvider->QueryService(SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
+				return shell->LoadPackageString(CLSID_FelixPackage, IDS_PRE_POST_BUILD_DESCRIPTION_DESCRIPTION, pbstrLocalizeDescription);
+			}
+
+			return E_NOTIMPL;
+		}
+		
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE HasDefaultValue (DISPID dispid, BOOL *fDefault) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE IsPropertyReadOnly (DISPID dispid, BOOL *fReadOnly) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE GetClassName (BSTR *pbstrClassName) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE CanResetPropertyValue (DISPID dispid, BOOL *pfCanReset) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE ResetPropertyValue (DISPID dispid) override { return E_NOTIMPL; }
+	#pragma endregion
+
+	#pragma region IConnectionPointContainer
+	virtual HRESULT STDMETHODCALLTYPE EnumConnectionPoints (IEnumConnectionPoints **ppEnum) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE FindConnectionPoint (REFIID riid, IConnectionPoint **ppCP) override
+	{
+		if (riid == IID_IPropertyNotifySink)
+		{
+			*ppCP = _propNotifyCP;
+			_propNotifyCP->AddRef();
+			return S_OK;
+		}
+
+		RETURN_HR(E_NOTIMPL);
+	}
+	#pragma endregion
+
+	#pragma region IProvidePropertyBuilder
+	virtual HRESULT STDMETHODCALLTYPE MapPropertyToBuilder (LONG dispid, LONG* pdwCtlBldType, BSTR* pbstrGuidBldr, VARIANT_BOOL* pfRetVal) override
+	{
+		if (dispid == dispidCommandLine)
+		{
+			*pdwCtlBldType = CTLBLDTYPE_FINTERNALBUILDER;
+			*pbstrGuidBldr = SysAllocString(GUID_CommandLineBuilderStr); RETURN_IF_NULL_ALLOC(*pbstrGuidBldr);
+			*pfRetVal = VARIANT_TRUE;
+			return S_OK;
+		}
+
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE ExecuteBuilder (LONG dispid, BSTR bstrGuidBldr, IDispatch* pdispApp,
+		LONG_PTR hwndBldrOwner, VARIANT* pvarValue, VARIANT_BOOL* pfRetVal) override
+	{
+		if (!wcscmp(bstrGuidBldr, GUID_CommandLineBuilderStr))
+		{
+			RETURN_HR_IF(E_FAIL, pvarValue->vt != VT_BSTR && pvarValue->vt != VT_EMPTY);
+			BSTR valueBefore = (pvarValue->vt == VT_BSTR && pvarValue->bstrVal) ? pvarValue->bstrVal : nullptr;
+			wil::unique_bstr valueAfter;
+			auto hr = ShowCommandLinePropertyBuilder((HWND)hwndBldrOwner, valueBefore, &valueAfter);
+			if (hr == HRESULT_FROM_WIN32(ERROR_CANCELLED))
+			{
+				*pfRetVal = VARIANT_FALSE;
+				return S_OK;
+			}
+			RETURN_IF_FAILED(hr);
+
+			if (pvarValue->vt == VT_BSTR)
+				SysFreeString(pvarValue->bstrVal);
+			pvarValue->bstrVal = valueAfter.release();
+			pvarValue->vt = VT_BSTR;
+			*pfRetVal = VARIANT_TRUE;
+			return S_OK;
+		}
+
+		return E_NOTIMPL;
+	}
+	#pragma endregion
+
+	#pragma region IProjectConfigPrePostBuildProperties
+//	virtual HRESULT STDMETHODCALLTYPE get___id(BSTR *value) override
+//	{
+//		// For configurations, this seems to be requested and then ignored.
+//		*value = nullptr;
+//		return S_OK;
+//	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_CommandLine (BSTR *value) override
+	{
+		if (_commandLine && _commandLine.get()[0])
+		{
+			*value = SysAllocStringLen(_commandLine.get(), SysStringLen(_commandLine.get())); RETURN_IF_NULL_ALLOC(*value);
+		}
+		else
+			*value = nullptr;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_CommandLine (BSTR value) override
+	{
+		if (VarBstrCmp(_commandLine.get(), value, 0, 0) != VARCMP_EQ)
+		{
+			if (value)
+			{
+				auto c = wil::make_bstr_nothrow(value); RETURN_IF_NULL_ALLOC(c);
+				_commandLine = std::move(c);
+			}
+			else
+				_commandLine = nullptr;
+			_propNotifyCP->NotifyPropertyChanged(dispidCommandLine);
+		}
+
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_Description (BSTR *value) override
+	{
+		if (_description && _description.get()[0])
+		{
+			*value = SysAllocStringLen(_description.get(), SysStringLen(_description.get())); RETURN_IF_NULL_ALLOC(*value);
+		}
+		else
+			*value = nullptr;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_Description (BSTR value) override
+	{
+		if (VarBstrCmp(_description.get(), value, 0, 0) != VARCMP_EQ)
+		{
+			if (value)
+			{
+				auto c = wil::make_bstr_nothrow(value); RETURN_IF_NULL_ALLOC(c);
+				_description = std::move(c);
+			}
+			else
+				_description = nullptr;
+			_propNotifyCP->NotifyPropertyChanged(dispidDescription);
+		}
+
+		return S_OK;
+	}
+	#pragma endregion
+};
+
+HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to)
+{
+	return PrePostBuildPageProperties::CreateInstance(post, to);
+}

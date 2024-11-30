@@ -139,6 +139,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="AsmLanguageInfo.cpp" />
+    <ClCompile Include="CommandLinePropertyBuilder.cpp" />
     <ClCompile Include="CustomBuildToolProperties.cpp" />
     <ClCompile Include="DebugEngine\DebugBreakpoints.cpp" />
     <ClCompile Include="DebugEngine\DebugCodeContext.cpp" />

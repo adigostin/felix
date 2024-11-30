@@ -26,5 +26,7 @@
 #define dispidDescription          18
 #define dispidOutputs              19
 #define dispidGeneralProperties    20 // Same object as dispidAssemblerProperties, used for backward compatibility
+#define dispidPreBuildProperties   21
+#define dispidPostBuildProperties  22
 
 #endif

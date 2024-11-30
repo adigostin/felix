@@ -278,10 +278,16 @@ static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, IXmlWriterL
 				if (objAsParent)
 				{
 					wil::unique_bstr childXmlElementName;
-					hr = objAsParent->GetChildXmlElementName(child.dispid, child.value.get(), &childXmlElementName); RETURN_IF_FAILED(hr);
-					if (childXmlElementName)
+					hr = objAsParent->GetChildXmlElementName(child.dispid, child.value.get(), &childXmlElementName);
+					RETURN_HR_IF(hr, FAILED(hr) && hr != E_NOTIMPL);
+					if (hr == E_NOTIMPL || childXmlElementName)
 					{
-						RETURN_HR(E_NOTIMPL);
+						EnsureElementCreated ensureChildElemCreated (child.name.get(), writer, &ensureElementCreated);
+						
+						LPCWSTR elemName = childXmlElementName ? childXmlElementName.get() : child.name.get();
+						hr = SaveToXmlInternal (child.value.get(), elemName, writer, &ensureChildElemCreated); RETURN_IF_FAILED(hr);
+
+						hr = ensureChildElemCreated.CreateEndElement(); RETURN_IF_FAILED(hr);
 					}
 					else
 					{
@@ -536,7 +542,7 @@ static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDis
 
 				MEMBERID memid;
 				bool readOnly = false;
-				auto hr = typeInfo->GetIDsOfNames(&const_cast<LPOLESTR&>(childElemName), 1, &memid); RETURN_IF_FAILED(hr);
+				hr = typeInfo->GetIDsOfNames(&const_cast<LPOLESTR&>(childElemName), 1, &memid); RETURN_IF_FAILED(hr);
 				VARTYPE vt;
 				hr = FindPutFunction(memid, typeInfo.get(), typeAttr, &vt); RETURN_HR_IF(hr, FAILED(hr) && hr != DISP_E_MEMBERNOTFOUND);
 

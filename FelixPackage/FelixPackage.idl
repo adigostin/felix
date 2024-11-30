@@ -14,6 +14,8 @@ library ATLProject1Lib
 
 	interface IProjectConfigAssemblerProperties;
 	interface IProjectConfigDebugProperties;
+	interface ICommandLineList;
+	interface IProjectConfigPrePostBuildProperties;
 
 	[uuid(15412FDD-6A57-420C-933E-0A89A1DF497D)]
 	enum OutputFileType { Binary, Sna };
@@ -29,6 +31,10 @@ library ATLProject1Lib
 		[id(dispidGeneralProperties), propput] HRESULT GeneralProperties (IProjectConfigAssemblerProperties* pDispatch);
 
 		[id(dispidDebuggingProperties), propget] HRESULT DebuggingProperties ([out, retval] IProjectConfigDebugProperties** ppProps);
+
+		[id(dispidPreBuildProperties), propget] HRESULT PreBuildProperties ([out, retval] IProjectConfigPrePostBuildProperties** ppProps);
+		
+		[id(dispidPostBuildProperties), propget] HRESULT PostBuildProperties ([out, retval] IProjectConfigPrePostBuildProperties** ppProps);
 
 		[propget] HRESULT ConfigName ([out, retval] BSTR* pbstr);
 		[propput] HRESULT ConfigName (BSTR pbstr);
@@ -85,6 +91,25 @@ library ATLProject1Lib
 		HRESULT LaunchType (enum LaunchType value);
 	};
 
+	[object, uuid(681706E6-D0E3-4794-92E4-B87F9690516B), dual, nonextensible, pointer_default(unique)]
+	interface ICommandLineList : IDispatch
+	{
+		[id(dispidCommandLine), propget]
+		HRESULT CommandLine ([out, retval] BSTR* value);
+		[id(dispidCommandLine), propput]
+		HRESULT CommandLine (BSTR value);
+
+		[id(dispidDescription), propget]
+		HRESULT Description ([out, retval] BSTR* value);
+		[id(dispidDescription), propput]
+		HRESULT Description (BSTR value);
+	};
+
+	[object, uuid(41E55107-3759-4775-9D7C-1AA568536E46), dual, nonextensible, pointer_default(unique)]
+	interface IProjectConfigPrePostBuildProperties : ICommandLineList
+	{
+	};
+
 	[object, uuid(A2EE7852-34B1-49A9-A3DB-36232AC6680C), dual, nonextensible, pointer_default(unique)]
 	interface IProjectItem : IDispatch
 	{
@@ -130,18 +155,8 @@ library ATLProject1Lib
 	enum BuildToolKind { None, Assembler, CustomBuildTool };
 
 	[object, uuid(8577A7D6-BE63-4D76-8D51-130E8218C065), dual, nonextensible, pointer_default(unique)]
-	interface ICustomBuildToolProperties : IDispatch
+	interface ICustomBuildToolProperties : ICommandLineList
 	{
-		[id(dispidCommandLine), propget]
-		HRESULT CommandLine ([out, retval] BSTR* value);
-		[id(dispidCommandLine), propput]
-		HRESULT CommandLine (BSTR value);
-
-		[id(dispidDescription), propget]
-		HRESULT Description ([out, retval] BSTR* value);
-		[id(dispidDescription), propput]
-		HRESULT Description (BSTR value);
-
 		[id(dispidOutputs), propget]
 		HRESULT Outputs ([out, retval] BSTR* value);
 		[id(dispidOutputs), propput]
