@@ -30,13 +30,21 @@ static bool TryQI (ITo* from, REFIID riid, void** ppvObject)
 
 // Helper function meant to be called from the IUnknown::Release() of STA objects.
 // When the last reference is released, calls the destructor while the object still has a reference count of 1.
+// Meant only for objects allocated with the regular operator new, or new (std::nothrow).
 template<typename T>
 ULONG ReleaseST (T* _this, ULONG& refCount)
 {
 	WI_ASSERT(refCount);
 	if (refCount > 1)
 		return --refCount;
-	delete _this;
+	
+	// We want to set the refCount to 0 after the destructor runs and before the memory is freed.
+	// This helps catch accesses to the object after its refCount went to 0 (in the WI_ASSERT
+	// at the top of this function).
+	_this->~T();
+	refCount = 0;
+	operator delete(_this);
+
 	return 0;
 }
 
@@ -527,3 +535,19 @@ HRESULT inline SetErrorInfo (HRESULT errorHR, LPCWSTR messageFormat, ...)
 	virtual HRESULT STDMETHODCALLTYPE Invoke(DISPID dispIdMember, REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr) override final { \
 		return DispInvoke (this, GetTypeInfo(), dispIdMember, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr); \
 	} \
+
+inline HRESULT copy_bstr (BSTR bstrFrom, BSTR* pbstrTo)
+{
+	if (bstrFrom && bstrFrom[0])
+	{
+		*pbstrTo = SysAllocStringLen(bstrFrom, SysStringLen(bstrFrom)); RETURN_IF_NULL_ALLOC(*pbstrTo);
+	}
+	else
+		*pbstrTo = nullptr;
+	return S_OK;
+}
+
+inline HRESULT copy_bstr (const wil::unique_bstr& from, BSTR* pbstrTo)
+{
+	return copy_bstr(from.get(), pbstrTo);
+}

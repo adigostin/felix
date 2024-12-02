@@ -3,15 +3,21 @@
 #include "FelixPackage.h"
 #include "shared/com.h"
 
-struct DECLSPEC_NOINITALL ProjectConfigBuilder : IProjectConfigBuilder
+struct ProjectConfigBuilder : IProjectConfigBuilder
 {
 	ULONG _refCount = 0;
 	com_ptr<IVsUIHierarchy> _hier;
 	com_ptr<IProjectConfig> _config;
 	wil::unique_bstr _projName;
 	com_ptr<IVsOutputWindowPane2> _outputWindow2;
-	HWND _hwnd;
+	HWND _hwnd = nullptr;
 	com_ptr<IProjectConfigBuilderCallback> _callback;
+
+public:
+	// Info: The presence of an explicit constructor keeps the compiler from memset-ing
+	// the object with zero after operator new and before the implicit constructor.
+	// (This helped me catch an uninitialized _hwnd.)
+	ProjectConfigBuilder() { }
 
 	HRESULT InitInstance (IVsUIHierarchy* hier, IProjectConfig* config, IVsOutputWindowPane* outputWindowPane)
 	{

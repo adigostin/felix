@@ -470,8 +470,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE get_ConfigName (BSTR* pbstr) override
 	{
-		*pbstr = SysAllocString (_configName.get()); RETURN_IF_NULL_ALLOC(*pbstr);
-		return S_OK;
+		return copy_bstr(_configName, pbstr);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_ConfigName (BSTR value) override
@@ -484,8 +483,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE get_PlatformName (BSTR* pbstr) override
 	{
-		*pbstr = SysAllocString (_platformName.get()); RETURN_IF_NULL_ALLOC(*pbstr);
-		return S_OK;
+		return copy_bstr(_platformName, pbstr);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_PlatformName (BSTR value) override
