@@ -186,6 +186,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="FelixPackage.def" />
+    <None Include="FelixPackage.natstepfilter" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="DebugEngine\DebugEngine.h" />
