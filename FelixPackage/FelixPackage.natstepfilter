@@ -16,4 +16,16 @@
 		<Name>wil::verify_hresult&lt;long&gt;</Name>
 		<Action>NoStepInto</Action>
 	</Function>
+	<Function>
+		<Name>wil::unique_any_t&lt;.*&gt;::get</Name>
+		<Action>NoStepInto</Action>
+	</Function>
+	<Function>
+		<Name>vector_nothrow&lt;.*&gt;::operator\[\]</Name>
+		<Action>NoStepInto</Action>
+	</Function>
+	<Function>
+		<Name>com_ptr&lt;.*&gt;::operator.*\*</Name>
+		<Action>NoStepInto</Action>
+	</Function>
 </StepFilter>
