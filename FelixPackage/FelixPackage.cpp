@@ -528,7 +528,7 @@ public:
 		if (_sentryOptions)
 		{
 			sentry_close();
-			sentry_options_free(_sentryOptions);
+			_sentryOptions = nullptr; // sentry_close() called sentry_options_free()
 		}
 
 		wil::SetResultTelemetryFallback(nullptr);
