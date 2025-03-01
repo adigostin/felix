@@ -932,7 +932,7 @@ public:
 	#pragma region IVsWindowFrameNotify4
 	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged(VSFPROPID propid) override
 	{
-		return E_NOTIMPL;
+		return S_OK;
 	}
 	#pragma endregion
 };
