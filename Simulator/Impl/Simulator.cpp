@@ -299,7 +299,7 @@ public:
 					// we'll want to show to the user the devices at a time as close as possible to the CPU time;
 					// we can do that only if the devices are at all times behind the CPU or only slightly
 					// (a few clock cycles) ahead of it.
-					BreakpointsHit bpsHit;
+					BreakpointsHit bpsHit = { };
 					while (_cpu->Time() < time_to_sync_to_)
 					{
 						bool advanced = _cpu->SimulateOne(&bpsHit);
