@@ -29,6 +29,7 @@ void PrintProperty (const char* prefix, VSHPROPID propid, const VARIANT* pvar);
 HRESULT MakeBstrFromString (const char* name, BSTR* bstr);
 HRESULT MakeBstrFromString (const char* name, size_t len, BSTR* bstr);
 HRESULT MakeBstrFromString (const char* sl_name_from, const char* sl_name_to, BSTR* to);
+HRESULT MakeBstrFromStreamOnHGlobal (IStream* stream, BSTR* pBstr);
 
 inline VARIANT MakeVariantFromVSITEMID (VSITEMID itemid)
 {

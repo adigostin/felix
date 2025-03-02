@@ -202,18 +202,7 @@ public:
 			}
 		}
 
-		ULARGE_INTEGER size;
-		hr = cmdLine->Seek({ .QuadPart = 0 }, STREAM_SEEK_CUR, &size); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(ERROR_FILE_TOO_LARGE, !!size.HighPart);
-
-		HGLOBAL hg;
-		hr = GetHGlobalFromStream(cmdLine, &hg); RETURN_IF_FAILED(hr);
-		auto buffer = GlobalLock(hg); WI_ASSERT(buffer);
-		*ppCmdLine = SysAllocStringLen((OLECHAR*)buffer, size.LowPart / 2);
-		GlobalUnlock (hg);
-		RETURN_IF_NULL_ALLOC(*ppCmdLine);
-
-		return S_OK;
+		return MakeBstrFromStreamOnHGlobal (cmdLine, ppCmdLine);
 	}
 
 	// This function extracts from the CommandLine property an array of lines separated by 0x0D/0x0A.

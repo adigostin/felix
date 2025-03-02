@@ -217,18 +217,7 @@ public:
 		UINT UTF16CodePage = 1200;
 		hr = SaveToXml (opts.get(), L"Options", stream.get(), UTF16CodePage); RETURN_IF_FAILED(hr);
 
-		STATSTG stat;
-		hr = stream->Stat(&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(ERROR_FILE_TOO_LARGE, !!stat.cbSize.HighPart);
-
-		HGLOBAL hg;
-		hr = GetHGlobalFromStream(stream.get(), &hg); RETURN_IF_FAILED(hr);
-		auto buffer = GlobalLock(hg); WI_ASSERT(buffer);
-		*pOptionsString = SysAllocStringLen((OLECHAR*)buffer, stat.cbSize.LowPart / 2);
-		GlobalUnlock (hg);
-		RETURN_IF_NULL_ALLOC(*pOptionsString);
-		
-		return S_OK;
+		return MakeBstrFromStreamOnHGlobal(stream, pOptionsString); 
 	}
 
 	#pragma region IVsDebuggableProjectCfg

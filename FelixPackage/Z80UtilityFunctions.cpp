@@ -243,3 +243,18 @@ HRESULT MakeBstrFromString (const char* sl_name_from, const char* sl_name_to, BS
 	return S_OK;
 }
 
+HRESULT MakeBstrFromStreamOnHGlobal (IStream* stream, BSTR* pBstr)
+{
+	STATSTG stat;
+	auto hr = stream->Stat(&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
+	RETURN_HR_IF(ERROR_FILE_TOO_LARGE, !!stat.cbSize.HighPart);
+
+	HGLOBAL hg;
+	hr = GetHGlobalFromStream(stream, &hg); RETURN_IF_FAILED(hr);
+	auto buffer = GlobalLock(hg); RETURN_LAST_ERROR_IF(!buffer);
+	*pBstr = SysAllocStringLen((OLECHAR*)buffer, stat.cbSize.LowPart / 2);
+	GlobalUnlock (hg);
+	RETURN_IF_NULL_ALLOC(*pBstr);
+
+	return S_OK;
+}
