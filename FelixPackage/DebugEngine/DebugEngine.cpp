@@ -432,7 +432,6 @@ public:
 		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, packageDir); RETURN_IF_FAILED(hr);
 		auto fnres = PathFindFileName(packageDir.get()); RETURN_HR_IF(CO_E_BAD_PATH, fnres == packageDir.get());
 		*fnres = 0;
-		DWORD PathFlags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
 		wil::unique_hlocal_string rom_path;
 		hr = PathAllocCombine (packageDir.get(), L"ROMs/Spectrum48K.rom", PathFlags, &rom_path); RETURN_IF_FAILED(hr);
 		wil::unique_hlocal_string rom_debug_info_path;

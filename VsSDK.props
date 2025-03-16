@@ -20,9 +20,6 @@
     <VSIntegrationLibraries>$(VSIntegrationCommon)\lib\x64</VSIntegrationLibraries>
   </PropertyGroup>
   <PropertyGroup Label="UserMacros">
-    <VSLIncludePath>$(VSIntegrationRoot)\Common\Source\CPP\VSL\Include</VSLIncludePath>
-  </PropertyGroup>
-  <PropertyGroup Label="UserMacros">
     <VSIntegrationTools>$(VSIntegrationRoot)\Tools\Bin</VSIntegrationTools>
   </PropertyGroup>
   <PropertyGroup Label="UserMacros">
@@ -38,7 +35,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>$(VSLIncludePath);$(VSIntegrationInclude);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VSIntegrationInclude);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup>
@@ -64,7 +61,6 @@
   <ItemGroup>
     <BuildMacro Include="CommonSharedInclude" />
     <BuildMacro Include="CommonSharedRoot" />
-    <BuildMacro Include="Office10Include" />
     <BuildMacro Include="RegitPath" />
     <BuildMacro Include="VsctPath" />
     <BuildMacro Include="VSIntegrationCommon" />
@@ -73,6 +69,5 @@
     <BuildMacro Include="VSIntegrationLibraries" />
     <BuildMacro Include="VSIntegrationRoot" />
     <BuildMacro Include="VSIntegrationTools" />
-    <BuildMacro Include="VSLIncludePath" />
   </ItemGroup>
 </Project>

@@ -147,7 +147,6 @@ public:
 		auto addOutputPathParam = [&cmdLine, output_dir, project_dir](const wchar_t* paramName, const wchar_t* output_filename) -> HRESULT
 			{
 				wil::unique_hlocal_string outputFilePath;
-				const DWORD PathFlags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
 				auto hr = PathAllocCombine (output_dir, output_filename, PathFlags, &outputFilePath); RETURN_IF_FAILED(hr);
 				auto outputFilePathRelativeUgly = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(outputFilePathRelativeUgly);
 				BOOL bRes = PathRelativePathToW (outputFilePathRelativeUgly.get(), project_dir, FILE_ATTRIBUTE_DIRECTORY, outputFilePath.get(), 0); RETURN_HR_IF(CS_E_INVALID_PATH, !bRes);

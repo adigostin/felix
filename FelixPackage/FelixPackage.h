@@ -17,6 +17,8 @@ __interface IProjectConfigBuilder : IUnknown
 
 extern wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 
+constexpr DWORD PathFlags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
+
 extern GUID SID_Simulator;
 extern const wchar_t Z80AsmLanguageName[];
 extern const wchar_t SingleDebugPortName[];

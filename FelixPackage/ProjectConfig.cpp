@@ -233,7 +233,6 @@ public:
 		wil::unique_bstr output_filename;
 		hr = GetOutputFileName(&output_filename); RETURN_IF_FAILED(hr);
 
-		DWORD PathFlags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
 		wil::unique_hlocal_string exe_path;
 		hr = PathAllocCombine (output_dir.get(), output_filename.get(), PathFlags, &exe_path); RETURN_IF_FAILED(hr);
 		auto exePathBstr = wil::make_bstr_nothrow(exe_path.get()); RETURN_IF_NULL_ALLOC(exePathBstr);
