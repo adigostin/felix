@@ -6,7 +6,7 @@
 struct ProjectConfigBuilder : IProjectConfigBuilder
 {
 	ULONG _refCount = 0;
-	com_ptr<IVsUIHierarchy> _hier;
+	com_ptr<IVsHierarchy> _hier;
 	com_ptr<IProjectConfig> _config;
 	wil::unique_bstr _projName;
 	com_ptr<IVsOutputWindowPane2> _outputWindow2;
@@ -19,7 +19,7 @@ public:
 	// (This helped me catch an uninitialized _hwnd.)
 	ProjectConfigBuilder() { }
 
-	HRESULT InitInstance (IVsUIHierarchy* hier, IProjectConfig* config, IVsOutputWindowPane* outputWindowPane)
+	HRESULT InitInstance (IVsHierarchy* hier, IProjectConfig* config, IVsOutputWindowPane* outputWindowPane)
 	{
 		_hier = hier;
 		_config = config;
@@ -485,7 +485,7 @@ public:
 	}
 };
 
-HRESULT MakeProjectConfigBuilder (IVsUIHierarchy* hier, IProjectConfig* config,
+HRESULT MakeProjectConfigBuilder (IVsHierarchy* hier, IProjectConfig* config,
 	IVsOutputWindowPane* outputWindowPane, IProjectConfigBuilder** to)
 {
 	auto p = com_ptr(new (std::nothrow) ProjectConfigBuilder()); RETURN_IF_NULL_ALLOC(p);

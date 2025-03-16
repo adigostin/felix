@@ -1,15 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <StepFilter xmlns="http://schemas.microsoft.com/vstudio/debugger/natstepfilter/2010">
 	<Function>
-		<Name>wil::com_ptr_t&lt;.*,.*&gt;::operator-&gt;</Name>
-		<Action>NoStepInto</Action>
-	</Function>
-	<Function>
-		<Name>wil::com_ptr_t&lt;.*,.*&gt;::get</Name>
-		<Action>NoStepInto</Action>
-	</Function>
-	<Function>
-		<Name>wil::com_ptr_t&lt;.*,.*&gt;::operator&amp;</Name>
+		<Name>wil::com_ptr_t&lt;.*,.*&gt;::.*</Name>
 		<Action>NoStepInto</Action>
 	</Function>
 	<Function>
@@ -17,7 +9,7 @@
 		<Action>NoStepInto</Action>
 	</Function>
 	<Function>
-		<Name>wil::unique_any_t&lt;.*&gt;::get</Name>
+		<Name>wil::unique_any_t&lt;.*&gt;::.*</Name>
 		<Action>NoStepInto</Action>
 	</Function>
 	<Function>

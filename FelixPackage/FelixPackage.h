@@ -33,17 +33,16 @@ HRESULT MakeBstrFromString (const char* name, size_t len, BSTR* bstr);
 HRESULT MakeBstrFromString (const char* sl_name_from, const char* sl_name_to, BSTR* to);
 HRESULT MakeBstrFromStreamOnHGlobal (IStream* stream, BSTR* pBstr);
 
-inline VARIANT MakeVariantFromVSITEMID (VSITEMID itemid)
+inline HRESULT InitVariantFromVSITEMID (VSITEMID itemid, VARIANT* pvar)
 {
-	VARIANT variant;
-	variant.vt = VT_VSITEMID;
-	V_VSITEMID(&variant) = itemid;
-	return variant;
+	pvar->vt = VT_VSITEMID;
+	V_VSITEMID(pvar) = itemid;
+	return S_OK;
 }
 
 HRESULT MakeFelixProject (IServiceProvider* sp, LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject);
 HRESULT MakeProjectFile (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentItemId, IProjectFile** file);
-HRESULT ProjectConfig_CreateInstance (IVsUIHierarchy* hier, IProjectConfig** to);
+HRESULT ProjectConfig_CreateInstance (IVsHierarchy* hier, IProjectConfig** to);
 HRESULT Z80ProjectFactory_CreateInstance (IServiceProvider* sp, IVsProjectFactory** to);
 HRESULT MakePGPropertyPage (UINT titleStringResId, REFGUID pageGuid, DISPID dispidChildObj, IPropertyPage** to);
 HRESULT SimulatorWindowPane_CreateInstance (IVsWindowPane** to);
@@ -56,7 +55,7 @@ HRESULT SetErrorInfo1 (HRESULT errorHR, ULONG packageStringResId, LPCWSTR arg1);
 HRESULT AssemblerPageProperties_CreateInstance (IProjectConfigAssemblerProperties** to);
 HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to);
 HRESULT MakeCustomBuildToolProperties (ICustomBuildToolProperties** to);
-HRESULT MakeProjectConfigBuilder (IVsUIHierarchy* hier, IProjectConfig* config,
+HRESULT MakeProjectConfigBuilder (IVsHierarchy* hier, IProjectConfig* config,
 	IVsOutputWindowPane* outputWindowPane, IProjectConfigBuilder** to);
 HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to);
 HRESULT ShowCommandLinePropertyBuilder (HWND hwndParent, BSTR valueBefore, BSTR* valueAfter);

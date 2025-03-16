@@ -487,7 +487,7 @@ HRESULT make_single_entry_enumerator (IEntryType* singleEntryOrNull, IEnumerator
 
 HRESULT inline SetErrorInfo (HRESULT errorHR, LPCWSTR messageFormat, ...)
 {
-	if (IsDebuggerPresent())
+	if (wil::g_fBreakOnFailure)
 		__debugbreak();
 
 	va_list argptr;

@@ -2222,7 +2222,9 @@ public:
 			}
 			auto next = com_ptr(d->Next());
 			d->SetNext(nullptr);
-			hr = d->SetProperty(VSHPROPID_Parent, MakeVariantFromVSITEMID(VSITEMID_NIL)); RETURN_IF_FAILED(hr);
+			VARIANT parentVar;
+			hr = InitVariantFromVSITEMID(VSITEMID_NIL, &parentVar); RETURN_IF_FAILED(hr);
+			hr = d->SetProperty(VSHPROPID_Parent, parentVar); RETURN_IF_FAILED(hr);
 
 			if (dwDelItemOp == DELITEMOP_DeleteFromStorage)
 			{

@@ -31,7 +31,7 @@ struct ProjectConfig
 	//, public IVsProjectCfgDebugTypeSelection
 {
 	ULONG _refCount = 0;
-	com_ptr<IVsUIHierarchy> _hier;
+	com_ptr<IVsHierarchy> _hier;
 	DWORD _threadId;
 	wil::unique_bstr _configName;
 	wil::unique_bstr _platformName;
@@ -49,7 +49,7 @@ struct ProjectConfig
 	com_ptr<IProjectConfigBuilder> _pendingBuild;
 
 public:
-	HRESULT InitInstance (IVsUIHierarchy* hier)
+	HRESULT InitInstance (IVsHierarchy* hier)
 	{
 		HRESULT hr;
 		_hier = hier;
@@ -578,7 +578,7 @@ public:
 	#pragma endregion
 };
 
-HRESULT ProjectConfig_CreateInstance (IVsUIHierarchy* hier, IProjectConfig** to)
+HRESULT ProjectConfig_CreateInstance (IVsHierarchy* hier, IProjectConfig** to)
 {
 	auto p = com_ptr(new (std::nothrow) ProjectConfig()); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance(hier); RETURN_IF_FAILED(hr);
@@ -1193,13 +1193,9 @@ struct PrePostBuildPageProperties
 
 	virtual HRESULT STDMETHODCALLTYPE get_Description (BSTR *value) override
 	{
-		if (_description && _description.get()[0])
-		{
-			*value = SysAllocStringLen(_description.get(), SysStringLen(_description.get())); RETURN_IF_NULL_ALLOC(*value);
-		}
-		else
-			*value = nullptr;
-		return S_OK;
+		// Although a NULL BSTR has identical semantics as "", the Properties Window
+		// handles a NULL BSTR by hiding the property, and "" by showing it empty.
+		return (*value = SysAllocString(_description ? _description.get() : L"")) ? S_OK : E_OUTOFMEMORY;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_Description (BSTR value) override

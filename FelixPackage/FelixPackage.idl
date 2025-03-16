@@ -32,9 +32,11 @@ library ATLProject1Lib
 
 		[id(dispidDebuggingProperties), propget] HRESULT DebuggingProperties ([out, retval] IProjectConfigDebugProperties** ppProps);
 
-		[id(dispidPreBuildProperties), propget] HRESULT PreBuildProperties ([out, retval] IProjectConfigPrePostBuildProperties** ppProps);
+		[id(dispidPreBuildProperties), propget, helpstring("The implementation allocates this object during creation; it is always non-NULL.")]
+		HRESULT PreBuildProperties ([out, retval] IProjectConfigPrePostBuildProperties** ppProps);
 		
-		[id(dispidPostBuildProperties), propget] HRESULT PostBuildProperties ([out, retval] IProjectConfigPrePostBuildProperties** ppProps);
+		[id(dispidPostBuildProperties), propget, helpstring("The implementation allocates this object during creation; it is always non-NULL.")]
+		HRESULT PostBuildProperties ([out, retval] IProjectConfigPrePostBuildProperties** ppProps);
 
 		[propget] HRESULT ConfigName ([out, retval] BSTR* pbstr);
 		[propput] HRESULT ConfigName (BSTR pbstr);
@@ -132,7 +134,7 @@ library ATLProject1Lib
 	interface IProjectItemParent : IUnknown
 	{
 		IProjectItem* FirstChild();
-		void SetFirstChild (IProjectItem* next);
+		void SetFirstChild (IProjectItem* firstChild);
 	}
 
 	// IID Same as the pkgdef entry [$RootKey$\Projects\{D438161C-F032-4014-BC5C-20A80EAFF59B}]
