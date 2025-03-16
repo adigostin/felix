@@ -16,11 +16,17 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("45B35EF7-DC2B-4EE3-BB44-EC25D607BFCE") I
 	// this function can return a NULL name and S_OK to signal that the XML serializer should serialize
 	// the child object directly on the XML element that corresponds to the property. This improves the readability
 	// of the XML file. Normally, for such properties, the serializer creates something like this:
-	// <PropertyName>                                     <= name of the property that comes from the parent's type info
-	//   <ChildObjectClassName ... child attributes ...>  <= name that comes from this function
-	// </PropertyName>
+	// <ParentClassName>
+	//   ...
+	//   <PropertyName>                                     <= name of the property that comes from the parent's type info
+	//     <ChildObjectClassName ... child attributes ...>  <= name that comes from this function
+	//   </PropertyName>
+	// </ParentClassName>
 	// If this function returns a NULL name, the serializer can simplify this to:
-	// <PropertyName ... child attributes ...>
+	// <ParentClassName>
+	//   ...
+	//   <PropertyName ... child attributes ...>
+	// </ParentClassName>
 	virtual HRESULT STDMETHODCALLTYPE GetChildXmlElementName (DISPID dispidProperty, IUnknown* child, BSTR* xmlElementNameOut) = 0;
 
 	// Creates a child object assignable to the property "dispidProperty", from the given xmlElementName, with default values for its properties.
