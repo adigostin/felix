@@ -15,8 +15,12 @@ BOOL APIENTRY DllMain(HMODULE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
 	switch (fdwReason)
 	{
 		case DLL_PROCESS_ATTACH:
-			wil::g_fBreakOnFailure = IsDebuggerPresent();
+		{
+			wchar_t buffer[MAX_PATH];
+			GetProcessImageFileName(GetCurrentProcess(), buffer, MAX_PATH);
+			wil::g_fBreakOnFailure = IsDebuggerPresent() && _wcsicmp(PathFindFileName(buffer), L"testhost.exe");
 			break;
+		}
 		case DLL_THREAD_ATTACH:
 		case DLL_THREAD_DETACH:
 		case DLL_PROCESS_DETACH:

@@ -333,7 +333,8 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE Stop(BOOL fSync) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		RETURN_HR_IF(E_UNEXPECTED, !_pendingBuild);
+		return _pendingBuild->CancelBuild();
 	}
 
 	[[deprecated]]
@@ -378,7 +379,16 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE StartBuildEx(DWORD dwBuildId, IVsOutputWindowPane* pIVsOutputWindowPane, DWORD dwOptions) override
 	{
-		auto hr = MakeProjectConfigBuilder (_hier, this, pIVsOutputWindowPane, &_pendingBuild); RETURN_IF_FAILED(hr);
+		// In VS2022, the "pIVsOutputWindowPane" passed to this function is a wrapper over
+		// the real Output pane. This wrapper spams a CR/LR in every invocation of OutputTaskItemString/OutputTaskItemString/etc.
+		com_ptr<IVsOutputWindow> ow;
+		auto hr = serviceProvider->QueryService (SID_SVsOutputWindow, &ow); RETURN_IF_FAILED(hr);
+		com_ptr<IVsOutputWindowPane> op;
+		hr = ow->GetPane(GUID_BuildOutputWindowPane, &op); RETURN_IF_FAILED(hr);
+		com_ptr<IVsOutputWindowPane2> op2;
+		hr = op->QueryInterface(&op2); RETURN_IF_FAILED(hr);
+		
+		hr = MakeProjectConfigBuilder (_hier, this, op2, &_pendingBuild); RETURN_IF_FAILED(hr);
 
 		for (auto& cb : _buildStatusCallbacks)
 		{
@@ -388,8 +398,10 @@ public:
 		}
 
 		hr = _pendingBuild->StartBuild(this);
-		if (FAILED(hr))
+		if (FAILED(hr) || hr == S_FALSE)
 		{
+			for (auto& cb : _buildStatusCallbacks)
+				cb.second->BuildEnd(FALSE);
 			_pendingBuild = nullptr;
 			return hr;
 		}
@@ -399,10 +411,10 @@ public:
 	#pragma endregion
 
 	#pragma region IProjectConfigBuilderCallback
-	virtual HRESULT OnBuildComplete(BOOL fSuccess) override
+	virtual HRESULT OnBuildComplete (bool success) override
 	{
 		for (auto& cb : _buildStatusCallbacks)
-			cb.second->BuildEnd(fSuccess);
+			cb.second->BuildEnd(success);
 
 		_pendingBuild = nullptr;
 		return S_OK;

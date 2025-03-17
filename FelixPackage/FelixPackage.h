@@ -7,12 +7,32 @@ using unique_safearray = wil::unique_any<SAFEARRAY*, decltype(SafeArrayDestroy),
 
 __interface IProjectConfigBuilderCallback : IUnknown
 {
-	HRESULT OnBuildComplete(BOOL fSuccess);
+	HRESULT OnBuildComplete (bool success);
 };
 
+// Purpose of this interface is to allow separation of "project config"
+// functionality (mostly a VS GUI thing) from the "build" functionality (a "felix" thing).
 __interface IProjectConfigBuilder : IUnknown
 {
-	HRESULT StartBuild (IProjectConfigBuilderCallback* callback);
+	// The build runs synchronously if possible, in which case this function
+	// calls the callback and then returns S_OK.
+	// 
+	// If the build cannot run synchronously, this function returns S_FALSE and the build
+	// runs in the background. The message loop must be pumped for the build to run in the background.
+	// In this case the implementation calls the callback at a later time (provided the message
+	// loop is pumped). If this function is called and afterwards the last reference
+	// to the object is released while the build is running (i.e., before the callback is called
+	// and before CancelBuild is called), then the callback will not be called.
+	//
+	// If this function fails, it returns an error code and doesn't call the callback.
+	HRESULT STDMETHODCALLTYPE StartBuild (IProjectConfigBuilderCallback* callback);
+
+	// This function can be called while a build is running in the background - that is,
+	// after StartBuild returned S_FALSE and before the callback was called.
+	// The implementation calls the callback before this function returns, either with
+	// fSuccess=TRUE if the build completed successfully before calling this function,
+	// or with fSuccess=FALSE otherwise.
+	HRESULT STDMETHODCALLTYPE CancelBuild();
 };
 
 extern wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
@@ -56,6 +76,6 @@ HRESULT AssemblerPageProperties_CreateInstance (IProjectConfigAssemblerPropertie
 HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to);
 HRESULT MakeCustomBuildToolProperties (ICustomBuildToolProperties** to);
 HRESULT MakeProjectConfigBuilder (IVsHierarchy* hier, IProjectConfig* config,
-	IVsOutputWindowPane* outputWindowPane, IProjectConfigBuilder** to);
+	IVsOutputWindowPane2* outputWindowPane, IProjectConfigBuilder** to);
 HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to);
 HRESULT ShowCommandLinePropertyBuilder (HWND hwndParent, BSTR valueBefore, BSTR* valueAfter);
