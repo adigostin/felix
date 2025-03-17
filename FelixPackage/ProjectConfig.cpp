@@ -398,7 +398,7 @@ public:
 		}
 
 		hr = _pendingBuild->StartBuild(this);
-		if (FAILED(hr) || hr == S_FALSE)
+		if (FAILED(hr))
 		{
 			for (auto& cb : _buildStatusCallbacks)
 				cb.second->BuildEnd(FALSE);

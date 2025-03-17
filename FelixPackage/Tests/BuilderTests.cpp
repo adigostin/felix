@@ -3,6 +3,7 @@
 #include "CppUnitTest.h"
 #include "FelixPackage.h"
 #include "shared/com.h"
+#include "shared/inplace_function.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -16,6 +17,11 @@ struct TestBuildCallback : IProjectConfigBuilderCallback
 	ULONG _refCount = 0;
 	bool _complete = false;
 	bool _success = false;
+	stdext::inplace_function<void(bool)> _buildComplete;
+
+	TestBuildCallback (stdext::inplace_function<void(bool)> buildComplete = nullptr)
+		: _buildComplete(std::move(buildComplete))
+	{ }
 
 	#pragma region IUnknown
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override { return E_NOTIMPL; }
@@ -28,14 +34,11 @@ struct TestBuildCallback : IProjectConfigBuilderCallback
 		Assert::IsFalse(_complete);
 		_complete = TRUE;
 		_success = success;
+		if (_buildComplete)
+			_buildComplete(success);
 		return S_OK;
 	}
 };
-
-static void __stdcall ResultCallback (wil::FailureInfo const& failure) noexcept
-{
-	__debugbreak();
-}
 
 namespace FelixTests
 {
@@ -141,7 +144,7 @@ namespace FelixTests
 			Assert::AreEqual(HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), hr);
 		}
 
-		TEST_METHOD(Test_SjasmCommandLine)
+		TEST_METHOD(Test_SjasmCommandLine_ExitCodeZero)
 		{
 			com_ptr<IProjectConfigBuilder> builder;
 			MakeSjasmProjectBuilder(&builder);
@@ -153,6 +156,11 @@ namespace FelixTests
 
 			Assert::IsTrue(callback->_complete);
 			Assert::IsTrue(callback->_success);
+		}
+
+		TEST_METHOD(Test_SjasmCommandLine_ExitCodeNonzero)
+		{
+			Assert::Fail(); // TODO
 		}
 
 		// sourceFileContent - empty string view to skip creating the file on disk
@@ -249,6 +257,20 @@ namespace FelixTests
 		{
 			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", { }, L"cmd /c pause", nullptr);
 			auto callback = com_ptr(new TestBuildCallback());
+			auto hr = builder->StartBuild(callback);
+			Assert::IsTrue(SUCCEEDED(hr));
+			WaitCallbackWithMessageLoop(1000, callback);
+			Assert::IsFalse(callback->_complete);
+			hr = builder->CancelBuild();
+			Assert::IsTrue(callback->_complete);
+			Assert::IsFalse(callback->_success);
+			Assert::IsTrue(SUCCEEDED(hr));
+		}
+
+		TEST_METHOD(TestCustomBuildToolWaitingUserInput_CallbackReleasesBuilder)
+		{
+			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", { }, L"cmd /c pause", nullptr);
+			auto callback = com_ptr(new TestBuildCallback([&builder](bool success) { builder.reset(); }));
 			auto hr = builder->StartBuild(callback);
 			Assert::IsTrue(SUCCEEDED(hr));
 			WaitCallbackWithMessageLoop(1000, callback);
@@ -428,6 +450,11 @@ namespace FelixTests
 			//ULONG remainingRefCount = builder.detach()->Release();
 			//Assert::AreEqual((ULONG)0, remainingRefCount);
 			ULONG remainingRefCount = builder.detach()->Release();
+		}
+
+		TEST_METHOD(BuildOnlySynchronousSteps)
+		{
+			Assert::Fail(); // TODO
 		}
 	};
 }
