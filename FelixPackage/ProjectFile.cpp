@@ -150,8 +150,7 @@ public:
 		RETURN_HR_IF(E_FAIL, location.vt != VT_BSTR);
 
 		wil::unique_hlocal_string filePath;
-		hr = PathAllocCombine (location.bstrVal, _pathRelativeToProjectDir.get(), 
-			PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS, &filePath); RETURN_IF_FAILED(hr);
+		hr = PathAllocCombine (location.bstrVal, _pathRelativeToProjectDir.get(), PathFlags, &filePath); RETURN_IF_FAILED(hr);
 		*pbstrMkDocument = SysAllocString(filePath.get()); RETURN_IF_NULL_ALLOC(*pbstrMkDocument);
 		return S_OK;
 	}
