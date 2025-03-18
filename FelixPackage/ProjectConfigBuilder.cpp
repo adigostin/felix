@@ -459,8 +459,6 @@ public:
 UINT_PTR BuildStepRunProcess::timerId;
 vector_nothrow<BuildStepRunProcess*> BuildStepRunProcess::pendingSteps;
 
-static const wchar_t wnd_class_name[] = L"Builder-{9838F078-469A-4F89-B08E-881AF33AE76D}";
-
 struct ProjectConfigBuilder : IProjectConfigBuilder, IBuildStepCallback, IWeakRefSource
 {
 	ULONG _refCount = 0;
