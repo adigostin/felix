@@ -603,6 +603,13 @@ public:
 		hr = SHCreateStreamOnFileEx (exePath.get(), STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream); RETURN_IF_FAILED(hr);
 		STATSTG stat;
 		hr = stream->Stat (&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
+		if (!stat.cbSize.LowPart)
+		{
+			SetErrorInfo(E_BOUNDS, L"Can't debug a binary with zero length.\r\n\r\n%s", exePath.get());
+			uiShell->ReportErrorInfo(E_BOUNDS);
+			TerminateInternal();
+			return hr;
+		}
 		hr = _simulator->LoadBinary(stream.get(), loadAddress);
 		if (FAILED(hr))
 		{
