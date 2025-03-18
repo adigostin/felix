@@ -56,7 +56,7 @@ class Z80Project
 	static inline VSITEMID _nextFileItemId = 1000; // VS uses 1..2..3 etc for the Solution item. I'll deal with this later.
 	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsCfgProviderEvents>> _cfgProviderEventSinks;
 	VSCOOKIE _nextCfgProviderEventCookie = 1;
-	VSCOOKIE _itemDocCookie = VSCOOKIE_NIL;
+	VSCOOKIE _itemDocCookie = VSDOCCOOKIE_NIL;
 	vector_nothrow<com_ptr<IProjectConfig>> _configs;
 
 	// I introduced this because VS sometimes retains a project for a long time after the user closes it.
@@ -897,7 +897,12 @@ public:
 				return InitVariantFromBoolean (FALSE, pvar);
 
 			if (propid == VSHPROPID_ItemDocCookie) // -2034
-				return InitVariantFromInt32 (_itemDocCookie, pvar);
+			{
+				if (_itemDocCookie != VSDOCCOOKIE_NIL)
+					return InitVariantFromInt32 (_itemDocCookie, pvar);
+				else
+					return E_FAIL;
+			}
 
 			if (propid == VSHPROPID_IsHiddenItem) // -2043
 				return InitVariantFromBoolean (FALSE, pvar);
