@@ -160,6 +160,7 @@ namespace FelixTests
 		// sourceFileContent - empty string view to skip creating the file on disk
 		static com_ptr<IProjectConfigBuilder> MakeProjectWithCustomBuildTool (
 			const wchar_t* sourceFileName, std::string_view sourceFileContent,
+			const wchar_t* cbtDescription,
 			const wchar_t* cbtCmdLine, IStream* outputStreamUTF16)
 		{
 			auto hier = MakeMockVsHierarchy();
@@ -170,6 +171,8 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 			com_ptr<ICustomBuildToolProperties> cbtProps;
 			hr = sourceFile->get_CustomBuildToolProperties(&cbtProps);
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = cbtProps->put_Description(wil::make_bstr_nothrow(cbtDescription).get());
 			Assert::IsTrue(SUCCEEDED(hr));
 			hr = cbtProps->put_CommandLine(wil::make_bstr_nothrow(cbtCmdLine).get());
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -190,7 +193,7 @@ namespace FelixTests
 			com_ptr<IStream> outputStream;
 			auto hr = CreateStreamOnHGlobal (NULL, TRUE, &outputStream);
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", "content", L"cmd /c type test.xxx", outputStream);
+			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", "content", nullptr, L"cmd /c type test.xxx", outputStream);
 			auto callback = com_ptr(new TestBuildCallback());
 			hr = builder->StartBuild(callback);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -214,7 +217,7 @@ namespace FelixTests
 			com_ptr<IStream> outputStream;
 			auto hr = CreateStreamOnHGlobal (NULL, TRUE, &outputStream);
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", "content\r\n", L"cmd /c type test.xxx", outputStream);
+			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", "content\r\n", nullptr, L"cmd /c type test.xxx", outputStream);
 			auto callback = com_ptr(new TestBuildCallback());
 			hr = builder->StartBuild(callback);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -235,7 +238,7 @@ namespace FelixTests
 
 		TEST_METHOD(TestBuilderDestroyedWhenReleasedWithPendingBuild)
 		{
-			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", { }, L"cmd /c pause", nullptr);
+			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", { }, nullptr, L"cmd /c pause", nullptr);
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild(callback);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -247,7 +250,7 @@ namespace FelixTests
 
 		TEST_METHOD(TestCustomBuildToolWaitingUserInput)
 		{
-			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", { }, L"cmd /c pause", nullptr);
+			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", { }, nullptr, L"cmd /c pause", nullptr);
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild(callback);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -277,7 +280,7 @@ namespace FelixTests
 		*/
 		static void CancelAfterAsyncBuildProcessExited (const wchar_t* command, BOOL* complete, BOOL* success)
 		{
-			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", "content", command, nullptr);
+			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", "content", nullptr, command, nullptr);
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild(callback);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -379,7 +382,7 @@ namespace FelixTests
 
 		TEST_METHOD(TestCustomBuildToolOnlyWhitespaceCommands)
 		{
-			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", { }, L"   \r\n   \t   ", nullptr);
+			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", { }, nullptr, L"   \r\n   \t   ", nullptr);
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild(callback);
 			Assert::AreEqual(HRESULT_FROM_WIN32(ERROR_NO_MORE_FILES), hr);
@@ -391,7 +394,7 @@ namespace FelixTests
 			auto hr = CreateStreamOnHGlobal (NULL, TRUE, &outputStream);
 			Assert::IsTrue(SUCCEEDED(hr));
 			static const wchar_t cmdLine[] = L"  cmd /c type test.xxx  \t\r\n   \t   ";
-			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", "content", cmdLine, outputStream);
+			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", "content", nullptr, cmdLine, outputStream);
 			auto callback = com_ptr(new TestBuildCallback());
 			hr = builder->StartBuild(callback);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -448,7 +451,9 @@ namespace FelixTests
 
 		TEST_METHOD(BuildOnlySynchronousSteps)
 		{
-			Assert::Fail(); // TODO
+			auto builder = MakeProjectWithCustomBuildTool (L"test.asm", { }, L"CBT Description", nullptr, nullptr);
+			auto hr = builder->StartBuild(nullptr);
+			Assert::AreEqual(S_OK, hr);
 		}
 	};
 }

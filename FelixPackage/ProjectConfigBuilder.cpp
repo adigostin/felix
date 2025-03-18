@@ -628,12 +628,20 @@ public:
 	// it additionally writes pbstrCmdLine with the command line whose execution returned that exit code.
 	HRESULT ParseCommandLines (ICommandLineList* list, const wchar_t* workDir, vector_nothrow<com_ptr<IBuildStep>>& steps)
 	{
+		wil::unique_bstr desc;
+		auto hr = list->get_Description(&desc); RETURN_IF_FAILED(hr);
+		if (desc && desc.get()[0])
+		{
+			com_ptr<IBuildStep> step;
+			hr = BuildStepMessage::CreateInstance(_projName.get(), std::move(desc), _outputWindow2, step.addressof()); RETURN_IF_FAILED(hr);
+			bool pushed = steps.try_push_back(std::move(step)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		}
+
 		wil::unique_bstr cmdLines;
-		auto hr = list->get_CommandLine(&cmdLines); RETURN_IF_FAILED(hr);
+		hr = list->get_CommandLine(&cmdLines); RETURN_IF_FAILED(hr);
 		if (!cmdLines)
 			return S_OK;
 		
-		bool first = true;
 		for (PCWSTR p = cmdLines.get(); *p; )
 		{
 			while (*p && (*p == ' ' || *p == '\t'))
@@ -645,19 +653,6 @@ public:
 				p--;
 			if (p > from)
 			{
-				if (first)
-				{
-					wil::unique_bstr desc;
-					hr = list->get_Description(&desc); RETURN_IF_FAILED(hr);
-					if (desc && desc.get()[0])
-					{
-						com_ptr<IBuildStep> step;
-						hr = BuildStepMessage::CreateInstance(_projName.get(), std::move(desc), _outputWindow2, step.addressof()); RETURN_IF_FAILED(hr);
-						bool pushed = steps.try_push_back(std::move(step)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-					}
-					first = false;
-				}
-
 				auto line = SysAllocStringLen(from, (UINT)(p - from)); RETURN_IF_NULL_ALLOC(line);
 				com_ptr<IBuildStep> step;
 				hr = BuildStepRunProcess::CreateInstance (line, workDir, _projName.get(), true, nullptr, _outputWindow2, step.addressof()); RETURN_IF_FAILED(hr);
