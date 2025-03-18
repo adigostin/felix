@@ -822,14 +822,16 @@ public:
 	#pragma region IBuildStepCallback
 	virtual void OnStepComplete (bool success) override
 	{
+		_currentStep++;
+
 		if (!success)
 		{
 			auto callback = std::move(_callback);
 			callback->OnBuildComplete(false);
+			while (_steps.size() > _currentStep)
+				_steps.remove_back();
 			return;
 		}
-
-		_currentStep++;
 
 		while (_currentStep < _steps.size())
 		{
