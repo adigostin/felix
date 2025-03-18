@@ -3,14 +3,16 @@
 #include "CppUnitTest.h"
 #include "FelixPackage.h"
 #include "shared/com.h"
+#include "shared/WeakRef.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IProjectItemParent
+struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IProjectItemParent, IWeakRefSource
 {
 	ULONG _refCount = 0;
 	wil::unique_bstr _projectDir;
 	com_ptr<IProjectItem> _firstChild;
+	WeakRefToThis _weakRefToThis;
 
 	HRESULT InitInstance()
 	{
@@ -28,6 +30,7 @@ struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IProjectItemParent
 			|| TryQI<IVsHierarchy>(this, riid, ppvObject)
 			|| TryQI<IZ80ProjectProperties>(this, riid, ppvObject)
 			|| TryQI<IProjectItemParent>(this, riid, ppvObject)
+			|| TryQI<IWeakRefSource>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -185,6 +188,13 @@ struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IProjectItemParent
 	virtual void STDMETHODCALLTYPE SetFirstChild (IProjectItem* firstChild) override
 	{
 		_firstChild = firstChild;
+	}
+	#pragma endregion
+
+	#pragma region IWeakRefSource
+	virtual HRESULT STDMETHODCALLTYPE GetWeakRef (IWeakRef **weakRef) override
+	{
+		return _weakRefToThis.GetOrCreate(this, weakRef);
 	}
 	#pragma endregion
 };

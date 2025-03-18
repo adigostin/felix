@@ -217,6 +217,8 @@ public:
 		WI_ASSERT (!pendingSteps.empty());
 		for (uint32_t i = pendingSteps.size() - 1; i != -1; i--)
 		{
+			auto keepAlive = com_ptr(pendingSteps[i]);
+
 			bool stepComplete;
 			pendingSteps[i]->TimerProc(&stepComplete);
 			if (stepComplete)
@@ -812,7 +814,6 @@ public:
 	{
 		RETURN_HR_IF(E_UNEXPECTED, _currentStep >= _steps.size());
 		RETURN_HR_IF(E_UNEXPECTED, !_callback);
-		auto keepAlive = com_ptr(this); // keep ourselves alive in case the application callback releases us
 		auto hr = _steps[_currentStep]->CancelStep(); RETURN_IF_FAILED(hr);
 		WI_ASSERT(_callback == nullptr);
 		_steps.clear();

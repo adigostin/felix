@@ -9,7 +9,8 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 extern com_ptr<IProjectConfig> MakeMockProjectConfig (IVsHierarchy* hier);
 extern com_ptr<IVsHierarchy> MakeMockVsHierarchy();
-extern com_ptr<IProjectFile> MakeMockSourceFile (VSITEMID itemId, BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir);
+extern com_ptr<IProjectFile> MakeMockSourceFile (IVsHierarchy* hier, VSITEMID itemId,
+	BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir, std::string_view fileContent);
 extern com_ptr<IVsOutputWindowPane2> MakeMockOutputWindowPane (IStream* outputStreamUTF16);
 
 struct TestBuildCallback : IProjectConfigBuilderCallback
@@ -76,30 +77,17 @@ namespace FelixTests
 			Assert::IsNotNull(props.get());
 		}
 
-		static void CreateFileInProjectDir (IVsHierarchy* hier, const wchar_t* pathRelative, std::string_view content)
-		{
-			wil::unique_variant projectDir;
-			auto hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir);
-			Assert::IsTrue(SUCCEEDED(hr));
-			wil::unique_hlocal_string asmPath;
-			hr = PathAllocCombine(projectDir.bstrVal, pathRelative, PathFlags, &asmPath);
-			Assert::IsTrue(SUCCEEDED(hr));
-			wil::unique_hfile handle (CreateFile(asmPath.get(), GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL));
-			Assert::IsTrue(handle.is_valid());
-			BOOL bres = WriteFile(handle.get(), content.data(), (DWORD)content.size(), NULL, NULL);
-			Assert::IsTrue(bres);
-		}
-
-		static void MakeSjasmProjectBuilder (IProjectConfigBuilder** ppBuilder)
+		static com_ptr<IProjectConfigBuilder> MakeSjasmProjectBuilder (std::string_view asmFileContent)
 		{
 			auto hier = MakeMockVsHierarchy();
-			auto sourceFile = MakeMockSourceFile (1000, BuildToolKind::Assembler, L"test.asm");
+			auto sourceFile = MakeMockSourceFile (hier, 1000, BuildToolKind::Assembler, L"test.asm", asmFileContent);
 			hier.try_query<IProjectItemParent>()->SetFirstChild(sourceFile);
-			CreateFileInProjectDir(hier, L"test.asm", "\tend\r\n");
 			auto config = MakeMockProjectConfig(hier);
 			auto pane = MakeMockOutputWindowPane(nullptr);
-			auto hr = MakeProjectConfigBuilder (hier, config, pane, ppBuilder);
+			com_ptr<IProjectConfigBuilder> builder;
+			auto hr = MakeProjectConfigBuilder (hier, config, pane, &builder);
 			Assert::IsTrue(SUCCEEDED(hr));
+			return builder;
 		}
 
 		static void WaitCallbackWithMessageLoop (DWORD milliseconds, TestBuildCallback* callback)
@@ -133,8 +121,7 @@ namespace FelixTests
 			BOOL bres = MoveFileExW (sjasmOrigPath.get(), sjasmTempPath.get(), MOVEFILE_REPLACE_EXISTING);
 			Assert::IsTrue(bres);
 
-			com_ptr<IProjectConfigBuilder> builder;
-			MakeSjasmProjectBuilder(&builder);
+			auto builder = MakeSjasmProjectBuilder({ });
 			auto callback = com_ptr(new TestBuildCallback());
 			hr = builder->StartBuild (callback);
 
@@ -146,8 +133,7 @@ namespace FelixTests
 
 		TEST_METHOD(Test_SjasmCommandLine_ExitCodeZero)
 		{
-			com_ptr<IProjectConfigBuilder> builder;
-			MakeSjasmProjectBuilder(&builder);
+			auto builder = MakeSjasmProjectBuilder("\tend\r\n");
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild (callback);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -160,7 +146,15 @@ namespace FelixTests
 
 		TEST_METHOD(Test_SjasmCommandLine_ExitCodeNonzero)
 		{
-			Assert::Fail(); // TODO
+			auto builder = MakeSjasmProjectBuilder({ });
+			auto callback = com_ptr(new TestBuildCallback());
+			auto hr = builder->StartBuild (callback);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			WaitCallbackWithMessageLoop(INFINITE, callback);
+
+			Assert::IsTrue(callback->_complete);
+			Assert::IsFalse(callback->_success);
 		}
 
 		// sourceFileContent - empty string view to skip creating the file on disk
@@ -169,10 +163,8 @@ namespace FelixTests
 			const wchar_t* cbtCmdLine, IStream* outputStreamUTF16)
 		{
 			auto hier = MakeMockVsHierarchy();
-			auto sourceFile = MakeMockSourceFile (1000, BuildToolKind::Assembler, sourceFileName);
+			auto sourceFile = MakeMockSourceFile (hier, 1000, BuildToolKind::Assembler, sourceFileName, sourceFileContent);
 			hier.try_query<IProjectItemParent>()->SetFirstChild(sourceFile);
-			if (!sourceFileContent.empty())
-				CreateFileInProjectDir(hier, sourceFileName, sourceFileContent);
 
 			auto hr = sourceFile->put_BuildTool(BuildToolKind::CustomBuildTool);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -266,7 +258,9 @@ namespace FelixTests
 			Assert::IsFalse(callback->_success);
 			Assert::IsTrue(SUCCEEDED(hr));
 		}
-
+		/*
+		On second thought, this scenario is not legal COM. The application is supposed to
+		hold a reference to "builder" until _after_ the call to CancelBuild returns.
 		TEST_METHOD(TestCustomBuildToolWaitingUserInput_CallbackReleasesBuilder)
 		{
 			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", { }, L"cmd /c pause", nullptr);
@@ -280,7 +274,7 @@ namespace FelixTests
 			Assert::IsFalse(callback->_success);
 			Assert::IsTrue(SUCCEEDED(hr));
 		}
-
+		*/
 		static void CancelAfterAsyncBuildProcessExited (const wchar_t* command, BOOL* complete, BOOL* success)
 		{
 			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", "content", command, nullptr);

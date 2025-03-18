@@ -3,28 +3,53 @@
 #include "CppUnitTest.h"
 #include "FelixPackage.h"
 #include "shared/com.h"
+#include "shared/WeakRef.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 struct MockSourceFile : IProjectFile
 {
 	ULONG _refCount = 0;
+	com_ptr<IWeakRef> _hier;
 	VSITEMID _itemId;
 	BuildToolKind _buildTool;
 	wil::unique_hlocal_string _pathRelativeToProjectDir;
 	com_ptr<ICustomBuildToolProperties> _customBuildToolProps;
 
-	MockSourceFile()
+	HRESULT InitInstance (IVsHierarchy* hier, VSITEMID itemId,
+		BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir, std::string_view fileContent)
 	{
-	}
-
-	HRESULT InitInstance (VSITEMID itemId, BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir)
-	{
+		auto hr = ToWeak (hier, &_hier); RETURN_IF_FAILED(hr);
 		_itemId = itemId;
 		_buildTool = buildTool;
 		_pathRelativeToProjectDir = wil::make_hlocal_string_nothrow(pathRelativeToProjectDir); RETURN_IF_NULL_ALLOC_EXPECTED(_pathRelativeToProjectDir);
-		auto hr = MakeCustomBuildToolProperties(&_customBuildToolProps); RETURN_IF_FAILED_EXPECTED(hr);
+		hr = MakeCustomBuildToolProperties(&_customBuildToolProps); RETURN_IF_FAILED_EXPECTED(hr);
+
+		wil::unique_bstr mkDoc;
+		hr = GetMkDocument(&mkDoc);
+		Assert::IsTrue(SUCCEEDED(hr));
+		if (!fileContent.empty())
+		{
+			wil::unique_hfile handle (CreateFile(mkDoc.get(), GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL));
+			Assert::IsTrue(handle.is_valid());
+			BOOL bres = WriteFile(handle.get(), fileContent.data(), (DWORD)fileContent.size(), NULL, NULL);
+			Assert::IsTrue(bres);
+		}
+		else
+		{
+			if (PathFileExists(mkDoc.get()))
+			{
+				BOOL bres = DeleteFile(mkDoc.get());
+				Assert::IsTrue(bres);
+			}
+		}
+
 		return S_OK;
+	}
+
+	~MockSourceFile()
+	{
+		// TODO: delete file from disk
 	}
 
 	#pragma region IUnknown
@@ -52,8 +77,21 @@ struct MockSourceFile : IProjectFile
 
 	HRESULT STDMETHODCALLTYPE GetMkDocument(BSTR* pbstrMkDocument) override
 	{
-		return E_NOTIMPL;
+		com_ptr<IVsHierarchy> hier;
+		auto hr = _hier->Resolve(&hier);
+		Assert::IsTrue(SUCCEEDED(hr));
+		Assert::IsNotNull(hier.get());
+		wil::unique_variant projectDir;
+		hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir);
+		Assert::IsTrue(SUCCEEDED(hr));
+		Assert::IsTrue(projectDir.vt == VT_BSTR);
+		wil::unique_hlocal_string filePath;
+		hr = PathAllocCombine(projectDir.bstrVal, _pathRelativeToProjectDir.get(), PathFlags, &filePath);
+		Assert::IsTrue(SUCCEEDED(hr));
+		*pbstrMkDocument = SysAllocString(filePath.get()); RETURN_IF_NULL_ALLOC(*pbstrMkDocument);
+		return S_OK;
 	}
+
 	IProjectItem* STDMETHODCALLTYPE Next(void) override
 	{
 		return nullptr;
@@ -142,11 +180,12 @@ struct MockSourceFile : IProjectFile
 	#pragma endregion
 };
 
-com_ptr<IProjectFile> MakeMockSourceFile (VSITEMID itemId, BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir)
+com_ptr<IProjectFile> MakeMockSourceFile (IVsHierarchy* hier, VSITEMID itemId,
+	BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir, std::string_view fileContent)
 {
 	auto p = com_ptr (new (std::nothrow) MockSourceFile());
 	Assert::IsNotNull(p.get());
-	auto hr = p->InitInstance(itemId, buildTool, pathRelativeToProjectDir);
+	auto hr = p->InitInstance (hier, itemId, buildTool, pathRelativeToProjectDir, fileContent);
 	Assert::IsTrue(SUCCEEDED(hr));
 	return p;
 }

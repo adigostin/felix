@@ -334,6 +334,11 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE Stop(BOOL fSync) override
 	{
 		RETURN_HR_IF(E_UNEXPECTED, !_pendingBuild);
+
+		// In OnBuildComplete we're releasing our reference to _pendingBuild while code
+		// is running on that object. Let's keep the object alive until after CancelBuild returns.
+		auto keepAlive = com_ptr(_pendingBuild);
+
 		return _pendingBuild->CancelBuild();
 	}
 
