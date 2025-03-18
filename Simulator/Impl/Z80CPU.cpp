@@ -1557,15 +1557,21 @@ public:
 		hl_ix_iy xy = hl_ix_iy::hl;
 		if (opcode == 0xDD)
 		{
-			xy = hl_ix_iy::ix;
-			opcode = decode_u8();
+			opcode = memory->read(regs.pc);
+			if (opcode == 0xDD || opcode == 0xFD || opcode == 0xED)
+				return true;
+			regs.pc++;
 			regs.r = (regs.r & 0x80) | ((regs.r + 1) & 0x7f);
+			xy = hl_ix_iy::ix;
 		}
 		else if (opcode == 0xFD)
 		{
-			xy = hl_ix_iy::iy;
-			opcode = decode_u8();
+			opcode = memory->read(regs.pc);
+			if (opcode == 0xDD || opcode == 0xFD || opcode == 0xED)
+				return true;
+			regs.pc++;
 			regs.r = (regs.r & 0x80) | ((regs.r + 1) & 0x7f);
+			xy = hl_ix_iy::iy;
 		}
 
 		bool executed;

@@ -3012,5 +3012,47 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint8_t>(0xAA, io_bus.read(0x00FE));
 			Assert::AreEqual<uint8_t>(z80_flag::z | z80_flag::n | z80_flag::c, regs->main.f.val & ~(z80_flag::h | z80_flag::pv));
 		}
+
+		TEST_METHOD(DD_DD)
+		{
+			memory.write(0, { 0xDD, 0xDD, 0x21, 0x55, 0x55  }); // NOP* ; LD IX, 5555h
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(1, cpu->GetPC());
+			Assert::AreEqual<uint8_t>(1, regs->r);
+			
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(5, cpu->GetPC());
+			Assert::AreEqual<uint8_t>(3, regs->r);
+			Assert::AreEqual<uint16_t>(0x5555, regs->ix);
+		}
+
+		TEST_METHOD(DD_FD)
+		{
+			memory.write(0, { 0xDD, 0xFD, 0xE5  }); // NOP* ; PUSH IY
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(1, cpu->GetPC());
+			Assert::AreEqual<uint8_t>(1, regs->r);
+
+			regs->iy = 0x1234;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(3, cpu->GetPC());
+			Assert::AreEqual<uint8_t>(3, regs->r);
+			Assert::AreEqual<uint16_t>(0xFFFE, regs->sp);
+			Assert::AreEqual<uint16_t>(0x1234, memory.read_uint16(0xFFFE));
+		}
+
+		TEST_METHOD(DD_ED)
+		{
+			memory.write(0, { 0xDD, 0xED, 0x4A  }); // NOP* ; ADC HL, BC
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(1, cpu->GetPC());
+
+			regs->main.bc = 0x1234;
+			regs->main.f.c = 1;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(3, cpu->GetPC());
+			Assert::AreEqual<uint8_t>(3, regs->r);
+			Assert::AreEqual<uint16_t>(0x1235, regs->main.hl);
+		}
 	};
 }
