@@ -600,7 +600,15 @@ public:
 
 		// Load the binary file.
 		wil::com_ptr_nothrow<IStream> stream;
-		hr = SHCreateStreamOnFileEx (exePath.get(), STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream); RETURN_IF_FAILED(hr);
+		hr = SHCreateStreamOnFileEx (exePath.get(), STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream);
+		if (FAILED(hr))
+		{
+			SetErrorInfo(hr, L"Cannot access file for debugging.\r\n\r\n%s", exePath.get());
+			uiShell->ReportErrorInfo(hr);
+			TerminateInternal();
+			return hr;
+		}
+
 		STATSTG stat;
 		hr = stream->Stat (&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
 		if (!stat.cbSize.LowPart)
