@@ -49,7 +49,6 @@ class Z80Project
 	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsHierarchyEvents>> _hierarchyEventSinks;
 	VSCOOKIE _nextHierarchyEventSinkCookie = 1;
 	bool _isDirty = false;
-	bool _noScribble = false;
 	wil::com_ptr_nothrow<IVsUIHierarchy> _parentHierarchy;
 	VSITEMID _parentHierarchyItemId = VSITEMID_NIL; // item id of this project in the parent hierarchy
 	com_ptr<IProjectItem> _firstChild;
@@ -292,7 +291,6 @@ public:
 				//case cmdidSaveAs: // 111
 				case cmdidRename: // 150
 				case cmdidAddNewItem: // 220
-				case cmdidSaveProjectItemAs: // 226
 				case cmdidExit: // 229
 				case cmdidPropertyPages: // 232
 				case cmdidAddExistingItem: // 244
@@ -314,7 +312,15 @@ public:
 				case cmdidEnableBreakpoint: // 376
 					*cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
 					break;
-					
+
+				case cmdidSaveProjectItemAs: // 226
+					// We don't want to support this (too complicated and Visual Studio doesn't support it
+					// either for Visual C++ projects). If we do *cmdf=0, Visual Studio will still show it
+					// enabled. We have to set OLECMDF_SUPPORTED, but not OLECMDF_ENABLED. The end result
+					// is similar to what Visual Studio does for Visual C++ projects.
+					*cmdf = OLECMDF_SUPPORTED;
+					break;
+
 				default:
 					*cmdf = 0; // not supported
 			}
@@ -1224,8 +1230,7 @@ public:
 		}
 
 		wil::unique_hlocal_string newFullPath;
-		ULONG flags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
-		hr = PathAllocCombine (_location.get(), newFilename.get(), flags, &newFullPath); RETURN_IF_FAILED(hr);
+		hr = PathAllocCombine (_location.get(), newFilename.get(), PathFlags, &newFullPath); RETURN_IF_FAILED(hr);
 
 		// Check if it exists, but only if the user changed more than character casing.
 		if (_wcsicmp(_filename.get(), newFilename.get()))
@@ -1415,54 +1420,41 @@ public:
 
 		RETURN_HR_IF(E_NOTIMPL, nFormatIndex != DEF_FORMAT_INDEX);
 
-		if (!pszFilename)
+		// "If the object is in the untitled state and null is passed as the pszFilename, the object returns E_INVALIDARG."
+		bool isTitled = _filename && _filename.get()[0] && _location && _location.get()[0];
+		RETURN_HR_IF_EXPECTED(E_INVALIDARG, !isTitled && !pszFilename);
+
+		wil::unique_hlocal_string currentFilePath;
+		if (isTitled)
+			PathAllocCombine(_location.get(), _filename.get(), PathFlags, &currentFilePath);
+
+		if (!pszFilename || (currentFilePath && !wcscmp(pszFilename, currentFilePath.get())))
 		{
 			// "Save" operation (save under existing name)
-			RETURN_HR_IF(E_INVALIDARG, !_filename || !_filename.get()[0]);
-			RETURN_HR_IF(E_INVALIDARG, !_location || !_location.get()[0]);
-			wil::unique_hlocal_string filePath;
-			ULONG flags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
-			hr = PathAllocCombine(_location.get(), _filename.get(), flags, &filePath); RETURN_IF_FAILED(hr);
-			_noScribble = true;
 
 			// TODO: pause monitoring file change notifications
 			//CSuspendFileChanges suspendFileChanges(CString(pszFileName), TRUE);
 			com_ptr<IStream> stream;
-			hr = SHCreateStreamOnFile(filePath.get(), STGM_WRITE | STGM_SHARE_DENY_WRITE, &stream); RETURN_IF_FAILED(hr);
+			hr = SHCreateStreamOnFile(currentFilePath.get(), STGM_CREATE | STGM_WRITE | STGM_SHARE_DENY_WRITE, &stream); RETURN_IF_FAILED(hr);
 			hr = SaveToXml(this, ProjectElementName, 0, stream); RETURN_IF_FAILED(hr);
-			ULARGE_INTEGER size;
-			hr = stream->Seek({ .QuadPart = 0 }, STREAM_SEEK_CUR, &size); RETURN_IF_FAILED(hr);
-			hr = stream->SetSize(size); RETURN_IF_FAILED(hr);
+			stream.reset();
 			// TODO: resume monitoring file change notifications
 
 			_isDirty = false; // TODO: notify property changes
 		}
 		else
 		{
-			// "Save As" or "Save A Copy As"
-			if (PathIsRelative(pszFilename))
-				RETURN_HR(E_NOTIMPL);
-			_noScribble = true;
-			com_ptr<IStream> stream;
-			hr = SHCreateStreamOnFile(pszFilename, STGM_WRITE | STGM_SHARE_DENY_WRITE, &stream); RETURN_IF_FAILED(hr);
-			hr = SaveToXml(this, ProjectElementName, 0, stream.get()); RETURN_IF_FAILED(hr);
-			ULARGE_INTEGER size;
-			hr = stream->Seek({ .QuadPart = 0 }, STREAM_SEEK_CUR, &size); RETURN_IF_FAILED(hr);
-			hr = stream->SetSize(size); RETURN_IF_FAILED(hr);
-
-			// If pszFileName is null, the implementation ignores the fRemember flag.
 			if (fRemember)
 			{
 				// "Save As"
-				auto filePart = PathFindFileName(pszFilename);
-				_location = wil::make_hlocal_string_nothrow(pszFilename, filePart - pszFilename); RETURN_IF_NULL_ALLOC(_location);
-				_filename = wil::make_hlocal_string_nothrow(filePart); RETURN_IF_NULL_ALLOC(_filename);
-				_isDirty = false;
-				// TODO: notify property changes for filename and isDirty.
+				// We don't support this. We disabled cmdidSaveProjectItemAs, so we shouldn't get here.
+				// If/when we'll support it, we should go through RenameProject().
+				RETURN_HR(E_NOTIMPL);
 			}
 			else
 			{
 				// "Save A Copy As"
+				RETURN_HR(E_NOTIMPL);
 			}
 		}
 
@@ -1471,8 +1463,6 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE SaveCompleted(LPCOLESTR pszFilename) override
 	{
-		WI_ASSERT(_noScribble);
-		_noScribble = false;
 		return S_OK;
 	}
 
@@ -1484,8 +1474,7 @@ public:
 		size_t reservedLen = wcslen(_location.get()) + wcslen(_filename.get()) + 10;
 
 		auto buffer = wil::make_cotaskmem_string_nothrow(nullptr, reservedLen); RETURN_IF_NULL_ALLOC(buffer);
-		ULONG flags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
-		auto hr = PathCchCombineEx (buffer.get(), reservedLen, _location.get(), _filename.get(), flags); RETURN_IF_FAILED(hr);
+		auto hr = PathCchCombineEx (buffer.get(), reservedLen, _location.get(), _filename.get(), PathFlags); RETURN_IF_FAILED(hr);
 
 		*ppszFilename = buffer.release();
 		*pnFormatIndex = 0;
