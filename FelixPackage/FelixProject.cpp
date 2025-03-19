@@ -1710,10 +1710,7 @@ public:
 			sink.second->OnPropertyChanged (itemidLoc, VSHPROPID_Expandable, 0);
 		}
 
-		com_ptr<IVsWindowFrame> frame;
-		hr = this->OpenItem(itemId, LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &frame);
-		if (SUCCEEDED(hr))
-			frame->Show();
+		*ppNewFile = file.detach();
 		return S_OK;
 	}
 
@@ -1733,6 +1730,12 @@ public:
 				com_ptr<IProjectItem> pNewNode;
 				hr = AddNewFile (itemidLoc, rgpszFilesToOpen[0], pszItemName, &pNewNode); RETURN_IF_FAILED_EXPECTED(hr);
 				*pResult = ADDRESULT_Success;
+
+				com_ptr<IVsWindowFrame> frame;
+				hr = this->OpenItem (pNewNode->GetItemId(), LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &frame);
+				if (SUCCEEDED(hr))
+					frame->Show();
+
 				return S_OK;
 			}
 
