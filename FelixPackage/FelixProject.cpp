@@ -186,7 +186,7 @@ public:
 			hr = CoCreateGuid (&_projectInstanceGuid); RETURN_IF_FAILED(hr);
 
 			hr = SHCreateStreamOnFileEx (projFilePath.get(), STGM_CREATE | STGM_WRITE | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, 0, nullptr, &stream); RETURN_IF_FAILED(hr);
-			hr = SaveToXml(this, ProjectElementName, stream.get()); RETURN_IF_FAILED(hr);
+			hr = SaveToXml(this, ProjectElementName, 0, stream.get()); RETURN_IF_FAILED(hr);
 
 			_isDirty = false;
 			return S_OK;
@@ -981,6 +981,7 @@ public:
 				|| propid == VSHPROPID_ProjectUnloadStatus        // -2120
 				|| propid == VSHPROPID_DemandLoadDependencies     // -2121 - Much later, if ever
 				|| propid == VSHPROPID_ProjectCapabilities        // -2124 - MPF doesn't implement this
+				|| propid == VSHPROPID_RequiresReloadForExternalFileChange	// -2125,
 				|| propid == VSHPROPID_ProjectRetargeting         // -2134 - We won't be supporting IVsRetargetProject
 				|| propid == VSHPROPID_Subcaption                 // -2136 - This is shown on the project node between parentheses after the project name.
 				|| propid == VSHPROPID_SharedItemsImportFullPaths // -2145
@@ -1428,7 +1429,7 @@ public:
 			//CSuspendFileChanges suspendFileChanges(CString(pszFileName), TRUE);
 			com_ptr<IStream> stream;
 			hr = SHCreateStreamOnFile(filePath.get(), STGM_WRITE | STGM_SHARE_DENY_WRITE, &stream); RETURN_IF_FAILED(hr);
-			hr = SaveToXml(this, ProjectElementName, stream); RETURN_IF_FAILED(hr);
+			hr = SaveToXml(this, ProjectElementName, 0, stream); RETURN_IF_FAILED(hr);
 			ULARGE_INTEGER size;
 			hr = stream->Seek({ .QuadPart = 0 }, STREAM_SEEK_CUR, &size); RETURN_IF_FAILED(hr);
 			hr = stream->SetSize(size); RETURN_IF_FAILED(hr);
@@ -1444,7 +1445,7 @@ public:
 			_noScribble = true;
 			com_ptr<IStream> stream;
 			hr = SHCreateStreamOnFile(pszFilename, STGM_WRITE | STGM_SHARE_DENY_WRITE, &stream); RETURN_IF_FAILED(hr);
-			hr = SaveToXml(this, ProjectElementName, stream.get()); RETURN_IF_FAILED(hr);
+			hr = SaveToXml(this, ProjectElementName, 0, stream.get()); RETURN_IF_FAILED(hr);
 			ULARGE_INTEGER size;
 			hr = stream->Seek({ .QuadPart = 0 }, STREAM_SEEK_CUR, &size); RETURN_IF_FAILED(hr);
 			hr = stream->SetSize(size); RETURN_IF_FAILED(hr);
@@ -1969,7 +1970,7 @@ public:
 
 			auto stream = com_ptr(SHCreateMemStream(nullptr, 0)); RETURN_IF_NULL_ALLOC(stream);
 		
-			hr = SaveToXml(existing, L"Temp", stream); RETURN_IF_FAILED_EXPECTED(hr);
+			hr = SaveToXml(existing, L"Temp", 0, stream); RETURN_IF_FAILED_EXPECTED(hr);
 
 			hr = stream->Seek({ 0 }, STREAM_SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
 

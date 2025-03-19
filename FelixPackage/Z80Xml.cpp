@@ -109,7 +109,7 @@ struct EnsureElementCreated
 	}
 };
 
-static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, IXmlWriterLite* writer, EnsureElementCreated* ensureOuterElementCreated)
+static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, DWORD flags, IXmlWriterLite* writer, EnsureElementCreated* ensureOuterElementCreated)
 {
 	HRESULT hr;
 
@@ -155,7 +155,7 @@ static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, IXmlWriterL
 				hr = typeInfo->GetNames(fd->memid, &name, 1, &cNames); RETURN_IF_FAILED(hr);
 
 				BOOL hasDefaultValue = FALSE;
-				if (ppb)
+				if (!(flags & SAVE_XML_FORCE_SERIALIZE_DEFAULTS) && ppb)
 					ppb->HasDefaultValue(fd->memid, &hasDefaultValue);
 
 				if (!hasDefaultValue)
@@ -177,13 +177,15 @@ static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, IXmlWriterL
 							hr = VariantChangeTypeEx (&result, &result, InvariantLCID, 0, VT_BSTR); RETURN_IF_FAILED(hr);
 							[[fallthrough]];
 						case VT_BSTR:
-							// Write it to XML only if not empty.
-							if (SysStringLen(V_BSTR(&result)))
+						{
+							wil::unique_bstr value;
+							if (result.bstrVal && result.bstrVal[0])
 							{
-								auto value = wil::make_bstr_nothrow(V_BSTR(&result)); RETURN_IF_NULL_ALLOC(value);
-								bool pushed = attributes.try_push_back(ValueProperty{ fd->memid, std::move(name), std::move(value) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+								value = wil::make_bstr_nothrow(V_BSTR(&result)); RETURN_IF_NULL_ALLOC(value);
 							}
+							bool pushed = attributes.try_push_back(ValueProperty{ fd->memid, std::move(name), std::move(value) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 							break;
+						}
 
 						case VT_USERDEFINED:
 						{
@@ -285,18 +287,18 @@ static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, IXmlWriterL
 						EnsureElementCreated ensureChildElemCreated (child.name.get(), writer, &ensureElementCreated);
 						
 						LPCWSTR elemName = childXmlElementName ? childXmlElementName.get() : child.name.get();
-						hr = SaveToXmlInternal (child.value.get(), elemName, writer, &ensureChildElemCreated); RETURN_IF_FAILED(hr);
+						hr = SaveToXmlInternal (child.value.get(), elemName, flags, writer, &ensureChildElemCreated); RETURN_IF_FAILED(hr);
 
 						hr = ensureChildElemCreated.CreateEndElement(); RETURN_IF_FAILED(hr);
 					}
 					else
 					{
-						hr = SaveToXmlInternal (child.value.get(), child.name.get(), writer, &ensureElementCreated); RETURN_IF_FAILED(hr);
+						hr = SaveToXmlInternal (child.value.get(), child.name.get(), flags, writer, &ensureElementCreated); RETURN_IF_FAILED(hr);
 					}
 				}
 				else
 				{
-					hr = SaveToXmlInternal (child.value.get(), child.name.get(), writer, &ensureElementCreated); RETURN_IF_FAILED(hr);
+					hr = SaveToXmlInternal (child.value.get(), child.name.get(), flags, writer, &ensureElementCreated); RETURN_IF_FAILED(hr);
 				}
 			}
 	
@@ -308,7 +310,7 @@ static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, IXmlWriterL
 				{
 					wil::unique_bstr xmlElementName;
 					hr = objAsParent->GetChildXmlElementName(coll.dispid, child.get(), &xmlElementName); RETURN_IF_FAILED(hr);
-					hr = SaveToXmlInternal (child.get(), xmlElementName.get(), writer, &ensureCollectionElementCreated); RETURN_IF_FAILED(hr);
+					hr = SaveToXmlInternal (child.get(), xmlElementName.get(), flags, writer, &ensureCollectionElementCreated); RETURN_IF_FAILED(hr);
 				}
 
 				hr = ensureCollectionElementCreated.CreateEndElement(); RETURN_IF_FAILED(hr);
@@ -321,7 +323,7 @@ static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, IXmlWriterL
 	return S_OK;
 }
 
-HRESULT SaveToXml (IDispatch* obj, PCWSTR elementName, IStream* to, UINT nEncodingCodePage)
+HRESULT SaveToXml (IDispatch* obj, PCWSTR elementName, DWORD flags, IStream* to, UINT nEncodingCodePage)
 {
 	wil::com_ptr_nothrow<IXmlWriterLite> writer;
 	auto hr = CreateXmlWriter(IID_PPV_ARGS(&writer), nullptr); RETURN_IF_FAILED(hr);
@@ -337,7 +339,7 @@ HRESULT SaveToXml (IDispatch* obj, PCWSTR elementName, IStream* to, UINT nEncodi
 	}
 	hr = writer->SetProperty(XmlWriterProperty_Indent, TRUE);
 	hr = writer->WriteStartDocument(XmlStandalone_Omit); RETURN_IF_FAILED(hr);
-	hr = SaveToXmlInternal (obj, elementName, writer.get(), nullptr); RETURN_IF_FAILED(hr);
+	hr = SaveToXmlInternal (obj, elementName, flags, writer.get(), nullptr); RETURN_IF_FAILED(hr);
 	hr = writer->WriteEndDocument(); RETURN_IF_FAILED(hr);
 
 	return S_OK;

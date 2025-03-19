@@ -215,7 +215,7 @@ public:
 		com_ptr<IStream> stream;
 		hr = CreateStreamOnHGlobal (nullptr, TRUE, &stream); RETURN_IF_FAILED(hr);
 		UINT UTF16CodePage = 1200;
-		hr = SaveToXml (opts.get(), L"Options", stream.get(), UTF16CodePage); RETURN_IF_FAILED(hr);
+		hr = SaveToXml (opts.get(), L"Options", 0, stream.get(), UTF16CodePage); RETURN_IF_FAILED(hr);
 
 		return MakeBstrFromStreamOnHGlobal(stream, pOptionsString); 
 	}
@@ -1100,7 +1100,16 @@ struct PrePostBuildPageProperties
 		return E_NOTIMPL;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE HasDefaultValue (DISPID dispid, BOOL *fDefault) override { return E_NOTIMPL; }
+	virtual HRESULT STDMETHODCALLTYPE HasDefaultValue (DISPID dispid, BOOL *fDefault) override
+	{
+		if (dispid == dispidCommandLine)
+			return (*fDefault = !_commandLine || !_commandLine.get()[0]), S_OK;
+
+		if (dispid == dispidDescription)
+			return (*fDefault = !_description || !_description.get()[0]), S_OK;
+
+		return E_NOTIMPL;
+	}
 
 	virtual HRESULT STDMETHODCALLTYPE IsPropertyReadOnly (DISPID dispid, BOOL *fReadOnly) override { return E_NOTIMPL; }
 

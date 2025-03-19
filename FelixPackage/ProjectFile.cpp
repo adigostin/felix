@@ -637,6 +637,7 @@ public:
 			#ifdef _DEBUG
 			if (   nCmdID == cmdidObjectVerbList0       // 137
 				|| nCmdID == cmdidCloseSolution         // 219
+				|| nCmdID == cmdidSaveSolution          // 224
 				|| nCmdID == cmdidSaveProjectItemAs     // 226
 				|| nCmdID == cmdidExit                  // 229
 				|| nCmdID == cmdidPaneActivateDocWindow // 289

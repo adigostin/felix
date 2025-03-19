@@ -33,6 +33,11 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("45B35EF7-DC2B-4EE3-BB44-EC25D607BFCE") I
 	virtual HRESULT STDMETHODCALLTYPE CreateChild (DISPID dispidProperty, PCWSTR xmlElementName, IDispatch** childOut) = 0;
 };
 
-HRESULT SaveToXml (IDispatch* obj, PCWSTR elementName, IStream* stream, UINT nEncodingCodePage = CP_UTF8);
+typedef enum
+{
+	SAVE_XML_FORCE_SERIALIZE_DEFAULTS = 1,
+} SaveXmlFlags;
+
+HRESULT SaveToXml (IDispatch* obj, PCWSTR elementName, DWORD flags, IStream* stream, UINT nEncodingCodePage = CP_UTF8);
 
 HRESULT LoadFromXml (IDispatch* obj, _In_opt_ PCWSTR expectedElementName, IStream* stream, UINT nEncodingCodePage = CP_UTF8);

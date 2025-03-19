@@ -35,7 +35,7 @@ public:
 		// because the user might change some properties and then click Cancel.
 		// So let's clone the selected object. See related comment in Apply() below.
 		auto stream = com_ptr(SHCreateMemStream(nullptr, 0)); RETURN_IF_NULL_ALLOC(stream);
-		hr = SaveToXml(result.pdispVal, L"Temp", stream); RETURN_IF_FAILED_EXPECTED(hr);
+		hr = SaveToXml(result.pdispVal, L"Temp", 0, stream); RETURN_IF_FAILED_EXPECTED(hr);
 		hr = stream->Seek({ 0 }, STREAM_SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
 		com_ptr<IXmlParent> xmlParent;
 		hr = _parent->QueryInterface(&xmlParent); RETURN_IF_FAILED(hr);
@@ -94,8 +94,10 @@ public:
 			&params, &result, &exception, &uArgErr); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_UNEXPECTED, result.vt != VT_DISPATCH);
 
+		// We need to serialize also the properties with default values, to account for the case when
+		// the user sets a property to its default value and clicks Apply/OK.
 		auto stream = com_ptr(SHCreateMemStream(0, 0)); RETURN_IF_NULL_ALLOC(stream);
-		hr = SaveToXml(_child, L"Temp", stream); RETURN_IF_FAILED_EXPECTED(hr);
+		hr = SaveToXml(_child, L"Temp", SAVE_XML_FORCE_SERIALIZE_DEFAULTS, stream); RETURN_IF_FAILED_EXPECTED(hr);
 		hr = stream->Seek({ 0 }, STREAM_SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
 		hr = LoadFromXml(result.pdispVal, L"Temp", stream); RETURN_IF_FAILED_EXPECTED(hr);
 
