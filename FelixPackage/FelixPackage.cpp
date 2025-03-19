@@ -814,8 +814,8 @@ HRESULT SetErrorInfo1 (HRESULT errorHR, ULONG packageStringResId, LPCWSTR arg1)
 	for (size_t sz = 100; ; sz *= 2)
 	{
 		buffer = wil::make_hlocal_string_nothrow(nullptr, sz); RETURN_IF_NULL_ALLOC(buffer);
-		int ires = swprintf_s (buffer.get(), sz, message.get(), arg1); RETURN_HR_IF(E_FAIL, ires < 0);
-		if (ires < sz)
+		int ires = _snwprintf_s (buffer.get(), sz, _TRUNCATE, message.get(), arg1);
+		if (ires != -1)
 			break;
 	}
 
