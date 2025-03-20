@@ -295,7 +295,6 @@ public:
 				case cmdidPropertyPages: // 232
 				case cmdidAddExistingItem: // 244
 				case cmdidStepInto: // 248
-				case cmdidSaveProjectItem: // 331
 				case cmdidPropSheetOrProperties: // 397
 				case cmdidCloseDocument: // 658
 				case cmdidBuildSln: // 882
@@ -313,13 +312,35 @@ public:
 					*cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
 					break;
 
-				case cmdidSaveProjectItemAs: // 226
-					// We don't want to support this (too complicated and Visual Studio doesn't support it
-					// either for Visual C++ projects). If we do *cmdf=0, Visual Studio will still show it
-					// enabled. We have to set OLECMDF_SUPPORTED, but not OLECMDF_ENABLED. The end result
-					// is similar to what Visual Studio does for Visual C++ projects.
-					*cmdf = OLECMDF_SUPPORTED;
+				case cmdidSaveProjectItem: // 331
+					*cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
 					break;
+				case cmdidSaveProjectItemAs: // 226
+				{
+					// This command is actually "Save Selection As", which we want to support for files,
+					// but not for projects (it's too complicated for projects and Visual Studio doesn't
+					// support it either for Visual C++ projects, so it's probably not a big deal).
+
+					com_ptr<IVsMonitorSelection> monsel;
+					auto hr = serviceProvider->QueryService(SID_SVsShellMonitorSelection, &monsel); RETURN_IF_FAILED(hr);
+					com_ptr<IVsHierarchy> hier;
+					VSITEMID selitemid;
+					com_ptr<IVsMultiItemSelect> mis;
+					com_ptr<ISelectionContainer> sc;
+					hr = monsel->GetCurrentSelection (&hier, &selitemid, &mis, &sc); RETURN_IF_FAILED(hr);
+
+					// Enable it only for single-item selection (Save As doesn't make sense for
+					// multiple selections), and only if it is a file node (not a project node).
+					bool enable = (selitemid != VSITEMID_SELECTION) && (selitemid != VSITEMID_ROOT);
+					*cmdf = OLECMDF_SUPPORTED | (enable ? OLECMDF_ENABLED : 0);
+
+					// Note that we still have a scenario where this command is enabled but doesn't work:
+					// Right after a project is opened, if no files were auto-opened, if a file node is selected
+					// in the Solution Explorer, if the focus is in the Solution Explorer window.
+					// We'll deal with this some other time.
+
+					break;
+				}
 
 				default:
 					*cmdf = 0; // not supported
@@ -1567,7 +1588,7 @@ public:
 		hr = _sp->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED(hr);
 
 		hr = uiShellOpenDocument->OpenStandardEditor(OSE_ChooseBestStdEditor, mkDocument.get(), rguidLogicalView,
-			L"%3", this, itemid, punkDocDataExisting, _sp.get(), ppWindowFrame); RETURN_IF_FAILED_EXPECTED(hr);
+			L"%3", this, itemid, punkDocDataExisting, nullptr, ppWindowFrame); RETURN_IF_FAILED_EXPECTED(hr);
 
 		wil::unique_variant var;
 		hr = (*ppWindowFrame)->GetProperty(VSFPROPID_DocCookie, &var); LOG_IF_FAILED(hr);
