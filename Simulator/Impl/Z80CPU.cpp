@@ -1495,11 +1495,7 @@ public:
 			{
 				regs.halted = false;
 
-				if (regs.im == 0)
-				{
-					LOG_HR_MSG(E_NOTIMPL, "IM0 is not yet implemented");
-				}
-				else if (regs.im == 1)
+				if (regs.im == 0 || regs.im == 1)
 				{
 					if (!memory->try_write_request (regs.sp - 2, regs.pc, cpu_time))
 						return false;
