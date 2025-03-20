@@ -101,13 +101,15 @@ public:
 
 	virtual HRESULT ReadMemory (uint32_t address, uint32_t size, void* dest) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT WriteMemory (uint32_t address, uint32_t size, const void* bytes) override
 	{
-		RETURN_HR_IF(E_BOUNDS, address >= sizeof(_data));
-		RETURN_HR_IF(E_BOUNDS, address + size > sizeof(_data));
+		if (address >= sizeof(_data))
+			return E_BOUNDS;
+		if (address + size > sizeof(_data))
+			return E_BOUNDS;
 		memcpy (&_data[address], bytes, size);
 		return S_OK;
 	}

@@ -424,7 +424,7 @@ public:
 		for (uint32_t i = 0; i < bps->size; i++)
 			WI_ASSERT(bps->bps[i] != 0);
 
-		auto bpsCopy = wil::make_unique_hlocal_nothrow<BreakpointsHit>(*bps); RETURN_IF_NULL_ALLOC(bpsCopy);
+		auto bpsCopy = wil::make_unique_hlocal_nothrow<BreakpointsHit>(*bps); RETURN_IF_NULL_ALLOC_EXPECTED(bpsCopy);
 
 		WI_ASSERT(_running_info);
 		_running_info.reset();
@@ -460,7 +460,6 @@ public:
 			if (!posted)
 			{
 				DWORD le = GetLastError();
-				LOG_LAST_ERROR();
 				_mainThreadWorkQueue.remove(_mainThreadWorkQueue.end() - 1);
 				return HRESULT_FROM_WIN32(le);
 			}
@@ -531,8 +530,6 @@ public:
 
 		if (!_running)
 		{
-			//	SendSimulateOneCompleteEvent();
-
 			if (_screenCompleteHandler)
 			{
 				unique_cotaskmem_bitmapinfo screen;
@@ -716,7 +713,6 @@ public:
 					} while (_cpu->Halted());
 				}
 
-
 				return S_OK;
 			});
 		RETURN_IF_FAILED(hr);
@@ -864,8 +860,8 @@ public:
 				}
 				else
 				{
-					hr = _screen->GenerateScreen(); LOG_IF_FAILED(hr);
-					hr = _screen->CopyBuffer(TRUE, &screen, &beam); LOG_IF_FAILED(hr);
+					hr = _screen->GenerateScreen(); RETURN_IF_FAILED_EXPECTED(hr);
+					hr = _screen->CopyBuffer(TRUE, &screen, &beam); RETURN_IF_FAILED_EXPECTED(hr);
 				}
 
 				return S_OK;
@@ -1154,8 +1150,8 @@ public:
 				}
 				else
 				{
-					hr = _screen->GenerateScreen(); LOG_IF_FAILED(hr);
-					hr = _screen->CopyBuffer(TRUE, &screen, &beam); LOG_IF_FAILED(hr);
+					hr = _screen->GenerateScreen(); RETURN_IF_FAILED_EXPECTED(hr);
+					hr = _screen->CopyBuffer(TRUE, &screen, &beam); RETURN_IF_FAILED_EXPECTED(hr);
 				}
 
 				return S_OK;

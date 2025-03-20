@@ -142,12 +142,12 @@ public:
 
 	virtual HRESULT ReadMemory (uint32_t address, uint32_t size, void* dest) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT WriteMemory (uint32_t internalAddress, uint32_t size, const void* bytes) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 	/*
 	virtual HRESULT AdviseBusAddressRangeChange (IBusAddressRangeChangeHandler* handler) override
