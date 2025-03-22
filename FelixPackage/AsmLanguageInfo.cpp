@@ -517,6 +517,8 @@ public:
 	}
 	#pragma endregion
 
+	// Later edit: as of 17.13.4, the workaround below doesn't seem to be necessary anymore.
+	//
 	// Note AGO: I had the problem that when the user was typing the beginning of
 	// a multiline comment "/*", Visual Studio 2022 was calling ColorizeLine/GetStateAtEndOfLine for the
 	// changed line (as expected), but not also for the following lines (unexpected).
@@ -545,21 +547,21 @@ public:
 	#pragma region IVsTextLinesEvents
 	virtual void STDMETHODCALLTYPE OnChangeLineText (const TextLineChange *pTextLineChange, BOOL fLast) override
 	{
-		long lineCount;
-		auto hr = _buffer->GetLineCount(&lineCount);
-		if(FAILED(hr))
-			return;
-		if (pTextLineChange->iNewEndLine + 1 < lineCount)
-		{
-			// Recolorize the line just after what was inserted
-			com_ptr<IVsTextColorState> tcs;
-			auto hr = _buffer->QueryInterface(&tcs);
-			if (SUCCEEDED(hr))
-			{
-				tcs->ReColorizeLines(pTextLineChange->iNewEndLine + 1,
-					std::min(pTextLineChange->iNewEndLine + 100, lineCount - 1));
-			}
-		}
+		//long lineCount;
+		//auto hr = _buffer->GetLineCount(&lineCount);
+		//if(FAILED(hr))
+		//	return;
+		//if (pTextLineChange->iNewEndLine + 1 < lineCount)
+		//{
+		//	// Recolorize the line just after what was inserted
+		//	com_ptr<IVsTextColorState> tcs;
+		//	auto hr = _buffer->QueryInterface(&tcs);
+		//	if (SUCCEEDED(hr))
+		//	{
+		//		tcs->ReColorizeLines(pTextLineChange->iNewEndLine + 1,
+		//			std::min(pTextLineChange->iNewEndLine + 100, lineCount - 1));
+		//	}
+		//}
 	}
 
 	virtual void STDMETHODCALLTYPE OnChangeLineAttributes (long iFirstLine, long iLastLine) override
