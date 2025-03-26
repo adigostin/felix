@@ -293,7 +293,7 @@ COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Conf
     <ResourceCompile Include="FelixPackage.rc" />
   </ItemGroup>
   <ItemGroup>
-    <Natvis Include="..\Shared\include\shared\string_builder.natvis" />
+    <Natvis Include="..\Shared\include\shared\shared.natvis" />
     <Natvis Include="..\wil\natvis\wil.natvis" />
   </ItemGroup>
   <ItemGroup>

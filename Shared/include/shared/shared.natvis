@@ -3,4 +3,16 @@
 	<Type Name="basic_string_builder&lt;wchar_t&gt;">
 		<DisplayString>{_buffer,[_size]su}</DisplayString>
 	</Type>
+
+	<Type Name="vector_nothrow&lt;*&gt;">
+		<DisplayString>{{Count = {_size}}}</DisplayString>
+		<Expand>
+			<Item Name="Count">_size</Item>
+			<ArrayItems>
+				<Size>_size</Size>
+				<ValuePointer>_ptr</ValuePointer>
+			</ArrayItems>
+		</Expand>
+	</Type>
+
 </AutoVisualizer>
