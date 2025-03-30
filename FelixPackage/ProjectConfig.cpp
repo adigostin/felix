@@ -12,8 +12,6 @@
 
 // Useful doc: https://learn.microsoft.com/en-us/visualstudio/extensibility/internals/managing-configuration-options?view=vs-2022
 
-#pragma comment (lib, "Synchronization.lib")
-
 static constexpr DWORD LoadAddressDefaultValue = 0x8000;
 static constexpr WORD EntryPointAddressDefaultValue = 0x8000;
 static constexpr LaunchType LaunchTypeDefaultValue = LaunchType::PrintUsr;

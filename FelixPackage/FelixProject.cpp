@@ -11,7 +11,6 @@
 #include "../FelixPackageUi/resource.h"
 
 #pragma comment (lib, "Pathcch.lib")
-#pragma comment (lib, "xmllite.lib")
 
 static constexpr wchar_t ProjectElementName[] = L"Z80Project";
 static constexpr wchar_t ConfigurationElementName[] = L"Configuration";
@@ -35,7 +34,7 @@ class Z80Project
 	//, IVsBuildPropertyStorage
 	//, IVsBuildPropertyStorage2
 	, IProjectItemParent
-	, IPropertyNotifySink
+	, IPropertyNotifySink // this implementation only used to mark the project as dirty
 	, IVsHierarchyEvents // this implementation only forwards calls to subscribed sinks
 	, IVsPerPropertyBrowsing
 {
@@ -908,8 +907,7 @@ public:
 				// recursively and will stop when (1) we return an error HRESULT, or (2) we return the same
 				// browse object as in the previous call, or (3) it overflows the stack (that exception
 				// seems to be caught and turned into a freeze).
-				auto hr = InitVariantFromDispatch (this, pvar); RETURN_IF_FAILED(hr);
-				return S_OK;
+				return InitVariantFromDispatch (this, pvar);
 			}
 
 			if (propid == VSHPROPID_ProjectDir) //-2021

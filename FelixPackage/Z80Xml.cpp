@@ -3,6 +3,8 @@
 #include "shared/com.h"
 #include "Z80Xml.h"
 
+#pragma comment (lib, "xmllite.lib")
+
 using unique_safearray = wil::unique_any<SAFEARRAY*, decltype(SafeArrayDestroy), &SafeArrayDestroy>;
 
 static const auto InvariantLCID = LocaleNameToLCID(LOCALE_NAME_INVARIANT, 0);
