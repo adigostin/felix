@@ -64,6 +64,8 @@ class Z80Project
 	// (Looks like a bug in OnBeforeCloseProject() in that class.)
 	bool _closed = false;
 
+	WeakRefToThis _weakRefToThis;
+
 	static HRESULT CreateProjectFilesFromTemplate (IServiceProvider* sp, const wchar_t* fromProjFilePath, const wchar_t* location, const wchar_t* filename)
 	{
 		// Prepare the file operations.
@@ -163,6 +165,8 @@ public:
 		HRESULT hr;
 
 		_sp = sp;
+
+		hr = _weakRefToThis.InitInstance(static_cast<IVsHierarchy*>(this));
 
 		if (grfCreateFlags & CPF_CLONEFILE)
 		{
@@ -628,6 +632,9 @@ public:
 		)
 			return S_OK;
 
+		if (riid == __uuidof(IWeakRef))
+			return _weakRefToThis.QueryIWeakRef(ppvObject);
+
 		#ifdef _DEBUG
 		// These will never be implemented.
 		if (   riid == IID_IMarshal
@@ -756,16 +763,8 @@ public:
 	{
 		_parentHierarchy = nullptr;
 		_parentHierarchyItemId = VSITEMID_NIL;
-		if (_firstChild)
-		{
-			_firstChild->Close();
-			_firstChild = nullptr;
-		}
-		while (_configs.size())
-		{
-			_configs.back()->Close();
-			_configs.remove_back();
-		}
+		_firstChild = nullptr;
+		_configs.clear();
 		_closed = true;
 		return S_OK;
 	}

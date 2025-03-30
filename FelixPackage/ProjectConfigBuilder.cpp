@@ -3,7 +3,6 @@
 #include "FelixPackage.h"
 #include "shared/com.h"
 #include "shared/inplace_function.h"
-#include "shared/WeakRef.h"
 
 struct IBuildStep;
 
@@ -121,9 +120,9 @@ public:
 		return S_OK;
 	}
 
-	//BuildStepRunProcess()
-	//{
-	//}
+	BuildStepRunProcess()
+	{
+	}
 
 	~BuildStepRunProcess()
 	{
@@ -153,10 +152,8 @@ public:
 	{
 		RETURN_HR_IF(E_UNEXPECTED, !!_stepCompleteCallback);
 
-		com_ptr<IWeakRefSource> wrs;
-		auto hr = callback->QueryInterface(&wrs); RETURN_IF_FAILED(hr);
 		com_ptr<IWeakRef> callbackAsWeak;
-		hr = wrs->GetWeakRef(&callbackAsWeak); RETURN_IF_FAILED(hr);
+		auto hr = callback->QueryInterface(&callbackAsWeak); RETURN_IF_FAILED(hr);
 
 		if (pendingSteps.size() == pendingSteps.capacity())
 		{
@@ -277,7 +274,7 @@ public:
 		}
 
 		com_ptr<IBuildStepCallback> callback;
-		hr = _stepCompleteCallback->Resolve(&callback); WI_ASSERT(SUCCEEDED(hr));
+		hr = _stepCompleteCallback->QueryInterface(&callback); WI_ASSERT(SUCCEEDED(hr));
 		if (callback)
 			callback->OnStepComplete(callbackSuccess);
 		_stepCompleteCallback = nullptr;
@@ -447,7 +444,7 @@ public:
 		TerminateStep();
 
 		com_ptr<IBuildStepCallback> callback;
-		auto hr = _stepCompleteCallback->Resolve(&callback); WI_ASSERT(SUCCEEDED(hr));
+		auto hr = _stepCompleteCallback->QueryInterface(&callback); WI_ASSERT(SUCCEEDED(hr));
 		if (callback)
 			callback->OnStepComplete(false);
 		_stepCompleteCallback = nullptr;
@@ -459,7 +456,7 @@ public:
 UINT_PTR BuildStepRunProcess::timerId;
 vector_nothrow<BuildStepRunProcess*> BuildStepRunProcess::pendingSteps;
 
-struct ProjectConfigBuilder : IProjectConfigBuilder, IBuildStepCallback, IWeakRefSource
+struct ProjectConfigBuilder : IProjectConfigBuilder, IBuildStepCallback
 {
 	ULONG _refCount = 0;
 	com_ptr<IVsHierarchy> _hier;
@@ -479,12 +476,15 @@ public:
 
 	HRESULT InitInstance (IVsHierarchy* hier, IProjectConfig* config, IVsOutputWindowPane2* outputWindowPane)
 	{
+		HRESULT hr;
+
 		_hier = hier;
 		_config = config;
 		_outputWindow2 = outputWindowPane;
+		hr = _weakRefToThis.InitInstance(static_cast<IProjectConfigBuilder*>(this)); RETURN_IF_FAILED(hr);
 
 		wil::unique_variant projectName;
-		auto hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_Name, &projectName); RETURN_IF_FAILED(hr);
+		hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_Name, &projectName); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_FAIL, projectName.vt != VT_BSTR);
 		_projName = wil::unique_bstr(projectName.release().bstrVal);
 		return S_OK;
@@ -508,10 +508,13 @@ public:
 	#pragma region IUnknown
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
 	{
-		if (   TryQI<IWeakRefSource>(this, riid, ppvObject)
+		if (   TryQI<IUnknown>(static_cast<IProjectConfigBuilder*>(this), riid, ppvObject)
 			|| TryQI<IBuildStepCallback>(this, riid, ppvObject)
 		)
 			return S_OK;
+
+		if (riid == __uuidof(IWeakRef))
+			return _weakRefToThis.QueryIWeakRef(ppvObject);
 
 		RETURN_HR(E_NOINTERFACE);
 	}
@@ -519,13 +522,6 @@ public:
 	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
-	#pragma endregion
-
-	#pragma region IWeakRefSource
-	virtual HRESULT STDMETHODCALLTYPE GetWeakRef (IWeakRef **weakRef) override
-	{
-		return _weakRefToThis.GetOrCreate(this, weakRef);
-	}
 	#pragma endregion
 
 	static HRESULT Write (ISequentialStream* stream, const wchar_t* psz)

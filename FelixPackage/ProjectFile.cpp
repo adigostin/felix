@@ -17,7 +17,7 @@ struct ProjectFile
 {
 	VSITEMID _itemId;
 	ULONG _refCount = 0;
-	com_ptr<IVsUIHierarchy> _hier;
+	com_ptr<IWeakRef> _hier;
 	wil::com_ptr_nothrow<IProjectItem> _next;
 	VSITEMID _parentItemId = VSITEMID_NIL;
 	VSCOOKIE _docCookie = VSDOCCOOKIE_NIL;
@@ -25,10 +25,11 @@ struct ProjectFile
 	BuildToolKind _buildTool = BuildToolKind::None;
 	com_ptr<ICustomBuildToolProperties> _customBuildToolProps;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
-	DWORD _propNotifyCookie = 0;
+	AdviseSinkToken _cbtPropNotifyToken;
 	static inline HINSTANCE _uiLibrary;
 	static inline wil::unique_hicon _iconAsmFile;
 	static inline wil::unique_hicon _iconIncFile;
+	WeakRefToThis _weakRefToThis;
 
 public:
 	HRESULT InitInstance (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentItemId)
@@ -36,8 +37,9 @@ public:
 		HRESULT hr;
 
 		_itemId = itemId;
-		_hier = hier;
+		hr = hier->QueryInterface(IID_PPV_ARGS(_hier.addressof())); RETURN_IF_FAILED(hr);
 		_parentItemId = parentItemId;
+		hr = _weakRefToThis.InitInstance(static_cast<IProjectFile*>(this)); RETURN_IF_FAILED(hr);
 		if (!_uiLibrary)
 		{
 			wil::com_ptr_nothrow<IVsShell> shell;
@@ -50,33 +52,13 @@ public:
 		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
 
 		hr = MakeCustomBuildToolProperties(&_customBuildToolProps); RETURN_IF_FAILED(hr);
-		com_ptr<IConnectionPointContainer> cont;
-		hr = _customBuildToolProps->QueryInterface(&cont);
-		if (SUCCEEDED(hr))
-		{
-			com_ptr<IConnectionPoint> cp;
-			cont->FindConnectionPoint(IID_IPropertyNotifySink, &cp);
-			if (SUCCEEDED(hr))
-				cp->Advise(static_cast<IPropertyNotifySink*>(this), &_propNotifyCookie);
-		}
+		hr = AdviseSink<IPropertyNotifySink>(_customBuildToolProps, _weakRefToThis, &_cbtPropNotifyToken); RETURN_IF_FAILED(hr);
 
 		return S_OK;
 	}
 
 	~ProjectFile()
 	{
-		if (_propNotifyCookie)
-		{
-			com_ptr<IConnectionPointContainer> cont;
-			auto hr = _customBuildToolProps->QueryInterface(&cont);
-			if (SUCCEEDED(hr))
-			{
-				com_ptr<IConnectionPoint> cp;
-				cont->FindConnectionPoint(IID_IPropertyNotifySink, &cp);
-				if (SUCCEEDED(hr))
-					cp->Unadvise(_propNotifyCookie);
-			}
-		}
 	}
 
 	#pragma region IUnknown
@@ -94,6 +76,9 @@ public:
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
 		)
 			return S_OK;
+
+		if (riid == __uuidof(IWeakRef))
+			return _weakRefToThis.QueryIWeakRef(ppvObject);
 
 		#ifdef _DEBUG
 		if (   riid == IID_IMarshal
@@ -143,8 +128,10 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (BSTR* pbstrMkDocument) override
 	{
+		com_ptr<IVsHierarchy> hier;
+		auto hr = _hier->QueryInterface(&hier); RETURN_IF_FAILED_EXPECTED(hr);
 		wil::unique_variant location;
-		auto hr = _hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &location); RETURN_IF_FAILED(hr);
+		hr = hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &location); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_FAIL, location.vt != VT_BSTR);
 
 		wil::unique_hlocal_string filePath;
@@ -247,8 +234,10 @@ public:
 			case VSHPROPID_DescriptiveName: // -2108
 			{
 				// Tooltip when hovering the document tab with the mouse, maybe other things too.
+				com_ptr<IVsHierarchy> hier;
+				auto hr = _hier->QueryInterface(&hier); RETURN_IF_FAILED_EXPECTED(hr);
 				wil::unique_variant loc;
-				auto hr = _hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &loc); RETURN_IF_FAILED(hr);
+				hr = hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &loc); RETURN_IF_FAILED(hr);
 				RETURN_HR_IF(E_FAIL, loc.vt != VT_BSTR);
 				wil::unique_hlocal_string path;
 				hr = PathAllocCombine (loc.bstrVal, _pathRelativeToProjectDir.get(), PathFlags, &path); RETURN_IF_FAILED(hr);
@@ -344,17 +333,6 @@ public:
 		wil::com_ptr_nothrow<IVsPersistDocData> docData;
 		auto hr = punkDocData->QueryInterface(&docData); RETURN_IF_FAILED(hr);
 		hr = docData->IsDocDataDirty(pfDirty); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE Close() override
-	{
-		_hier = nullptr;
-		if (_next)
-		{
-			_next->Close();
-			_next = nullptr;
-		}
 		return S_OK;
 	}
 
@@ -839,8 +817,10 @@ public:
 	{
 		HRESULT hr;
 
+		com_ptr<IVsHierarchy> hier;
+		hr = _hier->QueryInterface(&hier); RETURN_IF_FAILED_EXPECTED(hr);
 		wil::unique_variant projectDir;
-		hr = _hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
+		hr = hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
 
 		wil::unique_hlocal_string oldFullPath;

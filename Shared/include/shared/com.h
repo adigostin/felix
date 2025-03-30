@@ -10,6 +10,13 @@ template <typename T>
 struct com_ptr : wil::com_ptr_nothrow<T>
 {
 	com_ptr(T* x) noexcept : wil::com_ptr_nothrow<T>(x) { }
+	com_ptr(nullptr_t) noexcept { }
+	com_ptr& operator=(nullptr_t) noexcept
+	{
+		wil::com_ptr_nothrow<T>::reset();
+		return *this;
+	}
+
 	using wil::com_ptr_nothrow<T>::com_ptr_nothrow;
 	operator T*() { return wil::com_ptr_nothrow<T>::get(); }
 };
@@ -22,7 +29,7 @@ static bool TryQI (ITo* from, REFIID riid, void** ppvObject)
 	if (__uuidof(from) == riid)
 	{
 		*ppvObject = from;
-		from->AddRef();
+		static_cast<IUnknown*>(*ppvObject)->AddRef();
 		return true;
 	}
 	return false;
@@ -290,7 +297,7 @@ class AdviseSinkToken
 	DWORD _dwCookie = 0;
 
 	template<typename ISink>
-	friend HRESULT AdviseSink (IUnknown* source, ISink* sink, AdviseSinkToken* pToken);
+	friend HRESULT AdviseSink (IUnknown* source, IUnknown* sink, AdviseSinkToken* pToken);
 
 public:
 	AdviseSinkToken() noexcept = default;
@@ -324,7 +331,7 @@ public:
 };
 
 template<typename ISink>
-inline HRESULT AdviseSink (IUnknown* source, ISink* sink, AdviseSinkToken* pToken)
+inline HRESULT AdviseSink (IUnknown* source, IUnknown* sink, AdviseSinkToken* pToken)
 {
 	com_ptr<IConnectionPointContainer> cpc;
 	auto hr = source->QueryInterface(&cpc); RETURN_IF_FAILED(hr);
@@ -551,3 +558,101 @@ inline HRESULT copy_bstr (const wil::unique_bstr& from, BSTR* pbstrTo)
 {
 	return copy_bstr(from.get(), pbstrTo);
 }
+
+#pragma region IWeakRef
+// This interface is meant to be implemented by COM classes (in QueryInterface), but not by C++ classes.
+// Deriving a C++ class from this interface in addition to other interfaces is most likely an error.
+// Only a concrete C++ class that implements IWeakRef, and only IWeakRef, should derive from it;
+// an example of this is WeakRefToThis::WeakRefImpl.
+struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{D02BB0BB-54C9-4B5D-81BA-80CF223D2F55}") IWeakRef : IUnknown
+{
+};
+
+// This class contains an implementation of IWeakRef. It must be used on a single thread.
+// COM classes that implement IWeakRef can have a member variable of type WeakRefToThis
+// and hand out weak references to themselves using QueryIWeakRef() and operator IWeakRef*().
+// Note that the function that overloads that operator does not call AddRef(); it's the
+// responsibility of the caller to do AddRef().
+class WeakRefToThis
+{
+	struct WeakRefImpl : IWeakRef
+	{
+		ULONG _weakRefCount = 0;
+		IUnknown* _ptr;
+
+		WeakRefImpl (IUnknown* ptr) : _ptr(ptr) { }
+
+		virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
+		{
+			if (!_ptr)
+			{
+				// All normal references have been released and the object is now dead.
+				*ppvObject = nullptr;
+				return E_UNEXPECTED;
+			}
+
+			if (riid == __uuidof(IWeakRef))
+			{
+				*ppvObject = this;
+				AddRef();
+				return S_OK;
+			}
+
+			return _ptr->QueryInterface(riid, ppvObject);
+		}
+
+		virtual ULONG STDMETHODCALLTYPE AddRef() override
+		{
+			return ++_weakRefCount;
+		}
+
+		virtual ULONG STDMETHODCALLTYPE Release() override
+		{
+			return ReleaseST(this, _weakRefCount);
+		}
+	};
+
+	WeakRefImpl* wr = nullptr; // A NULL "wr" means no weak references have been created yet.
+
+public:
+	// This function allocates a weak reference to the objects holding us;
+	// this is best called from the InitInstance of that object.
+	// Once this allocation succeeds, generating weak references to that object is an operation
+	// that never fails (it merely does an AddRef() on the already allocated weak reference).
+	HRESULT InitInstance (IUnknown* holdingObject)
+	{
+		wr = new (std::nothrow) WeakRefImpl(holdingObject); RETURN_IF_NULL_ALLOC(wr);
+
+		// One AddRef from the WeakRefToThis object, which will get released
+		// when the object is deleted and our destructor is called.
+		wr->AddRef();
+
+		return S_OK;
+	}
+
+	~WeakRefToThis()
+	{
+		// Last normal reference to the object holding us has been released.
+		// The object holding us is now being deleted.
+		WI_ASSERT(wr);
+		WI_ASSERT(wr->_ptr);
+		wr->_ptr = nullptr;
+		wr->Release();
+		wr = nullptr;
+	}
+
+	HRESULT QueryIWeakRef (void** ppvObject)
+	{
+		WI_ASSERT(wr);
+		*ppvObject = wr;
+		wr->AddRef();
+		return S_OK;
+	}
+
+	operator IWeakRef*()
+	{
+		return wr;
+	}
+};
+#pragma endregion
+

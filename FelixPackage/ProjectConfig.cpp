@@ -29,7 +29,7 @@ struct ProjectConfig
 	//, public IVsProjectCfgDebugTypeSelection
 {
 	ULONG _refCount = 0;
-	com_ptr<IVsHierarchy> _hier;
+	com_ptr<IWeakRef> _hier;
 	DWORD _threadId;
 	wil::unique_bstr _configName;
 	wil::unique_bstr _platformName;
@@ -45,28 +45,35 @@ struct ProjectConfig
 	AdviseSinkToken _postBuildPropsAdviseToken;
 
 	com_ptr<IProjectConfigBuilder> _pendingBuild;
+	WeakRefToThis _weakRefToThis;
 
 public:
 	HRESULT InitInstance (IVsHierarchy* hier)
 	{
 		HRESULT hr;
-		_hier = hier;
+		hr = hier->QueryInterface(IID_PPV_ARGS(_hier.addressof())); RETURN_IF_FAILED(hr);
 		_threadId = GetCurrentThreadId();
 		_platformName = wil::make_bstr_nothrow(L"ZX Spectrum 48K"); RETURN_IF_NULL_ALLOC(_platformName);
 		
+		hr = _weakRefToThis.InitInstance(static_cast<IProjectConfig*>(this)); RETURN_IF_FAILED(hr);
+
 		hr = AssemblerPageProperties_CreateInstance(&_assemblerProps); RETURN_IF_FAILED(hr);
-		hr = AdviseSink<IPropertyNotifySink>(_assemblerProps, this, &_assemblerPropsAdviseToken); RETURN_IF_FAILED(hr);
+		hr = AdviseSink<IPropertyNotifySink>(_assemblerProps, _weakRefToThis, &_assemblerPropsAdviseToken); RETURN_IF_FAILED(hr);
 
 		hr = DebuggingPageProperties_CreateInstance(&_debugProps); RETURN_IF_FAILED(hr);
-		hr = AdviseSink<IPropertyNotifySink>(_debugProps, this, &_debugPropsAdviseToken); RETURN_IF_FAILED(hr);
+		hr = AdviseSink<IPropertyNotifySink>(_debugProps, _weakRefToThis, &_debugPropsAdviseToken); RETURN_IF_FAILED(hr);
 
 		hr = PrePostBuildPageProperties_CreateInstance(false, &_preBuildProps); RETURN_IF_FAILED(hr);
-		hr = AdviseSink<IPropertyNotifySink>(_preBuildProps, this, &_preBuildPropsAdviseToken); RETURN_IF_FAILED(hr);
+		hr = AdviseSink<IPropertyNotifySink>(_preBuildProps, _weakRefToThis, &_preBuildPropsAdviseToken); RETURN_IF_FAILED(hr);
 
 		hr = PrePostBuildPageProperties_CreateInstance(true, &_postBuildProps); RETURN_IF_FAILED(hr);
-		hr = AdviseSink<IPropertyNotifySink>(_postBuildProps, this, &_postBuildPropsAdviseToken); RETURN_IF_FAILED(hr);
+		hr = AdviseSink<IPropertyNotifySink>(_postBuildProps, _weakRefToThis, &_postBuildPropsAdviseToken); RETURN_IF_FAILED(hr);
 
 		return S_OK;
+	}
+
+	~ProjectConfig()
+	{
 	}
 
 	#pragma region IUnknown
@@ -90,6 +97,9 @@ public:
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
 		)
 			return S_OK;
+
+		if (riid == __uuidof(IWeakRef))
+			return _weakRefToThis.QueryIWeakRef(ppvObject);
 
 		#ifdef _DEBUG
 		// These will never be implemented.
@@ -200,8 +210,11 @@ public:
 		com_ptr<IFelixLaunchOptions> opts;
 		auto hr = MakeLaunchOptions(&opts); RETURN_IF_FAILED(hr);
 
+		com_ptr<IVsHierarchy> hier;
+		hr = _hier->QueryInterface(IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
+
 		wil::unique_variant projectDir;
-		_hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
+		hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
 
 		RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
 		hr = opts->put_ProjectDir(projectDir.bstrVal); RETURN_IF_FAILED(hr);
@@ -391,7 +404,9 @@ public:
 		com_ptr<IVsOutputWindowPane2> op2;
 		hr = op->QueryInterface(&op2); RETURN_IF_FAILED(hr);
 		
-		hr = MakeProjectConfigBuilder (_hier, this, op2, &_pendingBuild); RETURN_IF_FAILED(hr);
+		com_ptr<IVsHierarchy> hier;
+		hr = _hier->QueryInterface(IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
+		hr = MakeProjectConfigBuilder (hier, this, op2, &_pendingBuild); RETURN_IF_FAILED(hr);
 
 		for (auto& cb : _buildStatusCallbacks)
 		{
@@ -499,8 +514,10 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetOutputDirectory (BSTR* pbstr) override
 	{
+		com_ptr<IVsHierarchy> hier;
+		auto hr = _hier->QueryInterface(IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
 		wil::unique_variant project_dir;
-		auto hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &project_dir); RETURN_IF_FAILED(hr);
+		hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &project_dir); RETURN_IF_FAILED(hr);
 		if (project_dir.vt != VT_BSTR)
 			return E_FAIL;
 
@@ -524,19 +541,6 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE GetSldFileName (BSTR* pbstr) override
 	{
 		*pbstr = SysAllocString(L"output.sld"); RETURN_IF_NULL_ALLOC(*pbstr);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE Close() override
-	{
-		_assemblerPropsAdviseToken.reset();
-		_assemblerProps = nullptr;
-		_debugPropsAdviseToken.reset();
-		_debugProps = nullptr;
-		_preBuildPropsAdviseToken.reset();
-		_preBuildProps = nullptr;
-		_postBuildPropsAdviseToken.reset();
-		_postBuildProps = nullptr;
 		return S_OK;
 	}
 	#pragma endregion
@@ -621,6 +625,10 @@ struct AssemblerPageProperties
 
 		*to = p.detach();
 		return S_OK;
+	}
+
+	~AssemblerPageProperties()
+	{
 	}
 
 	#pragma region IUnknown
@@ -838,6 +846,10 @@ struct DebuggingPageProperties
 		return S_OK;
 	}
 
+	~DebuggingPageProperties()
+	{
+	}
+
 	#pragma region IUnknown
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
 	{
@@ -1039,6 +1051,10 @@ struct PrePostBuildPageProperties
 		p->_post = post;
 		*to = p.detach();
 		return S_OK;
+	}
+
+	~PrePostBuildPageProperties()
+	{
 	}
 
 	#pragma region IUnknown
