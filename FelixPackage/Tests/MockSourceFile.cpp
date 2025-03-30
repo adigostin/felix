@@ -3,7 +3,6 @@
 #include "CppUnitTest.h"
 #include "FelixPackage.h"
 #include "shared/com.h"
-#include "shared/WeakRef.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -19,7 +18,7 @@ struct MockSourceFile : IProjectFile
 	HRESULT InitInstance (IVsHierarchy* hier, VSITEMID itemId,
 		BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir, std::string_view fileContent)
 	{
-		auto hr = ToWeak (hier, &_hier); RETURN_IF_FAILED(hr);
+		auto hr = hier->QueryInterface(IID_PPV_ARGS(_hier.addressof())); RETURN_IF_FAILED(hr);
 		_itemId = itemId;
 		_buildTool = buildTool;
 		_pathRelativeToProjectDir = wil::make_hlocal_string_nothrow(pathRelativeToProjectDir); RETURN_IF_NULL_ALLOC_EXPECTED(_pathRelativeToProjectDir);
@@ -78,7 +77,7 @@ struct MockSourceFile : IProjectFile
 	HRESULT STDMETHODCALLTYPE GetMkDocument(BSTR* pbstrMkDocument) override
 	{
 		com_ptr<IVsHierarchy> hier;
-		auto hr = _hier->Resolve(&hier);
+		auto hr = _hier->QueryInterface(&hier);
 		Assert::IsTrue(SUCCEEDED(hr));
 		Assert::IsNotNull(hier.get());
 		wil::unique_variant projectDir;
@@ -127,10 +126,6 @@ struct MockSourceFile : IProjectFile
 		return E_NOTIMPL;
 	}
 	HRESULT STDMETHODCALLTYPE IsItemDirty(IUnknown* punkDocData, BOOL* pfDirty) override
-	{
-		return E_NOTIMPL;
-	}
-	HRESULT STDMETHODCALLTYPE Close(void) override
 	{
 		return E_NOTIMPL;
 	}

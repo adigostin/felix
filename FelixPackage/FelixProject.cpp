@@ -968,6 +968,7 @@ public:
 				|| propid == VSHPROPID_OpenFolderIconIndex        // -2015
 				|| propid == VSHPROPID_AltHierarchy               // -2019
 				|| propid == VSHPROPID_SortPriority               // -2022 - requested when reverting in Git an open project file
+				|| propid == VSHPROPID_UserContext                // -2023
 				|| propid == VSHPROPID_StateIconIndex             // -2029
 				|| propid == VSHPROPID_ConfigurationProvider      // -2036
 				|| propid == VSHPROPID_ImplantHierarchy           // -2037 - "This property is optional."

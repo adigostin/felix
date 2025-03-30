@@ -3,11 +3,10 @@
 #include "CppUnitTest.h"
 #include "FelixPackage.h"
 #include "shared/com.h"
-#include "shared/WeakRef.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IProjectItemParent, IWeakRefSource
+struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IProjectItemParent
 {
 	ULONG _refCount = 0;
 	wil::unique_bstr _projectDir;
@@ -16,6 +15,7 @@ struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IProjectItemParent
 
 	HRESULT InitInstance()
 	{
+		auto hr = _weakRefToThis.InitInstance(static_cast<IVsHierarchy*>(this)); RETURN_IF_FAILED(hr);
 		wchar_t tempPath[MAX_PATH+1];
 		DWORD pathLen = GetTempPathW(_countof(tempPath), tempPath); RETURN_LAST_ERROR_IF_EXPECTED(pathLen == 0);
 		_projectDir.reset(SysAllocStringLen(tempPath, pathLen)); RETURN_IF_NULL_ALLOC_EXPECTED(_projectDir);
@@ -30,9 +30,11 @@ struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IProjectItemParent
 			|| TryQI<IVsHierarchy>(this, riid, ppvObject)
 			|| TryQI<IZ80ProjectProperties>(this, riid, ppvObject)
 			|| TryQI<IProjectItemParent>(this, riid, ppvObject)
-			|| TryQI<IWeakRefSource>(this, riid, ppvObject)
 		)
 			return S_OK;
+
+		if (riid == __uuidof(IWeakRef))
+			return _weakRefToThis.QueryIWeakRef(ppvObject);
 
 		return E_NOINTERFACE;
 	}
@@ -188,13 +190,6 @@ struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IProjectItemParent
 	virtual void STDMETHODCALLTYPE SetFirstChild (IProjectItem* firstChild) override
 	{
 		_firstChild = firstChild;
-	}
-	#pragma endregion
-
-	#pragma region IWeakRefSource
-	virtual HRESULT STDMETHODCALLTYPE GetWeakRef (IWeakRef **weakRef) override
-	{
-		return _weakRefToThis.GetOrCreate(this, weakRef);
 	}
 	#pragma endregion
 };

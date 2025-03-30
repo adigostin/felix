@@ -239,6 +239,7 @@ public:
 			case VSHPROPID_OpenFolderIconHandle: // -2014
 			case VSHPROPID_OpenFolderIconIndex: // -2015
 			case VSHPROPID_AltHierarchy: // -2019
+			case VSHPROPID_UserContext: // -2023
 			case VSHPROPID_StateIconIndex: // -2029
 			case VSHPROPID_OverlayIconIndex: // -2048
 			case VSHPROPID_IsNewUnsavedItem: // -2057,

@@ -5,6 +5,8 @@
 #include "shared/com.h"
 #include "shared/inplace_function.h"
 
+#pragma comment (lib, "synchronization.lib")
+
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 extern com_ptr<IProjectConfig> MakeMockProjectConfig (IVsHierarchy* hier);

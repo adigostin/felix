@@ -42,7 +42,7 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler
 	bool _running = false; // and this only by the main thread
 	wil::unique_handle _cpuThread;
 	wil::unique_handle _cpu_thread_exit_request;
-	vector_nothrow<com_ptr<ISimulatorEventHandler>> _eventHandlers;
+	vector_nothrow<wil::com_ptr_nothrow<ISimulatorEventHandler>> _eventHandlers;
 	com_ptr<IScreenCompleteEventHandler> _screenCompleteHandler;
 
 	using RunOnSimulatorThreadFunction = HRESULT(*)(void*);

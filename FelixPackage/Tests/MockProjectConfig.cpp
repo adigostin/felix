@@ -107,11 +107,6 @@ struct MockProjectConfig : IProjectConfig
 		*pbstr = SysAllocString(L"output.sld"); RETURN_IF_NULL_ALLOC(*pbstr);
 		return S_OK;
 	}
-
-	virtual HRESULT STDMETHODCALLTYPE Close() override
-	{
-		return E_NOTIMPL;
-	}
 	#pragma endregion
 };
 
