@@ -44,6 +44,8 @@
 "Package"="{768bc57b-42a8-42ab-b389-457946c4fc6a}"
 [$RootKey$\Languages\File Extensions\.asm]
 @="{598BC226-2E96-43AD-AD42-67D9CC6F75F6}"
+[$RootKey$\Languages\File Extensions\.inc]
+@="{598BC226-2E96-43AD-AD42-67D9CC6F75F6}"
 
 ; New Project template
 [$RootKey$\NewProjectTemplates\TemplateDirs\{768bc57b-42a8-42ab-b389-457946c4fc6a}\/1]
