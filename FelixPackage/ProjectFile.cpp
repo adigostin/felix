@@ -22,7 +22,7 @@ struct ProjectFile
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _hier;
 	wil::com_ptr_nothrow<IProjectItem> _next;
-	VSITEMID _parentItemId = VSITEMID_NIL;
+	VSITEMID _parentItemId;
 	VSCOOKIE _docCookie = VSDOCCOOKIE_NIL;
 	wil::unique_hlocal_string _pathRelativeToProjectDir;
 	BuildToolKind _buildTool = BuildToolKind::None;
@@ -43,6 +43,10 @@ public:
 		hr = MakeCustomBuildToolProperties(&_customBuildToolProps); RETURN_IF_FAILED(hr);
 		hr = AdviseSink<IPropertyNotifySink>(_customBuildToolProps, _weakRefToThis, &_cbtPropNotifyToken); RETURN_IF_FAILED(hr);
 		return S_OK;
+	}
+
+	ProjectFile()
+	{
 	}
 
 	~ProjectFile()
@@ -235,9 +239,10 @@ public:
 			case VSHPROPID_OpenFolderIconHandle: // -2014
 			case VSHPROPID_OpenFolderIconIndex: // -2015
 			case VSHPROPID_AltHierarchy: // -2019
-			case VSHPROPID_ExtObject: // -2027
 			case VSHPROPID_StateIconIndex: // -2029
 			case VSHPROPID_OverlayIconIndex: // -2048
+			case VSHPROPID_IsNewUnsavedItem: // -2057,
+			case VSHPROPID_ShowOnlyItemCaption: // -2058
 			case VSHPROPID_KeepAliveDocument: // -2075
 			case VSHPROPID_ProjectTreeCapabilities: // -2146
 			case VSHPROPID_IsSharedItemsImportFile: // -2154
@@ -353,11 +358,9 @@ public:
 					{
 						case cmdidCopy: // 15
 						case cmdidCut: // 16
-						case cmdidDelete: // 17
 						case cmdidMultiLevelRedo: // 30
 						case cmdidMultiLevelUndo: // 44
 						case cmdidNewProject: // 216
-						case cmdidAddNewItem: // 220
 						case cmdidFileOpen: // 222
 						case cmdidSaveSolution: // 224
 						case cmdidGoto: // 231
@@ -511,7 +514,7 @@ public:
 			|| *pguidCmdGroup == guidBrowserLinkCmdSet
 			|| *pguidCmdGroup == guidUnknownMsenvDll
 			|| *pguidCmdGroup == guidUnknownCmdGroup0
-			|| *pguidCmdGroup == guidUnknownCmdGroup1
+			|| *pguidCmdGroup == guidProjectandSolutionContextMenus
 			|| *pguidCmdGroup == guidProjOverviewAppCapabilities
 			|| *pguidCmdGroup == guidProjectAddTest
 			|| *pguidCmdGroup == guidProjectAddWPF
@@ -599,6 +602,7 @@ public:
 				|| nCmdID == cmdidSaveSolution          // 224
 				|| nCmdID == cmdidSaveProjectItemAs     // 226
 				|| nCmdID == cmdidExit                  // 229
+				|| nCmdID == cmdidNewFolder             // 245
 				|| nCmdID == cmdidPaneActivateDocWindow // 289
 				|| nCmdID == cmdidSaveProjectItem       // 331 - Ctrl + S on file in Solution Explorer, ignore it here and VS will somehow save the file
 				|| nCmdID == cmdidPropSheetOrProperties // 397 - ignore it here and VS will ask for cmdidPropertyPages, then show the Properties Window
@@ -636,19 +640,6 @@ public:
 
 		if (*pguidCmdGroup == GUID_VsUIHierarchyWindowCmds)
 		{
-			if (nCmdID == UIHWCMDID_RightClick)
-			{
-				POINTS pts;
-				memcpy (&pts, &pvaIn->uintVal, 4);
-
-				wil::com_ptr_nothrow<IVsUIShell> shell;
-				hr = serviceProvider->QueryService(SID_SVsUIShell, &shell);
-				if (FAILED(hr))
-					return hr;
-
-				return shell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_ITEMNODE, pts, nullptr);
-			}
-
 			if (nCmdID == UIHWCMDID_DoubleClick || nCmdID == UIHWCMDID_EnterKey)
 			{
 				wil::com_ptr_nothrow<IVsProject2> vsp;

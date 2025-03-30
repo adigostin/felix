@@ -90,6 +90,7 @@
       <SDLCheck>false</SDLCheck>
       <AdditionalOptions>/Zc:strictStrings-</AdditionalOptions>
       <TreatWarningAsError>false</TreatWarningAsError>
+      <BasicRuntimeChecks>UninitializedLocalUsageCheck</BasicRuntimeChecks>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>_DEBUG;UNICODE;_UNICODE;_AFXDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>

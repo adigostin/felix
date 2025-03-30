@@ -26,7 +26,6 @@ class Z80Project
 	, IVsGetCfgProvider
 	, IVsCfgProvider2          // includes IVsCfgProvider
 	, IProvideClassInfo
-	, IOleCommandTarget
 	//, IConnectionPointContainer
 	, IVsHierarchyDeleteHandler3
 	, IXmlParent
@@ -178,7 +177,7 @@ public:
 			hr = CreateProjectFilesFromTemplate (sp, pszFilename, pszLocation, pszName); RETURN_IF_FAILED(hr);
 
 			wil::unique_hlocal_string projFilePath;
-			hr = PathAllocCombine (pszLocation, pszName, PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS, &projFilePath); RETURN_IF_FAILED(hr);
+			hr = PathAllocCombine (pszLocation, pszName, PathFlags, &projFilePath); RETURN_IF_FAILED(hr);
 
 			com_ptr<IStream> stream;
 			auto hr = SHCreateStreamOnFileEx(projFilePath.get(), STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, 0, nullptr, &stream); RETURN_IF_FAILED(hr);
@@ -276,7 +275,7 @@ public:
 		return FindDescendant (sameId, ppFoundItem, ppPrevSibling, ppParent);
 	}
 
-	HRESULT QueryStatusInternal (const GUID* pguidCmdGroup, ULONG cmdID, __RPC__out DWORD* cmdf, __RPC__out OLECMDTEXT *pCmdText)
+	HRESULT QueryStatusCommandOnProjectNode (const GUID* pguidCmdGroup, ULONG cmdID, __RPC__out DWORD* cmdf, __RPC__out OLECMDTEXT *pCmdText)
 	{
 		if (*pguidCmdGroup == CLSID_FelixPackageCmdSet)
 			return OLECMDERR_E_UNKNOWNGROUP;
@@ -425,7 +424,6 @@ public:
 
 		#ifdef _DEBUG
 		if (   *pguidCmdGroup == guidUnknownCmdGroup0
-			|| *pguidCmdGroup == guidUnknownCmdGroup1
 			|| *pguidCmdGroup == guidUnknownCmdGroup5
 			|| *pguidCmdGroup == guidUnknownCmdGroup6
 			|| *pguidCmdGroup == guidUnknownCmdGroup7
@@ -486,7 +484,7 @@ public:
 
 		if (*pguidCmdGroup == guidNuGetDialogCmdSet || *pguidCmdGroup == guidNuGetSomethingCmdSet)
 		{
-			*cmdf = 0;
+			*cmdf = OLECMDF_SUPPORTED | OLECMDF_INVISIBLE;
 			return S_OK;
 		}
 
@@ -505,7 +503,7 @@ public:
 		return OLECMDERR_E_UNKNOWNGROUP;
 	}
 
-	HRESULT ExecInternal(const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT* pvaIn, VARIANT* pvaOut)
+	HRESULT ExecCommandOnProjectNode (const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT* pvaIn, VARIANT* pvaOut)
 	{
 		if (!pguidCmdGroup)
 			return E_POINTER;
@@ -528,11 +526,10 @@ public:
 				return OLECMDERR_E_NOTSUPPORTED;
 			
 			if (nCmdID == cmdidAddNewItem) // 220
-				return ProcessCommandAddNewItem(TRUE);
+				return ProcessCommandAddItem(TRUE);
 			if (nCmdID == cmdidAddExistingItem) // 244
-				return ProcessCommandAddNewItem(FALSE);
+				return ProcessCommandAddItem(FALSE);
 
-			//BreakIntoDebugger();
 			return OLECMDERR_E_NOTSUPPORTED;
 		}
 
@@ -559,25 +556,10 @@ public:
 			return OLECMDERR_E_NOTSUPPORTED;
 		}
 
-		if (*pguidCmdGroup == guidNuGetDialogCmdSet || *pguidCmdGroup == guidNuGetSomethingCmdSet)
-		{
-			wil::com_ptr_nothrow<IVsUIShell> shell;
-			auto hr = _sp->QueryService (SID_SVsUIShell, &shell);
-			if (SUCCEEDED(hr))
-			{
-				LONG result;
-				const wchar_t text[] = L"Sorry, Visual Studio won't allow me to remove the Nuget nonsense from the menus";
-				shell->ShowMessageBox (0, GUID_NULL, nullptr, const_cast<LPOLESTR>(text),
-					nullptr, 0, OLEMSGBUTTON_OK, OLEMSGDEFBUTTON_FIRST, OLEMSGICON_INFO, FALSE, &result);
-			}
-
-			return S_OK;
-		}
-
 		return OLECMDERR_E_UNKNOWNGROUP;
 	}
 
-	HRESULT ProcessCommandAddNewItem (BOOL fAddNewItem)
+	HRESULT ProcessCommandAddItem (BOOL fAddNewItem)
 	{
 		wil::com_ptr_nothrow<IVsAddProjectItemDlg> dlg;
 		auto hr = _sp->QueryService(SID_SVsAddProjectItemDlg, &dlg); RETURN_IF_FAILED(hr);
@@ -613,7 +595,6 @@ public:
 			|| TryQI<IPersistFileFormat>(this, riid, ppvObject)
 			|| TryQI<IVsProject>(this, riid, ppvObject)
 			|| TryQI<IVsProject2>(this, riid, ppvObject)
-			|| TryQI<IOleCommandTarget>(this, riid, ppvObject)
 			|| TryQI<IProvideClassInfo>(this, riid, ppvObject)
 			|| TryQI<IVsGetCfgProvider>(this, riid, ppvObject)
 			|| TryQI<IVsCfgProvider>(this, riid, ppvObject)
@@ -811,7 +792,11 @@ public:
 			if (propid == VSHPROPID_ProjectDesignerEditor) // -2088
 				return E_NOTIMPL;
 
+			#ifdef _DEBUG
 			RETURN_HR(E_NOTIMPL);
+			#else
+			return E_NOTIMPL;
+			#endif
 		}
 
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
@@ -858,7 +843,10 @@ public:
 		if (_closed)
 			return E_UNEXPECTED;
 
-		#pragma region Some properties return the same thing for any node of our hierarchy
+		#pragma region Some properties apply to the hierarchy as a whole
+		if (propid == VSHPROPID_ExtObject) // -2027
+			return E_NOTIMPL;
+
 		if (propid == VSHPROPID_ParentHierarchy) // -2032
 			return InitVariantFromUnknown (_parentHierarchy.get(), pvar);
 
@@ -980,7 +968,6 @@ public:
 				|| propid == VSHPROPID_OpenFolderIconIndex        // -2015
 				|| propid == VSHPROPID_AltHierarchy               // -2019
 				|| propid == VSHPROPID_SortPriority               // -2022 - requested when reverting in Git an open project file
-				|| propid == VSHPROPID_ExtObject                  // -2027
 				|| propid == VSHPROPID_StateIconIndex             // -2029
 				|| propid == VSHPROPID_ConfigurationProvider      // -2036
 				|| propid == VSHPROPID_ImplantHierarchy           // -2037 - "This property is optional."
@@ -1012,6 +999,7 @@ public:
 				|| propid == VSHPROPID_SharedAssetsProject        // -2153
 				|| propid == VSHPROPID_CanBuildQuickCheck         // -2156 - Much later, if ever
 				|| propid == VSHPROPID_SupportsIconMonikers       // -2159
+				|| propid == VSHPROPID_IconMonikerImageList       // -2164
 				|| propid == VSHPROPID_ProjectCapabilitiesChecker // -2173
 				|| propid == -2177 // VSHPROPID_PreserveExpandCollapseState
 				|| propid == -9089 // VSHPROPID_SlowEnumeration   // -9089
@@ -1300,10 +1288,21 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE QueryStatusCommand (VSITEMID itemid, const GUID* pguidCmdGroup, ULONG cCmds, OLECMD prgCmds[], OLECMDTEXT* pCmdText) override
 	{
 		if (itemid == VSITEMID_ROOT)
-			return QueryStatus (pguidCmdGroup, cCmds, prgCmds, pCmdText);
+		{
+			for (ULONG i = 0; i < cCmds; i++)
+			{
+				auto hr = QueryStatusCommandOnProjectNode (pguidCmdGroup, prgCmds[i].cmdID, &prgCmds[i].cmdf, pCmdText ? &pCmdText[i] : nullptr);
+				if (FAILED(hr))
+					return hr;
+			}
 
-		RETURN_HR_IF_EXPECTED(OLECMDERR_E_NOTSUPPORTED, itemid == VSITEMID_SELECTION);
-		RETURN_HR_IF_EXPECTED(OLECMDERR_E_NOTSUPPORTED, itemid == VSITEMID_NIL);
+			return S_OK;
+		}
+
+		if (itemid == VSITEMID_SELECTION)
+			return OLECMDERR_E_NOTSUPPORTED;
+		if (itemid == VSITEMID_NIL)
+			return OLECMDERR_E_NOTSUPPORTED;
 
 		com_ptr<IProjectItem> d;
 		if (FindDescendant(itemid, &d) == S_OK)
@@ -1319,7 +1318,7 @@ public:
 			return ShowContextMenu(itemid, pvaIn);
 
 		if (itemid == VSITEMID_ROOT)
-			return ExecInternal (pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
+			return ExecCommandOnProjectNode (pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
 
 		// We need to return OLECMDERR_E_NOTSUPPORTED. If we return something else, VS won't like it.
 		// For example, if the user selects two project items in the Solution Explorer and hits Escape,
@@ -1396,7 +1395,7 @@ public:
 			com_ptr<IProjectItem> d;
 			if (FindDescendant(itemid, &d) == S_OK)
 			{
-				if (auto file = wil::try_com_query_nothrow<IProjectFile>(d))
+				if (wil::try_com_query_nothrow<IProjectFile>(d))
 					return shell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_ITEMNODE, pts, nullptr);
 
 				return E_NOTIMPL;
@@ -1614,7 +1613,7 @@ public:
 			wchar_t buffer[50];
 			swprintf_s(buffer, L"%s%u%s", pszSuggestedRoot, i, pszExt);
 			wil::unique_hlocal_string dest;
-			hr = PathAllocCombine (_location.get(), buffer, PATHCCH_ALLOW_LONG_PATHS, &dest); RETURN_IF_FAILED(hr);
+			hr = PathAllocCombine (_location.get(), buffer, PathFlags, &dest); RETURN_IF_FAILED(hr);
 			if (!PathFileExists(dest.get()))
 			{
 				*pbstrItemName = SysAllocString(buffer); RETURN_IF_NULL_ALLOC(*pbstrItemName);
@@ -1634,8 +1633,7 @@ public:
 		RETURN_HR_IF(E_NOTIMPL, itemidLoc != VSITEMID_ROOT);
 
 		wil::unique_hlocal_string dest;
-		DWORD flags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
-		auto hr = PathAllocCombine (_location.get(), pszNewFileName, flags, &dest); RETURN_IF_FAILED(hr);
+		auto hr = PathAllocCombine (_location.get(), pszNewFileName, PathFlags, &dest); RETURN_IF_FAILED(hr);
 		COPYFILE2_EXTENDED_PARAMETERS params = { 
 			.dwSize = (DWORD)sizeof(params), 
 			.dwCopyFlags = COPY_FILE_ALLOW_DECRYPTED_DESTINATION | COPY_FILE_FAIL_IF_EXISTS
@@ -1832,31 +1830,6 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE GetClassInfo (ITypeInfo **ppTI) override
 	{
 		return GetTypeInfo(0, 0, ppTI);
-	}
-	#pragma endregion
-
-	#pragma region IOleCommandTarget
-	virtual HRESULT STDMETHODCALLTYPE QueryStatus (const GUID *pguidCmdGroup, ULONG cCmds, OLECMD prgCmds[],OLECMDTEXT *pCmdText) override
-	{
-		if (!pguidCmdGroup)
-			return E_POINTER;
-
-		for (ULONG i = 0; i < cCmds; i++)
-		{
-			auto hr = this->QueryStatusInternal (pguidCmdGroup, prgCmds[i].cmdID, &prgCmds[i].cmdf, pCmdText ? &pCmdText[i] : nullptr);
-			if (FAILED(hr))
-				return hr;
-		}
-
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE Exec (const GUID *pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT *pvaIn, VARIANT *pvaOut) override
-	{
-		if (!pguidCmdGroup)
-			return E_POINTER;
-
-		return ExecInternal (pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
 	}
 	#pragma endregion
 	/*
