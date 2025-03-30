@@ -28,7 +28,6 @@ class Z80Project
 	, IVsCfgProvider2          // includes IVsCfgProvider
 	, IProvideClassInfo
 	, IOleCommandTarget
-	, IPreferPropertyPagesWithTreeControl
 	//, IConnectionPointContainer
 	, IVsHierarchyDeleteHandler3
 	, IXmlParent
@@ -619,7 +618,6 @@ public:
 			//|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
 			|| TryQI<IVsHierarchyDeleteHandler3>(this, riid, ppvObject)
 			|| TryQI<IVsPersistHierarchyItem>(this, riid, ppvObject)
-			|| TryQI<IPreferPropertyPagesWithTreeControl>(this, riid, ppvObject)
 			|| TryQI<IXmlParent>(this, riid, ppvObject)
 			//|| TryQI<IVsProjectBuildSystem>(this, riid, ppvObject)
 			//|| TryQI<IVsBuildPropertyStorage>(this, riid, ppvObject)
