@@ -37,12 +37,6 @@
     <Image Include="Spectrum.ico">
       <Filter>Resource Files</Filter>
     </Image>
-    <Image Include="AsmFile.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="IncFile.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="PackageCommands.vsct">

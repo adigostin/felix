@@ -67,10 +67,6 @@ IDI_PACKAGE_ICON        ICON                    "Package.ico"
 
 IDI_SPECTRUM            ICON                    "Spectrum.ico"
 
-IDI_ASM_FILE            ICON                    "AsmFile.ico"
-
-IDI_INC_FILE            ICON                    "IncFile.ico"
-
 
 /////////////////////////////////////////////////////////////////////////////
 //

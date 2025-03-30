@@ -122,8 +122,6 @@
     </CustomBuild>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="AsmFile.ico" />
-    <Image Include="IncFile.ico" />
     <Image Include="Package.ico" />
     <Image Include="Spectrum.ico" />
     <Image Include="Z80Images.png" />

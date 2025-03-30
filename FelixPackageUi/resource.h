@@ -19,8 +19,6 @@
 #define IDB_IMAGES                      300
 #define IDI_PACKAGE_ICON                400
 #define IDI_SPECTRUM                    401
-#define IDI_ASM_FILE                    403
-#define IDI_INC_FILE                    404
 #define IDD_DIALOG_COMMAND_LINE_EDITOR  405
 #define IDC_EDIT_ERROR_REPORT           1000
 #define IDC_BUTTON_SEND                 1001

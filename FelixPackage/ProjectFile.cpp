@@ -8,6 +8,9 @@
 #include "dispids.h"
 #include "guids.h"
 #include <vsmanaged.h>
+#include <KnownImageIds.h>
+
+using namespace Microsoft::VisualStudio::Imaging;
 
 struct ProjectFile 
 	: IProjectFile
@@ -26,34 +29,19 @@ struct ProjectFile
 	com_ptr<ICustomBuildToolProperties> _customBuildToolProps;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
 	AdviseSinkToken _cbtPropNotifyToken;
-	static inline HINSTANCE _uiLibrary;
-	static inline wil::unique_hicon _iconAsmFile;
-	static inline wil::unique_hicon _iconIncFile;
 	WeakRefToThis _weakRefToThis;
 
 public:
 	HRESULT InitInstance (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentItemId)
 	{
 		HRESULT hr;
-
 		_itemId = itemId;
 		hr = hier->QueryInterface(IID_PPV_ARGS(_hier.addressof())); RETURN_IF_FAILED(hr);
 		_parentItemId = parentItemId;
 		hr = _weakRefToThis.InitInstance(static_cast<IProjectFile*>(this)); RETURN_IF_FAILED(hr);
-		if (!_uiLibrary)
-		{
-			wil::com_ptr_nothrow<IVsShell> shell;
-			hr = serviceProvider->QueryService(SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
-			hr = shell->LoadUILibrary(CLSID_FelixPackage, 0, (DWORD_PTR*)&_uiLibrary); RETURN_IF_FAILED(hr);
-			_iconAsmFile.reset(LoadIcon(_uiLibrary, MAKEINTRESOURCE(IDI_ASM_FILE))); WI_ASSERT(_iconAsmFile);
-			_iconIncFile.reset(LoadIcon(_uiLibrary, MAKEINTRESOURCE(IDI_INC_FILE))); WI_ASSERT(_iconAsmFile);
-		}
-
 		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
-
 		hr = MakeCustomBuildToolProperties(&_customBuildToolProps); RETURN_IF_FAILED(hr);
 		hr = AdviseSink<IPropertyNotifySink>(_customBuildToolProps, _weakRefToThis, &_cbtPropNotifyToken); RETURN_IF_FAILED(hr);
-
 		return S_OK;
 	}
 
@@ -183,27 +171,6 @@ public:
 			case VSHPROPID_Expandable: // -2006
 				return InitVariantFromBoolean (FALSE, pvar);
 
-			case VSHPROPID_IconHandle: // -2013
-			{
-				auto ext = PathFindExtension(_pathRelativeToProjectDir.get());
-
-				if (!_wcsicmp(ext, L".asm"))
-				{
-					V_VT(pvar) = VT_VS_INT_PTR;
-					V_VS_INT_PTR(pvar) = (INT_PTR)_iconAsmFile.get();
-					return S_OK;
-				}
-
-				if (!_wcsicmp(ext, L".inc"))
-				{
-					V_VT(pvar) = VT_VS_INT_PTR;
-					V_VS_INT_PTR(pvar) = (INT_PTR)_iconIncFile.get();
-					return S_OK;
-				}
-
-				return E_NOTIMPL;
-			}
-
 			case VSHPROPID_BrowseObject: // -2018
 				return InitVariantFromDispatch (this, pvar);
 
@@ -247,7 +214,24 @@ public:
 			case VSHPROPID_ProvisionalViewingStatus: // -2112
 				return InitVariantFromUInt32 (PVS_Disabled, pvar);
 
+			case VSHPROPID_SupportsIconMonikers: // -2159
+				return InitVariantFromBoolean (TRUE, pvar);
+
+			case VSHPROPID_IconMonikerId: // -2161
+			{
+				auto ext = PathFindExtension(_pathRelativeToProjectDir.get());
+				
+				if (!_wcsicmp(ext, L".asm"))
+					return InitVariantFromInt32(KnownImageIds::ASMFile, pvar);
+
+				if (!_wcsicmp(ext, L".inc"))
+					return InitVariantFromInt32(KnownImageIds::TextFile, pvar);
+
+				return E_NOTIMPL;
+			}
+
 			case VSHPROPID_IconIndex: // -2005
+			case VSHPROPID_IconHandle: // -2013
 			case VSHPROPID_OpenFolderIconHandle: // -2014
 			case VSHPROPID_OpenFolderIconIndex: // -2015
 			case VSHPROPID_AltHierarchy: // -2019
@@ -257,7 +241,6 @@ public:
 			case VSHPROPID_KeepAliveDocument: // -2075
 			case VSHPROPID_ProjectTreeCapabilities: // -2146
 			case VSHPROPID_IsSharedItemsImportFile: // -2154
-			case VSHPROPID_SupportsIconMonikers: // -2159
 				return E_NOTIMPL;
 
 			default:
@@ -278,7 +261,7 @@ public:
 				_parentItemId = V_VSITEMID(&var);
 				return S_OK;
 
-			case VSHPROPID_EditLabel	: // -2026
+			case VSHPROPID_EditLabel: // -2026
 				RETURN_HR_IF(E_INVALIDARG, var.vt != VT_BSTR);
 				return RenameFile (var.bstrVal);
 
@@ -304,7 +287,13 @@ public:
 			return S_OK;
 		}
 
+		if (propid == VSHPROPID_IconMonikerGuid) // -2160
+			return (*pguid = KnownImageIds::ImageCatalogGuid), S_OK;
+
 		#ifdef _DEBUG
+		if (propid == VSHPROPID_OpenFolderIconMonikerGuid) // -2162
+			return E_NOTIMPL;
+
 		RETURN_HR(E_NOTIMPL);
 		#else
 		return E_NOTIMPL;
@@ -716,8 +705,6 @@ public:
 			_buildTool = value;
 			if (auto sink = wil::try_com_query_nothrow<IPropertyNotifySink>(_hier))
 				sink->OnChanged(DISPID_UNKNOWN);
-			if (auto sink = wil::try_com_query_failfast<IVsHierarchyEvents>(_hier))
-				sink->OnPropertyChanged(_itemId, VSHPROPID_IconHandle, 0);
 			_propNotifyCP->NotifyPropertyChanged(dispidBuildToolKind);
 			_propNotifyCP->NotifyPropertyChanged(dispidCustomBuildToolProps);
 		}
@@ -911,7 +898,7 @@ public:
 			events->OnPropertyChanged(_itemId, VSHPROPID_SaveName, 0);
 			events->OnPropertyChanged(_itemId, VSHPROPID_DescriptiveName, 0);
 			events->OnPropertyChanged(_itemId, VSHPROPID_StateIconIndex, 0);
-			events->OnPropertyChanged(_itemId, VSHPROPID_IconHandle, 0);
+			events->OnPropertyChanged(_itemId, VSHPROPID_IconMonikerId, 0);
 		}
 
 		// Make sure the property browser is updated.
