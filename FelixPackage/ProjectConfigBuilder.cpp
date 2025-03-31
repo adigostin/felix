@@ -524,100 +524,6 @@ public:
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	static HRESULT Write (ISequentialStream* stream, const wchar_t* psz)
-	{
-		return stream->Write(psz, (ULONG)wcslen(psz) * sizeof(wchar_t), nullptr);
-	}
-
-	static HRESULT Write (ISequentialStream* stream, const wchar_t* from, const wchar_t* to)
-	{
-		return stream->Write(from, (ULONG)(to - from) * sizeof(wchar_t), nullptr);
-	}
-
-	HRESULT MakeSjasmCommandLine (IProjectFile* const* files, uint32_t fileCount, LPCWSTR project_dir,
-		LPCWSTR output_dir, BSTR* ppCmdLine)
-	{
-		HRESULT hr;
-
-		com_ptr<IStream> cmdLine;
-		hr = CreateStreamOnHGlobal (nullptr, TRUE, &cmdLine); RETURN_IF_FAILED(hr);
-
-		wil::unique_hlocal_string moduleFilename;
-		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, moduleFilename); RETURN_IF_FAILED(hr);
-		auto fnres = PathFindFileName(moduleFilename.get()); RETURN_HR_IF(CO_E_BAD_PATH, fnres == moduleFilename.get());
-		bool hasSpaces = !!wcschr(moduleFilename.get(), L' ');
-		if (hasSpaces)
-		{
-			hr = Write(cmdLine, L"\""); RETURN_IF_FAILED(hr);
-		}
-		hr = Write(cmdLine, moduleFilename.get(), fnres); RETURN_IF_FAILED(hr);
-		hr = Write(cmdLine, L"sjasmplus.exe"); RETURN_IF_FAILED(hr);
-		if (hasSpaces)
-		{
-			hr = Write(cmdLine, L"\""); RETURN_IF_FAILED(hr);
-		}
-		hr = Write(cmdLine, L" --fullpath"); RETURN_IF_FAILED(hr);
-
-		auto addOutputPathParam = [&cmdLine, output_dir, project_dir](const wchar_t* paramName, const wchar_t* output_filename) -> HRESULT
-			{
-				wil::unique_hlocal_string outputFilePath;
-				auto hr = PathAllocCombine (output_dir, output_filename, PathFlags, &outputFilePath); RETURN_IF_FAILED(hr);
-				auto outputFilePathRelativeUgly = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(outputFilePathRelativeUgly);
-				BOOL bRes = PathRelativePathToW (outputFilePathRelativeUgly.get(), project_dir, FILE_ATTRIBUTE_DIRECTORY, outputFilePath.get(), 0); RETURN_HR_IF(CS_E_INVALID_PATH, !bRes);
-				size_t len = wcslen(outputFilePathRelativeUgly.get());
-				auto outputFilePathRelative = wil::make_hlocal_string_nothrow(nullptr, len); RETURN_IF_NULL_ALLOC(outputFilePathRelative);
-				hr = PathCchCanonicalizeEx (outputFilePathRelative.get(), len + 1, outputFilePathRelativeUgly.get(), PathFlags); RETURN_IF_FAILED(hr);
-				hr = Write(cmdLine, paramName); RETURN_IF_FAILED(hr);
-				hr = Write(cmdLine, outputFilePathRelative.get()); RETURN_IF_FAILED(hr);
-				return S_OK;
-			};
-
-		// --raw=...
-		wil::unique_bstr output_filename;
-		hr = _config->GetOutputFileName(&output_filename); RETURN_IF_FAILED(hr);
-		hr = addOutputPathParam (L" --raw=", output_filename.get()); RETURN_IF_FAILED(hr);
-
-		// --sld=...
-		wil::unique_bstr sld_filename;
-		hr = _config->GetSldFileName (&sld_filename); RETURN_IF_FAILED(hr);
-		hr = addOutputPathParam (L" --sld=", sld_filename.get()); RETURN_IF_FAILED(hr);
-
-		// --outprefix
-		hr = addOutputPathParam (L" --outprefix=", L""); RETURN_IF_FAILED(hr);
-
-		// --lst
-		com_ptr<IProjectConfigAssemblerProperties> asmProps;
-		hr = _config->get_AssemblerProperties(&asmProps); RETURN_IF_FAILED(hr);
-		VARIANT_BOOL saveListing;
-		hr = asmProps->get_SaveListing(&saveListing); RETURN_IF_FAILED(hr);
-		if (saveListing)
-		{
-			hr = Write(cmdLine, L" --lst"); RETURN_IF_FAILED(hr);
-			wil::unique_bstr listingFilename;
-			hr = asmProps->get_SaveListingFilename(&listingFilename); RETURN_IF_FAILED(hr);
-			if (listingFilename && listingFilename.get()[0])
-			{
-				hr = Write(cmdLine, L"="); RETURN_IF_FAILED(hr);
-				hr = Write(cmdLine, listingFilename.get()); RETURN_IF_FAILED(hr);
-			}
-		}
-
-		// input files
-		for (uint32_t i = 0; i < fileCount; i++)
-		{
-			IProjectFile* file = files[i];
-			wil::unique_bstr fileRelativePath;
-			hr = file->get_Path(&fileRelativePath);
-			if (SUCCEEDED(hr))
-			{
-				hr = Write(cmdLine, L" "); RETURN_IF_FAILED(hr);
-				hr = Write(cmdLine, fileRelativePath.get()); RETURN_IF_FAILED(hr);
-			}
-		}
-
-		return MakeBstrFromStreamOnHGlobal (cmdLine, ppCmdLine);
-	}
-
 	// This function extracts from the CommandLine property an array of lines separated by 0x0D/0x0A.
 	// It launches them one by one, stopping in case of a HRESULT error, or in case of a non-zero exit code.
 	// This function writes pExitCode only when it returns S_OK. When it writes pExitCode to non-zero,
@@ -666,7 +572,7 @@ public:
 		return S_OK;
 	}
 
-	HRESULT EnumDescendants (IVsHierarchy* hier, VSITEMID from, const stdext::inplace_function<HRESULT(IProjectItem*)>& filter)
+	static HRESULT EnumDescendants (IVsHierarchy* hier, VSITEMID from, const stdext::inplace_function<HRESULT(IProjectItem*)>& filter)
 	{
 		// TODO: search in depth too when we'll support directories
 
@@ -737,26 +643,12 @@ public:
 			});
 
 		// Second launch sjasm to build all asm files.
-		vector_nothrow<com_ptr<IProjectFile>> asmFiles;
-		hr = EnumDescendants (_hier, VSITEMID_ROOT, [&asmFiles](IDispatch* item)
-			{
-				com_ptr<IProjectFile> file;
-				if (SUCCEEDED(item->QueryInterface(&file)))
-				{
-					BuildToolKind tool;
-					auto hr = file->get_BuildTool(&tool); RETURN_IF_FAILED(hr);
-					if (tool == BuildToolKind::Assembler)
-					{
-						bool pushed = asmFiles.try_push_back(std::move(file)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-					}
-				}
-
-				return S_FALSE;
-			});
-		if (asmFiles.size())
+		com_ptr<IProjectConfigAssemblerProperties> asmProps;
+		hr = _config->get_AssemblerProperties(&asmProps); RETURN_IF_FAILED(hr);
+		wil::unique_bstr cmdLine;
+		hr = MakeSjasmCommandLine (_hier, _config, asmProps, &cmdLine); RETURN_IF_FAILED(hr);
+		if (SysStringLen(cmdLine.get()) > 0)
 		{
-			wil::unique_bstr cmdLine;
-			hr = MakeSjasmCommandLine(asmFiles[0].addressof(), asmFiles.size(), projectDir.bstrVal, output_dir.get(), &cmdLine); RETURN_IF_FAILED(hr);
 			com_ptr<IBuildStep> buildStep;
 			hr = BuildStepRunProcess::CreateInstance (cmdLine.get(), projectDir.bstrVal, _projName.get(), false, ParseSjasmOutput, _outputWindow2, &buildStep); RETURN_IF_FAILED(hr);
 			bool pushed = steps.try_push_back(std::move(buildStep)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);

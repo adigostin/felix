@@ -14,6 +14,7 @@ extern com_ptr<IVsHierarchy> MakeMockVsHierarchy();
 extern com_ptr<IProjectFile> MakeMockSourceFile (IVsHierarchy* hier, VSITEMID itemId,
 	BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir, std::string_view fileContent);
 extern com_ptr<IVsOutputWindowPane2> MakeMockOutputWindowPane (IStream* outputStreamUTF16);
+extern com_ptr<IServiceProvider> MakeMockServiceProvider();
 
 struct TestBuildCallback : IProjectConfigBuilderCallback
 {
@@ -47,6 +48,16 @@ namespace FelixTests
 {
 	TEST_CLASS(BuilderTests)
 	{
+		TEST_CLASS_INITIALIZE(BuilderTestsInitialize)
+		{
+			serviceProvider = MakeMockServiceProvider();
+		}
+
+		TEST_CLASS_CLEANUP(BuilderTestsCleanup)
+		{
+			serviceProvider = nullptr;
+		}
+
 		TEST_METHOD(BuildFailsOnEmptyProject)
 		{
 			auto hier = MakeMockVsHierarchy();

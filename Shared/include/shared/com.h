@@ -18,7 +18,7 @@ struct com_ptr : wil::com_ptr_nothrow<T>
 	}
 
 	using wil::com_ptr_nothrow<T>::com_ptr_nothrow;
-	operator T*() const { return wil::com_ptr_nothrow<T>::get(); }
+	operator T*() const noexcept { return wil::com_ptr_nothrow<T>::get(); }
 };
 
 // ============================================================================

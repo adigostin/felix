@@ -13,20 +13,27 @@ struct MockProjectConfig : IProjectConfig
 	com_ptr<IProjectConfigPrePostBuildProperties> _preBuildProps;
 	com_ptr<IProjectConfigPrePostBuildProperties> _postBuildProps;
 	com_ptr<IProjectConfigAssemblerProperties> _assemblerProps;
-
+	WeakRefToThis _weakRefToThis;
 
 	HRESULT InitInstance (IVsHierarchy* hier)
 	{
 		HRESULT hr;
 		_hier = hier;
-		hr = PrePostBuildPageProperties_CreateInstance(false, &_preBuildProps); RETURN_IF_FAILED_EXPECTED(hr);
-		hr = PrePostBuildPageProperties_CreateInstance(true, &_postBuildProps); RETURN_IF_FAILED_EXPECTED(hr);
-		hr = AssemblerPageProperties_CreateInstance(&_assemblerProps); RETURN_IF_FAILED_EXPECTED(hr);
+		hr = _weakRefToThis.InitInstance(this); RETURN_IF_FAILED(hr);
+		hr = PrePostBuildPageProperties_CreateInstance(false, &_preBuildProps); RETURN_IF_FAILED(hr);
+		hr = PrePostBuildPageProperties_CreateInstance(true, &_postBuildProps); RETURN_IF_FAILED(hr);
+		hr = AssemblerPageProperties_CreateInstance(&_assemblerProps); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
 	#pragma region IUnknown
-	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override { RETURN_HR(E_NOTIMPL); }
+	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
+	{
+		if (riid == __uuidof(IWeakRef))
+			return _weakRefToThis.QueryIWeakRef(ppvObject);
+
+		RETURN_HR(E_NOTIMPL);
+	}
 
 	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 

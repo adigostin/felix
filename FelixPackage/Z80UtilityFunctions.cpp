@@ -1,6 +1,7 @@
 
 #include "pch.h"
 #include "FelixPackage.h"
+#include "shared/com.h"
 
 #define __dte_h__
 #include <VSShell174.h>
@@ -257,4 +258,131 @@ HRESULT MakeBstrFromStreamOnHGlobal (IStream* stream, BSTR* pBstr)
 	RETURN_IF_NULL_ALLOC(*pBstr);
 
 	return S_OK;
+}
+
+static HRESULT Write (ISequentialStream* stream, const wchar_t* psz)
+{
+	return stream->Write(psz, (ULONG)wcslen(psz) * sizeof(wchar_t), nullptr);
+}
+
+static HRESULT Write (ISequentialStream* stream, const wchar_t* from, const wchar_t* to)
+{
+	return stream->Write(from, (ULONG)(to - from) * sizeof(wchar_t), nullptr);
+}
+
+HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmProps, BSTR* ppCmdLine)
+{
+	HRESULT hr;
+
+	wil::unique_variant projectDir;
+	hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, projectDir.addressof()); RETURN_IF_FAILED(hr);
+	RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
+
+	wil::unique_bstr output_dir;
+	hr = config->GetOutputDirectory(&output_dir); RETURN_IF_FAILED(hr);
+
+	vector_nothrow<com_ptr<IProjectFile>> asmFiles;
+
+	com_ptr<IVsEnumHierarchyItemsFactory> enumItemsFactory;
+	hr = serviceProvider->QueryService (SID_SVsEnumHierarchyItemsFactory, IID_PPV_ARGS(enumItemsFactory.addressof())); RETURN_IF_FAILED(hr);
+	
+	com_ptr<IEnumHierarchyItems> enumItems;
+	hr = enumItemsFactory->EnumHierarchyItems(hier, VSEHI_Leaf | VSEHI_OmitHier, VSITEMID_ROOT, &enumItems); RETURN_IF_FAILED(hr);
+
+	VSITEMSELECTION itemsel;
+	ULONG fetched;
+	while (SUCCEEDED(enumItems->Next(1, &itemsel, &fetched)) && fetched)
+	{
+		wil::unique_variant obj;
+		if (SUCCEEDED(hier->GetProperty(itemsel.itemid, VSHPROPID_BrowseObject, &obj)) && obj.vt == VT_DISPATCH)
+		{
+			com_ptr<IProjectFile> file;
+			if (SUCCEEDED(obj.pdispVal->QueryInterface(&file)))
+			{
+				BuildToolKind tool;
+				auto hr = file->get_BuildTool(&tool); RETURN_IF_FAILED(hr);
+				if (tool == BuildToolKind::Assembler)
+				{
+					bool pushed = asmFiles.try_push_back(std::move(file)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+				}
+			}
+		}
+	};
+
+	if (asmFiles.empty())
+		return (*ppCmdLine = nullptr), S_OK;
+
+	com_ptr<IStream> cmdLine;
+	hr = CreateStreamOnHGlobal (nullptr, TRUE, &cmdLine); RETURN_IF_FAILED(hr);
+
+	wil::unique_hlocal_string moduleFilename;
+	hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, moduleFilename); RETURN_IF_FAILED(hr);
+	auto fnres = PathFindFileName(moduleFilename.get()); RETURN_HR_IF(CO_E_BAD_PATH, fnres == moduleFilename.get());
+	bool hasSpaces = !!wcschr(moduleFilename.get(), L' ');
+	if (hasSpaces)
+	{
+		hr = Write(cmdLine, L"\""); RETURN_IF_FAILED(hr);
+	}
+	hr = Write(cmdLine, moduleFilename.get(), fnres); RETURN_IF_FAILED(hr);
+	hr = Write(cmdLine, L"sjasmplus.exe"); RETURN_IF_FAILED(hr);
+	if (hasSpaces)
+	{
+		hr = Write(cmdLine, L"\""); RETURN_IF_FAILED(hr);
+	}
+	hr = Write(cmdLine, L" --fullpath"); RETURN_IF_FAILED(hr);
+
+	auto addOutputPathParam = [&cmdLine, output_dir=output_dir.get(), project_dir=projectDir.bstrVal](const wchar_t* paramName, const wchar_t* output_filename) -> HRESULT
+		{
+			wil::unique_hlocal_string outputFilePath;
+			auto hr = PathAllocCombine (output_dir, output_filename, PathFlags, &outputFilePath); RETURN_IF_FAILED(hr);
+			auto outputFilePathRelativeUgly = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(outputFilePathRelativeUgly);
+			BOOL bRes = PathRelativePathToW (outputFilePathRelativeUgly.get(), project_dir, FILE_ATTRIBUTE_DIRECTORY, outputFilePath.get(), 0); RETURN_HR_IF(CS_E_INVALID_PATH, !bRes);
+			size_t len = wcslen(outputFilePathRelativeUgly.get());
+			auto outputFilePathRelative = wil::make_hlocal_string_nothrow(nullptr, len); RETURN_IF_NULL_ALLOC(outputFilePathRelative);
+			hr = PathCchCanonicalizeEx (outputFilePathRelative.get(), len + 1, outputFilePathRelativeUgly.get(), PathFlags); RETURN_IF_FAILED(hr);
+			hr = Write(cmdLine, paramName); RETURN_IF_FAILED(hr);
+			hr = Write(cmdLine, outputFilePathRelative.get()); RETURN_IF_FAILED(hr);
+			return S_OK;
+		};
+
+	// --raw=...
+	wil::unique_bstr output_filename;
+	hr = config->GetOutputFileName(&output_filename); RETURN_IF_FAILED(hr);
+	hr = addOutputPathParam (L" --raw=", output_filename.get()); RETURN_IF_FAILED(hr);
+
+	// --sld=...
+	wil::unique_bstr sld_filename;
+	hr = config->GetSldFileName (&sld_filename); RETURN_IF_FAILED(hr);
+	hr = addOutputPathParam (L" --sld=", sld_filename.get()); RETURN_IF_FAILED(hr);
+
+	// --outprefix
+	hr = addOutputPathParam (L" --outprefix=", L""); RETURN_IF_FAILED(hr);
+
+	// --lst
+	VARIANT_BOOL saveListing;
+	hr = asmProps->get_SaveListing(&saveListing); RETURN_IF_FAILED(hr);
+	if (saveListing)
+	{
+		wil::unique_bstr listingFilename;
+		hr = asmProps->get_SaveListingFilename(&listingFilename); RETURN_IF_FAILED(hr);
+		if (listingFilename && listingFilename.get()[0])
+		{
+			hr = addOutputPathParam (L" --lst=", listingFilename.get()); RETURN_IF_FAILED(hr);
+		}
+	}
+
+	// input files
+	for (uint32_t i = 0; i < asmFiles.size(); i++)
+	{
+		IProjectFile* file = asmFiles[i];
+		wil::unique_bstr fileRelativePath;
+		hr = file->get_Path(&fileRelativePath);
+		if (SUCCEEDED(hr))
+		{
+			hr = Write(cmdLine, L" "); RETURN_IF_FAILED(hr);
+			hr = Write(cmdLine, fileRelativePath.get()); RETURN_IF_FAILED(hr);
+		}
+	}
+
+	return MakeBstrFromStreamOnHGlobal (cmdLine, ppCmdLine);
 }
