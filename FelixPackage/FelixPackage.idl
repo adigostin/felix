@@ -25,6 +25,8 @@ library ATLProject1Lib
 	{
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
 
+		HRESULT GetHierarchy (REFIID riid, void** ppvObject);
+
 		[id(dispidAssemblerProperties), propget] HRESULT AssemblerProperties ([out, retval] IProjectConfigAssemblerProperties** ppProps);
 
 		// Same object as AssemblerProperties, kept for backward compatibility
@@ -45,8 +47,6 @@ library ATLProject1Lib
 		[propput] HRESULT PlatformName (BSTR pbstr);
 
 		HRESULT GetOutputDirectory ([out, retval] BSTR* pbstr);
-		HRESULT GetOutputFileName ([out, retval] BSTR* pbstr);
-		HRESULT GetSldFileName ([out, retval] BSTR* pbstr);
 	};
 
 	[object, uuid(6109C4FD-C067-4120-9853-6A2D6682BCB0), dual, nonextensible, pointer_default(unique)]
@@ -65,6 +65,9 @@ library ATLProject1Lib
 		// It's called SaveListingFilename (as opposed to ListingFilename) so it appears in the property grid right after SaveListing.
 		[id(dispidListingFilename), bindable, propget] HRESULT SaveListingFilename ([out, retval] BSTR* pFilename);
 		[id(dispidListingFilename), bindable, propput] HRESULT SaveListingFilename (BSTR filename);
+
+		HRESULT GetOutputFileName ([out, retval] BSTR* pbstr);
+		HRESULT GetSldFileName ([out, retval] BSTR* pbstr);
 	};
 
 	[uuid(A6C45AD3-6F11-4116-A65D-9083381843D8)]

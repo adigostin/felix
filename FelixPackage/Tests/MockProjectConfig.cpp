@@ -22,7 +22,7 @@ struct MockProjectConfig : IProjectConfig
 		hr = _weakRefToThis.InitInstance(this); RETURN_IF_FAILED(hr);
 		hr = PrePostBuildPageProperties_CreateInstance(false, &_preBuildProps); RETURN_IF_FAILED(hr);
 		hr = PrePostBuildPageProperties_CreateInstance(true, &_postBuildProps); RETURN_IF_FAILED(hr);
-		hr = AssemblerPageProperties_CreateInstance(&_assemblerProps); RETURN_IF_FAILED(hr);
+		hr = AssemblerPageProperties_CreateInstance(this, &_assemblerProps); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
@@ -46,6 +46,11 @@ struct MockProjectConfig : IProjectConfig
 	virtual HRESULT STDMETHODCALLTYPE get___id(BSTR* value) override
 	{
 		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetHierarchy (REFIID riid, void **ppvObject) override
+	{
+		return _hier->QueryInterface(riid, ppvObject);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_AssemblerProperties(IProjectConfigAssemblerProperties** ppProps) override
@@ -100,18 +105,6 @@ struct MockProjectConfig : IProjectConfig
 		if (project_dir.vt != VT_BSTR)
 			return E_FAIL;
 		*pbstr = project_dir.release().bstrVal;
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetOutputFileName(BSTR* pbstr) override
-	{
-		*pbstr = SysAllocString(L"output.bin"); RETURN_IF_NULL_ALLOC(*pbstr);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetSldFileName(BSTR* pbstr) override
-	{
-		*pbstr = SysAllocString(L"output.sld"); RETURN_IF_NULL_ALLOC(*pbstr);
 		return S_OK;
 	}
 	#pragma endregion

@@ -57,7 +57,7 @@ public:
 		
 		hr = _weakRefToThis.InitInstance(static_cast<IProjectConfig*>(this)); RETURN_IF_FAILED(hr);
 
-		hr = AssemblerPageProperties_CreateInstance(&_assemblerProps); RETURN_IF_FAILED(hr);
+		hr = AssemblerPageProperties_CreateInstance(this, &_assemblerProps); RETURN_IF_FAILED(hr);
 		hr = AdviseSink<IPropertyNotifySink>(_assemblerProps, _weakRefToThis, &_assemblerPropsAdviseToken); RETURN_IF_FAILED(hr);
 
 		hr = DebuggingPageProperties_CreateInstance(&_debugProps); RETURN_IF_FAILED(hr);
@@ -242,7 +242,7 @@ public:
 		wil::unique_bstr output_dir;
 		hr = GetOutputDirectory(&output_dir); RETURN_IF_FAILED(hr);
 		wil::unique_bstr output_filename;
-		hr = GetOutputFileName(&output_filename); RETURN_IF_FAILED(hr);
+		hr = _assemblerProps->GetOutputFileName(&output_filename); RETURN_IF_FAILED(hr);
 
 		wil::unique_hlocal_string exe_path;
 		hr = PathAllocCombine (output_dir.get(), output_filename.get(), PathFlags, &exe_path); RETURN_IF_FAILED(hr);
@@ -460,6 +460,11 @@ public:
 		return S_OK;
 	}
 
+	virtual HRESULT STDMETHODCALLTYPE GetHierarchy (REFIID riid, void** ppvObject) override
+	{
+		return _hier->QueryInterface(riid, ppvObject);
+	}
+
 	virtual HRESULT STDMETHODCALLTYPE get_AssemblerProperties (IProjectConfigAssemblerProperties** ppProps) override
 	{
 		return wil::com_copy_to_nothrow(_assemblerProps, ppProps);
@@ -531,18 +536,6 @@ public:
 		*pbstr = SysAllocString(output_dir.get()); RETURN_IF_NULL_ALLOC(*pbstr);
 		return S_OK;
 	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetOutputFileName (BSTR* pbstr) override
-	{
-		*pbstr = SysAllocString(L"output.bin"); RETURN_IF_NULL_ALLOC(*pbstr);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetSldFileName (BSTR* pbstr) override
-	{
-		*pbstr = SysAllocString(L"output.sld"); RETURN_IF_NULL_ALLOC(*pbstr);
-		return S_OK;
-	}
 	#pragma endregion
 
 	#pragma region IXmlParent
@@ -565,7 +558,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE CreateChild (DISPID dispidProperty, PCWSTR xmlElementName, IDispatch** childOut) override
 	{
 		if (dispidProperty == dispidAssemblerProperties || dispidProperty == dispidGeneralProperties)
-			return AssemblerPageProperties_CreateInstance ((IProjectConfigAssemblerProperties**)childOut);
+			return AssemblerPageProperties_CreateInstance (this, (IProjectConfigAssemblerProperties**)childOut);
 
 		if (dispidProperty == dispidDebuggingProperties)
 			return DebuggingPageProperties_CreateInstance ((IProjectConfigDebugProperties**)childOut);
@@ -611,19 +604,16 @@ struct AssemblerPageProperties
 	, IConnectionPointContainer
 {
 	ULONG _refCount = 0;
+	com_ptr<IWeakRef> _config;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
 	bool _saveListing = false;
 	wil::unique_bstr _listingFilename;
 
-	static HRESULT CreateInstance (IProjectConfigAssemblerProperties** to)
+	HRESULT InitInstance (IProjectConfig* config)
 	{
 		HRESULT hr;
-
-		auto p = com_ptr(new (std::nothrow) AssemblerPageProperties()); RETURN_IF_NULL_ALLOC(p);
-
-		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(p, &p->_propNotifyCP); RETURN_IF_FAILED(hr);
-
-		*to = p.detach();
+		hr = config->QueryInterface(IID_PPV_ARGS(_config.addressof())); RETURN_IF_FAILED(hr);
+		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
@@ -820,6 +810,18 @@ struct AssemblerPageProperties
 			_propNotifyCP->NotifyPropertyChanged(dispidListingFilename);
 		}
 
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetOutputFileName (BSTR* pbstr) override
+	{
+		*pbstr = SysAllocString(L"output.bin"); RETURN_IF_NULL_ALLOC(*pbstr);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetSldFileName (BSTR* pbstr) override
+	{
+		*pbstr = SysAllocString(L"output.sld"); RETURN_IF_NULL_ALLOC(*pbstr);
 		return S_OK;
 	}
 	#pragma endregion
@@ -1022,9 +1024,12 @@ struct DebuggingPageProperties
 	#pragma endregion
 };
 
-HRESULT AssemblerPageProperties_CreateInstance (IProjectConfigAssemblerProperties** to)
+HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigAssemblerProperties** to)
 {
-	return AssemblerPageProperties::CreateInstance(to);
+	auto p = com_ptr (new (std::nothrow) AssemblerPageProperties()); RETURN_IF_NULL_ALLOC(p);
+	auto hr = p->InitInstance(config); RETURN_IF_FAILED(hr);
+	*to = p.detach();
+	return S_OK;
 }
 
 HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to)

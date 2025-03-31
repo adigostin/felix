@@ -2,9 +2,11 @@
 #include "pch.h"
 #include "FelixPackage.h"
 #include "guids.h"
+#include "dispids.h"
 #include "shared/vector_nothrow.h"
 #include "shared/com.h"
 #include "Z80Xml.h"
+#include "../FelixPackageUi/resource.h"
 #include <vsmanaged.h>
 
 class ObjInfo
@@ -17,8 +19,13 @@ class ObjInfo
 public:
 	ObjInfo() = default;
 
-	HRESULT InitInstance (IDispatch* parent, DISPID dispid, IPropertyNotifySink* sink)
+	HRESULT InitInstance (IUnknown* parentUnk, DISPID dispid, IPropertyNotifySink* sink)
 	{
+		HRESULT hr;
+
+		com_ptr<IDispatch> parent;
+		hr = parentUnk->QueryInterface(&parent); RETURN_IF_FAILED(hr);
+
 		_parent = parent;
 		_dispid = dispid;
 
@@ -26,7 +33,7 @@ public:
 		wil::unique_variant result;
 		EXCEPINFO exception;
 		UINT uArgErr;
-		auto hr = _parent->Invoke (dispid, IID_NULL, LANG_INVARIANT, DISPATCH_PROPERTYGET,
+		hr = _parent->Invoke (dispid, IID_NULL, LANG_INVARIANT, DISPATCH_PROPERTYGET,
 			&params, &result, &exception, &uArgErr); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_UNEXPECTED, result.vt != VT_DISPATCH);
 		RETURN_HR_IF(E_POINTER, V_DISPATCH(&result) == nullptr);
@@ -115,10 +122,38 @@ public:
 		return S_OK;
 	}
 
-	IDispatch* GetChild() { return _child; }
+	IDispatch* GetParent() const { return _parent; }
+	IDispatch* GetChild() const { return _child; }
 };
 
-class PGPropertyPage : public IPropertyPage, IVsPropertyPage, IPropertyNotifySink
+static HRESULT SelectObjects (ULONG cObjects, IUnknown** ppUnk, DISPID dispid, 
+	vector_nothrow<ObjInfo>& objects, IPropertyNotifySink* sink)
+{
+	objects.clear();
+
+	bool reserved = objects.try_reserve(cObjects); RETURN_HR_IF(E_OUTOFMEMORY, !reserved);
+
+	for (ULONG i = 0; i < cObjects; i++)
+	{
+		ObjInfo oi;
+		auto hr = oi.InitInstance (ppUnk[i], dispid, sink); RETURN_IF_FAILED(hr);
+		objects.try_push_back (std::move(oi));
+	}
+
+	return S_OK;
+}
+
+static HRESULT SetSelectedObjects (const vector_nothrow<ObjInfo>& objects, IVSMDPropertyGrid* grid)
+{
+	vector_nothrow<IUnknown*> temp;
+	bool bres = temp.try_reserve(objects.size()); RETURN_HR_IF(E_OUTOFMEMORY, !bres);
+	for (auto& o : objects)
+		temp.try_push_back(o.GetChild());
+	return grid->SetSelectedObjects ((int)temp.size(), temp.data());
+}
+
+class PGPropertyPage : public IPropertyPage, IPropertyNotifySink
+	//, IVsPropertyPage, IVsPropertyPage2, IVsPropertyPageNotify
 {
 	ULONG _refCount = 0;
 	GUID _pageGuid;
@@ -127,12 +162,15 @@ class PGPropertyPage : public IPropertyPage, IVsPropertyPage, IPropertyNotifySin
 	com_ptr<IVSMDPropertyGrid> _grid;
 	com_ptr<IPropertyPageSite> _pageSite;
 	bool _pageDirty = false;
-	UINT _titleStringResId;
+	wil::unique_bstr title;
 
 public:
 	HRESULT InitInstance (UINT titleStringResId, REFGUID pageGuid, DISPID dispidChildObj)
 	{
-		_titleStringResId = titleStringResId;
+		HRESULT hr;
+		com_ptr<IVsShell> shell;
+		hr = serviceProvider->QueryService(SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
+		hr = shell->LoadPackageString(CLSID_FelixPackage, titleStringResId, &title); RETURN_IF_FAILED(hr);
 		_pageGuid = pageGuid;
 		_dispidChildObj = dispidChildObj;
 		return S_OK;
@@ -146,13 +184,9 @@ public:
 
 		if (   TryQI<IUnknown>(static_cast<IPropertyPage*>(this), riid, ppvObject)
 			|| TryQI<IPropertyPage>(this, riid, ppvObject)
-			|| TryQI<IVsPropertyPage>(this, riid, ppvObject)
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
 		)
 			return S_OK;
-
-		if (riid == IID_IVsPropertyPage2)
-			return E_NOINTERFACE;
 
 		return E_NOINTERFACE;
 	}
@@ -161,15 +195,6 @@ public:
 
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
-
-	static HRESULT SetSelectedObjects (vector_nothrow<ObjInfo>& objects, IVSMDPropertyGrid* grid)
-	{
-		vector_nothrow<IUnknown*> temp;
-		bool bres = temp.try_reserve(objects.size()); RETURN_HR_IF(E_OUTOFMEMORY, !bres);
-		for (auto& o : objects)
-			temp.try_push_back(o.GetChild());
-		return grid->SetSelectedObjects ((int)temp.size(), temp.data());
-	}
 
 	#pragma region IPropertyPage
 	virtual HRESULT STDMETHODCALLTYPE SetPageSite (IPropertyPageSite* pPageSite) override
@@ -197,6 +222,7 @@ public:
 
 		HWND op = ::SetParent (hwnd, hWndParent); RETURN_LAST_ERROR_IF(!op);
 
+		// When switching between pages, VS calls Activate but not Move. Need to arrange the page here too.
 		BOOL bRes = ::MoveWindow (hwnd, pRect->left, pRect->top, pRect->right - pRect->left, pRect->bottom - pRect->top, TRUE);
 		RETURN_LAST_ERROR_IF(!bRes);
 
@@ -216,36 +242,13 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE GetPageInfo(PROPPAGEINFO* pPageInfo) override
 	{
 		pPageInfo->cb = sizeof(PROPPAGEINFO);
-		wil::com_ptr_nothrow<IVsShell> shell;
-		auto hr = serviceProvider->QueryService(SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
-		wil::unique_bstr title;
-		hr = shell->LoadPackageString(CLSID_FelixPackage, _titleStringResId, &title); RETURN_IF_FAILED(hr);
 		pPageInfo->pszTitle = wil::make_cotaskmem_string_nothrow(title.get()).release(); RETURN_IF_NULL_ALLOC(pPageInfo->pszTitle);
-		pPageInfo->size = { 100, 100 };
-		pPageInfo->pszDocString = wil::make_cotaskmem_string_nothrow(L"pszDocString").release(); RETURN_IF_NULL_ALLOC(pPageInfo->pszDocString);
-		pPageInfo->pszHelpFile = wil::make_cotaskmem_string_nothrow(L"").release(); RETURN_IF_NULL_ALLOC(pPageInfo->pszHelpFile);
-		pPageInfo->dwHelpContext = 0;
 		return S_OK;
 	}
 
-	// The objects passed to this function are expected to implement ISettingsPageSelector.
 	virtual HRESULT STDMETHODCALLTYPE SetObjects(ULONG cObjects, IUnknown** ppUnk) override
 	{
-		HRESULT hr;
-
-		_objects.clear();
-
-		bool reserved = _objects.try_reserve(cObjects); RETURN_HR_IF(E_OUTOFMEMORY, !reserved);
-
-		for (ULONG i = 0; i < cObjects; i++)
-		{
-			com_ptr<IDispatch> parentObj;
-			hr = ppUnk[i]->QueryInterface(&parentObj); RETURN_IF_FAILED(hr);
-			
-			ObjInfo oi;
-			hr = oi.InitInstance (parentObj, _dispidChildObj, this); RETURN_IF_FAILED(hr);
-			_objects.try_push_back (std::move(oi));
-		}
+		auto hr = SelectObjects (cObjects, ppUnk, _dispidChildObj, _objects, this); RETURN_IF_FAILED(hr);
 
 		if (_grid)
 		{
@@ -257,15 +260,6 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE Show(UINT nCmdShow) override
 	{
-		RETURN_HR_IF (E_FAIL, !_grid);
-
-		HWND hwnd;
-		auto hr = _grid->get_Handle(&hwnd); RETURN_IF_FAILED(hr);
-
-		BOOL bRes = ::ShowWindow (hwnd, nCmdShow);
-		if (!bRes)
-			return HRESULT_FROM_WIN32(::GetLastError());
-
 		return S_OK;
 	}
 
@@ -299,21 +293,12 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE Help(LPCOLESTR pszHelpDir) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		// Pressing F1 will cause VS to execute this.
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE TranslateAccelerator(MSG* pMsg) override
 	{
-		return E_NOTIMPL;
-	}
-	#pragma endregion
-
-	#pragma region IVsPropertyPage
-	virtual HRESULT STDMETHODCALLTYPE get_CategoryTitle (UINT iLevel, BSTR *pbstrCategory) override
-	{
-		// If your property page does not have a category and you would prefer it to show
-		// on the top level of the tree view directly under the appropriate top-level category,
-		// then either implement IPropertyPage alone, or return E_NOTIMPL from this method.
 		return E_NOTIMPL;
 	}
 	#pragma endregion
@@ -336,6 +321,257 @@ HRESULT MakePGPropertyPage (UINT titleStringResId, REFGUID pageGuid, DISPID disp
 {
 	com_ptr<PGPropertyPage> p = new (std::nothrow) PGPropertyPage(); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance(titleStringResId, pageGuid, dispidChildObj); RETURN_IF_FAILED(hr);
+	*to = p.detach();
+	return S_OK;
+}
+
+// ============================================================================
+
+class AsmPropertyPage : public IPropertyPage, IPropertyNotifySink
+	//, IVsPropertyPage, IVsPropertyPage2, IVsPropertyPageNotify
+{
+	ULONG _refCount = 0;
+	vector_nothrow<ObjInfo> _objects;
+	com_ptr<IVSMDPropertyGrid> _grid;
+	HWND _staticHWnd = nullptr;
+	HWND _editHWnd = nullptr;
+	com_ptr<IPropertyPageSite> _pageSite;
+	bool _pageDirty = false;
+	wil::unique_bstr title;
+	HFONT _font;
+	LONG _staticHeight;
+	LONG _editHeight;
+
+public:
+	HRESULT InitInstance()
+	{
+		HRESULT hr;
+		com_ptr<IVsShell> shell;
+		hr = serviceProvider->QueryService(SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
+		hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_ASSEMBLER_PROP_PAGE_TITLE, &title); RETURN_IF_FAILED(hr);
+
+		com_ptr<IVsFontAndColorStorage> fcs;
+		hr = serviceProvider->QueryService(SID_SVsFontAndColorStorage, IID_PPV_ARGS(fcs.addressof())); RETURN_IF_FAILED(hr);
+		hr = fcs->OpenCategory(GUID_DialogsAndToolWindowsFC, FCSF_READONLY | FCSF_LOADDEFAULTS); RETURN_IF_FAILED(hr);
+		LOGFONTW lf = { };
+		hr = fcs->GetFont(&lf, NULL); RETURN_IF_FAILED(hr);
+		fcs->CloseCategory();
+
+		_font = CreateFontIndirectW(&lf);
+		_staticHeight = 3 * abs(lf.lfHeight) / 2;
+		_editHeight = 5 * abs(lf.lfHeight);
+
+		return S_OK;
+	}
+
+	~AsmPropertyPage()
+	{
+		::DestroyWindow(_staticHWnd);
+		::DestroyWindow(_editHWnd);
+		::DeleteObject(_font);
+	}
+
+	#pragma region IUnknown
+	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
+	{
+		RETURN_HR_IF(E_POINTER, !ppvObject);
+		*ppvObject = nullptr;
+
+		if (   TryQI<IUnknown>(static_cast<IPropertyPage*>(this), riid, ppvObject)
+			|| TryQI<IPropertyPage>(this, riid, ppvObject)
+			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
+			)
+			return S_OK;
+
+		return E_NOINTERFACE;
+	}
+
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
+
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
+	#pragma endregion
+
+	HRESULT GetCommandLineText (BSTR* pText)
+	{
+		if (_objects.empty())
+		{
+			*pText = nullptr;
+			return S_OK;
+		}
+
+		if (_objects.size() > 1)
+		{
+			*pText = SysAllocString(L"<multiple selection>");
+			return S_OK;
+		}
+
+		com_ptr<IProjectConfig> config;
+		auto hr = _objects.front().GetParent()->QueryInterface(&config); RETURN_IF_FAILED(hr);
+		
+		com_ptr<IVsHierarchy> hier;
+		hr = config->GetHierarchy(IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
+
+		com_ptr<IProjectConfigAssemblerProperties> asmProps;
+		hr = _objects.front().GetChild()->QueryInterface(&asmProps); RETURN_IF_FAILED(hr);
+
+		return MakeSjasmCommandLine(hier, config, asmProps, pText);
+	}
+
+	#pragma region IPropertyPage
+	virtual HRESULT STDMETHODCALLTYPE SetPageSite (IPropertyPageSite* pPageSite) override
+	{
+		_pageSite = pPageSite;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE Activate(HWND hWndParent, LPCRECT pRect, BOOL bModal) override
+	{
+		com_ptr<IVSMDPropertyBrowser> browser;
+		auto hr = serviceProvider->QueryService(SID_SVSMDPropertyBrowser, &browser); RETURN_IF_FAILED(hr);
+
+		com_ptr<IVSMDPropertyGrid> grid;
+		hr = browser->CreatePropertyGrid(&grid); RETURN_IF_FAILED(hr);
+
+		HWND gridHWnd;
+		hr = grid->get_Handle(&gridHWnd); RETURN_IF_FAILED(hr);
+
+		HWND op = ::SetParent (gridHWnd, hWndParent); RETURN_LAST_ERROR_IF(!op);
+
+		// When switching between pages, VS calls Activate but not Move. Need to arrange the page here too.
+		BOOL bres = ::MoveWindow (gridHWnd, pRect->left, pRect->top, pRect->right - pRect->left, 
+			pRect->bottom - pRect->top - _editHeight - _staticHeight - _staticHeight / 2, TRUE);
+		RETURN_LAST_ERROR_IF(!bres);
+
+		HWND staticHWnd = CreateWindowW (L"STATIC", L"Assembler Command Line", WS_VISIBLE | WS_CHILD,
+			pRect->left, pRect->bottom - _editHeight - _staticHeight, pRect->right - pRect->left, _staticHeight,
+			hWndParent, NULL, NULL, NULL); RETURN_LAST_ERROR_IF(!staticHWnd);
+		::SendMessage (staticHWnd, WM_SETFONT, (WPARAM)_font, TRUE);
+
+		wil::unique_bstr cmdLine;
+		hr = GetCommandLineText (&cmdLine); RETURN_IF_FAILED(hr);
+		HWND editHWnd = CreateWindowW (L"EDIT", cmdLine.get(), WS_VISIBLE | WS_CHILD | WS_BORDER | WS_VSCROLL | ES_READONLY | ES_AUTOVSCROLL | ES_MULTILINE,
+			pRect->left, pRect->bottom - _editHeight, pRect->right - pRect->left, _editHeight,
+			hWndParent, NULL, NULL, NULL); RETURN_LAST_ERROR_IF(!editHWnd);
+		::SendMessage (editHWnd, WM_SETFONT, (WPARAM)_font, TRUE);
+
+		hr = SetSelectedObjects (_objects, grid); RETURN_IF_FAILED(hr);
+
+		_grid = std::move(grid);
+		_staticHWnd = staticHWnd;
+		_editHWnd = editHWnd;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE Deactivate() override
+	{
+		_grid->Dispose();
+		_grid = nullptr;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetPageInfo(PROPPAGEINFO* pPageInfo) override
+	{
+		pPageInfo->cb = sizeof(PROPPAGEINFO);
+		pPageInfo->pszTitle = wil::make_cotaskmem_string_nothrow(title.get()).release(); RETURN_IF_NULL_ALLOC(pPageInfo->pszTitle);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE SetObjects(ULONG cObjects, IUnknown** ppUnk) override
+	{
+		auto hr = SelectObjects (cObjects, ppUnk, dispidAssemblerProperties, _objects, this); RETURN_IF_FAILED(hr);
+
+		if (_grid)
+		{
+			hr = SetSelectedObjects (_objects, _grid); RETURN_IF_FAILED(hr);
+		}
+
+		if (_editHWnd)
+		{
+			wil::unique_bstr cmdLine;
+			hr = GetCommandLineText (&cmdLine); RETURN_IF_FAILED(hr);
+			::SetWindowText (_editHWnd, cmdLine.get());
+		}
+
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE Show(UINT nCmdShow) override
+	{
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE Move(LPCRECT pRect) override
+	{
+		RETURN_HR_IF (E_FAIL, !_grid);
+
+		HWND gridHWnd;
+		auto hr = _grid->get_Handle(&gridHWnd); RETURN_IF_FAILED(hr);
+
+		BOOL bres = ::MoveWindow (gridHWnd, pRect->left, pRect->top, pRect->right - pRect->left,
+			pRect->bottom - pRect->top - _editHeight - _staticHeight - _staticHeight / 2, TRUE);
+		RETURN_LAST_ERROR_IF(!bres);
+
+		bres = ::MoveWindow (_staticHWnd, pRect->left, pRect->bottom - _editHeight - _staticHeight,
+			pRect->right - pRect->left, _staticHeight, TRUE);
+
+		bres = ::MoveWindow (_editHWnd, pRect->left, pRect->bottom - _editHeight,
+			pRect->right - pRect->left, _editHeight, TRUE);
+		RETURN_LAST_ERROR_IF(!bres);
+
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE IsPageDirty(void) override
+	{
+		return _pageDirty ? S_OK : S_FALSE;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE Apply() override
+	{
+		for (auto& oi : _objects)
+		{
+			auto hr = oi.Apply(); RETURN_IF_FAILED(hr);
+		}
+
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE Help(LPCOLESTR pszHelpDir) override
+	{
+		// Pressing F1 will cause VS to execute this.
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE TranslateAccelerator(MSG* pMsg) override
+	{
+		return E_NOTIMPL;
+	}
+	#pragma endregion
+
+	#pragma region IPropertyNotifySink
+	virtual HRESULT STDMETHODCALLTYPE OnChanged (DISPID dispID) override
+	{
+		_pageDirty = true;
+		_pageSite->OnStatusChange (PROPPAGESTATUS_DIRTY | PROPPAGESTATUS_VALIDATE);
+
+		wil::unique_bstr cmdLine;
+		GetCommandLineText (&cmdLine);
+		::SetWindowText (_editHWnd, cmdLine.get());
+
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnRequestEdit (DISPID dispID) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+	#pragma endregion
+};
+
+HRESULT MakeAsmPropertyPage (IPropertyPage** to)
+{
+	auto p = com_ptr(new (std::nothrow) AsmPropertyPage()); RETURN_IF_NULL_ALLOC(p);
+	auto hr = p->InitInstance(); RETURN_IF_FAILED(hr);
 	*to = p.detach();
 	return S_OK;
 }

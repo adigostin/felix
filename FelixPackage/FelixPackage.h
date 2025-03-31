@@ -65,6 +65,7 @@ HRESULT MakeProjectFile (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentI
 HRESULT ProjectConfig_CreateInstance (IVsHierarchy* hier, IProjectConfig** to);
 HRESULT Z80ProjectFactory_CreateInstance (IServiceProvider* sp, IVsProjectFactory** to);
 HRESULT MakePGPropertyPage (UINT titleStringResId, REFGUID pageGuid, DISPID dispidChildObj, IPropertyPage** to);
+HRESULT MakeAsmPropertyPage (IPropertyPage** to);
 HRESULT SimulatorWindowPane_CreateInstance (IVsWindowPane** to);
 HRESULT Z80AsmLanguageInfo_CreateInstance (IVsLanguageInfo** to);
 HRESULT MakeDebugPortSupplier (IDebugPortSupplier2** to);
@@ -72,7 +73,7 @@ HRESULT MakeDebugEngine (IDebugEngine2** to);
 HRESULT MakeLaunchOptions (IFelixLaunchOptions** ppOptions);
 HRESULT GetDefaultProjectFileExtension (BSTR* ppExt);
 HRESULT SetErrorInfo1 (HRESULT errorHR, ULONG packageStringResId, LPCWSTR arg1);
-HRESULT AssemblerPageProperties_CreateInstance (IProjectConfigAssemblerProperties** to);
+HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigAssemblerProperties** to);
 HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to);
 HRESULT MakeCustomBuildToolProperties (ICustomBuildToolProperties** to);
 HRESULT MakeProjectConfigBuilder (IVsHierarchy* hier, IProjectConfig* config,

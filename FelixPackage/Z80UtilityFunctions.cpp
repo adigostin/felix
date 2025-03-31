@@ -347,12 +347,12 @@ HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProje
 
 	// --raw=...
 	wil::unique_bstr output_filename;
-	hr = config->GetOutputFileName(&output_filename); RETURN_IF_FAILED(hr);
+	hr = asmProps->GetOutputFileName(&output_filename); RETURN_IF_FAILED(hr);
 	hr = addOutputPathParam (L" --raw=", output_filename.get()); RETURN_IF_FAILED(hr);
 
 	// --sld=...
 	wil::unique_bstr sld_filename;
-	hr = config->GetSldFileName (&sld_filename); RETURN_IF_FAILED(hr);
+	hr = asmProps->GetSldFileName (&sld_filename); RETURN_IF_FAILED(hr);
 	hr = addOutputPathParam (L" --sld=", sld_filename.get()); RETURN_IF_FAILED(hr);
 
 	// --outprefix
