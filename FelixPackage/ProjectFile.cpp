@@ -32,7 +32,7 @@ struct ProjectFile
 	WeakRefToThis _weakRefToThis;
 
 public:
-	HRESULT InitInstance (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentItemId)
+	HRESULT InitInstance (VSITEMID itemId, IVsHierarchy* hier, VSITEMID parentItemId)
 	{
 		HRESULT hr;
 		_itemId = itemId;
@@ -170,6 +170,8 @@ public:
 			case VSHPROPID_Caption: // -2003
 			case VSHPROPID_Name: // -2012
 			case VSHPROPID_EditLabel: // -2026
+				if (!_pathRelativeToProjectDir || !_pathRelativeToProjectDir.get()[0])
+					return HRESULT_FROM_WIN32(ERROR_INVALID_NAME);
 				return InitVariantFromString (PathFindFileName(_pathRelativeToProjectDir.get()), pvar);
 
 			case VSHPROPID_Expandable: // -2006
@@ -798,6 +800,9 @@ public:
 
 		com_ptr<IVsHierarchy> hier;
 		hr = _hier->QueryInterface(&hier); RETURN_IF_FAILED_EXPECTED(hr);
+		com_ptr<IVsProject> project;
+		hr = _hier->QueryInterface(&project); RETURN_IF_FAILED(hr);
+
 		wil::unique_variant projectDir;
 		hr = hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
@@ -805,12 +810,7 @@ public:
 		wil::unique_hlocal_string oldFullPath;
 		hr = PathAllocCombine (projectDir.bstrVal, _pathRelativeToProjectDir.get(), PathFlags, oldFullPath.addressof()); RETURN_IF_FAILED(hr);
 
-		VSQueryEditResult fEditVerdict;
-		com_ptr<IVsQueryEditQuerySave2> queryEdit;
-		hr = serviceProvider->QueryService (SID_SVsQueryEditQuerySave, &queryEdit); RETURN_IF_FAILED(hr);
-		hr = queryEdit->QueryEditFiles (QEF_DisallowInMemoryEdits, 1, oldFullPath.addressof(), nullptr, nullptr, &fEditVerdict, nullptr); LOG_IF_FAILED(hr);
-		if (FAILED(hr) || (fEditVerdict != QER_EditOK))
-			return OLE_E_PROMPTSAVECANCELLED;
+		hr = QueryEditProjectFile(hier); RETURN_IF_FAILED_EXPECTED(hr);
 
 		// Check if the document is in the cache and rename document in the cache.
 		com_ptr<IVsRunningDocumentTable> pRDT;
@@ -830,9 +830,6 @@ public:
 		//	if (punkRDTHier != punkMyHier)
 		//		return S_OK;
 		//}
-
-		com_ptr<IVsProject> project;
-		hr = _hier->QueryInterface(&project); RETURN_IF_FAILED(hr);
 
 		auto relativeDir = wil::make_hlocal_string_nothrow(_pathRelativeToProjectDir.get());
 		hr = PathCchRemoveFileSpec (relativeDir.get(), wcslen(_pathRelativeToProjectDir.get()) + 1); RETURN_IF_FAILED(hr);
@@ -914,7 +911,7 @@ public:
 
 // ============================================================================
 
-HRESULT MakeProjectFile (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentItemId, IProjectFile** file)
+HRESULT MakeProjectFile (VSITEMID itemId, IVsHierarchy* hier, VSITEMID parentItemId, IProjectFile** file)
 {
 	com_ptr<ProjectFile> p = new (std::nothrow) ProjectFile(); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance(itemId, hier, parentItemId); RETURN_IF_FAILED(hr);

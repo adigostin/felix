@@ -61,7 +61,7 @@ inline HRESULT InitVariantFromVSITEMID (VSITEMID itemid, VARIANT* pvar)
 }
 
 HRESULT MakeFelixProject (IServiceProvider* sp, LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject);
-HRESULT MakeProjectFile (VSITEMID itemId, IVsUIHierarchy* hier, VSITEMID parentItemId, IProjectFile** file);
+HRESULT MakeProjectFile (VSITEMID itemId, IVsHierarchy* hier, VSITEMID parentItemId, IProjectFile** file);
 HRESULT ProjectConfig_CreateInstance (IVsHierarchy* hier, IProjectConfig** to);
 HRESULT Z80ProjectFactory_CreateInstance (IServiceProvider* sp, IVsProjectFactory** to);
 HRESULT MakePGPropertyPage (UINT titleStringResId, REFGUID pageGuid, DISPID dispidChildObj, IPropertyPage** to);
@@ -81,3 +81,5 @@ HRESULT MakeProjectConfigBuilder (IVsHierarchy* hier, IProjectConfig* config,
 HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to);
 HRESULT ShowCommandLinePropertyBuilder (HWND hwndParent, BSTR valueBefore, BSTR* valueAfter);
 HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmProps, BSTR* ppCmdLine);
+BOOL LUtilFixFilename (wchar_t* strName);
+HRESULT QueryEditProjectFile (IVsHierarchy* hier);

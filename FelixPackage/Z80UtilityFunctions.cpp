@@ -386,3 +386,57 @@ HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProje
 
 	return MakeBstrFromStreamOnHGlobal (cmdLine, ppCmdLine);
 }
+
+BOOL LUtilFixFilename (wchar_t* strName)
+{
+	// The shell removes leading spaces, and trailing dots and spaces.
+	// Let's remove them too, cause we don't want to create a file that the shell doesn't understand.
+	BOOL bFixupDone = FALSE;
+
+	// Trailing dots and spaces.
+	wchar_t* p = strName + wcslen(strName);
+	if (p[-1] == ' ' || p[-1] == '.')
+	{
+		while (p > strName && (p[-1] == ' ' || p[-1] == '.'))
+			p--;
+		p[0] = 0;
+		bFixupDone = TRUE;
+	}
+
+	// Leading spaces.
+	if (strName[0] == ' ')
+	{
+		wchar_t* first = strName;
+		while(first[0] == ' ')
+			first++;
+		memmove(strName, first, wcslen(first) * sizeof(wchar_t));
+		bFixupDone = TRUE;
+	}
+
+	return bFixupDone;
+}
+
+HRESULT QueryEditProjectFile (IVsHierarchy* hier)
+{
+	HRESULT hr;
+
+	com_ptr<IPersistFileFormat> pff;
+	hr = hier->QueryInterface(&pff); RETURN_IF_FAILED(hr);
+
+	BOOL dirty = FALSE;
+	if (SUCCEEDED(pff->IsDirty(&dirty)) && dirty)
+		return S_OK;
+
+	wil::unique_cotaskmem_string fullPathName;
+	DWORD unused;
+	hr = pff->GetCurFile (&fullPathName, &unused); RETURN_IF_FAILED(hr);
+
+	VSQueryEditResult fEditVerdict;
+	com_ptr<IVsQueryEditQuerySave2> queryEdit;
+	hr = serviceProvider->QueryService (SID_SVsQueryEditQuerySave, &queryEdit); RETURN_IF_FAILED(hr);
+	hr = queryEdit->QueryEditFiles (QEF_DisallowInMemoryEdits, 1, fullPathName.addressof(), nullptr, nullptr, &fEditVerdict, nullptr); LOG_IF_FAILED(hr);
+	if (FAILED(hr) || (fEditVerdict != QER_EditOK))
+		return OLE_E_PROMPTSAVECANCELLED;
+	
+	return S_OK;
+}
