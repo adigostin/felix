@@ -356,19 +356,6 @@ public:
 		return S_OK;
 	}
 
-	static HRESULT create_instance (const wil::com_ptr_nothrow<IFromType>* entries, size_t count, IEnumeratorType** to) noexcept
-	{
-		auto p = wil::com_ptr_nothrow(new (std::nothrow) enumerator()); RETURN_IF_NULL_ALLOC(p);
-		for (size_t i = 0; i < count; i++)
-		{
-			wil::com_ptr_nothrow<IEntryType> e;
-			auto hr = wil::com_query_to_nothrow(entries[i], &e); RETURN_IF_FAILED(hr);
-			bool added = p->_entries.try_push_back(std::move(e)); RETURN_HR_IF(E_OUTOFMEMORY, !added);
-		}
-		*to = p.detach();
-		return S_OK;
-	}
-
 	static HRESULT create_instance (vector_nothrow<com_ptr<IEntryType>>&& entries, IEnumeratorType** to) noexcept
 	{
 		auto p = com_ptr(new (std::nothrow) enumerator()); RETURN_IF_NULL_ALLOC(p);
