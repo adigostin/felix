@@ -233,8 +233,8 @@ public:
 		return _ptr[index];
 	}
 
-	template<typename U> requires std::equality_comparable_with<T, U>
-	iterator find(const U& e)
+	template<typename U> //requires std::equality_comparable_with<T, U> // commented because it currently doesn't work with move-only types such as com_ptr
+	iterator find(const U& e) const
 	{
 		auto p = _ptr;
 		auto end = _ptr + _size;
