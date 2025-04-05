@@ -540,7 +540,7 @@ HRESULT inline SetErrorInfo (HRESULT errorHR, LPCWSTR messageFormat, ...)
 		return DispGetIDsOfNames (GetTypeInfo(), rgszNames, cNames, rgDispId); \
 	} \
 	virtual HRESULT STDMETHODCALLTYPE Invoke(DISPID dispIdMember, REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr) override final { \
-		return DispInvoke (this, GetTypeInfo(), dispIdMember, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr); \
+		return DispInvoke (static_cast<IDispatch*>(this), GetTypeInfo(), dispIdMember, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr); \
 	} \
 
 inline HRESULT copy_bstr (BSTR bstrFrom, BSTR* pbstrTo)
