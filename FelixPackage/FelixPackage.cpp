@@ -564,16 +564,24 @@ public:
 
 	HRESULT OpenFileOnProjectCreation(IVsHierarchy* pHierarchy)
 	{
-		wil::unique_variant first;
-		auto hr = pHierarchy->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &first); RETURN_IF_FAILED(hr);
+		com_ptr<IZ80ProjectProperties> rn;
+		auto hr = pHierarchy->QueryInterface(&rn); RETURN_IF_FAILED(hr);
 
-		com_ptr<IVsProject2> p2;
-		hr = pHierarchy->QueryInterface(&p2); RETURN_IF_FAILED(hr);
+		wil::unique_bstr filenames;
+		if (SUCCEEDED(rn->GetAutoOpenFiles(&filenames)))
+		{
+			// TODO: split by '|'
+			VSITEMID itemid;
+			hr = pHierarchy->ParseCanonicalName(filenames.get(), &itemid); RETURN_IF_FAILED_EXPECTED(hr);
 
-		com_ptr<IVsWindowFrame> frame;
-		hr = p2->OpenItem (V_VSITEMID(first.addressof()), LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &frame); RETURN_IF_FAILED(hr);
+			com_ptr<IVsProject2> p2;
+			hr = pHierarchy->QueryInterface(&p2); RETURN_IF_FAILED(hr);
 
-		hr = frame->Show(); RETURN_IF_FAILED(hr);
+			com_ptr<IVsWindowFrame> frame;
+			hr = p2->OpenItem (itemid, LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &frame); RETURN_IF_FAILED_EXPECTED(hr);
+
+			hr = frame->Show(); RETURN_IF_FAILED_EXPECTED(hr);
+		}
 
 		return S_OK;
 	}

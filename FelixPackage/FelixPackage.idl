@@ -152,6 +152,11 @@ library ATLProject1Lib
 
 		[id(dispidProjectGuid), propget] HRESULT Guid ([out, retval] BSTR* value);
 		[id(dispidProjectGuid), propput] HRESULT Guid (BSTR value);
+
+		[id(dispidAutoOpenFiles), propget] HRESULT AutoOpenFiles ([out, retval] BSTR* pbstrFilenames);
+		[id(dispidAutoOpenFiles), propput] HRESULT AutoOpenFiles ([in] BSTR bstrFilenames);
+
+		HRESULT GetAutoOpenFiles (BSTR* pbstrFilenames);
 	}
 
 	[uuid(AB38EBF9-C445-45EB-8C14-8656CA98A741)]

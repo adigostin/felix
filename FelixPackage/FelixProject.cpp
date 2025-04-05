@@ -64,6 +64,7 @@ class Z80Project
 	bool _closed = false;
 
 	WeakRefToThis _weakRefToThis;
+	wil::unique_bstr _autoOpenFiles;
 
 	static HRESULT CreateProjectFilesFromTemplate (IServiceProvider* sp, const wchar_t* fromProjFilePath, const wchar_t* location, const wchar_t* filename)
 	{
@@ -2444,6 +2445,23 @@ public:
 
 		return S_OK;
 	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_AutoOpenFiles (BSTR *pbstrFilenames) override
+	{
+		// Never save this to XML. It's supposed to be added by hand in template files only.
+		*pbstrFilenames = nullptr;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_AutoOpenFiles (BSTR bstrFilenames) override
+	{
+		if (!bstrFilenames || !bstrFilenames[0])
+			return (_autoOpenFiles.reset()), S_OK;
+
+		auto f = wil::make_bstr_nothrow(bstrFilenames); RETURN_IF_NULL_ALLOC(f);
+		_autoOpenFiles = std::move(f);
+		return S_OK;
+	}
 	#pragma endregion
 
 	#pragma region IXmlParent
@@ -2514,6 +2532,16 @@ public:
 	{
 		_firstChild = next;
 	}
+
+	virtual HRESULT GetAutoOpenFiles (BSTR* pbstrFilenames) override
+	{
+		if (!_autoOpenFiles || !_autoOpenFiles.get()[0])
+			return E_NOT_SET;
+
+		auto f = SysAllocString(_autoOpenFiles.get()); RETURN_IF_NULL_ALLOC(f);
+		*pbstrFilenames = f;
+		return S_OK;
+	}
 	#pragma endregion
 
 	#pragma region IPropertyNotifySink
@@ -2564,13 +2592,26 @@ public:
 	#pragma endregion
 
 	#pragma region IVsPerPropertyBrowsing
-	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL *pfHide) override { return E_NOTIMPL; }
+	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL *pfHide) override
+	{
+		if (dispid == dispidAutoOpenFiles)
+			return (*pfHide = TRUE), S_OK;
+
+		return E_NOTIMPL;
+	}
 
 	virtual HRESULT STDMETHODCALLTYPE DisplayChildProperties (DISPID dispid, BOOL *pfDisplay) override { return E_NOTIMPL; }
 
 	virtual HRESULT STDMETHODCALLTYPE GetLocalizedPropertyInfo (DISPID dispid, LCID localeID, BSTR *pbstrLocalizedName, BSTR *pbstrLocalizeDescription) override { return E_NOTIMPL; }
 
-	virtual HRESULT STDMETHODCALLTYPE HasDefaultValue (DISPID dispid, BOOL *fDefault) override { return E_NOTIMPL; }
+	virtual HRESULT STDMETHODCALLTYPE HasDefaultValue (DISPID dispid, BOOL *fDefault) override
+	{
+		if (dispid == dispidAutoOpenFiles)
+			// Never save this to XML. It's supposed to be added by hand in template files only.
+			return (*fDefault = TRUE), S_OK;
+
+		return E_NOTIMPL;
+	}
 
 	virtual HRESULT STDMETHODCALLTYPE IsPropertyReadOnly (DISPID dispid, BOOL *fReadOnly) override
 	{

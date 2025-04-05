@@ -79,6 +79,21 @@ struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IProjectItemParent
 	{
 		return E_NOTIMPL;
 	}
+
+    virtual HRESULT STDMETHODCALLTYPE get_AutoOpenFiles(BSTR *pbstrFilenames) override
+	{
+		return E_NOTIMPL;
+	}
+        
+    virtual HRESULT STDMETHODCALLTYPE put_AutoOpenFiles (BSTR bstrFilenames) override
+	{
+		return E_NOTIMPL;
+	}
+        
+    virtual HRESULT STDMETHODCALLTYPE GetAutoOpenFiles (BSTR *pbstrFilenames) override
+	{
+		return E_NOTIMPL;
+	}
 	#pragma endregion
 
 	#pragma region IVsHierarchy
