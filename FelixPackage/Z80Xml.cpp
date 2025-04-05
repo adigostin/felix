@@ -111,7 +111,7 @@ struct EnsureElementCreated
 	}
 };
 
-static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, DWORD flags, IXmlWriterLite* writer, EnsureElementCreated* ensureOuterElementCreated)
+static HRESULT SaveToXmlInternal (IDispatch* obj, PCWSTR elementName, DWORD flags, IXmlWriterLite* writer, EnsureElementCreated* ensureOuterElementCreated)
 {
 	HRESULT hr;
 
@@ -124,199 +124,195 @@ static HRESULT SaveToXmlInternal (IUnknown* obj, PCWSTR elementName, DWORD flags
 		hr = ensureElementCreated.CreateStartElement(); RETURN_IF_FAILED(hr);
 	}
 
-	wil::com_ptr_nothrow<IDispatch> objAsDispatch;
-	if (SUCCEEDED(obj->QueryInterface(&objAsDispatch)))
-	{
-		wil::com_ptr_nothrow<IXmlParent> objAsXmlParent;
-		hr = obj->QueryInterface(&objAsXmlParent); RETURN_HR_IF(hr, FAILED(hr) && (hr != E_NOINTERFACE));
+	wil::com_ptr_nothrow<IXmlParent> objAsXmlParent;
+	hr = obj->QueryInterface(&objAsXmlParent); RETURN_HR_IF(hr, FAILED(hr) && (hr != E_NOINTERFACE));
 
-		wil::com_ptr_nothrow<ITypeInfo> typeInfo;
-		auto hr = objAsDispatch->GetTypeInfo(0, 0x0409, &typeInfo); RETURN_IF_FAILED(hr);
-		TYPEATTR* typeAttr;
-		hr = typeInfo->GetTypeAttr(&typeAttr); RETURN_IF_FAILED(hr);
-		auto releaseTypeAttr = wil::scope_exit([ti=typeInfo.get(), typeAttr] { ti->ReleaseTypeAttr(typeAttr); });
+	wil::com_ptr_nothrow<ITypeInfo> typeInfo;
+	hr = obj->GetTypeInfo(0, 0x0409, &typeInfo); RETURN_IF_FAILED(hr);
+	TYPEATTR* typeAttr;
+	hr = typeInfo->GetTypeAttr(&typeAttr); RETURN_IF_FAILED(hr);
+	auto releaseTypeAttr = wil::scope_exit([ti=typeInfo.get(), typeAttr] { ti->ReleaseTypeAttr(typeAttr); });
 	
-		wil::com_ptr_nothrow<IVsPerPropertyBrowsing> ppb;
-		obj->QueryInterface(&ppb);
+	wil::com_ptr_nothrow<IVsPerPropertyBrowsing> ppb;
+	obj->QueryInterface(&ppb);
 
-		vector_nothrow<ValueProperty> attributes;
-		vector_nothrow<ObjectProperty> childObjects;
-		vector_nothrow<ObjectCollectionProperty> childCollections;
+	vector_nothrow<ValueProperty> attributes;
+	vector_nothrow<ObjectProperty> childObjects;
+	vector_nothrow<ObjectCollectionProperty> childCollections;
 
-		for (WORD i = 0; i < typeAttr->cFuncs; i++)
+	for (WORD i = 0; i < typeAttr->cFuncs; i++)
+	{
+		FUNCDESC* fd;
+		hr = typeInfo->GetFuncDesc(i, &fd); RETURN_IF_FAILED(hr);
+		auto releaseFundDesc = wil::scope_exit([ti=typeInfo.get(), fd] { ti->ReleaseFuncDesc(fd); });
+		if (fd->memid == DISPID_VALUE)
+			continue;
+		if (fd->invkind == INVOKE_PROPERTYGET)
 		{
-			FUNCDESC* fd;
-			hr = typeInfo->GetFuncDesc(i, &fd); RETURN_IF_FAILED(hr);
-			auto releaseFundDesc = wil::scope_exit([ti=typeInfo.get(), fd] { ti->ReleaseFuncDesc(fd); });
-			if (fd->memid == DISPID_VALUE)
-				continue;
-			if (fd->invkind == INVOKE_PROPERTYGET)
+			wil::unique_bstr name;
+			UINT cNames;
+			hr = typeInfo->GetNames(fd->memid, &name, 1, &cNames); RETURN_IF_FAILED(hr);
+
+			BOOL hasDefaultValue = FALSE;
+			if (!(flags & SAVE_XML_FORCE_SERIALIZE_DEFAULTS) && ppb)
+				ppb->HasDefaultValue(fd->memid, &hasDefaultValue);
+
+			if (!hasDefaultValue)
 			{
-				wil::unique_bstr name;
-				UINT cNames;
-				hr = typeInfo->GetNames(fd->memid, &name, 1, &cNames); RETURN_IF_FAILED(hr);
+				DISPPARAMS params = { };
+				wil::unique_variant result;
+				EXCEPINFO exception;
+				UINT uArgErr;
+				hr = typeInfo->Invoke(obj, fd->memid, DISPATCH_PROPERTYGET, &params, &result, &exception, &uArgErr); RETURN_IF_FAILED(hr);
 
-				BOOL hasDefaultValue = FALSE;
-				if (!(flags & SAVE_XML_FORCE_SERIALIZE_DEFAULTS) && ppb)
-					ppb->HasDefaultValue(fd->memid, &hasDefaultValue);
-
-				if (!hasDefaultValue)
+				switch (fd->elemdescFunc.tdesc.vt)
 				{
-					DISPPARAMS params = { };
-					wil::unique_variant result;
-					EXCEPINFO exception;
-					UINT uArgErr;
-					hr = typeInfo->Invoke(obj, fd->memid, DISPATCH_PROPERTYGET, &params, &result, &exception, &uArgErr); RETURN_IF_FAILED(hr);
-
-					switch (fd->elemdescFunc.tdesc.vt)
+					case VT_UI1:
+					case VT_UI2:
+					case VT_UI4:
+					case VT_I1:
+					case VT_I2:
+					case VT_I4:
+						hr = VariantChangeTypeEx (&result, &result, InvariantLCID, 0, VT_BSTR); RETURN_IF_FAILED(hr);
+						[[fallthrough]];
+					case VT_BSTR:
 					{
-						case VT_UI1:
-						case VT_UI2:
-						case VT_UI4:
-						case VT_I1:
-						case VT_I2:
-						case VT_I4:
-							hr = VariantChangeTypeEx (&result, &result, InvariantLCID, 0, VT_BSTR); RETURN_IF_FAILED(hr);
-							[[fallthrough]];
-						case VT_BSTR:
+						wil::unique_bstr value;
+						if (result.bstrVal && result.bstrVal[0])
+						{
+							value = wil::make_bstr_nothrow(V_BSTR(&result)); RETURN_IF_NULL_ALLOC(value);
+						}
+						bool pushed = attributes.try_push_back(ValueProperty{ fd->memid, std::move(name), std::move(value) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+						break;
+					}
+
+					case VT_USERDEFINED:
+					{
+						wil::com_ptr_nothrow<ITypeInfo> refTypeInfo;
+						hr = typeInfo->GetRefTypeInfo(fd->elemdescFunc.tdesc.hreftype, &refTypeInfo); RETURN_IF_FAILED(hr);
+						TYPEATTR* refTypeAttr;
+						hr = refTypeInfo->GetTypeAttr(&refTypeAttr); RETURN_IF_FAILED(hr);
+						auto releaseRefTypeAttr = wil::scope_exit([ti=refTypeInfo.get(), refTypeAttr] { ti->ReleaseTypeAttr(refTypeAttr); });
+						if (refTypeAttr->typekind == TKIND_ENUM)
 						{
 							wil::unique_bstr value;
-							if (result.bstrVal && result.bstrVal[0])
-							{
-								value = wil::make_bstr_nothrow(V_BSTR(&result)); RETURN_IF_NULL_ALLOC(value);
-							}
+							hr = GetNameFromEnumValue (refTypeInfo.get(), refTypeAttr, V_I4(&result), &value); RETURN_IF_FAILED(hr);
 							bool pushed = attributes.try_push_back(ValueProperty{ fd->memid, std::move(name), std::move(value) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-							break;
 						}
-
-						case VT_USERDEFINED:
-						{
-							wil::com_ptr_nothrow<ITypeInfo> refTypeInfo;
-							hr = typeInfo->GetRefTypeInfo(fd->elemdescFunc.tdesc.hreftype, &refTypeInfo); RETURN_IF_FAILED(hr);
-							TYPEATTR* refTypeAttr;
-							hr = refTypeInfo->GetTypeAttr(&refTypeAttr); RETURN_IF_FAILED(hr);
-							auto releaseRefTypeAttr = wil::scope_exit([ti=refTypeInfo.get(), refTypeAttr] { ti->ReleaseTypeAttr(refTypeAttr); });
-							if (refTypeAttr->typekind == TKIND_ENUM)
-							{
-								wil::unique_bstr value;
-								hr = GetNameFromEnumValue (refTypeInfo.get(), refTypeAttr, V_I4(&result), &value); RETURN_IF_FAILED(hr);
-								bool pushed = attributes.try_push_back(ValueProperty{ fd->memid, std::move(name), std::move(value) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-							}
-							else
-								RETURN_HR(E_NOTIMPL);
-							break;
-						}
-
-						case VT_PTR:
-						{
-							// child object
-							wil::com_ptr_nothrow<ITypeInfo> refTypeInfo;
-							hr = typeInfo->GetRefTypeInfo(fd->elemdescFunc.tdesc.lptdesc->hreftype , &refTypeInfo); RETURN_IF_FAILED(hr);
-							TYPEATTR* refTypeAttr;
-							hr = refTypeInfo->GetTypeAttr(&refTypeAttr); RETURN_IF_FAILED(hr);
-							auto releaseRefTypeAttr = wil::scope_exit([ti=refTypeInfo.get(), refTypeAttr] { ti->ReleaseTypeAttr(refTypeAttr); });
-							RETURN_HR_IF(E_FAIL, refTypeAttr->typekind != TKIND_DISPATCH);
-							bool pushed = childObjects.try_push_back(ObjectProperty{ fd->memid, std::move(name), V_DISPATCH(&result) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-							break;
-						}
-
-						case VT_SAFEARRAY:
-						{
-							SAFEARRAY* sa = V_ARRAY(&result);
-							VARTYPE vt;
-							hr = SafeArrayGetVartype(sa, &vt); RETURN_IF_FAILED(hr);
-							RETURN_HR_IF(E_NOTIMPL, vt != VT_DISPATCH);
-							UINT dim = SafeArrayGetDim(sa);
-							RETURN_HR_IF(E_NOTIMPL, dim != 1);
-							LONG lbound;
-							hr = SafeArrayGetLBound(sa, 1, &lbound); RETURN_IF_FAILED(hr);
-							RETURN_HR_IF(E_NOTIMPL, lbound != 0);
-							LONG ubound;
-							hr = SafeArrayGetUBound(sa, 1, &ubound); RETURN_IF_FAILED(hr);
-
-							bool pushed = childCollections.try_push_back(ObjectCollectionProperty{ fd->memid, std::move(name), { } }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-
-							for (LONG i = 0; i <= ubound; i++)
-							{
-								com_ptr<IDispatch> obj;
-								hr = SafeArrayGetElement(sa, &i, &obj); RETURN_IF_FAILED(hr);
-								pushed = childCollections.back().value.try_push_back(std::move(obj)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-							}
-							break;
-						}
-
-						case VT_BOOL:
-						{
-							bool val = (V_BOOL(&result) == VARIANT_TRUE);
-							auto value = wil::make_bstr_nothrow(val ? L"True" : L"False"); RETURN_IF_NULL_ALLOC(value);
-							bool pushed = attributes.try_push_back(ValueProperty{ fd->memid, std::move(name), std::move(value) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-							break;
-						}
-
-						default:
+						else
 							RETURN_HR(E_NOTIMPL);
+						break;
 					}
+
+					case VT_PTR:
+					{
+						// child object
+						wil::com_ptr_nothrow<ITypeInfo> refTypeInfo;
+						hr = typeInfo->GetRefTypeInfo(fd->elemdescFunc.tdesc.lptdesc->hreftype , &refTypeInfo); RETURN_IF_FAILED(hr);
+						TYPEATTR* refTypeAttr;
+						hr = refTypeInfo->GetTypeAttr(&refTypeAttr); RETURN_IF_FAILED(hr);
+						auto releaseRefTypeAttr = wil::scope_exit([ti=refTypeInfo.get(), refTypeAttr] { ti->ReleaseTypeAttr(refTypeAttr); });
+						RETURN_HR_IF(E_FAIL, refTypeAttr->typekind != TKIND_DISPATCH);
+						bool pushed = childObjects.try_push_back(ObjectProperty{ fd->memid, std::move(name), V_DISPATCH(&result) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+						break;
+					}
+
+					case VT_SAFEARRAY:
+					{
+						SAFEARRAY* sa = V_ARRAY(&result);
+						VARTYPE vt;
+						hr = SafeArrayGetVartype(sa, &vt); RETURN_IF_FAILED(hr);
+						RETURN_HR_IF(E_NOTIMPL, vt != VT_DISPATCH);
+						UINT dim = SafeArrayGetDim(sa);
+						RETURN_HR_IF(E_NOTIMPL, dim != 1);
+						LONG lbound;
+						hr = SafeArrayGetLBound(sa, 1, &lbound); RETURN_IF_FAILED(hr);
+						RETURN_HR_IF(E_NOTIMPL, lbound != 0);
+						LONG ubound;
+						hr = SafeArrayGetUBound(sa, 1, &ubound); RETURN_IF_FAILED(hr);
+
+						bool pushed = childCollections.try_push_back(ObjectCollectionProperty{ fd->memid, std::move(name), { } }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+
+						for (LONG i = 0; i <= ubound; i++)
+						{
+							com_ptr<IDispatch> obj;
+							hr = SafeArrayGetElement(sa, &i, &obj); RETURN_IF_FAILED(hr);
+							pushed = childCollections.back().value.try_push_back(std::move(obj)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+						}
+						break;
+					}
+
+					case VT_BOOL:
+					{
+						bool val = (V_BOOL(&result) == VARIANT_TRUE);
+						auto value = wil::make_bstr_nothrow(val ? L"True" : L"False"); RETURN_IF_NULL_ALLOC(value);
+						bool pushed = attributes.try_push_back(ValueProperty{ fd->memid, std::move(name), std::move(value) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+						break;
+					}
+
+					default:
+						RETURN_HR(E_NOTIMPL);
 				}
 			}
 		}
+	}
 
-		if (attributes.size())
+	if (attributes.size())
+	{
+		hr = ensureElementCreated.CreateStartElement(); RETURN_IF_FAILED(hr);
+
+		for (auto& attr : attributes)
 		{
-			hr = ensureElementCreated.CreateStartElement(); RETURN_IF_FAILED(hr);
-
-			for (auto& attr : attributes)
-			{
-				hr = writer->WriteAttributeString(
-					attr.name.get(), SysStringLen(attr.name.get()), 
-					attr.value.get(), SysStringLen(attr.value.get())); RETURN_IF_FAILED(hr);
-			}
+			hr = writer->WriteAttributeString(
+				attr.name.get(), SysStringLen(attr.name.get()), 
+				attr.value.get(), SysStringLen(attr.value.get())); RETURN_IF_FAILED(hr);
 		}
+	}
 
-		if (childObjects.size() || childCollections.size())
+	if (childObjects.size() || childCollections.size())
+	{
+		com_ptr<IXmlParent> objAsParent;
+		obj->QueryInterface(&objAsParent);
+
+		for (auto& child : childObjects)
 		{
-			com_ptr<IXmlParent> objAsParent;
-			obj->QueryInterface(&objAsParent);
-
-			for (auto& child : childObjects)
+			if (objAsParent)
 			{
-				if (objAsParent)
+				wil::unique_bstr childXmlElementName;
+				hr = objAsParent->GetChildXmlElementName(child.dispid, child.value.get(), &childXmlElementName);
+				RETURN_HR_IF(hr, FAILED(hr) && hr != E_NOTIMPL);
+				if (hr == E_NOTIMPL || childXmlElementName)
 				{
-					wil::unique_bstr childXmlElementName;
-					hr = objAsParent->GetChildXmlElementName(child.dispid, child.value.get(), &childXmlElementName);
-					RETURN_HR_IF(hr, FAILED(hr) && hr != E_NOTIMPL);
-					if (hr == E_NOTIMPL || childXmlElementName)
-					{
-						EnsureElementCreated ensureChildElemCreated (child.name.get(), writer, &ensureElementCreated);
+					EnsureElementCreated ensureChildElemCreated (child.name.get(), writer, &ensureElementCreated);
 						
-						LPCWSTR elemName = childXmlElementName ? childXmlElementName.get() : child.name.get();
-						hr = SaveToXmlInternal (child.value.get(), elemName, flags, writer, &ensureChildElemCreated); RETURN_IF_FAILED(hr);
+					LPCWSTR elemName = childXmlElementName ? childXmlElementName.get() : child.name.get();
+					hr = SaveToXmlInternal (child.value.get(), elemName, flags, writer, &ensureChildElemCreated); RETURN_IF_FAILED(hr);
 
-						hr = ensureChildElemCreated.CreateEndElement(); RETURN_IF_FAILED(hr);
-					}
-					else
-					{
-						hr = SaveToXmlInternal (child.value.get(), child.name.get(), flags, writer, &ensureElementCreated); RETURN_IF_FAILED(hr);
-					}
+					hr = ensureChildElemCreated.CreateEndElement(); RETURN_IF_FAILED(hr);
 				}
 				else
 				{
 					hr = SaveToXmlInternal (child.value.get(), child.name.get(), flags, writer, &ensureElementCreated); RETURN_IF_FAILED(hr);
 				}
 			}
-	
-			for (auto& coll : childCollections)
+			else
 			{
-				EnsureElementCreated ensureCollectionElementCreated (coll.name.get(), writer, &ensureElementCreated);
-
-				for (auto& child : coll.value)
-				{
-					wil::unique_bstr xmlElementName;
-					hr = objAsParent->GetChildXmlElementName(coll.dispid, child.get(), &xmlElementName); RETURN_IF_FAILED(hr);
-					hr = SaveToXmlInternal (child.get(), xmlElementName.get(), flags, writer, &ensureCollectionElementCreated); RETURN_IF_FAILED(hr);
-				}
-
-				hr = ensureCollectionElementCreated.CreateEndElement(); RETURN_IF_FAILED(hr);
+				hr = SaveToXmlInternal (child.value.get(), child.name.get(), flags, writer, &ensureElementCreated); RETURN_IF_FAILED(hr);
 			}
+		}
+	
+		for (auto& coll : childCollections)
+		{
+			EnsureElementCreated ensureCollectionElementCreated (coll.name.get(), writer, &ensureElementCreated);
+
+			for (auto& child : coll.value)
+			{
+				wil::unique_bstr xmlElementName;
+				hr = objAsParent->GetChildXmlElementName(coll.dispid, child.get(), &xmlElementName); RETURN_IF_FAILED(hr);
+				hr = SaveToXmlInternal (child.get(), xmlElementName.get(), flags, writer, &ensureCollectionElementCreated); RETURN_IF_FAILED(hr);
+			}
+
+			hr = ensureCollectionElementCreated.CreateEndElement(); RETURN_IF_FAILED(hr);
 		}
 	}
 

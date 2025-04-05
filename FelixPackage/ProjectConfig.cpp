@@ -539,7 +539,7 @@ public:
 	#pragma endregion
 
 	#pragma region IXmlParent
-	virtual HRESULT STDMETHODCALLTYPE GetChildXmlElementName (DISPID dispidProperty, IUnknown* child, BSTR* xmlElementNameOut) override
+	virtual HRESULT STDMETHODCALLTYPE GetChildXmlElementName (DISPID dispidProperty, IDispatch* child, BSTR* xmlElementNameOut) override
 	{
 		switch (dispidProperty)
 		{

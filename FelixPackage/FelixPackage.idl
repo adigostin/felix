@@ -147,8 +147,8 @@ library ATLProject1Lib
 		[id(dispidConfigurations), propget] HRESULT Configurations ([out, ref, retval] SAFEARRAY(IDispatch*)* configs);
 		[id(dispidConfigurations), propput] HRESULT Configurations (SAFEARRAY(IDispatch*) configs);
 
-		[id(dispidItems), propget] HRESULT Items ([out, ref, retval] SAFEARRAY(IProjectItem*)* items);
-		[id(dispidItems), propput] HRESULT Items (SAFEARRAY(IProjectItem*) items);
+		[id(dispidItems), propget] HRESULT Items ([out, ref, retval] SAFEARRAY(IDispatch*)* items);
+		[id(dispidItems), propput] HRESULT Items (SAFEARRAY(IDispatch*) items);
 
 		[id(dispidProjectGuid), propget] HRESULT Guid ([out, retval] BSTR* value);
 		[id(dispidProjectGuid), propput] HRESULT Guid (BSTR value);

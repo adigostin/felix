@@ -2320,7 +2320,9 @@ public:
 		auto sa = unique_safearray(SafeArrayCreate(VT_DISPATCH, 1, &bound)); RETURN_HR_IF(E_OUTOFMEMORY, !sa);
 		for (LONG i = 0; i < (LONG)bound.cElements; i++)
 		{
-			auto hr = SafeArrayPutElement(sa.get(), &i, _configs[i].get()); RETURN_IF_FAILED(hr);
+			com_ptr<IDispatch> pdisp;
+			auto hr = _configs[i]->QueryInterface(&pdisp); RETURN_IF_FAILED(hr);
+			hr = SafeArrayPutElement(sa.get(), &i, pdisp.get()); RETURN_IF_FAILED(hr);
 		}
 		*configs = sa.release();
 		return S_OK;
@@ -2342,7 +2344,7 @@ public:
 		vector_nothrow<com_ptr<IProjectConfig>> newConfigs;
 		for (LONG i = 0; i <= ubound; i++)
 		{
-			wil::com_ptr_nothrow<IUnknown> child;
+			com_ptr<IDispatch> child;
 			hr = SafeArrayGetElement (sa, &i, child.addressof()); RETURN_IF_FAILED(hr);
 			com_ptr<IProjectConfig> config;
 			hr = child->QueryInterface(&config); RETURN_IF_FAILED(hr);
@@ -2370,7 +2372,9 @@ public:
 		LONG i = 0;
 		for (auto c = _firstChild.get(); c; c = c->Next())
 		{
-			auto hr = SafeArrayPutElement(sa.get(), &i, static_cast<IUnknown*>(c)); RETURN_IF_FAILED(hr);
+			com_ptr<IDispatch> pdisp;
+			auto hr = c->QueryInterface(&pdisp); RETURN_IF_FAILED(hr);
+			hr = SafeArrayPutElement(sa.get(), &i, pdisp.get()); RETURN_IF_FAILED(hr);
 			i++;
 		}
 		*items = sa.release();
@@ -2379,8 +2383,10 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE put_Items (SAFEARRAY* sa) override
 	{
+		HRESULT hr;
+
 		VARTYPE vt;
-		auto hr = SafeArrayGetVartype(sa, &vt); RETURN_IF_FAILED(hr);
+		hr = SafeArrayGetVartype(sa, &vt); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_NOTIMPL, vt != VT_DISPATCH);
 		UINT dim = SafeArrayGetDim(sa);
 		RETURN_HR_IF(E_NOTIMPL, dim != 1);
@@ -2398,7 +2404,7 @@ public:
 
 			for (LONG i = 0; i <= ubound; i++)
 			{
-				wil::com_ptr_nothrow<IUnknown> child;
+				com_ptr<IDispatch> child;
 				hr = SafeArrayGetElement (sa, &i, child.addressof()); RETURN_IF_FAILED(hr);
 				hr = child->QueryInterface(&items[i]); RETURN_IF_FAILED(hr);
 			}
@@ -2441,7 +2447,7 @@ public:
 	#pragma endregion
 
 	#pragma region IXmlParent
-	virtual HRESULT STDMETHODCALLTYPE GetChildXmlElementName (DISPID dispidProperty, IUnknown* child, BSTR* xmlElementNameOut) override
+	virtual HRESULT STDMETHODCALLTYPE GetChildXmlElementName (DISPID dispidProperty, IDispatch* child, BSTR* xmlElementNameOut) override
 	{
 		if (dispidProperty == dispidConfigurations)
 		{
