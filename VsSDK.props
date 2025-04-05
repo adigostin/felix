@@ -1,6 +1,6 @@
 ﻿<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Label="UserMacros">
-    <VSIntegrationRoot>C:\Program Files\Microsoft Visual Studio\2022\Community\VSSDK\VisualStudioIntegration</VSIntegrationRoot>
+    <VSIntegrationRoot>$(VsInstallRoot)\VSSDK\VisualStudioIntegration</VSIntegrationRoot>
   </PropertyGroup>
   <PropertyGroup Label="UserMacros">
     <VSIntegrationCommon>$(VSIntegrationRoot)\common</VSIntegrationCommon>
@@ -36,16 +36,6 @@
   <ItemDefinitionGroup>
     <ClCompile>
       <AdditionalIncludeDirectories>$(VSIntegrationInclude);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-    </ClCompile>
-  </ItemDefinitionGroup>
-  <ItemDefinitionGroup>
-    <ClCompile>
-      <WarningLevel>Level3</WarningLevel>
-    </ClCompile>
-  </ItemDefinitionGroup>
-  <ItemDefinitionGroup>
-    <ClCompile>
-      <TreatWarningAsError>true</TreatWarningAsError>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup>

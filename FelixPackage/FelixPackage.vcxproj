@@ -89,7 +89,6 @@
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <SDLCheck>false</SDLCheck>
       <AdditionalOptions>/Zc:strictStrings-</AdditionalOptions>
-      <TreatWarningAsError>false</TreatWarningAsError>
       <BasicRuntimeChecks>UninitializedLocalUsageCheck</BasicRuntimeChecks>
     </ClCompile>
     <ResourceCompile>
@@ -134,7 +133,6 @@
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <SDLCheck>false</SDLCheck>
       <AdditionalOptions>/Zc:strictStrings-</AdditionalOptions>
-      <TreatWarningAsError>false</TreatWarningAsError>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>_DEBUG;UNICODE;_UNICODE;_AFXDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -183,7 +181,6 @@ COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Conf
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <SDLCheck>false</SDLCheck>
       <WholeProgramOptimization>false</WholeProgramOptimization>
-      <TreatWarningAsError>false</TreatWarningAsError>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>NDEBUG;UNICODE;_UNICODE;_AFXDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
