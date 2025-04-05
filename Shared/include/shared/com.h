@@ -4,22 +4,8 @@
 
 // ============================================================================
 
-// Purpose of this wrapper is to allow implicit casting to the raw pointer.
-// (Without this we'd have to write ".get()" all over the place.)
-template <typename T>
-struct com_ptr : wil::com_ptr_nothrow<T>
-{
-	com_ptr(T* x) noexcept : wil::com_ptr_nothrow<T>(x) { }
-	com_ptr(nullptr_t) noexcept { }
-	com_ptr& operator=(nullptr_t) noexcept
-	{
-		wil::com_ptr_nothrow<T>::reset();
-		return *this;
-	}
-
-	using wil::com_ptr_nothrow<T>::com_ptr_nothrow;
-	operator T*() const noexcept { return wil::com_ptr_nothrow<T>::get(); }
-};
+template<typename T>
+using com_ptr = wil::com_ptr_nothrow<T>;
 
 // ============================================================================
 

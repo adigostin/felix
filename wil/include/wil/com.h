@@ -915,6 +915,8 @@ public:
     }
     /// @endcond
 
+   	operator T*() const noexcept { return get(); }
+
 private:
     pointer m_ptr;
 };
