@@ -24,6 +24,7 @@
 #include <xmllite.h>
 #include <OCIdl.h>
 #include <Psapi.h>
+#include <shellapi.h>
 #undef EnumProcesses
 
 // Visual Studio Platform headers

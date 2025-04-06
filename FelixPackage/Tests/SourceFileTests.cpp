@@ -9,19 +9,9 @@ namespace FelixTests
 {
 	TEST_CLASS(SourceFileTests)
 	{
-		TEST_CLASS_INITIALIZE(BuilderTestsInitialize)
-		{
-			serviceProvider = MakeMockServiceProvider();
-		}
-
-		TEST_CLASS_CLEANUP(BuilderTestsCleanup)
-		{
-			serviceProvider = nullptr;
-		}
-
 		TEST_METHOD(SourceFileUnnamedTest)
 		{
-			auto hier = MakeMockVsHierarchy();
+			auto hier = MakeMockVsHierarchy(tempPath);
 			auto config = MakeMockProjectConfig(hier);
 			auto pane = MakeMockOutputWindowPane(nullptr);
 

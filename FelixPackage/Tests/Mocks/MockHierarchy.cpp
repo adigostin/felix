@@ -14,12 +14,10 @@ struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IRootNode, IProjec
 	WeakRefToThis _weakRefToThis;
 	VSITEMID _nextItemId = 1000;
 
-	HRESULT InitInstance()
+	HRESULT InitInstance (const wchar_t* projectDir)
 	{
 		auto hr = _weakRefToThis.InitInstance(static_cast<IVsHierarchy*>(this)); RETURN_IF_FAILED(hr);
-		wchar_t tempPath[MAX_PATH+1];
-		DWORD pathLen = GetTempPathW(_countof(tempPath), tempPath); RETURN_LAST_ERROR_IF_EXPECTED(pathLen == 0);
-		_projectDir.reset(SysAllocStringLen(tempPath, pathLen)); RETURN_IF_NULL_ALLOC_EXPECTED(_projectDir);
+		_projectDir = wil::make_bstr_nothrow(projectDir); RETURN_IF_NULL_ALLOC_EXPECTED(_projectDir);
 		return S_OK;
 	}
 
@@ -226,11 +224,11 @@ struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IRootNode, IProjec
 	#pragma endregion
 };
 
-com_ptr<IVsHierarchy> MakeMockVsHierarchy()
+com_ptr<IVsHierarchy> MakeMockVsHierarchy (const wchar_t* projectDir)
 {
 	auto p = com_ptr (new (std::nothrow) MockVsHierarchy());
 	Assert::IsNotNull(p.get());
-	auto hr = p->InitInstance();
+	auto hr = p->InitInstance(projectDir);
 	Assert::IsTrue(SUCCEEDED(hr));
 	return p;
 }

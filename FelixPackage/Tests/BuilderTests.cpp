@@ -42,19 +42,9 @@ namespace FelixTests
 {
 	TEST_CLASS(BuilderTests)
 	{
-		TEST_CLASS_INITIALIZE(BuilderTestsInitialize)
-		{
-			serviceProvider = MakeMockServiceProvider();
-		}
-
-		TEST_CLASS_CLEANUP(BuilderTestsCleanup)
-		{
-			serviceProvider = nullptr;
-		}
-
 		TEST_METHOD(BuildFailsOnEmptyProject)
 		{
-			auto hier = MakeMockVsHierarchy();
+			auto hier = MakeMockVsHierarchy(tempPath);
 			auto config = MakeMockProjectConfig(hier);
 			auto pane = MakeMockOutputWindowPane(nullptr);
 
@@ -68,7 +58,7 @@ namespace FelixTests
 
 		TEST_METHOD(ProjectConfigHasPrePostBuildProps)
 		{
-			auto hier = MakeMockVsHierarchy();
+			auto hier = MakeMockVsHierarchy(tempPath);
 
 			com_ptr<IProjectConfig> config;
 			auto hr = ProjectConfig_CreateInstance(hier, &config);
@@ -86,7 +76,7 @@ namespace FelixTests
 
 		static com_ptr<IProjectConfigBuilder> MakeSjasmProjectBuilder (std::string_view asmFileContent)
 		{
-			auto hier = MakeMockVsHierarchy();
+			auto hier = MakeMockVsHierarchy (tempPath);
 			auto sourceFile = MakeMockSourceFile (hier, 1000, BuildToolKind::Assembler, L"test.asm", asmFileContent);
 			hier.try_query<IProjectItemParent>()->SetFirstChild(sourceFile);
 			auto config = MakeMockProjectConfig(hier);
@@ -170,7 +160,7 @@ namespace FelixTests
 			const wchar_t* cbtDescription,
 			const wchar_t* cbtCmdLine, IStream* outputStreamUTF16)
 		{
-			auto hier = MakeMockVsHierarchy();
+			auto hier = MakeMockVsHierarchy(tempPath);
 			auto sourceFile = MakeMockSourceFile (hier, 1000, BuildToolKind::Assembler, sourceFileName, sourceFileContent);
 			hier.try_query<IProjectItemParent>()->SetFirstChild(sourceFile);
 
@@ -418,7 +408,7 @@ namespace FelixTests
 		{
 			HRESULT hr;
 
-			auto hier = MakeMockVsHierarchy();
+			auto hier = MakeMockVsHierarchy(tempPath);
 			auto config = MakeMockProjectConfig(hier);
 
 			com_ptr<IProjectConfigPrePostBuildProperties> preBuildProps;
