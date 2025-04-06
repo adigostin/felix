@@ -2,6 +2,7 @@
 #include "pch.h"
 #include "FelixPackage.h"
 #include "shared/com.h"
+#include "shared/inplace_function.h"
 
 #define __dte_h__
 #include <VSShell174.h>
@@ -283,31 +284,30 @@ HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProje
 
 	vector_nothrow<com_ptr<IProjectFileProperties>> asmFiles;
 
-	com_ptr<IVsEnumHierarchyItemsFactory> enumItemsFactory;
-	hr = serviceProvider->QueryService (SID_SVsEnumHierarchyItemsFactory, IID_PPV_ARGS(enumItemsFactory.addressof())); RETURN_IF_FAILED(hr);
-	
-	com_ptr<IEnumHierarchyItems> enumItems;
-	hr = enumItemsFactory->EnumHierarchyItems(hier, VSEHI_Leaf | VSEHI_OmitHier, VSITEMID_ROOT, &enumItems); RETURN_IF_FAILED(hr);
+	stdext::inplace_function<HRESULT(IProjectItemParent*)> enumDescendants;
 
-	VSITEMSELECTION itemsel;
-	ULONG fetched;
-	while (SUCCEEDED(enumItems->Next(1, &itemsel, &fetched)) && fetched)
-	{
-		wil::unique_variant obj;
-		if (SUCCEEDED(hier->GetProperty(itemsel.itemid, VSHPROPID_BrowseObject, &obj)) && obj.vt == VT_DISPATCH)
+	enumDescendants = [&enumDescendants, &asmFiles](IProjectItemParent* parent) -> HRESULT
 		{
-			com_ptr<IProjectFileProperties> file;
-			if (SUCCEEDED(obj.pdispVal->QueryInterface(&file)))
+			for (auto c = parent->FirstChild(); c; c = c->Next())
 			{
-				BuildToolKind tool;
-				auto hr = file->get_BuildTool(&tool); RETURN_IF_FAILED(hr);
-				if (tool == BuildToolKind::Assembler)
+				if (auto file = wil::try_com_query_nothrow<IProjectFileProperties>(c))
 				{
-					bool pushed = asmFiles.try_push_back(std::move(file)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+					BuildToolKind tool;
+					auto hr = file->get_BuildTool(&tool); RETURN_IF_FAILED(hr);
+					if (tool == BuildToolKind::Assembler)
+					{
+						bool pushed = asmFiles.try_push_back(std::move(file)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+					}
+				}
+				else if (auto cAsParent = wil::try_com_query_nothrow<IProjectItemParent>(c))
+				{
+					auto hr = enumDescendants(cAsParent); RETURN_IF_FAILED(hr);
 				}
 			}
-		}
-	};
+
+			return S_OK;
+		};
+	enumDescendants(wil::try_com_query_nothrow<IProjectItemParent>(hier));
 
 	if (asmFiles.empty())
 		return (*ppCmdLine = nullptr), S_OK;
