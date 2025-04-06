@@ -497,7 +497,7 @@ HRESULT GetPathOf (IVsHierarchy* hier, VSITEMID itemID, wil::unique_process_heap
 // Enum depth-first (just because it's simpler) pre-order mode (so that parents get their ItemId before children).
 static HRESULT SetItemIdsTree (IChildNode* child, IChildNode* childPrevSibling, IParentNode* addTo)
 {
-	com_ptr<IRootNode> root;
+	com_ptr<IProjectNode> root;
 	auto hr = addTo->GetHierarchy(IID_PPV_ARGS(&root)); RETURN_IF_FAILED(hr);
 
 	stdext::inplace_function<HRESULT(IChildNode*, IChildNode*, IParentNode*)> enumNodeAndChildren;

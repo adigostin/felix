@@ -55,7 +55,7 @@ struct MockFileNode : IFileNode, IFileNodeProperties
 	#pragma region IChildNode
 	virtual VSITEMID STDMETHODCALLTYPE GetItemId(void) override { return _itemId; }
 
-	virtual HRESULT SetItemId (IRootNode* root, VSITEMID id) override
+	virtual HRESULT SetItemId (IProjectNode* root, VSITEMID id) override
 	{
 		Assert::IsNull(_hier.get());
 		Assert::AreEqual<VSITEMID>(VSITEMID_NIL, _itemId);

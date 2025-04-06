@@ -86,7 +86,7 @@ public:
 		return _itemId;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE SetItemId (IRootNode* root, VSITEMID id) override
+	virtual HRESULT STDMETHODCALLTYPE SetItemId (IProjectNode* root, VSITEMID id) override
 	{
 		if (id != VSITEMID_NIL)
 		{
@@ -374,7 +374,7 @@ public:
 		_name = wil::make_bstr_nothrow(newName); RETURN_IF_NULL_ALLOC(_name);
 		
 		com_ptr<IEnumHierarchyEvents> enu;
-		hr = _hier.try_query<IRootNode>()->EnumHierarchyEventSinks(&enu); RETURN_IF_FAILED(hr);
+		hr = _hier.try_query<IProjectNode>()->EnumHierarchyEventSinks(&enu); RETURN_IF_FAILED(hr);
 		com_ptr<IVsHierarchyEvents> sink;
 		ULONG fetched;
 		while (SUCCEEDED(enu->Next(1, &sink, &fetched)) && fetched)

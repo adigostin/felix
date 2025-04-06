@@ -447,7 +447,7 @@ public:
 		wil::com_ptr_nothrow<IVsRegisterProjectTypes> regSvc;
 		hr = pSP->QueryService (SID_SVsRegisterProjectTypes, &regSvc); RETURN_IF_FAILED(hr);
 		wil::com_ptr_nothrow<IVsProjectFactory> pf;
-		hr = Z80ProjectFactory_CreateInstance (_sp.get(), &pf); RETURN_IF_FAILED(hr);
+		hr = MakeProjectFactory(_sp.get(), &pf); RETURN_IF_FAILED(hr);
 
 		VSCOOKIE cookie;
 		hr = regSvc->RegisterProjectType (__uuidof(IProjectNodeProperties), pf.get(), &cookie); RETURN_IF_FAILED(hr);
@@ -566,7 +566,7 @@ public:
 
 	HRESULT OpenFileOnProjectCreation(IVsHierarchy* pHierarchy)
 	{
-		com_ptr<IRootNode> rn;
+		com_ptr<IProjectNode> rn;
 		auto hr = pHierarchy->QueryInterface(&rn); RETURN_IF_FAILED(hr);
 
 		wil::unique_bstr filenames;

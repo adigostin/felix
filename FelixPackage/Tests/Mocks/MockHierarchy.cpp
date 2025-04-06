@@ -6,7 +6,7 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-struct MockVsHierarchy : IVsHierarchy, IProjectNodeProperties, IRootNode, IParentNode
+struct MockVsHierarchy : IVsHierarchy, IProjectNodeProperties, IProjectNode, IParentNode
 {
 	ULONG _refCount = 0;
 	wil::unique_bstr _projectDir;
@@ -28,7 +28,7 @@ struct MockVsHierarchy : IVsHierarchy, IProjectNodeProperties, IRootNode, IParen
 			|| TryQI<IDispatch>(this, riid, ppvObject)
 			|| TryQI<IVsHierarchy>(this, riid, ppvObject)
 			|| TryQI<IProjectNodeProperties>(this, riid, ppvObject)
-			|| TryQI<IRootNode>(this, riid, ppvObject)
+			|| TryQI<IProjectNode>(this, riid, ppvObject)
 			|| TryQI<IParentNode>(this, riid, ppvObject)
 			|| TryQI<INode>(this, riid, ppvObject)
 		)
@@ -216,7 +216,7 @@ struct MockVsHierarchy : IVsHierarchy, IProjectNodeProperties, IRootNode, IParen
 	}
 	#pragma endregion
 
-	#pragma region IRootNode
+	#pragma region IProjectNode
 	virtual VSITEMID STDMETHODCALLTYPE MakeItemId() override
 	{
 		return _nextItemId++;

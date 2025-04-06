@@ -117,7 +117,7 @@ public:
 	#pragma region IChildNode
 	virtual VSITEMID STDMETHODCALLTYPE GetItemId() override { return _itemId; }
 
-	virtual HRESULT STDMETHODCALLTYPE SetItemId (IRootNode* root, VSITEMID id) override
+	virtual HRESULT STDMETHODCALLTYPE SetItemId (IProjectNode* root, VSITEMID id) override
 	{
 		if (id != VSITEMID_NIL)
 		{
@@ -901,7 +901,7 @@ public:
 		//_buildTool = _wcsicmp(PathFindExtension(_pathRelativeToProjectDir.get()), L".asm") ? BuildToolKind::None : BuildToolKind::Assembler;
 
 		com_ptr<IEnumHierarchyEvents> enu;
-		hr = _hier.try_query<IRootNode>()->EnumHierarchyEventSinks(&enu); RETURN_IF_FAILED(hr);
+		hr = _hier.try_query<IProjectNode>()->EnumHierarchyEventSinks(&enu); RETURN_IF_FAILED(hr);
 		com_ptr<IVsHierarchyEvents> sink;
 		ULONG fetched;
 		while (SUCCEEDED(enu->Next(1, &sink, &fetched)) && fetched)

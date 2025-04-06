@@ -42,7 +42,7 @@ namespace FelixTests
 		TEST_METHOD(PutItemsOneFile)
 		{
 			com_ptr<IVsHierarchy> hier;
-			auto hr = MakeFelixProject (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			auto file = MakeMockFileNode(BuildToolKind::Assembler, L"test.asm");
@@ -79,7 +79,7 @@ namespace FelixTests
 		TEST_METHOD(PutItemsTwoFilesOneInFolder)
 		{
 			com_ptr<IVsHierarchy> hier;
-			auto hr = MakeFelixProject (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			auto file1 = MakeMockFileNode(BuildToolKind::Assembler, L"file1.asm");
@@ -138,7 +138,7 @@ namespace FelixTests
 		TEST_METHOD(PutItemsTwoFilesInTwoFolders)
 		{
 			com_ptr<IVsHierarchy> hier;
-			auto hr = MakeFelixProject (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			auto file1 = MakeMockFileNode(BuildToolKind::Assembler, L"testfolder1/file1.asm");
@@ -199,7 +199,7 @@ namespace FelixTests
 		TEST_METHOD(PutItemsFourFilesUnsorted)
 		{
 			com_ptr<IVsHierarchy> hier;
-			auto hr = MakeFelixProject (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			auto file1 = MakeMockFileNode(BuildToolKind::Assembler, L"file1.asm");
@@ -271,7 +271,7 @@ namespace FelixTests
 		TEST_METHOD(AddItemNew)
 		{
 			com_ptr<IVsHierarchy> hier;
-			auto hr = MakeFelixProject (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			com_ptr<IVsProject2> proj;
@@ -308,7 +308,7 @@ namespace FelixTests
 		TEST_METHOD(AddItemNewToExistingFolder)
 		{
 			com_ptr<IVsHierarchy> hier;
-			auto hr = MakeFelixProject (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			com_ptr<IFolderNode> folder;
@@ -361,7 +361,7 @@ namespace FelixTests
 		TEST_METHOD(AddExistingItemWithHierarchyEventSinks)
 		{
 			com_ptr<IVsHierarchy> hier;
-			auto hr = MakeFelixProject (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			auto sink = MakeMockHierarchyEventSink();
 			VSCOOKIE cookie;
 			hr = hier->AdviseHierarchyEvents(sink, &cookie);
@@ -396,7 +396,7 @@ namespace FelixTests
 		TEST_METHOD(GetItemsPutItems_WithFolders)
 		{
 			com_ptr<IVsHierarchy> hier1;
-			auto hr = MakeFelixProject (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier1));
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier1));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			com_ptr<IFolderNode> folder1;
@@ -416,7 +416,7 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			com_ptr<IVsHierarchy> hier2;
-			hr = MakeFelixProject (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier2));
+			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier2));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			hr = stream->Seek({ 0 }, STREAM_SEEK_SET, nullptr);
@@ -477,7 +477,7 @@ namespace FelixTests
 			stream.attach(s);
 
 			com_ptr<IVsHierarchy> hier;
-			auto hr = MakeFelixProject (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			hr = LoadFromXml(hier.try_query<IProjectNodeProperties>(), ProjectElementName, stream);

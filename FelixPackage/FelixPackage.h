@@ -63,18 +63,18 @@ IParentNode : IUnknown
 };
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("F36A3A6C-01AF-423B-86FD-DB071AA47E97")
-IRootNode : INode
+IProjectNode : INode
 {
 	virtual VSITEMID MakeItemId() = 0;
 	virtual HRESULT EnumHierarchyEventSinks (IEnumHierarchyEvents** ppSinks) = 0;
 	virtual HRESULT GetAutoOpenFiles (BSTR* pbstrFilenames) = 0;
 };
 
-// This is the base interface for every node except IRootNode.
+// This is the base interface for every node except IProjectNode.
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("A2EE7852-34B1-49A9-A3DB-36232AC6680C")
 IChildNode : INode
 {
-	virtual HRESULT SetItemId (IRootNode* root, VSITEMID itemId) = 0;
+	virtual HRESULT SetItemId (IProjectNode* root, VSITEMID itemId) = 0;
 	virtual HRESULT GetMkDocument (BSTR* pbstrMkDocument) = 0; // returns the full path
 	virtual IChildNode* Next() = 0; // TODO: keep an unordered_map with itemid/itemptr, then get rid of Next, SetNext, FindDescendant
 	virtual void SetNext (IChildNode* next) = 0;
@@ -126,10 +126,10 @@ inline HRESULT InitVariantFromVSITEMID (VSITEMID itemid, VARIANT* pvar)
 	return S_OK;
 }
 
-HRESULT MakeFelixProject (LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject);
+HRESULT MakeProjectNode (LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject);
 HRESULT MakeFileNode (IFileNode** file);
 HRESULT ProjectConfig_CreateInstance (IVsHierarchy* hier, IProjectConfig** to);
-HRESULT Z80ProjectFactory_CreateInstance (IServiceProvider* sp, IVsProjectFactory** to);
+HRESULT MakeProjectFactory (IServiceProvider* sp, IVsProjectFactory** to);
 HRESULT MakePGPropertyPage (UINT titleStringResId, REFGUID pageGuid, DISPID dispidChildObj, IPropertyPage** to);
 HRESULT MakeAsmPropertyPage (IPropertyPage** to);
 HRESULT SimulatorWindowPane_CreateInstance (IVsWindowPane** to);

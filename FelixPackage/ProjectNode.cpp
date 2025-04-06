@@ -17,7 +17,7 @@ static constexpr wchar_t ConfigurationElementName[] = L"Configuration";
 static constexpr wchar_t FileElementName[] = L"File";
 
 // What MPF implements: https://docs.microsoft.com/en-us/visualstudio/extensibility/internals/project-model-core-components?view=vs-2022
-class Z80Project
+class ProjectNode
 	: IProjectNodeProperties    // includes IDispatch
 	, IVsProject2              // includes IVsProject
 	, IVsUIHierarchy           // includes IVsHierarchy
@@ -32,7 +32,7 @@ class Z80Project
 	//, IVsProjectBuildSystem
 	//, IVsBuildPropertyStorage
 	//, IVsBuildPropertyStorage2
-	, IRootNode
+	, IProjectNode
 	, IParentNode
 	, IPropertyNotifySink // this implementation only used to mark the project as dirty
 	, IVsPerPropertyBrowsing
@@ -222,7 +222,7 @@ public:
 		}	
 	}
 
-	~Z80Project()
+	~ProjectNode()
 	{
 		WI_ASSERT (_cfgProviderEventSinks.empty());
 	}
@@ -651,7 +651,7 @@ public:
 			//|| TryQI<IVsBuildPropertyStorage>(this, riid, ppvObject)
 			//|| TryQI<IVsBuildPropertyStorage2>(this, riid, ppvObject)
 			|| TryQI<IParentNode>(this, riid, ppvObject)
-			|| TryQI<IRootNode>(this, riid, ppvObject)
+			|| TryQI<IProjectNode>(this, riid, ppvObject)
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 		)
@@ -1695,7 +1695,7 @@ public:
 		vector_nothrow<com_ptr<IVsHierarchyEvents>> _sinks;
 		uint32_t _next = 0;
 
-		static HRESULT CreateInstance (Z80Project* proj, IEnumHierarchyEvents** ppEnum)
+		static HRESULT CreateInstance (ProjectNode* proj, IEnumHierarchyEvents** ppEnum)
 		{
 			auto p = com_ptr(new (std::nothrow) EnumHierarchyEvents()); RETURN_IF_NULL_ALLOC(p);
 			bool reserved = p->_sinks.try_reserve(proj->_hierarchyEventSinks.size()); RETURN_HR_IF(E_OUTOFMEMORY, !reserved);
@@ -2664,7 +2664,7 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region IRootNode
+	#pragma region IProjectNode
 	virtual VSITEMID MakeItemId() override
 	{
 		return _nextItemId++;
@@ -2930,9 +2930,9 @@ public:
 	}
 };
 
-HRESULT MakeFelixProject (LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject)
+HRESULT MakeProjectNode (LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject)
 {
-	wil::com_ptr_nothrow<Z80Project> p = new (std::nothrow) Z80Project(); RETURN_IF_NULL_ALLOC(p);
+	wil::com_ptr_nothrow<ProjectNode> p = new (std::nothrow) ProjectNode(); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance (pszFilename, pszLocation, pszName, grfCreateFlags); RETURN_IF_FAILED_EXPECTED(hr);
 	return p->QueryInterface (iidProject, ppvProject);
 }

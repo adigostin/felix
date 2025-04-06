@@ -3,7 +3,7 @@
 #include "FelixPackage.h"
 #include "shared/com.h"
 
-class Z80ProjectFactory : public IVsProjectFactory
+class ProjectFactory : public IVsProjectFactory
 {
 	ULONG _refCount = 0;
 
@@ -12,7 +12,7 @@ class Z80ProjectFactory : public IVsProjectFactory
 public:
 	static HRESULT CreateInstance (IServiceProvider* sp, IVsProjectFactory** to)
 	{
-		wil::com_ptr_nothrow<Z80ProjectFactory> p = new (std::nothrow) Z80ProjectFactory(); RETURN_IF_NULL_ALLOC(p);
+		wil::com_ptr_nothrow<ProjectFactory> p = new (std::nothrow) ProjectFactory(); RETURN_IF_NULL_ALLOC(p);
 		p->_sp = sp;
 		*to = p.detach();
 		return S_OK;
@@ -51,7 +51,7 @@ public:
 		*ppvProject = nullptr;
 		*pfCanceled = TRUE;
 
-		auto hr = MakeFelixProject (pszFilename, pszLocation, pszName, grfCreateFlags, iidProject, ppvProject); RETURN_IF_FAILED_EXPECTED(hr);
+		auto hr = MakeProjectNode (pszFilename, pszLocation, pszName, grfCreateFlags, iidProject, ppvProject); RETURN_IF_FAILED_EXPECTED(hr);
 	
 		*pfCanceled = FALSE;
 		return S_OK;
@@ -69,8 +69,8 @@ public:
 	#pragma endregion
 };
 
-HRESULT Z80ProjectFactory_CreateInstance (IServiceProvider* sp, IVsProjectFactory** to)
+HRESULT MakeProjectFactory (IServiceProvider* sp, IVsProjectFactory** to)
 {
-	return Z80ProjectFactory::CreateInstance(sp, to);
+	return ProjectFactory::CreateInstance(sp, to);
 }
 

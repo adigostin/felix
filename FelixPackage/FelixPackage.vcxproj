@@ -245,7 +245,7 @@ COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Conf
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="FileNode.cpp" />
-    <ClCompile Include="FelixProject.cpp" />
+    <ClCompile Include="ProjectNode.cpp" />
     <ClCompile Include="ProjectConfig.cpp" />
     <ClCompile Include="Tests\BuilderTests.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -283,7 +283,7 @@ COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Conf
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="Z80ProjectFactory.cpp" />
+    <ClCompile Include="ProjectFactory.cpp" />
     <ClCompile Include="Z80UtilityFunctions.cpp" />
     <ClCompile Include="Z80Xml.cpp" />
   </ItemGroup>
