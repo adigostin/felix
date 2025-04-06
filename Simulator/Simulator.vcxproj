@@ -58,7 +58,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <Lib>
-      <AdditionalDependencies>xaudio2.lib</AdditionalDependencies>
+      <AdditionalDependencies>xaudio2_9redist.lib</AdditionalDependencies>
     </Lib>
     <Lib>
       <AdditionalLibraryDirectories>$(SolutionDir)third_party\xaudio2\release\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -83,7 +83,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <Lib>
-      <AdditionalDependencies>xaudio2.lib</AdditionalDependencies>
+      <AdditionalDependencies>xaudio2_9redist.lib</AdditionalDependencies>
     </Lib>
     <Lib>
       <AdditionalLibraryDirectories>$(SolutionDir)third_party\xaudio2\release\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>

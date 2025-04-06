@@ -71,10 +71,10 @@ struct EnsureElementCreated
 {
 	bool insideElement = false;
 	const wchar_t* const elementName;
-	IXmlWriterLite* writer;
+	IXmlWriter* writer;
 	EnsureElementCreated* outer;
 
-	EnsureElementCreated (const wchar_t* elementName, IXmlWriterLite* writer, EnsureElementCreated* outer)
+	EnsureElementCreated (const wchar_t* elementName, IXmlWriter* writer, EnsureElementCreated* outer)
 		: elementName(elementName), writer(writer), outer(outer)
 	{ }
 
@@ -87,7 +87,7 @@ struct EnsureElementCreated
 				auto hr = outer->CreateStartElement(); RETURN_IF_FAILED(hr);
 			}
 
-			auto hr = writer->WriteStartElement(elementName, (UINT)wcslen(elementName)); RETURN_IF_FAILED(hr);
+			auto hr = writer->WriteStartElement(NULL, elementName, NULL); RETURN_IF_FAILED(hr);
 			insideElement = true;
 		}
 
@@ -98,7 +98,7 @@ struct EnsureElementCreated
 	{
 		if (insideElement)
 		{
-			auto hr = writer->WriteEndElement(elementName, (UINT)wcslen(elementName)); RETURN_IF_FAILED(hr);
+			auto hr = writer->WriteEndElement(); RETURN_IF_FAILED(hr);
 			insideElement = false;
 		}
 
@@ -111,7 +111,7 @@ struct EnsureElementCreated
 	}
 };
 
-static HRESULT SaveToXmlInternal (IDispatch* obj, PCWSTR elementName, DWORD flags, IXmlWriterLite* writer, EnsureElementCreated* ensureOuterElementCreated)
+static HRESULT SaveToXmlInternal (IDispatch* obj, PCWSTR elementName, DWORD flags, IXmlWriter* writer, EnsureElementCreated* ensureOuterElementCreated)
 {
 	HRESULT hr;
 
@@ -263,9 +263,7 @@ static HRESULT SaveToXmlInternal (IDispatch* obj, PCWSTR elementName, DWORD flag
 
 		for (auto& attr : attributes)
 		{
-			hr = writer->WriteAttributeString(
-				attr.name.get(), SysStringLen(attr.name.get()), 
-				attr.value.get(), SysStringLen(attr.value.get())); RETURN_IF_FAILED(hr);
+			hr = writer->WriteAttributeString(NULL, attr.name.get(), NULL, attr.value.get()); RETURN_IF_FAILED(hr);
 		}
 	}
 
@@ -323,7 +321,7 @@ static HRESULT SaveToXmlInternal (IDispatch* obj, PCWSTR elementName, DWORD flag
 
 HRESULT SaveToXml (IDispatch* obj, PCWSTR elementName, DWORD flags, IStream* to, UINT nEncodingCodePage)
 {
-	wil::com_ptr_nothrow<IXmlWriterLite> writer;
+	wil::com_ptr_nothrow<IXmlWriter> writer;
 	auto hr = CreateXmlWriter(IID_PPV_ARGS(&writer), nullptr); RETURN_IF_FAILED(hr);
 	if (nEncodingCodePage != CP_UTF8)
 	{

@@ -148,11 +148,6 @@
       <GenerateDebugInformation>DebugFastLink</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(SolutionDir)third_party;$(VCInstallDir)Auxiliary\VS\UnitTest\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
-    <PreBuildEvent>
-      <Command>REM These are needed in the output directory for running tests
-COPY /Y $(SolutionDir)third_party\sentry.dll $(SolutionDir)$(Platform)\$(Configuration)
-COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Configuration)</Command>
-    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Midl>
@@ -288,6 +283,15 @@ COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Conf
     <ClCompile Include="Z80Xml.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <CopyFileToFolders Include="..\third_party\xaudio2\release\bin\x64\xaudio2_9redist.dll">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="..\third_party\sentry.dll">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="..\third_party\sjasmplus.exe">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
     <None Include="FelixPackage.def" />
     <None Include="FelixPackage.natstepfilter" />
   </ItemGroup>
