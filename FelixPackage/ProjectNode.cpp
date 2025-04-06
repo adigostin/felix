@@ -175,16 +175,16 @@ public:
 
 			hr = CreateProjectFilesFromTemplate (pszFilename, pszLocation, pszName); RETURN_IF_FAILED(hr);
 
-			wil::unique_hlocal_string projFilePath;
-			hr = PathAllocCombine (pszLocation, pszName, PathFlags, &projFilePath); RETURN_IF_FAILED(hr);
+			wchar_t projFilePath[MAX_PATH];
+			PathCombine (projFilePath, pszLocation, pszName); RETURN_IF_FAILED(hr);
 
 			com_ptr<IStream> stream;
-			auto hr = SHCreateStreamOnFileEx(projFilePath.get(), STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, 0, nullptr, &stream); RETURN_IF_FAILED(hr);
+			auto hr = SHCreateStreamOnFileEx(projFilePath, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, 0, nullptr, &stream); RETURN_IF_FAILED(hr);
 			hr = LoadFromXml(this, ProjectElementName, stream.get()); RETURN_IF_FAILED(hr);
 
 			hr = CoCreateGuid (&_projectInstanceGuid); RETURN_IF_FAILED(hr);
 
-			hr = SHCreateStreamOnFileEx (projFilePath.get(), STGM_CREATE | STGM_WRITE | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, 0, nullptr, &stream); RETURN_IF_FAILED(hr);
+			hr = SHCreateStreamOnFileEx (projFilePath, STGM_CREATE | STGM_WRITE | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, 0, nullptr, &stream); RETURN_IF_FAILED(hr);
 			hr = SaveToXml(this, ProjectElementName, 0, stream.get()); RETURN_IF_FAILED(hr);
 
 			_isDirty = false;
@@ -1281,8 +1281,8 @@ public:
 			newFilename = wil::make_hlocal_string_nothrow(newName, newNameLen); RETURN_IF_NULL_ALLOC(newFilename);
 		}
 
-		wil::unique_hlocal_string newFullPath;
-		hr = PathAllocCombine (_location.get(), newFilename.get(), PathFlags, &newFullPath); RETURN_IF_FAILED(hr);
+		auto newFullPath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(newFullPath);
+		PathCombine (newFullPath.get(), _location.get(), newFilename.get());
 
 		// Check if it exists, but only if the user changed more than character casing.
 		if (_wcsicmp(_filename.get(), newFilename.get()))

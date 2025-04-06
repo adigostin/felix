@@ -75,8 +75,8 @@ struct MockFileNode : IFileNode, IFileNodeProperties
 		hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir);
 		Assert::IsTrue(SUCCEEDED(hr));
 		Assert::IsTrue(projectDir.vt == VT_BSTR);
-		wil::unique_hlocal_string filePath;
-		hr = PathAllocCombine(projectDir.bstrVal, _pathRelativeToProjectDir.get(), PathFlags, &filePath);
+		auto filePath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH);
+		PathCombine(filePath.get(), projectDir.bstrVal, _pathRelativeToProjectDir.get());
 		Assert::IsTrue(SUCCEEDED(hr));
 		*pbstrMkDocument = SysAllocString(filePath.get()); RETURN_IF_NULL_ALLOC(*pbstrMkDocument);
 		return S_OK;

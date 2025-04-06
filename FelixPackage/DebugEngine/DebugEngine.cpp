@@ -73,7 +73,6 @@ public:
 			||   riid == IID_IExternalConnection
 			||   riid == IID_IDebugBreakpointFileUpdateNotification110
 			||   riid == IID_IDebugEngineStepFilterManager90
-			||   riid == IID_IDebugVisualizerExtensionReceiver178
 			||   riid == IID_IDebugSymbolSettings170
 		)
 			return E_NOINTERFACE;

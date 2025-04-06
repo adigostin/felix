@@ -61,7 +61,6 @@ public:
 			|| riid == IID_IDebugModule171
 			|| riid == IID_IDebugModule174
 			|| riid == IID_IDebugModule176
-			|| riid == IID_IDebugModule177
 		)
 			return E_NOINTERFACE;
 

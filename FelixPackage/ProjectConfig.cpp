@@ -244,8 +244,8 @@ public:
 		wil::unique_bstr output_filename;
 		hr = _assemblerProps->GetOutputFileName(&output_filename); RETURN_IF_FAILED(hr);
 
-		wil::unique_hlocal_string exe_path;
-		hr = PathAllocCombine (output_dir.get(), output_filename.get(), PathFlags, &exe_path); RETURN_IF_FAILED(hr);
+		auto exe_path = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(exe_path);
+		PathCombine (exe_path.get(), output_dir.get(), output_filename.get());
 		auto exePathBstr = wil::make_bstr_nothrow(exe_path.get()); RETURN_IF_NULL_ALLOC(exePathBstr);
 
 		if (grfLaunch & DBGLAUNCH_NoDebug)

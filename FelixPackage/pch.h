@@ -57,8 +57,6 @@
 #include <msdbg174.h>
 #include <msdbg175.h>
 #include <msdbg176.h>
-#include <msdbg177.h>
-#include <msdbg178.h>
 #include <portpriv.h>
 #include <vsdebugguids.h>
 #include <venuscmddef.h>

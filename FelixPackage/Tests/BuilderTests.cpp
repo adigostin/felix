@@ -114,11 +114,11 @@ namespace FelixTests
 			auto hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, moduleFilename);
 			Assert::IsTrue(SUCCEEDED(hr));
 			PathFindFileName(moduleFilename.get())[0] = 0;
-			wil::unique_hlocal_string sjasmOrigPath;
-			hr = PathAllocCombine(moduleFilename.get(), L"sjasmplus.exe", 0, &sjasmOrigPath);
+			auto sjasmOrigPath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH);
+			PathCombine (sjasmOrigPath.get(), moduleFilename.get(), L"sjasmplus.exe");
 			Assert::IsTrue(SUCCEEDED(hr));
-			wil::unique_hlocal_string sjasmTempPath;
-			hr = PathAllocCombine(moduleFilename.get(), L"sjasmplus.tmp", 0, &sjasmTempPath);
+			auto sjasmTempPath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH);
+			PathCombine(sjasmTempPath.get(), moduleFilename.get(), L"sjasmplus.tmp");
 			Assert::IsTrue(SUCCEEDED(hr));
 			BOOL bres = MoveFileExW (sjasmOrigPath.get(), sjasmTempPath.get(), MOVEFILE_REPLACE_EXISTING);
 			Assert::IsTrue(bres);

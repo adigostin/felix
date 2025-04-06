@@ -197,7 +197,7 @@ public:
 		if (pendingSteps.empty())
 		{
 			// Inefficient but good enough for virtually all ASM projects.
-			timerId = ::SetCoalescableTimer (NULL, 0, 1, TimerProcStatic, TIMERV_DEFAULT_COALESCING); RETURN_LAST_ERROR_IF(timerId == 0);
+			timerId = ::SetTimer (NULL, 0, 1, TimerProcStatic); RETURN_LAST_ERROR_IF(timerId == 0);
 		}
 		pendingSteps.try_push_back(this);
 
