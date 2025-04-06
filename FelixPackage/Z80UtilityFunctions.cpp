@@ -333,14 +333,13 @@ HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProje
 
 	auto addOutputPathParam = [&cmdLine, output_dir=output_dir.get(), project_dir=projectDir.bstrVal](const wchar_t* paramName, const wchar_t* output_filename) -> HRESULT
 		{
-			wil::unique_hlocal_string outputFilePath;
-			auto hr = PathAllocCombine (output_dir, output_filename, PathFlags, &outputFilePath); RETURN_IF_FAILED(hr);
+			auto outputFilePath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(outputFilePath);
+			auto pres = PathCombine (outputFilePath.get(), output_dir, output_filename); RETURN_HR_IF(CO_E_BAD_PATH, !pres);
 			auto outputFilePathRelativeUgly = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(outputFilePathRelativeUgly);
 			BOOL bRes = PathRelativePathToW (outputFilePathRelativeUgly.get(), project_dir, FILE_ATTRIBUTE_DIRECTORY, outputFilePath.get(), 0); RETURN_HR_IF(CS_E_INVALID_PATH, !bRes);
-			size_t len = wcslen(outputFilePathRelativeUgly.get());
-			auto outputFilePathRelative = wil::make_hlocal_string_nothrow(nullptr, len); RETURN_IF_NULL_ALLOC(outputFilePathRelative);
-			hr = PathCchCanonicalizeEx (outputFilePathRelative.get(), len + 1, outputFilePathRelativeUgly.get(), PathFlags); RETURN_IF_FAILED(hr);
-			hr = Write(cmdLine, paramName); RETURN_IF_FAILED(hr);
+			auto outputFilePathRelative = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(outputFilePathRelative);
+			BOOL bres = PathCanonicalize (outputFilePathRelative.get(), outputFilePathRelativeUgly.get()); RETURN_IF_WIN32_BOOL_FALSE(bres);
+			auto hr = Write(cmdLine, paramName); RETURN_IF_FAILED(hr);
 			hr = Write(cmdLine, outputFilePathRelative.get()); RETURN_IF_FAILED(hr);
 			return S_OK;
 		};
