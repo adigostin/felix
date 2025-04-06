@@ -402,7 +402,19 @@ public:
 
 		// TODO: if this fails somewhere in the middle, destroy/release/unregister everything created up to that point.
 
-		uint32_t dpi = GetDpiForWindow(hwndParent);
+		UINT dpi;
+		if (auto proc_addr = GetProcAddress(GetModuleHandleA("User32.dll"), "GetDpiForWindow"))
+		{
+			auto proc = reinterpret_cast<UINT(WINAPI*)(HWND)>(proc_addr);
+			dpi = proc(hwndParent);
+		}
+		else
+		{
+			HDC tempDC = GetDC(hwndParent);
+			dpi = GetDeviceCaps (tempDC, LOGPIXELSX);
+			ReleaseDC (hwndParent, tempDC);
+		}
+
 
 		LOGFONT lf = { };
 		lf.lfHeight = 11 * (LONG)dpi / 72;

@@ -318,7 +318,7 @@ namespace FelixTests
 
 		class HeavyLoad
 		{
-			wil::slim_event event;
+			wil::unique_event_failfast event;
 			vector_nothrow<wil::unique_handle> threads;
 
 		public:
@@ -327,7 +327,7 @@ namespace FelixTests
 				SYSTEM_INFO si;
 				GetSystemInfo (&si);
 				threads.try_resize(si.dwNumberOfProcessors);
-
+				event.create(wil::EventOptions::ManualReset);
 				for (auto& h : threads)
 					h.reset(CreateThread(nullptr, 0, ThreadProc, this, 0, nullptr));
 			}
@@ -335,6 +335,11 @@ namespace FelixTests
 			~HeavyLoad()
 			{
 				event.SetEvent();
+				while(!threads.empty())
+				{
+					WaitForSingleObject(threads.back().get(), INFINITE);
+					threads.remove_back();
+				}
 			}
 
 		private:
