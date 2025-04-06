@@ -45,7 +45,6 @@ public:
 			|| riid == IID_IMarshal
 			|| riid == IID_IAgileObject
 			|| riid == IID_IRpcOptions
-			|| riid == IID_IDebugStackFrame175
 			|| riid == GUID{ 0x7365A6C9, 0x96A6, 0x45A5, { 0x9B, 0x01, 0xFF, 0x6D, 0xF3, 0x85, 0x80, 0xD2 } }
 		)
 			return E_NOINTERFACE;

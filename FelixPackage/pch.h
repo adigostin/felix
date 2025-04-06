@@ -19,7 +19,6 @@
 #undef GetClassInfo
 #include <Shlobj.h>
 #include <Shlwapi.h>
-#include <PathCch.h>
 #include <propvarutil.h>
 #include <xmllite.h>
 #include <OCIdl.h>
@@ -55,8 +54,6 @@
 #include <msdbg170.h>
 #include <msdbg171.h>
 #include <msdbg174.h>
-#include <msdbg175.h>
-#include <msdbg176.h>
 #include <portpriv.h>
 #include <vsdebugguids.h>
 #include <venuscmddef.h>

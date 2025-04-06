@@ -431,10 +431,10 @@ public:
 		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, packageDir); RETURN_IF_FAILED(hr);
 		auto fnres = PathFindFileName(packageDir.get()); RETURN_HR_IF(CO_E_BAD_PATH, fnres == packageDir.get());
 		*fnres = 0;
-		wil::unique_hlocal_string rom_path;
-		hr = PathAllocCombine (packageDir.get(), L"ROMs/Spectrum48K.rom", PathFlags, &rom_path); RETURN_IF_FAILED(hr);
-		wil::unique_hlocal_string rom_debug_info_path;
-		hr = PathAllocCombine (packageDir.get(), L"ROMs/Spectrum48K.z80sym", PathFlags, &rom_debug_info_path); RETURN_IF_FAILED(hr);
+		auto rom_path = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(rom_path);
+		auto pres = PathCombine (rom_path.get(), packageDir.get(), L"ROMs/Spectrum48K.rom"); RETURN_HR_IF(CO_E_BAD_PATH, !pres);
+		auto rom_debug_info_path = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(rom_debug_info_path);
+		pres = PathCombine (rom_debug_info_path.get(), packageDir.get(), L"ROMs/Spectrum48K.z80sym"); RETURN_IF_FAILED(hr);
 		wil::com_ptr_nothrow<IDebugModule2> romModule;
 		hr = MakeModule (0, 0x5CCB, rom_path.get(), rom_debug_info_path.get(), false,
 			this, _program.get(), _callback.get(), &romModule); RETURN_IF_FAILED(hr);
@@ -624,8 +624,8 @@ public:
 			TerminateInternal();
 			return hr;
 		}
-		auto debug_info_path = wil::make_process_heap_string_nothrow(exePath.get()); RETURN_IF_NULL_ALLOC(debug_info_path);
-		hr = PathCchRenameExtension (debug_info_path.get(), wcslen(debug_info_path.get()) + 1, L".sld"); RETURN_IF_FAILED(hr);
+		auto debug_info_path = wil::make_process_heap_string_nothrow(exePath.get(), MAX_PATH); RETURN_IF_NULL_ALLOC(debug_info_path);
+		BOOL bres = PathRenameExtension (debug_info_path.get(), L".sld"); RETURN_HR_IF(CO_E_BAD_PATH, !bres);
 		com_ptr<IDebugModuleCollection> moduleColl;
 		hr = _program->QueryInterface(&moduleColl); RETURN_IF_FAILED(hr);
 		wil::com_ptr_nothrow<IDebugModule2> exe_module;
@@ -861,12 +861,13 @@ HRESULT GetAddressFromSourceLocation (IDebugModule2* module, LPCWSTR projectDirO
 	if (symbols->HasSourceLocationInformation() != S_OK)
 		return E_SRC_LOCATION_NOT_IN_SYMBOLS;
 
-	wil::unique_process_heap_string filePathRelative;
+	wil::unique_hlocal_string filePathRelative;
 	if (projectDirOrNull)
 	{
 		auto relative = wil::make_process_heap_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(relative);
 		BOOL bRes = PathRelativePathToW (relative.get(), projectDirOrNull, FILE_ATTRIBUTE_DIRECTORY, sourceLocationFilename, 0); RETURN_HR_IF(CS_E_INVALID_PATH, !bRes);
-		hr = PathAllocCanonicalize (relative.get(), PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS, &filePathRelative); RETURN_IF_FAILED(hr);
+		filePathRelative = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(filePathRelative);
+		bRes = PathCanonicalize (filePathRelative.get(), relative.get()); RETURN_IF_WIN32_BOOL_FALSE(bRes);
 	}
 	else
 		RETURN_HR(E_NOTIMPL);

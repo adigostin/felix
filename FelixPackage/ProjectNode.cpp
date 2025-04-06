@@ -11,8 +11,6 @@
 #include "../FelixPackageUi/resource.h"
 #include <string_view>
 
-#pragma comment (lib, "Pathcch.lib")
-
 static constexpr wchar_t ConfigurationElementName[] = L"Configuration";
 static constexpr wchar_t FileElementName[] = L"File";
 

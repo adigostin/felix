@@ -60,7 +60,6 @@ public:
 			|| riid == IID_IDebugModule170
 			|| riid == IID_IDebugModule171
 			|| riid == IID_IDebugModule174
-			|| riid == IID_IDebugModule176
 		)
 			return E_NOINTERFACE;
 
@@ -289,11 +288,18 @@ public:
 		if (!_symbolsPath)
 		{
 			size_t bufferLen = wcslen(_path.get()) + 10;
-			auto symPath = wil::make_process_heap_string_nothrow (_path.get(), bufferLen);
-			_symbolLoadResult = PathCchRenameExtension (symPath.get(), bufferLen + 1, L".sld"); RETURN_IF_FAILED(_symbolLoadResult);
+			auto symPath = wil::make_process_heap_string_nothrow (_path.get(), MAX_PATH); RETURN_IF_NULL_ALLOC(symPath);
+			BOOL bres = PathRenameExtension (symPath.get(), L".sld");
+			if (!bres)
+				return _symbolLoadResult = CO_E_BAD_PATH;
+			
 			if (!::PathFileExists(symPath.get()))
 			{
-				_symbolLoadResult = PathCchRenameExtension (symPath.get(), bufferLen + 1, L".z80sym"); RETURN_IF_FAILED(_symbolLoadResult);
+				symPath = wil::make_process_heap_string_nothrow (_path.get(), MAX_PATH); RETURN_IF_NULL_ALLOC(symPath);
+				bres = PathRenameExtension (symPath.get(), L".z80sym");
+				if (!bres)
+					return _symbolLoadResult = CO_E_BAD_PATH;
+
 				if (!::PathFileExists(symPath.get()))
 					return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
 			}
