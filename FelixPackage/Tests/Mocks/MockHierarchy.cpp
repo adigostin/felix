@@ -6,12 +6,13 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IProjectItemParent
+struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IRootNode, IProjectItemParent
 {
 	ULONG _refCount = 0;
 	wil::unique_bstr _projectDir;
 	com_ptr<IProjectItem> _firstChild;
 	WeakRefToThis _weakRefToThis;
+	VSITEMID _nextItemId = 1000;
 
 	HRESULT InitInstance()
 	{
@@ -29,7 +30,9 @@ struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IProjectItemParent
 			|| TryQI<IDispatch>(this, riid, ppvObject)
 			|| TryQI<IVsHierarchy>(this, riid, ppvObject)
 			|| TryQI<IZ80ProjectProperties>(this, riid, ppvObject)
+			|| TryQI<IRootNode>(this, riid, ppvObject)
 			|| TryQI<IProjectItemParent>(this, riid, ppvObject)
+			|| TryQI<INode>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -200,11 +203,25 @@ struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IProjectItemParent
 	#pragma endregion
 
 	#pragma region IProjectItemParent
+	virtual VSITEMID STDMETHODCALLTYPE GetItemId() override { return VSITEMID_ROOT; }
+
 	virtual IProjectItem* STDMETHODCALLTYPE FirstChild() override { return _firstChild; }
 
 	virtual void STDMETHODCALLTYPE SetFirstChild (IProjectItem* firstChild) override
 	{
 		_firstChild = firstChild;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetHierarchy (REFIID riid, void **ppvObject) override
+	{
+		return QueryInterface(riid, ppvObject);
+	}
+	#pragma endregion
+
+	#pragma region IRootNode
+	virtual VSITEMID STDMETHODCALLTYPE MakeItemId() override
+	{
+		return _nextItemId++;
 	}
 	#pragma endregion
 };

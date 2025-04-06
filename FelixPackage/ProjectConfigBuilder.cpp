@@ -619,9 +619,9 @@ public:
 		hr = ParseCommandLines (preBuildProps, projectDir.bstrVal, steps);RETURN_IF_FAILED(hr);
 		
 		// First build the files with a custom build tool. This is similar to what VS does.
-		hr = EnumDescendants (_hier, VSITEMID_ROOT, [this, &steps, workDir = projectDir.bstrVal](IDispatch* item)
+		hr = EnumDescendants (_hier, VSITEMID_ROOT, [this, &steps, workDir = projectDir.bstrVal](IProjectItem* item)
 			{
-				com_ptr<IProjectFile> file;
+				com_ptr<IProjectFileProperties> file;
 				if (SUCCEEDED(item->QueryInterface(&file)))
 				{
 					BuildToolKind tool;

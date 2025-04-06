@@ -14,6 +14,7 @@ using namespace Microsoft::VisualStudio::Imaging;
 
 struct ProjectFile 
 	: IProjectFile
+	, IProjectFileProperties
 	, IVsPerPropertyBrowsing
 	, IConnectionPointContainer
 	, IPropertyNotifySink
@@ -62,6 +63,7 @@ public:
 		if (   TryQI<IUnknown>(static_cast<IDispatch*>(this), riid, ppvObject)
 			|| TryQI<IProjectFile>(this, riid, ppvObject)
 			|| TryQI<IProjectItem>(this, riid, ppvObject)
+			|| TryQI<IProjectFileProperties>(this, riid, ppvObject)
 			|| TryQI<IDispatch>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
@@ -113,11 +115,31 @@ public:
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IProjectFile);
+	IMPLEMENT_IDISPATCH(IID_IProjectFileProperties);
 
 	#pragma region IProjectItem
 	virtual VSITEMID STDMETHODCALLTYPE GetItemId() override { return _itemId; }
 
+	virtual HRESULT STDMETHODCALLTYPE SetItemId (IRootNode* root, VSITEMID id) override
+	{
+		if (id != VSITEMID_NIL)
+		{
+			// setting it
+			RETURN_HR_IF(E_UNEXPECTED, _itemId != VSITEMID_NIL);
+			RETURN_HR_IF(E_UNEXPECTED, _hier);
+		}
+		else
+		{
+			// clearing it
+			RETURN_HR_IF(E_UNEXPECTED, _itemId == VSITEMID_NIL);
+			RETURN_HR_IF(E_UNEXPECTED, !_hier);
+		}
+
+		auto hr = root->QueryInterface(&_hier); RETURN_IF_FAILED(hr);
+		_itemId = id;
+		return S_OK;
+	}
+		
 	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (BSTR* pbstrMkDocument) override
 	{
 		com_ptr<IVsHierarchy> hier;

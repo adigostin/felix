@@ -114,30 +114,6 @@ library ATLProject1Lib
 	{
 	};
 
-	[object, uuid(A2EE7852-34B1-49A9-A3DB-36232AC6680C), dual, nonextensible, pointer_default(unique)]
-	interface IProjectItem : IDispatch
-	{
-		VSITEMID GetItemId();
-		HRESULT GetMkDocument (BSTR* pbstrMkDocument); // returns the full path
-		IProjectItem* Next(); // TODO: keep an unordered_map with itemid/itemptr, then get rid of Next, SetNext, FindDescendant
-		void SetNext (IProjectItem* next);
-		HRESULT GetProperty (VSHPROPID propid, VARIANT* pvar);
-		HRESULT SetProperty (VSHPROPID propid, REFVARIANT var);
-		HRESULT GetGuidProperty (VSHPROPID propid, GUID* pguid);
-		HRESULT SetGuidProperty (VSHPROPID propid, REFGUID rguid);
-		HRESULT GetCanonicalName (BSTR* pbstrName); // returns the path relative to project if possible, otherwise the full path -- all lowercase
-		HRESULT IsItemDirty (IUnknown *punkDocData, BOOL *pfDirty);
-		HRESULT QueryStatus (const GUID* pguidCmdGroup, ULONG cCmds, OLECMD prgCmds[], OLECMDTEXT *pCmdText);
-		HRESULT Exec (const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT* pvaIn, VARIANT* pvaOut);
-	}
-
-	[object, uuid(D930CCA1-E515-4569-8DC6-959CD6367654), nonextensible, pointer_default(unique)]
-	interface IProjectItemParent : IUnknown
-	{
-		IProjectItem* FirstChild();
-		void SetFirstChild (IProjectItem* firstChild);
-	}
-
 	// IID Same as the pkgdef entry [$RootKey$\Projects\{D438161C-F032-4014-BC5C-20A80EAFF59B}]
 	[object, uuid(D438161C-F032-4014-BC5C-20A80EAFF59B), dual, nonextensible, pointer_default(unique)]
 	interface IZ80ProjectProperties : IDispatch
@@ -172,7 +148,7 @@ library ATLProject1Lib
 	}
 
 	[object, uuid(680DBE9B-ABED-41BE-8A26-30446EEC47FB), dual, nonextensible, pointer_default(unique)]
-	interface IProjectFile : IProjectItem
+	interface IProjectFileProperties : IDispatch
 	{
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
 

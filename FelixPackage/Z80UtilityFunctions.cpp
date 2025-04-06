@@ -281,7 +281,7 @@ HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProje
 	wil::unique_bstr output_dir;
 	hr = config->GetOutputDirectory(&output_dir); RETURN_IF_FAILED(hr);
 
-	vector_nothrow<com_ptr<IProjectFile>> asmFiles;
+	vector_nothrow<com_ptr<IProjectFileProperties>> asmFiles;
 
 	com_ptr<IVsEnumHierarchyItemsFactory> enumItemsFactory;
 	hr = serviceProvider->QueryService (SID_SVsEnumHierarchyItemsFactory, IID_PPV_ARGS(enumItemsFactory.addressof())); RETURN_IF_FAILED(hr);
@@ -296,7 +296,7 @@ HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProje
 		wil::unique_variant obj;
 		if (SUCCEEDED(hier->GetProperty(itemsel.itemid, VSHPROPID_BrowseObject, &obj)) && obj.vt == VT_DISPATCH)
 		{
-			com_ptr<IProjectFile> file;
+			com_ptr<IProjectFileProperties> file;
 			if (SUCCEEDED(obj.pdispVal->QueryInterface(&file)))
 			{
 				BuildToolKind tool;
@@ -374,7 +374,7 @@ HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProje
 	// input files
 	for (uint32_t i = 0; i < asmFiles.size(); i++)
 	{
-		IProjectFile* file = asmFiles[i];
+		IProjectFileProperties* file = asmFiles[i];
 		wil::unique_bstr fileRelativePath;
 		hr = file->get_Path(&fileRelativePath);
 		if (SUCCEEDED(hr))

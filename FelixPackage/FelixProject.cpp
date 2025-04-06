@@ -32,6 +32,7 @@ class Z80Project
 	//, IVsProjectBuildSystem
 	//, IVsBuildPropertyStorage
 	//, IVsBuildPropertyStorage2
+	, IRootNode
 	, IProjectItemParent
 	, IPropertyNotifySink // this implementation only used to mark the project as dirty
 	, IVsHierarchyEvents // this implementation only forwards calls to subscribed sinks
@@ -608,6 +609,7 @@ public:
 			//|| TryQI<IVsBuildPropertyStorage>(this, riid, ppvObject)
 			//|| TryQI<IVsBuildPropertyStorage2>(this, riid, ppvObject)
 			|| TryQI<IProjectItemParent>(this, riid, ppvObject)
+			|| TryQI<IRootNode>(this, riid, ppvObject)
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
 			|| TryQI<IVsHierarchyEvents>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
@@ -1668,7 +1670,7 @@ public:
 		com_ptr<IProjectItem> existing;
 		hr = FindDescendant([relative=relative.get()](IProjectItem* c)
 			{
-				if (auto sf = wil::try_com_query_nothrow<IProjectFile>(c))
+				if (auto sf = wil::try_com_query_nothrow<IProjectFileProperties>(c))
 				{
 					wil::unique_bstr rel;
 					auto hr = sf->get_Path(&rel); RETURN_IF_FAILED(hr);
@@ -1686,10 +1688,11 @@ public:
 		com_ptr<IProjectFile> file;
 		VSITEMID itemId = _nextFileItemId++;
 		hr = MakeProjectFile (itemId, this, itemidLoc, &file); RETURN_IF_FAILED(hr);
-		auto path = wil::make_bstr_nothrow(pszFullPathSource); RETURN_IF_NULL_ALLOC(path);
-		hr = file->put_Path(relative.get()); RETURN_IF_FAILED(hr);
-		auto buildTool = _wcsicmp(PathFindExtension(path.get()), L".asm") ? BuildToolKind::None : BuildToolKind::Assembler;
-		hr = file->put_BuildTool(buildTool); RETURN_IF_FAILED(hr);
+		com_ptr<IProjectFileProperties> fileProps;
+		hr = file->QueryInterface(&fileProps); RETURN_IF_FAILED(hr);
+		hr = fileProps->put_Path(relative.get()); RETURN_IF_FAILED(hr);
+		auto buildTool = _wcsicmp(PathFindExtension(relative.get()), L".asm") ? BuildToolKind::None : BuildToolKind::Assembler;
+		hr = fileProps->put_BuildTool(buildTool); RETURN_IF_FAILED(hr);
 
 		VSITEMID prevLast;
 		if (!_firstChild)
@@ -2509,9 +2512,11 @@ public:
 				wil::com_ptr_nothrow<IProjectFile> file;
 				VSITEMID itemId = _nextFileItemId++;
 				auto hr = MakeProjectFile (itemId, this, VSITEMID_ROOT, &file); RETURN_IF_FAILED(hr);
+				com_ptr<IProjectFileProperties> fileProps;
+				hr = file->QueryInterface(&fileProps); RETURN_IF_FAILED(hr);
 				if (!wcscmp(xmlElementName, L"AsmFile"))
-					file->put_BuildTool(BuildToolKind::Assembler);
-				*childOut = file.detach();
+					fileProps->put_BuildTool(BuildToolKind::Assembler);
+				*childOut = fileProps.detach();
 				return S_OK;
 			}
 
@@ -2523,6 +2528,8 @@ public:
 	#pragma endregion
 
 	#pragma region IProjectItemParent
+	virtual VSITEMID STDMETHODCALLTYPE GetItemId() override { return VSITEMID_ROOT; }
+
 	virtual IProjectItem* STDMETHODCALLTYPE FirstChild() override
 	{
 		return _firstChild;
@@ -2533,6 +2540,17 @@ public:
 		_firstChild = next;
 	}
 
+	virtual HRESULT STDMETHODCALLTYPE GetHierarchy (REFIID riid, void **ppvObject) override
+	{
+		return QueryInterface(riid, ppvObject);
+	}
+	#pragma endregion
+
+	#pragma region IRootNode
+	virtual VSITEMID MakeItemId() override
+	{
+		return _nextFileItemId++;
+	}
 	virtual HRESULT GetAutoOpenFiles (BSTR* pbstrFilenames) override
 	{
 		if (!_autoOpenFiles || !_autoOpenFiles.get()[0])

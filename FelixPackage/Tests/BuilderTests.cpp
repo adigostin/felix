@@ -174,10 +174,10 @@ namespace FelixTests
 			auto sourceFile = MakeMockSourceFile (hier, 1000, BuildToolKind::Assembler, sourceFileName, sourceFileContent);
 			hier.try_query<IProjectItemParent>()->SetFirstChild(sourceFile);
 
-			auto hr = sourceFile->put_BuildTool(BuildToolKind::CustomBuildTool);
+			auto hr = sourceFile.try_query<IProjectFileProperties>()->put_BuildTool(BuildToolKind::CustomBuildTool);
 			Assert::IsTrue(SUCCEEDED(hr));
 			com_ptr<ICustomBuildToolProperties> cbtProps;
-			hr = sourceFile->get_CustomBuildToolProperties(&cbtProps);
+			hr = sourceFile.try_query<IProjectFileProperties>()->get_CustomBuildToolProperties(&cbtProps);
 			Assert::IsTrue(SUCCEEDED(hr));
 			hr = cbtProps->put_Description(wil::make_bstr_nothrow(cbtDescription).get());
 			Assert::IsTrue(SUCCEEDED(hr));

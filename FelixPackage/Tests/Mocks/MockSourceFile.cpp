@@ -6,7 +6,7 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-struct MockSourceFile : IProjectFile
+struct MockSourceFile : IProjectFile, IProjectFileProperties
 {
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _hier;
@@ -58,6 +58,7 @@ struct MockSourceFile : IProjectFile
 			|| TryQI<IDispatch>(this, riid, ppvObject)
 			|| TryQI<IProjectItem>(this, riid, ppvObject)
 			|| TryQI<IProjectFile>(this, riid, ppvObject)
+			|| TryQI<IProjectFileProperties>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -69,10 +70,20 @@ struct MockSourceFile : IProjectFile
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IProjectItem);
+	IMPLEMENT_IDISPATCH(IID_IProjectFileProperties);
 
 	#pragma region IProjectItem
 	virtual VSITEMID STDMETHODCALLTYPE GetItemId(void) override { return _itemId; }
+
+	virtual HRESULT SetItemId (IRootNode* root, VSITEMID id) override
+	{
+		Assert::IsNull(_hier.get());
+		Assert::AreEqual<VSITEMID>(VSITEMID_NIL, _itemId);
+		auto hr = root->QueryInterface(&_hier);
+		Assert::IsTrue(SUCCEEDED(hr));
+		_itemId = id;
+		return S_OK;
+	}
 
 	HRESULT STDMETHODCALLTYPE GetMkDocument(BSTR* pbstrMkDocument) override
 	{

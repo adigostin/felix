@@ -35,6 +35,53 @@ __interface IProjectConfigBuilder : IUnknown
 	HRESULT STDMETHODCALLTYPE CancelBuild();
 };
 
+struct IProjectItem;
+
+struct DECLSPEC_NOVTABLE DECLSPEC_UUID("29DDAB6E-5A2E-4BD8-A617-E1EAA90E30DA")
+INode : IUnknown
+{
+	virtual VSITEMID GetItemId() = 0;
+};
+
+struct DECLSPEC_NOVTABLE DECLSPEC_UUID("D930CCA1-E515-4569-8DC6-959CD6367654")
+IProjectItemParent : IUnknown
+{
+	virtual VSITEMID GetItemId() = 0;
+	virtual IProjectItem* FirstChild() = 0;
+	virtual void SetFirstChild (IProjectItem* child) = 0;
+	virtual HRESULT GetHierarchy (REFIID riid, void** ppvObject) = 0;
+};
+
+struct DECLSPEC_NOVTABLE DECLSPEC_UUID("F36A3A6C-01AF-423B-86FD-DB071AA47E97")
+IRootNode : INode
+{
+	virtual VSITEMID MakeItemId() = 0;
+	//virtual HRESULT EnumHierarchyEventSinks (IEnumHierarchyEvents** ppSinks) = 0;
+	virtual HRESULT GetAutoOpenFiles (BSTR* pbstrFilenames) = 0;
+};
+
+// This is the base interface for every node except IRootNode.
+struct DECLSPEC_NOVTABLE DECLSPEC_UUID("A2EE7852-34B1-49A9-A3DB-36232AC6680C")
+IProjectItem : INode
+{
+	virtual HRESULT SetItemId (IRootNode* root, VSITEMID itemId) = 0;
+	virtual HRESULT GetMkDocument (BSTR* pbstrMkDocument) = 0; // returns the full path
+	virtual IProjectItem* Next() = 0; // TODO: keep an unordered_map with itemid/itemptr, then get rid of Next, SetNext, FindDescendant
+	virtual void SetNext (IProjectItem* next) = 0;
+	virtual HRESULT GetProperty (VSHPROPID propid, VARIANT* pvar) = 0;
+	virtual HRESULT SetProperty (VSHPROPID propid, REFVARIANT var) = 0;
+	virtual HRESULT GetGuidProperty (VSHPROPID propid, GUID* pguid) = 0;
+	virtual HRESULT SetGuidProperty (VSHPROPID propid, REFGUID rguid) = 0;
+	virtual HRESULT GetCanonicalName (BSTR* pbstrName) = 0; // returns the path relative to project if possible, otherwise the full path -- all lowercase
+	virtual HRESULT IsItemDirty (IUnknown *punkDocData, BOOL *pfDirty) = 0;
+	virtual HRESULT QueryStatus (const GUID* pguidCmdGroup, ULONG cCmds, OLECMD prgCmds[], OLECMDTEXT *pCmdText) = 0;
+	virtual HRESULT Exec (const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT* pvaIn, VARIANT* pvaOut) = 0;
+};
+
+struct DECLSPEC_NOVTABLE DECLSPEC_UUID("5F6EA158-4DA8-469A-8FD8-E8C04F31244E")
+IProjectFile : IProjectItem
+{
+};
 extern wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 
 constexpr DWORD PathFlags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
