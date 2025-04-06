@@ -373,13 +373,18 @@ public:
 
 		_name = wil::make_bstr_nothrow(newName); RETURN_IF_NULL_ALLOC(_name);
 		
-		com_ptr<IVsHierarchyEvents> hierEvents;
-		hr = _hier->QueryInterface(&hierEvents); RETURN_IF_FAILED(hr);
-		hierEvents->OnPropertyChanged (_itemId, VSHPROPID_SaveName, 0);
-		hierEvents->OnPropertyChanged (_itemId, VSHPROPID_Caption, 0);
-		hierEvents->OnPropertyChanged (_itemId, VSHPROPID_Name, 0);
-		hierEvents->OnPropertyChanged (_itemId, VSHPROPID_EditLabel, 0);
-		hierEvents->OnPropertyChanged (_itemId, VSHPROPID_DescriptiveName, 0);
+		com_ptr<IEnumHierarchyEvents> enu;
+		hr = _hier.try_query<IRootNode>()->EnumHierarchyEventSinks(&enu); RETURN_IF_FAILED(hr);
+		com_ptr<IVsHierarchyEvents> sink;
+		ULONG fetched;
+		while (SUCCEEDED(enu->Next(1, &sink, &fetched)) && fetched)
+		{
+			sink->OnPropertyChanged (_itemId, VSHPROPID_SaveName, 0);
+			sink->OnPropertyChanged (_itemId, VSHPROPID_Caption, 0);
+			sink->OnPropertyChanged (_itemId, VSHPROPID_Name, 0);
+			sink->OnPropertyChanged (_itemId, VSHPROPID_EditLabel, 0);
+			sink->OnPropertyChanged (_itemId, VSHPROPID_DescriptiveName, 0);
+		}
 
 		// Make sure the property browser is updated.
 		com_ptr<IVsUIShell> uiShell;

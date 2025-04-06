@@ -35,7 +35,6 @@ class Z80Project
 	, IRootNode
 	, IProjectItemParent
 	, IPropertyNotifySink // this implementation only used to mark the project as dirty
-	, IVsHierarchyEvents // this implementation only forwards calls to subscribed sinks
 	, IVsPerPropertyBrowsing
 {
 	wil::com_ptr_nothrow<IServiceProvider> _sp = serviceProvider;
@@ -654,7 +653,6 @@ public:
 			|| TryQI<IProjectItemParent>(this, riid, ppvObject)
 			|| TryQI<IRootNode>(this, riid, ppvObject)
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
-			|| TryQI<IVsHierarchyEvents>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 		)
 			return S_OK;
@@ -2696,40 +2694,6 @@ public:
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE OnRequestEdit (DISPID dispID) override
-	{
-		RETURN_HR(E_NOTIMPL);
-	}
-	#pragma endregion
-
-	#pragma region IVsHierarchyEvents
-	virtual HRESULT STDMETHODCALLTYPE OnItemAdded (VSITEMID itemidParent, VSITEMID itemidSiblingPrev, VSITEMID itemidAdded) override
-	{
-		RETURN_HR(E_NOTIMPL);
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE OnItemsAppended (VSITEMID itemidParent) override
-	{
-		RETURN_HR(E_NOTIMPL);
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE OnItemDeleted (VSITEMID itemid) override
-	{
-		RETURN_HR(E_NOTIMPL);
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged (VSITEMID itemid, VSHPROPID propid, DWORD flags) override
-	{
-		for (auto& s : _hierarchyEventSinks)
-			s.second->OnPropertyChanged(itemid, propid, flags);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE OnInvalidateItems (VSITEMID itemidParent) override
-	{
-		RETURN_HR(E_NOTIMPL);
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE OnInvalidateIcon (HICON hicon) override
 	{
 		RETURN_HR(E_NOTIMPL);
 	}
