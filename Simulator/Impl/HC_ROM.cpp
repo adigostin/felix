@@ -17,13 +17,14 @@ class HC_ROM : public IMemoryDevice
 public:
 	HRESULT InitInstance (Bus* memory_bus, Bus* io_bus, const wchar_t* folder, const wchar_t* BinaryFilename)
 	{
+		HRESULT hr;
 		_memory_bus = memory_bus;
 		_io_bus = io_bus;
 		_folder = wil::make_hlocal_string_nothrow(folder); RETURN_IF_NULL_ALLOC(_folder);
-		auto binaryPath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(binaryPath);
-		auto hr = PathCchCombine (binaryPath.get(), MAX_PATH + 1, _folder.get(), BinaryFilename); RETURN_IF_FAILED(hr);
+		wchar_t binaryPath[MAX_PATH];
+		PathCombine (binaryPath, _folder.get(), BinaryFilename);
 		com_ptr<IStream> romStream;
-		hr = SHCreateStreamOnFileEx (binaryPath.get(), STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &romStream); RETURN_IF_FAILED(hr);
+		hr = SHCreateStreamOnFileEx (binaryPath, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &romStream); RETURN_IF_FAILED(hr);
 		STATSTG stat;
 		hr = romStream->Stat(&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
 		if (stat.cbSize.HighPart)

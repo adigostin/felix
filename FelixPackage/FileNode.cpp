@@ -144,9 +144,9 @@ public:
 		hr = hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &location); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_FAIL, location.vt != VT_BSTR);
 
-		wil::unique_hlocal_string filePath;
-		hr = PathAllocCombine (location.bstrVal, _pathRelativeToProjectDir.get(), PathFlags, &filePath); RETURN_IF_FAILED(hr);
-		*pbstrMkDocument = SysAllocString(filePath.get()); RETURN_IF_NULL_ALLOC(*pbstrMkDocument);
+		wchar_t filePath[MAX_PATH];
+		PathCombine (filePath, location.bstrVal, _pathRelativeToProjectDir.get());
+		*pbstrMkDocument = SysAllocString(filePath); RETURN_IF_NULL_ALLOC(*pbstrMkDocument);
 		return S_OK;
 	}
 	
@@ -230,9 +230,9 @@ public:
 				wil::unique_variant loc;
 				hr = hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &loc); RETURN_IF_FAILED(hr);
 				RETURN_HR_IF(E_FAIL, loc.vt != VT_BSTR);
-				wil::unique_hlocal_string path;
-				hr = PathAllocCombine (loc.bstrVal, _pathRelativeToProjectDir.get(), PathFlags, &path); RETURN_IF_FAILED(hr);
-				return InitVariantFromString (path.get(), pvar);
+				wchar_t path[MAX_PATH];
+				PathCombine (path, loc.bstrVal, _pathRelativeToProjectDir.get()); RETURN_IF_FAILED(hr);
+				return InitVariantFromString (path, pvar);
 			}
 
 			case VSHPROPID_ProvisionalViewingStatus: // -2112
@@ -681,7 +681,7 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region IFileNode
+	#pragma region IFileNodeProperties
 	virtual HRESULT STDMETHODCALLTYPE get_Path (BSTR *pbstr) override
 	{
 		*pbstr = SysAllocString(_pathRelativeToProjectDir.get()); RETURN_IF_NULL_ALLOC(*pbstr);
@@ -690,9 +690,14 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE put_Path (BSTR value) override
 	{
-		auto newValue = wil::make_hlocal_string_nothrow(value, SysStringLen(value)); RETURN_IF_NULL_ALLOC(newValue);
+		size_t len = wcslen(value);
+		auto newValue = wil::make_hlocal_string_nothrow(value, len); RETURN_IF_NULL_ALLOC(newValue);
+		for(size_t i = 0; i < len; i++)
+			if (newValue.get()[i] == '/')
+				newValue.get()[i] = '\\';
 		_pathRelativeToProjectDir = std::move(newValue);
-		// TODO: notification
+		// No need for notification since this is called only when loading from XML.
+		// (Property is read-only in the Properties window - see IsPropertyReadOnly().)
 		return S_OK;
 	}
 
@@ -767,6 +772,7 @@ public:
 	{
 		if (dispid == dispidPath || dispid == dispidCustomBuildToolProps)
 		{
+			// Too complicated to allow the user to edit this in the Properties window.
 			*fReadOnly = TRUE;
 			return S_OK;
 		}
@@ -827,15 +833,16 @@ public:
 		wil::unique_variant projectDir;
 		hr = hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
+		PathRemoveBackslash(projectDir.bstrVal);
 
 		wil::unique_hlocal_string oldFullPath;
-		hr = PathAllocCombine (projectDir.bstrVal, _pathRelativeToProjectDir.get(), PathFlags, oldFullPath.addressof()); RETURN_IF_FAILED(hr);
+		hr = wil::str_concat_nothrow(oldFullPath, projectDir.bstrVal, L"\\", _pathRelativeToProjectDir.get()); RETURN_IF_FAILED(hr);
 
 		hr = QueryEditProjectFile(hier); RETURN_IF_FAILED_EXPECTED(hr);
 
 		// Check if the document is in the cache and rename document in the cache.
 		com_ptr<IVsRunningDocumentTable> pRDT;
-		hr = serviceProvider->QueryService(SID_SVsRunningDocumentTable, &pRDT); LOG_IF_FAILED(hr);
+		hr = serviceProvider->QueryService(SID_SVsRunningDocumentTable, &pRDT);
 		VSCOOKIE dwCookie = VSCOOKIE_NIL;
 		if (SUCCEEDED(hr))
 		{
@@ -856,38 +863,39 @@ public:
 		//}
 
 		auto relativeDir = wil::make_hlocal_string_nothrow(_pathRelativeToProjectDir.get());
-		hr = PathCchRemoveFileSpec (relativeDir.get(), wcslen(_pathRelativeToProjectDir.get()) + 1); RETURN_IF_FAILED(hr);
-		wil::unique_hlocal_string newFullPath;
-		hr = PathAllocCombine (projectDir.bstrVal, relativeDir.get(), PathFlags, newFullPath.addressof()); RETURN_IF_FAILED(hr);
-		hr = PathAllocCombine (newFullPath.get(), newName, PathFlags, newFullPath.addressof()); RETURN_IF_FAILED(hr);
+		// If in subdir, removes file and preceeding backslash or slash; if directly in project dir, removes everything.
+		PathRemoveFileSpec (relativeDir.get());
+		wchar_t newFullPath[MAX_PATH];
+		PathCombine (newFullPath, projectDir.bstrVal, relativeDir.get());
+		PathCombine (newFullPath, newFullPath, newName);
 
 		BOOL fRenameCanContinue = TRUE;
 		com_ptr<IVsTrackProjectDocuments2> trackProjectDocs;
-		hr = serviceProvider->QueryService (SID_SVsTrackProjectDocuments, &trackProjectDocs); LOG_IF_FAILED(hr);
+		hr = serviceProvider->QueryService (SID_SVsTrackProjectDocuments, &trackProjectDocs);
 		if (SUCCEEDED(hr))
 		{
 			fRenameCanContinue = FALSE;
-			hr = trackProjectDocs->OnQueryRenameFile (project, oldFullPath.get(), newFullPath.get(), VSRENAMEFILEFLAGS_NoFlags, &fRenameCanContinue);
+			hr = trackProjectDocs->OnQueryRenameFile (project, oldFullPath.get(), newFullPath, VSRENAMEFILEFLAGS_NoFlags, &fRenameCanContinue);
 			if (FAILED(hr) || !fRenameCanContinue)
 				return OLE_E_PROMPTSAVECANCELLED;
 		}
 
-		wil::unique_hlocal_string otherPathRelativeToProjectDir;
-		hr = PathAllocCombine (relativeDir.get(), newName, PathFlags, otherPathRelativeToProjectDir.addressof()); RETURN_IF_FAILED(hr);
+		auto otherPathRelativeToProjectDir = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH);
+		PathCombine (otherPathRelativeToProjectDir.get(), relativeDir.get(), newName);
 
-		if (!::MoveFile (oldFullPath.get(), newFullPath.get()))
+		if (!::MoveFile (oldFullPath.get(), newFullPath))
 			return HRESULT_FROM_WIN32(GetLastError());
 		std::swap (_pathRelativeToProjectDir, otherPathRelativeToProjectDir);
 		auto undoRename = wil::scope_exit([this, &otherPathRelativeToProjectDir, &newFullPath, &oldFullPath]
 			{
 				std::swap (_pathRelativeToProjectDir, otherPathRelativeToProjectDir);
-				::MoveFile (newFullPath.get(), oldFullPath.get());
+				::MoveFile (newFullPath, oldFullPath.get());
 			});
 
 
 		if (dwCookie != VSCOOKIE_NIL)
 		{
-			hr = pRDT->RenameDocument (oldFullPath.get(), newFullPath.get(), HIERARCHY_DONTCHANGE, VSITEMID_NIL);
+			hr = pRDT->RenameDocument (oldFullPath.get(), newFullPath, HIERARCHY_DONTCHANGE, VSITEMID_NIL);
 			if (FAILED(hr))
 			{
 				// We could rename the file on disk, but not in the Running Document Table.
@@ -900,7 +908,7 @@ public:
 
 		// Tell packages that care that it happened. No error checking here.
 		if (trackProjectDocs)
-			trackProjectDocs->OnAfterRenameFile (project, oldFullPath.get(), newFullPath.get(), VSRENAMEFILEFLAGS_NoFlags);
+			trackProjectDocs->OnAfterRenameFile (project, oldFullPath.get(), newFullPath, VSRENAMEFILEFLAGS_NoFlags);
 
 		// This line was changing the build tool when the user renamed the file.
 		// I eventually commented it out, to get behavior similar to that in VS projects
@@ -923,7 +931,7 @@ public:
 
 		// Make sure the property browser is updated.
 		com_ptr<IVsUIShell> uiShell;
-		hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell); LOG_IF_FAILED(hr);
+		hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell);
 		if (SUCCEEDED(hr))
 			uiShell->RefreshPropertyBrowser(DISPID_UNKNOWN); // refresh all properties
 

@@ -35,6 +35,9 @@ struct MockServiceProvider : IServiceProvider
 		if (guidService == SID_SVsUIShell)
 			return E_NOTIMPL;
 
+		if (guidService == SID_SVsQueryEditQuerySave)
+			return E_NOTIMPL;
+
 		Assert::Fail();
 	}
 };

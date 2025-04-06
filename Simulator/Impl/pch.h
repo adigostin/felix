@@ -14,7 +14,6 @@
 
 // Windows Platform headers
 #include <Shlwapi.h>
-#include <PathCch.h>
 #include <OCIdl.h>
 
 

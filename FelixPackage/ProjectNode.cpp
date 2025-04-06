@@ -1644,7 +1644,7 @@ public:
 		auto hr = d->GetMkDocument(&mkDocument); RETURN_IF_FAILED(hr);
 
 		wil::com_ptr_nothrow<IVsUIShellOpenDocument> uiShellOpenDocument;
-		hr = _sp->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED(hr);
+		hr = _sp->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED_EXPECTED(hr);
 
 		hr = uiShellOpenDocument->OpenStandardEditor(OSE_ChooseBestStdEditor, mkDocument.get(), rguidLogicalView,
 			L"%3", this, itemid, punkDocDataExisting, nullptr, ppWindowFrame); RETURN_IF_FAILED_EXPECTED(hr);
@@ -1782,10 +1782,11 @@ public:
 		BOOL bRes = PathRelativePathTo (relativeUgly, _location.get(), FILE_ATTRIBUTE_DIRECTORY, pszFullPathSource, 0);
 		if (!bRes)
 			return SetErrorInfo(E_INVALIDARG, L"Can't make a relative path from '%s' relative to '%s'.", pszFullPathSource, _location.get());
-		wil::unique_hlocal_string relative;
-		hr = PathAllocCanonicalize (relativeUgly, 0, relative.addressof());
-		if (FAILED(hr))
-			return SetErrorInfo(hr, L"Can't make a relative path from '%s' relative to '%s'.", pszFullPathSource, _location.get());
+		for (auto* p = relativeUgly; *p; p++)
+			if (*p == '/')
+				*p = '\\';
+		auto relative = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(relative);
+		PathCanonicalize (relative.get(), relativeUgly);
 
 		com_ptr<IChildNode> existing;
 		hr = FindDescendantIf([relative=relative.get()](IChildNode* c)
@@ -1803,7 +1804,7 @@ public:
 				return S_FALSE;
 			}, &existing); RETURN_IF_FAILED(hr);
 		if (hr == S_OK)
-			return SetErrorInfo(HRESULT_FROM_WIN32(ERROR_FILE_EXISTS), L"File already in project:\r\n\r\n%s", pszFullPathSource);
+			return SetErrorInfo(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), L"File already in project:\r\n\r\n%s", pszFullPathSource);
 
 		com_ptr<IFileNode> file;
 		hr = MakeFileNode(&file); RETURN_IF_FAILED(hr);
@@ -1820,9 +1821,14 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE AddItem(VSITEMID itemidLoc, VSADDITEMOPERATION dwAddItemOperation, LPCOLESTR pszItemName, ULONG cFilesToOpen, LPCOLESTR rgpszFilesToOpen[], HWND hwndDlgOwner, VSADDRESULT* pResult) override
+	virtual HRESULT STDMETHODCALLTYPE AddItem(VSITEMID itemidLoc, VSADDITEMOPERATION dwAddItemOperation,
+		LPCOLESTR pszItemName, ULONG cFilesToOpen, LPCOLESTR rgpszFilesToOpen[], HWND hwndDlgOwner,
+		VSADDRESULT* pResult) override
 	{
 		HRESULT hr;
+
+		for (ULONG i = 0; i < cFilesToOpen; i++)
+			RETURN_HR_IF(CO_E_BAD_PATH, PathIsRelative(rgpszFilesToOpen[i]));
 
 		com_ptr<INode> location;
 		if (itemidLoc == VSITEMID_NIL)

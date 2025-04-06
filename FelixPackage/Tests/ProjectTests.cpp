@@ -439,7 +439,7 @@ namespace FelixTests
 			wil::unique_bstr file2Path;
 			hr = wil::try_com_query_nothrow<IFileNodeProperties>(file2)->get_Path(&file2Path);
 			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::AreEqual(L"folder/test.asm", file2Path.get());
+			Assert::AreEqual(L"folder\\test.asm", file2Path.get());
 		}
 
 		TEST_METHOD(TestLoadFromXml1)

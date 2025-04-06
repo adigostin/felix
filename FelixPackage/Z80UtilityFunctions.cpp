@@ -427,16 +427,18 @@ HRESULT QueryEditProjectFile (IVsHierarchy* hier)
 	if (SUCCEEDED(pff->IsDirty(&dirty)) && dirty)
 		return S_OK;
 
-	wil::unique_cotaskmem_string fullPathName;
-	DWORD unused;
-	hr = pff->GetCurFile (&fullPathName, &unused); RETURN_IF_FAILED(hr);
-
 	VSQueryEditResult fEditVerdict;
 	com_ptr<IVsQueryEditQuerySave2> queryEdit;
-	hr = serviceProvider->QueryService (SID_SVsQueryEditQuerySave, &queryEdit); RETURN_IF_FAILED(hr);
-	hr = queryEdit->QueryEditFiles (QEF_DisallowInMemoryEdits, 1, fullPathName.addressof(), nullptr, nullptr, &fEditVerdict, nullptr); LOG_IF_FAILED(hr);
-	if (FAILED(hr) || (fEditVerdict != QER_EditOK))
-		return OLE_E_PROMPTSAVECANCELLED;
+	hr = serviceProvider->QueryService (SID_SVsQueryEditQuerySave, &queryEdit); LOG_IF_FAILED(hr);
+	if (SUCCEEDED(hr))
+	{
+		wil::unique_cotaskmem_string fullPathName;
+		DWORD unused;
+		hr = pff->GetCurFile (&fullPathName, &unused); RETURN_IF_FAILED(hr);
+		hr = queryEdit->QueryEditFiles (QEF_DisallowInMemoryEdits, 1, fullPathName.addressof(), nullptr, nullptr, &fEditVerdict, nullptr); LOG_IF_FAILED(hr);
+		if (FAILED(hr) || (fEditVerdict != QER_EditOK))
+			return OLE_E_PROMPTSAVECANCELLED;
+	}
 	
 	return S_OK;
 }

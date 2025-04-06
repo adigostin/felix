@@ -14,7 +14,7 @@ extern com_ptr<IVsOutputWindowPane2> MakeMockOutputWindowPane (IStream* outputSt
 extern com_ptr<IServiceProvider> MakeMockServiceProvider();
 com_ptr<IVsHierarchyEvents> MakeMockHierarchyEventSink();
 
-extern void WriteFileOnDisk(const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir, const char* fileContent);
+extern void WriteFileOnDisk(const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir, const char* fileContent = nullptr);
 extern void DeleteFileOnDisk(const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir);
 
 inline VSITEMID GetProperty_VSITEMID (IVsHierarchy* hier, VSITEMID itemid, VSHPROPID propid)

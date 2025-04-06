@@ -110,7 +110,7 @@ public:
 		_cpu_thread_exit_request.reset (CreateEvent(nullptr, FALSE, FALSE, nullptr)); RETURN_LAST_ERROR_IF_NULL(_cpu_thread_exit_request);
 		_cpuThread.reset (CreateThread(nullptr, 100'000, simulation_thread_proc_static, this, 0, nullptr)); RETURN_LAST_ERROR_IF_NULL(_cpuThread);
 
-		SetThreadDescription(_cpuThread.get(), L"Simulator");
+		//SetThreadDescription(_cpuThread.get(), L"Simulator");
 
 		return S_OK;
 	};

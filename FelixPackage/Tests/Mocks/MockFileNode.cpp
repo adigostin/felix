@@ -208,8 +208,11 @@ void WriteFileOnDisk (const wchar_t* projectDir, const wchar_t* pathRelativeToPr
 
 	wil::unique_hfile handle (CreateFile(mkDoc, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL));
 	Assert::IsTrue(handle.is_valid());
-	BOOL bres = WriteFile(handle.get(), fileContent, (DWORD)strlen(fileContent), NULL, NULL);
-	Assert::IsTrue(bres);
+	if (fileContent)
+	{
+		BOOL bres = WriteFile(handle.get(), fileContent, (DWORD)strlen(fileContent), NULL, NULL);
+		Assert::IsTrue(bres);
+	}
 }
 
 void DeleteFileOnDisk (const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir)
