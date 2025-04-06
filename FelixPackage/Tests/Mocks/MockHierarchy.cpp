@@ -221,6 +221,12 @@ struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IRootNode, IProjec
 	{
 		return _nextItemId++;
 	}
+
+	virtual HRESULT STDMETHODCALLTYPE EnumHierarchyEventSinks(IEnumHierarchyEvents **ppSinks)
+	{
+		*ppSinks = nullptr;
+		return S_FALSE;
+	}
 	#pragma endregion
 };
 

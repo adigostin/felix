@@ -15,6 +15,8 @@ const wchar_t SingleDebugPortName[] = L"Single Z80 Port";
 const GUID Z80AsmLanguageGuid = { 0x598BC226, 0x2E96, 0x43AD, { 0xAD, 0x42, 0x67, 0xD9, 0xCC, 0x6F, 0x75, 0xF6 } };
 const wchar_t SettingsCollection[] = L"FelixSettings";
 const wchar_t SettingLoadSavePath[] = L"LoadSavePath";
+const LCID InvariantLCID = LocaleNameToLCID(LOCALE_NAME_INVARIANT, 0);
+const wchar_t ProjectElementName[] = L"Z80Project";
 static const wchar_t AlwaysReportSettingsName[] = L"AlwaysReportErrors";
 static const wchar_t BinaryFilename[] = L"ROMs/Spectrum48K.rom";
 
@@ -564,7 +566,7 @@ public:
 
 	HRESULT OpenFileOnProjectCreation(IVsHierarchy* pHierarchy)
 	{
-		com_ptr<IZ80ProjectProperties> rn;
+		com_ptr<IRootNode> rn;
 		auto hr = pHierarchy->QueryInterface(&rn); RETURN_IF_FAILED(hr);
 
 		wil::unique_bstr filenames;

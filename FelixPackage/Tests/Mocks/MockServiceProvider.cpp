@@ -23,6 +23,9 @@ struct MockServiceProvider : IServiceProvider
 
 	virtual HRESULT STDMETHODCALLTYPE QueryService (REFGUID guidService, REFIID riid, void** ppvObject) override
 	{
+		if (guidService == SID_SVsUIShellOpenDocument)
+			return E_NOTIMPL;
+
 		Assert::Fail();
 	}
 };

@@ -17,12 +17,9 @@ struct MockSourceFile : IProjectFile, IProjectFileProperties
 	wil::unique_hlocal_string _pathRelativeToProjectDir;
 	com_ptr<ICustomBuildToolProperties> _customBuildToolProps;
 
-	HRESULT InitInstance (IVsHierarchy* hier, VSITEMID itemId, VSITEMID parentItemId,
-		BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir)
+	HRESULT InitInstance (BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir)
 	{
-		auto hr = hier->QueryInterface(IID_PPV_ARGS(_hier.addressof())); RETURN_IF_FAILED(hr);
-		_itemId = itemId;
-		_parentItemId = parentItemId;
+		HRESULT hr;
 		_buildTool = buildTool;
 		_pathRelativeToProjectDir = wil::make_hlocal_string_nothrow(pathRelativeToProjectDir); RETURN_IF_NULL_ALLOC_EXPECTED(_pathRelativeToProjectDir);
 		hr = MakeCustomBuildToolProperties(&_customBuildToolProps); RETURN_IF_FAILED_EXPECTED(hr);
@@ -122,6 +119,14 @@ struct MockSourceFile : IProjectFile, IProjectFileProperties
 
 	HRESULT STDMETHODCALLTYPE SetProperty(VSHPROPID propid, REFVARIANT var) override
 	{
+		if (propid == VSHPROPID_Parent)
+		{
+			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, _parentItemId);
+			Assert::AreEqual<VARTYPE>(VT_VSITEMID, var.vt);
+			_parentItemId = V_VSITEMID(&var);
+			return S_OK;
+		}
+
 		return E_NOTIMPL;
 	}
 	HRESULT STDMETHODCALLTYPE GetGuidProperty(VSHPROPID propid, GUID* pguid) override
@@ -186,12 +191,11 @@ struct MockSourceFile : IProjectFile, IProjectFileProperties
 	#pragma endregion
 };
 
-com_ptr<IProjectFile> MakeMockSourceFile (IVsHierarchy* hier, VSITEMID itemId, VSITEMID parentItemId,
-	BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir)
+com_ptr<IProjectFile> MakeMockSourceFile (BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir)
 {
 	auto p = com_ptr (new (std::nothrow) MockSourceFile());
 	Assert::IsNotNull(p.get());
-	auto hr = p->InitInstance (hier, itemId, parentItemId, buildTool, pathRelativeToProjectDir);
+	auto hr = p->InitInstance (buildTool, pathRelativeToProjectDir);
 	Assert::IsTrue(SUCCEEDED(hr));
 	return p;
 }

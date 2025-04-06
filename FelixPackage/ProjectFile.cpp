@@ -19,11 +19,11 @@ struct ProjectFile
 	, IConnectionPointContainer
 	, IPropertyNotifySink
 {
-	VSITEMID _itemId;
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _hier;
+	VSITEMID _itemId = VSITEMID_NIL;
 	wil::com_ptr_nothrow<IProjectItem> _next;
-	VSITEMID _parentItemId;
+	VSITEMID _parentItemId = VSITEMID_NIL;
 	VSCOOKIE _docCookie = VSDOCCOOKIE_NIL;
 	wil::unique_hlocal_string _pathRelativeToProjectDir;
 	BuildToolKind _buildTool = BuildToolKind::None;
@@ -33,12 +33,9 @@ struct ProjectFile
 	WeakRefToThis _weakRefToThis;
 
 public:
-	HRESULT InitInstance (VSITEMID itemId, IVsHierarchy* hier, VSITEMID parentItemId)
+	HRESULT InitInstance()
 	{
 		HRESULT hr;
-		_itemId = itemId;
-		hr = hier->QueryInterface(IID_PPV_ARGS(_hier.addressof())); RETURN_IF_FAILED(hr);
-		_parentItemId = parentItemId;
 		hr = _weakRefToThis.InitInstance(static_cast<IProjectFile*>(this)); RETURN_IF_FAILED(hr);
 		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
 		hr = MakeCustomBuildToolProperties(&_customBuildToolProps); RETURN_IF_FAILED(hr);
@@ -193,7 +190,7 @@ public:
 			case VSHPROPID_Name: // -2012
 			case VSHPROPID_EditLabel: // -2026
 				if (!_pathRelativeToProjectDir || !_pathRelativeToProjectDir.get()[0])
-					return HRESULT_FROM_WIN32(ERROR_INVALID_NAME);
+					return E_NOT_SET;
 				return InitVariantFromString (PathFindFileName(_pathRelativeToProjectDir.get()), pvar);
 
 			case VSHPROPID_Expandable: // -2006
@@ -616,8 +613,8 @@ public:
 				com_ptr<IVsProject2> vsp;
 				auto hr = _hier->QueryInterface(&vsp); RETURN_IF_FAILED(hr);
 				wil::com_ptr_nothrow<IVsWindowFrame> windowFrame;
-				hr = vsp->OpenItem (_itemId, LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &windowFrame); RETURN_IF_FAILED(hr);
-				hr = windowFrame->Show(); RETURN_IF_FAILED(hr);
+				hr = vsp->OpenItem (_itemId, LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &windowFrame); RETURN_IF_FAILED_EXPECTED(hr);
+				hr = windowFrame->Show(); RETURN_IF_FAILED_EXPECTED(hr);
 				return S_OK;
 			}
 
@@ -719,10 +716,13 @@ public:
 		if (_buildTool != value)
 		{
 			_buildTool = value;
-			if (auto sink = wil::try_com_query_nothrow<IPropertyNotifySink>(_hier))
-				sink->OnChanged(DISPID_UNKNOWN);
-			_propNotifyCP->NotifyPropertyChanged(dispidBuildToolKind);
-			_propNotifyCP->NotifyPropertyChanged(dispidCustomBuildToolProps);
+			if (_hier)
+			{
+				if (auto sink = wil::try_com_query_nothrow<IPropertyNotifySink>(_hier))
+					sink->OnChanged(DISPID_UNKNOWN);
+				_propNotifyCP->NotifyPropertyChanged(dispidBuildToolKind);
+				_propNotifyCP->NotifyPropertyChanged(dispidCustomBuildToolProps);
+			}
 		}
 
 		return S_OK;
@@ -933,10 +933,10 @@ public:
 
 // ============================================================================
 
-HRESULT MakeProjectFile (VSITEMID itemId, IVsHierarchy* hier, VSITEMID parentItemId, IProjectFile** file)
+HRESULT MakeProjectFile (IProjectFile** file)
 {
 	com_ptr<ProjectFile> p = new (std::nothrow) ProjectFile(); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance(itemId, hier, parentItemId); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance(); RETURN_IF_FAILED(hr);
 	*file = p.detach();
 	return S_OK;
 }

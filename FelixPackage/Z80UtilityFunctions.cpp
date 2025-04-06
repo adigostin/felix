@@ -307,7 +307,7 @@ HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProje
 
 			return S_OK;
 		};
-	enumDescendants(wil::try_com_query_nothrow<IProjectItemParent>(hier));
+	hr = enumDescendants(wil::try_com_query_nothrow<IProjectItemParent>(hier)); RETURN_IF_FAILED(hr);
 
 	if (asmFiles.empty())
 		return (*ppCmdLine = nullptr), S_OK;
@@ -439,4 +439,230 @@ HRESULT QueryEditProjectFile (IVsHierarchy* hier)
 		return OLE_E_PROMPTSAVECANCELLED;
 	
 	return S_OK;
+}
+
+HRESULT GetHierarchyWindow (IVsUIHierarchyWindow** ppHierWindow)
+{
+	com_ptr<IVsUIShell> shell;
+	auto hr = serviceProvider->QueryService(SID_SVsUIShell, IID_PPV_ARGS(shell.addressof()));
+	if(FAILED(hr))
+		return hr;
+
+	com_ptr<IVsWindowFrame> frame;
+	hr = shell->FindToolWindow(0, GUID_SolutionExplorer, frame.addressof());
+	if(FAILED(hr))
+		return hr;
+
+	wil::unique_variant docViewVar;
+	hr = frame->GetProperty(VSFPROPID_DocView, &docViewVar);
+	if(FAILED(hr))
+		return hr;
+	if (docViewVar.vt != VT_UNKNOWN)
+		return E_UNEXPECTED;
+
+	return docViewVar.punkVal->QueryInterface(ppHierWindow);
+}
+
+HRESULT GetPathTo (IVsHierarchy* hier, VSITEMID itemID, wil::unique_process_heap_string& dir)
+{
+	if (itemID == VSITEMID_ROOT)
+	{
+		// Get project dir...
+		wil::unique_variant projectDir;
+		auto hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
+		RETURN_HR_IF(E_UNEXPECTED, projectDir.vt != VT_BSTR);
+		dir = wil::make_process_heap_string_nothrow (projectDir.bstrVal); RETURN_IF_NULL_ALLOC(dir);
+		return S_OK;
+	}
+	else
+	{
+		// Get path of parent node...
+		wil::unique_variant parent;
+		auto hr = hier->GetProperty(itemID, VSHPROPID_Parent, &parent); RETURN_IF_FAILED(hr);
+		RETURN_HR_IF(E_UNEXPECTED, parent.vt != VT_VSITEMID);
+		return GetPathTo (hier, V_VSITEMID(&parent), dir);
+	}
+}
+
+HRESULT GetPathOf (IVsHierarchy* hier, VSITEMID itemID, wil::unique_process_heap_string& path)
+{
+	auto hr = GetPathTo (hier, itemID, path); RETURN_IF_FAILED(hr);
+	wil::unique_variant name;
+	hr = hier->GetProperty(itemID, VSHPROPID_SaveName, &name); RETURN_IF_FAILED(hr);
+	RETURN_HR_IF(E_UNEXPECTED, name.vt != VT_BSTR);		
+	hr = wil::str_concat_nothrow(path, L"\\", name.bstrVal); RETURN_IF_FAILED(hr);
+	return S_OK;
+}
+
+// Enum depth-first (just because it's simpler) pre-order mode (so that parents get their ItemId before children).
+static HRESULT SetItemIdsTree (IProjectItem* child, IProjectItem* childPrevSibling, IProjectItemParent* addTo)
+{
+	com_ptr<IRootNode> root;
+	auto hr = addTo->GetHierarchy(IID_PPV_ARGS(&root)); RETURN_IF_FAILED(hr);
+
+	stdext::inplace_function<HRESULT(IProjectItem*, IProjectItem*, IProjectItemParent*)> enumNodeAndChildren;
+
+	enumNodeAndChildren = [root, &enumNodeAndChildren](IProjectItem* node, IProjectItem* nodePrevSibling, IProjectItemParent* nodeParent) -> HRESULT
+		{
+			auto hr = node->SetItemId(root, root->MakeItemId()); RETURN_IF_FAILED(hr);
+			VARIANT v;
+			InitVariantFromVSITEMID(nodeParent->GetItemId(), &v);
+			hr = node->SetProperty(VSHPROPID_Parent, v); RETURN_IF_FAILED(hr);
+
+			com_ptr<IProjectItemParent> nodeAsParent;
+			if (SUCCEEDED(node->QueryInterface(&nodeAsParent)))
+			{
+				IProjectItem* childPrevSibling = nullptr;
+				for (auto c = nodeAsParent->FirstChild(); c; c = c->Next())
+				{
+					hr = enumNodeAndChildren(c, childPrevSibling, nodeAsParent); RETURN_IF_FAILED(hr);
+					childPrevSibling = c;
+				}
+			}
+
+			com_ptr<IEnumHierarchyEvents> eventSinks;
+			if (SUCCEEDED(root->EnumHierarchyEventSinks(&eventSinks)) && eventSinks)
+			{
+				com_ptr<IVsHierarchyEvents> sink;
+				ULONG fetched;
+				while (SUCCEEDED(eventSinks->Next(1, &sink, &fetched)) && fetched)
+				{
+					VSITEMID itemidSiblingPrev = nodePrevSibling ? nodePrevSibling->GetItemId() : VSITEMID_NIL;
+					sink->OnItemAdded (nodeParent->GetItemId(), itemidSiblingPrev, node->GetItemId());
+
+					// Since our expandable status may have changed, we need to refresh it in the UI.
+					sink->OnPropertyChanged (nodeParent->GetItemId(), VSHPROPID_Expandable, 0);
+				}
+			}
+
+			return S_OK;
+		};
+
+	return enumNodeAndChildren(child, childPrevSibling, addTo);
+}
+
+HRESULT AddFileToParent (IProjectItem* child, IProjectItemParent* addTo)
+{
+	HRESULT hr;
+	RETURN_HR_IF(E_UNEXPECTED, child->GetItemId() != VSITEMID_NIL);
+
+	IProjectItem* prevChild = nullptr;
+	if (!addTo->FirstChild())
+		addTo->SetFirstChild(child);
+	else
+	{
+		wil::unique_variant childName;
+		hr = child->GetProperty(VSHPROPID_SaveName, &childName); RETURN_IF_FAILED(hr);
+
+		// Do we need to insert it in the first position?
+		wil::unique_variant name;
+		if (!wil::try_com_query_nothrow<IProjectFolder>(addTo->FirstChild())
+			&& SUCCEEDED(addTo->FirstChild()->GetProperty(VSHPROPID_SaveName, &name))
+			&& VarBstrCmp(childName.bstrVal, name.bstrVal, InvariantLCID, NORM_IGNORECASE) == VARCMP_LT)
+		{
+			// Yes
+			child->SetNext(addTo->FirstChild());
+			addTo->SetFirstChild(child);
+		}
+		else
+		{
+			// No, insert it after some existing node
+			IProjectItem* insertAfter = addTo->FirstChild();
+
+			// Skip any existing folder nodes.
+			while (insertAfter->Next() && wil::try_com_query_nothrow<IProjectFolder>(insertAfter->Next()))
+				insertAfter = insertAfter->Next();
+
+			if (insertAfter->Next())
+			{
+				while (insertAfter->Next()
+					&& SUCCEEDED(insertAfter->Next()->GetProperty(VSHPROPID_SaveName, &name))
+					&& VarBstrCmp(childName.bstrVal, name.bstrVal, InvariantLCID, NORM_IGNORECASE) == VARCMP_GT)
+				{
+					insertAfter = insertAfter->Next();
+				}
+			}
+
+			child->SetNext(insertAfter->Next());
+			insertAfter->SetNext(child);
+
+			prevChild = insertAfter;
+		}
+	}
+
+	if (addTo->GetItemId() != VSITEMID_NIL)
+	{
+		// Adding it to a hierarchy.
+		hr = SetItemIdsTree(child, prevChild, addTo); RETURN_IF_FAILED(hr);
+	}
+
+	return S_OK;
+}
+
+HRESULT AddFolderToParent (IProjectFolder* child, IProjectItemParent* addTo)
+{
+	HRESULT hr;
+
+	// The item we're adding is supposed to be outside of any hierarchy.
+	RETURN_HR_IF(E_UNEXPECTED, child->GetItemId() != VSITEMID_NIL);
+
+	IProjectItem* prevChild = nullptr;
+	if (!addTo->FirstChild())
+	{
+		addTo->SetFirstChild(child);
+	}
+	else
+	{
+		if (!wil::try_com_query_nothrow<IProjectFolder>(addTo->FirstChild()))
+		{
+			// Adding first folder; insert it before the files.
+			child->SetNext(addTo->FirstChild());
+			addTo->SetFirstChild(child);
+		}
+		else
+		{
+			// Add it sorted to existing folders and before files (if any).
+			wil::unique_variant childName;
+			hr = child->GetProperty(VSHPROPID_SaveName, &childName); RETURN_IF_FAILED(hr);
+
+			wil::unique_variant name;
+
+			// Insert in first position?
+			if (SUCCEEDED(addTo->FirstChild()->GetProperty(VSHPROPID_SaveName, &name))
+				&& VarBstrCmp(childName.bstrVal, name.bstrVal, InvariantLCID, NORM_IGNORECASE) == VARCMP_LT)
+			{
+				// Yes
+				child->SetNext(addTo->FirstChild());
+				addTo->SetFirstChild(child);
+			}
+			else
+			{
+				IProjectItem* insertAfter = addTo->FirstChild();
+				while (insertAfter->Next()
+					&& wil::try_com_query_nothrow<IProjectFolder>(insertAfter->Next())
+					&& SUCCEEDED(insertAfter->Next()->GetProperty(VSHPROPID_SaveName, &name))
+					&& VarBstrCmp(childName.bstrVal, name.bstrVal, InvariantLCID, NORM_IGNORECASE) == VARCMP_GT)
+				{
+					insertAfter = insertAfter->Next();
+				}
+
+				child->SetNext(insertAfter->Next());
+				insertAfter->SetNext(child);
+				prevChild = insertAfter;
+			}
+		}
+	}
+
+	if (addTo->GetItemId() != VSITEMID_NIL)
+	{
+		// Adding it to a hierarchy.
+		hr = SetItemIdsTree (child, prevChild, addTo); RETURN_IF_FAILED(hr);
+	}
+
+	return S_OK;
+}
+
+HRESULT RemoveChildFromParent (IProjectItem* node, IProjectItemParent* removeFrom)
+{
+	RETURN_HR(E_NOTIMPL);
 }

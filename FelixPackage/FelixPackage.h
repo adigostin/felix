@@ -35,6 +35,16 @@ __interface IProjectConfigBuilder : IUnknown
 	HRESULT STDMETHODCALLTYPE CancelBuild();
 };
 
+struct DECLSPEC_NOVTABLE DECLSPEC_UUID("525B565F-9554-4F51-BECF-CA214A2780E2")
+IEnumHierarchyEvents : IUnknown
+{
+	virtual HRESULT Next (ULONG celt, IVsHierarchyEvents** rgelt, ULONG* pceltFetched) = 0;
+	virtual HRESULT Skip(ULONG celt) = 0;
+	virtual HRESULT Reset() = 0;
+	virtual HRESULT Clone(IEnumHierarchyEvents** ppEnum) = 0;
+	virtual HRESULT GetCount(ULONG* pcelt) = 0;
+};
+
 struct IProjectItem;
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("29DDAB6E-5A2E-4BD8-A617-E1EAA90E30DA")
@@ -56,7 +66,7 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("F36A3A6C-01AF-423B-86FD-DB071AA47E97")
 IRootNode : INode
 {
 	virtual VSITEMID MakeItemId() = 0;
-	//virtual HRESULT EnumHierarchyEventSinks (IEnumHierarchyEvents** ppSinks) = 0;
+	virtual HRESULT EnumHierarchyEventSinks (IEnumHierarchyEvents** ppSinks) = 0;
 	virtual HRESULT GetAutoOpenFiles (BSTR* pbstrFilenames) = 0;
 };
 
@@ -82,6 +92,12 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("5F6EA158-4DA8-469A-8FD8-E8C04F31244E")
 IProjectFile : IProjectItem
 {
 };
+
+struct DECLSPEC_NOVTABLE DECLSPEC_UUID("E5498B79-7C01-4F49-B5EC-8D1C98FF935D")
+IProjectFolder : IProjectItem
+{
+};
+
 extern wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 
 constexpr DWORD PathFlags = PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS;
@@ -92,6 +108,8 @@ extern const wchar_t SingleDebugPortName[];
 extern const GUID Z80AsmLanguageGuid;
 extern const wchar_t SettingsCollection[];
 extern const wchar_t SettingLoadSavePath[];
+extern const LCID InvariantLCID;
+extern const wchar_t ProjectElementName[];
 
 const char* PropIDToString (VSHPROPID propid);
 void PrintProperty (const char* prefix, VSHPROPID propid, const VARIANT* pvar);
@@ -100,6 +118,7 @@ HRESULT MakeBstrFromString (const char* name, size_t len, BSTR* bstr);
 HRESULT MakeBstrFromString (const char* sl_name_from, const char* sl_name_to, BSTR* to);
 HRESULT MakeBstrFromStreamOnHGlobal (IStream* stream, BSTR* pBstr);
 
+VARIANT MakeVariantFromVSITEMID (VSITEMID itemid);
 inline HRESULT InitVariantFromVSITEMID (VSITEMID itemid, VARIANT* pvar)
 {
 	pvar->vt = VT_VSITEMID;
@@ -108,7 +127,7 @@ inline HRESULT InitVariantFromVSITEMID (VSITEMID itemid, VARIANT* pvar)
 }
 
 HRESULT MakeFelixProject (LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject);
-HRESULT MakeProjectFile (VSITEMID itemId, IVsHierarchy* hier, VSITEMID parentItemId, IProjectFile** file);
+HRESULT MakeProjectFile (IProjectFile** file);
 HRESULT ProjectConfig_CreateInstance (IVsHierarchy* hier, IProjectConfig** to);
 HRESULT Z80ProjectFactory_CreateInstance (IServiceProvider* sp, IVsProjectFactory** to);
 HRESULT MakePGPropertyPage (UINT titleStringResId, REFGUID pageGuid, DISPID dispidChildObj, IPropertyPage** to);
@@ -128,5 +147,12 @@ HRESULT MakeProjectConfigBuilder (IVsHierarchy* hier, IProjectConfig* config,
 HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to);
 HRESULT ShowCommandLinePropertyBuilder (HWND hwndParent, BSTR valueBefore, BSTR* valueAfter);
 HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmProps, BSTR* ppCmdLine);
+HRESULT MakeProjectFolder (IProjectFolder** ppFolder);
 BOOL LUtilFixFilename (wchar_t* strName);
 HRESULT QueryEditProjectFile (IVsHierarchy* hier);
+HRESULT GetHierarchyWindow (IVsUIHierarchyWindow** ppHierWindow);
+HRESULT GetPathTo (IVsHierarchy* hier, VSITEMID itemID, wil::unique_process_heap_string& dir);
+HRESULT GetPathOf (IVsHierarchy* hier, VSITEMID itemID, wil::unique_process_heap_string& path);
+HRESULT AddFileToParent (IProjectItem* child, IProjectItemParent* addTo);
+HRESULT AddFolderToParent (IProjectFolder* child, IProjectItemParent* addTo);
+HRESULT RemoveChildFromParent (IProjectItem* child, IProjectItemParent* removeFrom);

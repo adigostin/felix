@@ -16,15 +16,24 @@ namespace FelixTests
 			auto pane = MakeMockOutputWindowPane(nullptr);
 
 			com_ptr<IProjectFile> file;
-			auto hr = MakeProjectFile (1000, hier, VSITEMID_ROOT, &file);
+			auto hr = MakeProjectFile (&file);
 			Assert::IsTrue(SUCCEEDED(hr));
-			hier.try_query<IProjectItemParent>()->SetFirstChild(file);
+			hr = AddFileToParent(file, hier.try_query<IProjectItemParent>());
+			Assert::IsTrue(SUCCEEDED(hr));
 
 			wil::unique_variant value;
 			hr = hier->GetProperty(1000, VSHPROPID_SaveName, &value);
 			Assert::IsTrue(FAILED(hr));
 			hr = hier->GetProperty(1000, VSHPROPID_Caption, &value);
 			Assert::IsTrue(FAILED(hr));
+		}
+
+		TEST_METHOD(put_Items_EmptyProject)
+		{
+		}
+
+		TEST_METHOD(put_Items_NonEmptyProject)
+		{
 		}
 	};
 }

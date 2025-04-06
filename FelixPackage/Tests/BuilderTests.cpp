@@ -77,16 +77,17 @@ namespace FelixTests
 		static com_ptr<IProjectConfigBuilder> MakeSjasmProjectBuilder (const char* asmFileContent)
 		{
 			auto hier = MakeMockVsHierarchy (tempPath);
-			auto sourceFile = MakeMockSourceFile (hier, 1000, VSITEMID_ROOT, BuildToolKind::Assembler, L"test.asm");
+			auto sourceFile = MakeMockSourceFile (BuildToolKind::Assembler, L"test.asm");
 			if (asmFileContent)
 				WriteFileOnDisk(tempPath, L"test.asm", asmFileContent);
 			else
 				DeleteFileOnDisk(tempPath, L"test.asm");
-			hier.try_query<IProjectItemParent>()->SetFirstChild(sourceFile);
+			auto hr = AddFileToParent(sourceFile, hier.try_query<IProjectItemParent>());
+			Assert::IsTrue(SUCCEEDED(hr));
 			auto config = MakeMockProjectConfig(hier);
 			auto pane = MakeMockOutputWindowPane(nullptr);
 			com_ptr<IProjectConfigBuilder> builder;
-			auto hr = MakeProjectConfigBuilder (hier, config, pane, &builder);
+			hr = MakeProjectConfigBuilder (hier, config, pane, &builder);
 			Assert::IsTrue(SUCCEEDED(hr));
 			return builder;
 		}
@@ -158,6 +159,14 @@ namespace FelixTests
 			Assert::IsFalse(callback->_success);
 		}
 
+		TEST_METHOD(Test_SjasmFilesInFolders)
+		{
+		}
+
+		TEST_METHOD(Test_CustomBuildToolFilesInFolders)
+		{
+		}
+
 		// sourceFileContent - empty string view to skip creating the file on disk
 		static com_ptr<IProjectConfigBuilder> MakeProjectWithCustomBuildTool (
 			const wchar_t* sourceFileName, const char* sourceFileContent,
@@ -165,12 +174,12 @@ namespace FelixTests
 			const wchar_t* cbtCmdLine, IStream* outputStreamUTF16)
 		{
 			auto hier = MakeMockVsHierarchy(tempPath);
-			auto sourceFile = MakeMockSourceFile (hier, 1000, VSITEMID_ROOT, BuildToolKind::Assembler, sourceFileName);
+			auto sourceFile = MakeMockSourceFile (BuildToolKind::Assembler, sourceFileName);
 			if (sourceFileContent)
 				WriteFileOnDisk(tempPath, sourceFileName, sourceFileContent);
 			else
 				DeleteFileOnDisk(tempPath, sourceFileName);
-			hier.try_query<IProjectItemParent>()->SetFirstChild(sourceFile);
+			AddFileToParent(sourceFile, hier.try_query<IProjectItemParent>());
 
 			auto hr = sourceFile.try_query<IProjectFileProperties>()->put_BuildTool(BuildToolKind::CustomBuildTool);
 			Assert::IsTrue(SUCCEEDED(hr));
