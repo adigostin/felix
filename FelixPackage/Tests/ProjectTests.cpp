@@ -524,6 +524,65 @@ namespace FelixTests
 
 			Assert::IsNull(startasm->Next());
 		}
+
+		TEST_METHOD(RenameFilePresentOnFileSystem)
+		{
+			static const char xml[] = ""
+				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+				"<Z80Project Guid=\"{2839FDD7-4C8F-4772-90E6-222C702D045E}\">"
+				"<Configurations>"
+				"<Configuration ConfigName=\"Debug\" PlatformName=\"ZX Spectrum 48K\" />"
+				"</Configurations>"
+				"<Items>"
+				"<File Path=\"file.asm\" BuildTool=\"Assembler\" />"
+				"</Items>"
+				"</Z80Project>";
+
+			auto s = SHCreateMemStream((BYTE*)xml, sizeof(xml) - 1);
+			com_ptr<IStream> stream;
+			stream.attach(s);
+
+			com_ptr<IVsHierarchy> hier;
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = LoadFromXml(hier.try_query<IProjectNodeProperties>(), ProjectElementName, stream);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			auto file = hier.try_query<IParentNode>()->FirstChild();
+
+			wil::unique_bstr oldFullPath;
+			hr = file->GetMkDocument(&oldFullPath);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_hfile handle (CreateFile(oldFullPath.get(), GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL));
+			Assert::IsTrue(handle.is_valid());
+			handle.reset();
+
+			wchar_t newFullPath[MAX_PATH];
+			PathCombine(newFullPath, tempPath, L"new.asm");
+			BOOL bres = DeleteFile(newFullPath);
+			Assert::IsTrue(bres || GetLastError() == ERROR_FILE_NOT_FOUND);
+
+			hr = hier->SetProperty(file->GetItemId(), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"new.asm"));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_variant newSaveName;
+			hr = hier->GetProperty(file->GetItemId(), VSHPROPID_SaveName, &newSaveName);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual(L"new.asm", newSaveName.bstrVal);
+
+			Assert::IsTrue(PathFileExists(newFullPath));
+			DeleteFile(newFullPath);
+		}
+
+		TEST_METHOD(RenameFileMissingOnFileSystem)
+		{
+		}
+
+		TEST_METHOD(RenameFileMissingOnFileSystem_NewNameExists)
+		{
+		}
 	};
 }
 

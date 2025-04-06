@@ -26,6 +26,15 @@ struct MockServiceProvider : IServiceProvider
 		if (guidService == SID_SVsUIShellOpenDocument)
 			return E_NOTIMPL;
 
+		if (guidService == SID_SVsRunningDocumentTable)
+			return E_NOTIMPL;
+
+		if (guidService == SID_SVsTrackProjectDocuments)
+			return E_NOTIMPL;
+
+		if (guidService == SID_SVsUIShell)
+			return E_NOTIMPL;
+
 		Assert::Fail();
 	}
 };

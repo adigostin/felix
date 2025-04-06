@@ -1,6 +1,5 @@
 
 #include "pch.h"
-#include <ivstrackprojectdocuments2.h>
 #include "FelixPackage.h"
 #include "shared/OtherGuids.h"
 #include "shared/com.h"
@@ -838,7 +837,10 @@ public:
 		com_ptr<IVsRunningDocumentTable> pRDT;
 		hr = serviceProvider->QueryService(SID_SVsRunningDocumentTable, &pRDT); LOG_IF_FAILED(hr);
 		VSCOOKIE dwCookie = VSCOOKIE_NIL;
-		pRDT->FindAndLockDocument (RDT_NoLock, oldFullPath.get(), nullptr, nullptr, nullptr, &dwCookie); // ignore returned HRESULT as we're only interested in dwCookie
+		if (SUCCEEDED(hr))
+		{
+			pRDT->FindAndLockDocument (RDT_NoLock, oldFullPath.get(), nullptr, nullptr, nullptr, &dwCookie); // ignore returned HRESULT as we're only interested in dwCookie
+		}
 
 		// TODO: repro and test this
 		// if document is open and we are not owner of document, do not rename it
@@ -859,12 +861,16 @@ public:
 		hr = PathAllocCombine (projectDir.bstrVal, relativeDir.get(), PathFlags, newFullPath.addressof()); RETURN_IF_FAILED(hr);
 		hr = PathAllocCombine (newFullPath.get(), newName, PathFlags, newFullPath.addressof()); RETURN_IF_FAILED(hr);
 
+		BOOL fRenameCanContinue = TRUE;
 		com_ptr<IVsTrackProjectDocuments2> trackProjectDocs;
-		hr = serviceProvider->QueryService (SID_SVsTrackProjectDocuments, &trackProjectDocs); RETURN_IF_FAILED(hr);
-		BOOL fRenameCanContinue = FALSE;
-		hr = trackProjectDocs->OnQueryRenameFile (project, oldFullPath.get(), newFullPath.get(), VSRENAMEFILEFLAGS_NoFlags, &fRenameCanContinue);
-		if (FAILED(hr) || !fRenameCanContinue)
-			return OLE_E_PROMPTSAVECANCELLED;
+		hr = serviceProvider->QueryService (SID_SVsTrackProjectDocuments, &trackProjectDocs); LOG_IF_FAILED(hr);
+		if (SUCCEEDED(hr))
+		{
+			fRenameCanContinue = FALSE;
+			hr = trackProjectDocs->OnQueryRenameFile (project, oldFullPath.get(), newFullPath.get(), VSRENAMEFILEFLAGS_NoFlags, &fRenameCanContinue);
+			if (FAILED(hr) || !fRenameCanContinue)
+				return OLE_E_PROMPTSAVECANCELLED;
+		}
 
 		wil::unique_hlocal_string otherPathRelativeToProjectDir;
 		hr = PathAllocCombine (relativeDir.get(), newName, PathFlags, otherPathRelativeToProjectDir.addressof()); RETURN_IF_FAILED(hr);
@@ -893,7 +899,8 @@ public:
 		//CSuspendFileChanges suspendFileChanges (strNewName, TRUE );
 
 		// Tell packages that care that it happened. No error checking here.
-		trackProjectDocs->OnAfterRenameFile (project, oldFullPath.get(), newFullPath.get(), VSRENAMEFILEFLAGS_NoFlags);
+		if (trackProjectDocs)
+			trackProjectDocs->OnAfterRenameFile (project, oldFullPath.get(), newFullPath.get(), VSRENAMEFILEFLAGS_NoFlags);
 
 		// This line was changing the build tool when the user renamed the file.
 		// I eventually commented it out, to get behavior similar to that in VS projects

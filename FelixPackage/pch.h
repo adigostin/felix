@@ -65,6 +65,7 @@
 #include <sccmnid.h>
 #include <vsshlids.h>
 #include <sharedids.h>
+#include <ivstrackprojectdocuments2.h>
 
 // WIL
 #define RESULT_DIAGNOSTICS_LEVEL 4
