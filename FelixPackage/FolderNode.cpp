@@ -6,7 +6,7 @@
 
 using namespace Microsoft::VisualStudio::Imaging;
 
-struct ProjectFolder : IFolderNode, IParentNode, IFolderNodeProperties
+struct FolderNode : IFolderNode, IParentNode, IFolderNodeProperties
 {
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _hier;
@@ -22,7 +22,7 @@ public:
 		return S_OK;
 	}
 
-	~ProjectFolder()
+	~FolderNode()
 	{
 	}
 
@@ -397,9 +397,9 @@ public:
 	#pragma warning(pop)
 };
 
-HRESULT MakeProjectFolder (IFolderNode** ppFolder)
+HRESULT MakeFolderNode (IFolderNode** ppFolder)
 {
-	auto p = com_ptr(new (std::nothrow) ProjectFolder()); RETURN_IF_NULL_ALLOC(p);
+	auto p = com_ptr(new (std::nothrow) FolderNode()); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance(); RETURN_IF_FAILED(hr);
 	*ppFolder = p.detach();
 	return S_OK;

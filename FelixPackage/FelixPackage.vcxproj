@@ -236,7 +236,7 @@ COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Conf
     </ClCompile>
     <ClCompile Include="PGPropertyPage.cpp" />
     <ClCompile Include="ProjectConfigBuilder.cpp" />
-    <ClCompile Include="ProjectFolder.cpp" />
+    <ClCompile Include="FolderNode.cpp" />
     <ClCompile Include="ScreenWindow.cpp" />
     <ClCompile Include="FelixPackage.cpp" />
     <ClCompile Include="FelixPackage_i.c">

@@ -2791,7 +2791,7 @@ public:
 		VSITEMID itemId = _nextItemId++;
 		VSITEMID itemidLoc = VSITEMID_ROOT;
 		com_ptr<IFolderNode> newFolder;
-		hr = MakeProjectFolder (&newFolder); RETURN_IF_FAILED(hr);
+		hr = MakeFolderNode (&newFolder); RETURN_IF_FAILED(hr);
 		hr = newFolder.try_query<IFolderNodeProperties>()->put_FolderName(dirName); RETURN_IF_FAILED(hr);
 
 		WI_ASSERT(false);
@@ -2910,7 +2910,7 @@ public:
 
 				if (!insertIn)
 				{
-					hr = MakeProjectFolder (&insertIn); RETURN_IF_FAILED(hr);
+					hr = MakeFolderNode (&insertIn); RETURN_IF_FAILED(hr);
 					wil::unique_variant name;
 					name.vt = VT_BSTR;
 					name.bstrVal = SysAllocStringLen(dirName.data(), (UINT)dirName.size()); RETURN_IF_NULL_ALLOC(name.bstrVal);

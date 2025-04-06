@@ -312,7 +312,7 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			com_ptr<IFolderNode> folder;
-			hr = MakeProjectFolder(&folder);
+			hr = MakeFolderNode(&folder);
 			Assert::IsTrue(SUCCEEDED(hr));
 			hr = folder.try_query<IFolderNodeProperties>()->put_FolderName(L"folder");
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -400,7 +400,7 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			com_ptr<IFolderNode> folder1;
-			hr = MakeProjectFolder(&folder1);
+			hr = MakeFolderNode(&folder1);
 			hr = folder1.try_query<IFolderNodeProperties>()->put_FolderName(L"folder");
 			Assert::IsTrue(SUCCEEDED(hr));
 			hr = AddFolderToParent(folder1, hier1.try_query<IParentNode>());
