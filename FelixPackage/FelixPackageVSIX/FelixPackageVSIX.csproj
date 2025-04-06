@@ -50,6 +50,10 @@
     <Content Include="ROMs\Spectrum48K.z80sym">
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="..\..\third_party\xaudio2\release\bin\x64\xaudio2_9redist.dll">
+      <Link>xaudio2_9redist.dll</Link>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <None Include="source.extension.vsixmanifest">
       <SubType>Designer</SubType>
     </None>
