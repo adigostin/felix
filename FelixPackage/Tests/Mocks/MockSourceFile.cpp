@@ -10,39 +10,22 @@ struct MockSourceFile : IProjectFile, IProjectFileProperties
 {
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _hier;
-	VSITEMID _itemId;
+	VSITEMID _itemId = VSITEMID_NIL;
+	VSITEMID _parentItemId = VSITEMID_NIL;
+	com_ptr<IProjectItem> _next;
 	BuildToolKind _buildTool;
 	wil::unique_hlocal_string _pathRelativeToProjectDir;
 	com_ptr<ICustomBuildToolProperties> _customBuildToolProps;
 
-	HRESULT InitInstance (IVsHierarchy* hier, VSITEMID itemId,
-		BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir, std::string_view fileContent)
+	HRESULT InitInstance (IVsHierarchy* hier, VSITEMID itemId, VSITEMID parentItemId,
+		BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir)
 	{
 		auto hr = hier->QueryInterface(IID_PPV_ARGS(_hier.addressof())); RETURN_IF_FAILED(hr);
 		_itemId = itemId;
+		_parentItemId = parentItemId;
 		_buildTool = buildTool;
 		_pathRelativeToProjectDir = wil::make_hlocal_string_nothrow(pathRelativeToProjectDir); RETURN_IF_NULL_ALLOC_EXPECTED(_pathRelativeToProjectDir);
 		hr = MakeCustomBuildToolProperties(&_customBuildToolProps); RETURN_IF_FAILED_EXPECTED(hr);
-
-		wil::unique_bstr mkDoc;
-		hr = GetMkDocument(&mkDoc);
-		Assert::IsTrue(SUCCEEDED(hr));
-		if (!fileContent.empty())
-		{
-			wil::unique_hfile handle (CreateFile(mkDoc.get(), GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL));
-			Assert::IsTrue(handle.is_valid());
-			BOOL bres = WriteFile(handle.get(), fileContent.data(), (DWORD)fileContent.size(), NULL, NULL);
-			Assert::IsTrue(bres);
-		}
-		else
-		{
-			if (PathFileExists(mkDoc.get()))
-			{
-				BOOL bres = DeleteFile(mkDoc.get());
-				Assert::IsTrue(bres);
-			}
-		}
-
 		return S_OK;
 	}
 
@@ -104,18 +87,35 @@ struct MockSourceFile : IProjectFile, IProjectFileProperties
 
 	IProjectItem* STDMETHODCALLTYPE Next(void) override
 	{
-		return nullptr;
+		return _next;
 	}
+
 	void STDMETHODCALLTYPE SetNext(IProjectItem* next) override
 	{
+		_next = next;
 	}
+
 	HRESULT STDMETHODCALLTYPE GetProperty(VSHPROPID propid, VARIANT* pvar) override
 	{
-		if (propid == VSHPROPID_BrowseObject)
-			return InitVariantFromDispatch(this, pvar);
+		switch (propid)
+		{
+			case VSHPROPID_SaveName: // -2002
+			case VSHPROPID_Caption: // -2003
+			case VSHPROPID_Name: // -2012
+			case VSHPROPID_EditLabel: // -2026
+				if (!_pathRelativeToProjectDir || !_pathRelativeToProjectDir.get()[0])
+					return E_NOT_SET;
+				return InitVariantFromString (PathFindFileName(_pathRelativeToProjectDir.get()), pvar);
 
-		if (propid == VSHPROPID_NextSibling)
-			return InitVariantFromVSITEMID(VSITEMID_NIL, pvar);
+			case VSHPROPID_BrowseObject:
+				return InitVariantFromDispatch(this, pvar);
+
+			case VSHPROPID_NextSibling:
+				return InitVariantFromVSITEMID(_next ? _next->GetItemId() : VSITEMID_NIL, pvar);
+
+			case VSHPROPID_Parent:
+				return InitVariantFromVSITEMID(_parentItemId, pvar);
+		}
 
 		return E_NOTIMPL;
 	}
@@ -186,12 +186,38 @@ struct MockSourceFile : IProjectFile, IProjectFileProperties
 	#pragma endregion
 };
 
-com_ptr<IProjectFile> MakeMockSourceFile (IVsHierarchy* hier, VSITEMID itemId,
-	BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir, std::string_view fileContent)
+com_ptr<IProjectFile> MakeMockSourceFile (IVsHierarchy* hier, VSITEMID itemId, VSITEMID parentItemId,
+	BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir)
 {
 	auto p = com_ptr (new (std::nothrow) MockSourceFile());
 	Assert::IsNotNull(p.get());
-	auto hr = p->InitInstance (hier, itemId, buildTool, pathRelativeToProjectDir, fileContent);
+	auto hr = p->InitInstance (hier, itemId, parentItemId, buildTool, pathRelativeToProjectDir);
 	Assert::IsTrue(SUCCEEDED(hr));
 	return p;
+}
+
+void WriteFileOnDisk (const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir, const char* fileContent)
+{
+	wchar_t mkDoc[MAX_PATH];
+	auto res = PathCombineW (mkDoc, projectDir, pathRelativeToProjectDir);
+	Assert::IsNotNull(res);
+
+	wil::unique_hfile handle (CreateFile(mkDoc, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL));
+	Assert::IsTrue(handle.is_valid());
+	BOOL bres = WriteFile(handle.get(), fileContent, (DWORD)strlen(fileContent), NULL, NULL);
+	Assert::IsTrue(bres);
+}
+
+void DeleteFileOnDisk (const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir)
+{
+	wchar_t mkDoc[MAX_PATH];
+	auto res = PathCombineW (mkDoc, projectDir, pathRelativeToProjectDir);
+	Assert::IsNotNull(res);
+
+	// If the caller specified no file content, we must make sure there's no leftover file.
+	if (PathFileExists(mkDoc))
+	{
+		BOOL bres = DeleteFile(mkDoc);
+		Assert::IsTrue(bres);
+	}
 }

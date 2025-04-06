@@ -74,10 +74,14 @@ namespace FelixTests
 			Assert::IsNotNull(props.get());
 		}
 
-		static com_ptr<IProjectConfigBuilder> MakeSjasmProjectBuilder (std::string_view asmFileContent)
+		static com_ptr<IProjectConfigBuilder> MakeSjasmProjectBuilder (const char* asmFileContent)
 		{
 			auto hier = MakeMockVsHierarchy (tempPath);
-			auto sourceFile = MakeMockSourceFile (hier, 1000, BuildToolKind::Assembler, L"test.asm", asmFileContent);
+			auto sourceFile = MakeMockSourceFile (hier, 1000, VSITEMID_ROOT, BuildToolKind::Assembler, L"test.asm");
+			if (asmFileContent)
+				WriteFileOnDisk(tempPath, L"test.asm", asmFileContent);
+			else
+				DeleteFileOnDisk(tempPath, L"test.asm");
 			hier.try_query<IProjectItemParent>()->SetFirstChild(sourceFile);
 			auto config = MakeMockProjectConfig(hier);
 			auto pane = MakeMockOutputWindowPane(nullptr);
@@ -156,12 +160,16 @@ namespace FelixTests
 
 		// sourceFileContent - empty string view to skip creating the file on disk
 		static com_ptr<IProjectConfigBuilder> MakeProjectWithCustomBuildTool (
-			const wchar_t* sourceFileName, std::string_view sourceFileContent,
+			const wchar_t* sourceFileName, const char* sourceFileContent,
 			const wchar_t* cbtDescription,
 			const wchar_t* cbtCmdLine, IStream* outputStreamUTF16)
 		{
 			auto hier = MakeMockVsHierarchy(tempPath);
-			auto sourceFile = MakeMockSourceFile (hier, 1000, BuildToolKind::Assembler, sourceFileName, sourceFileContent);
+			auto sourceFile = MakeMockSourceFile (hier, 1000, VSITEMID_ROOT, BuildToolKind::Assembler, sourceFileName);
+			if (sourceFileContent)
+				WriteFileOnDisk(tempPath, sourceFileName, sourceFileContent);
+			else
+				DeleteFileOnDisk(tempPath, sourceFileName);
 			hier.try_query<IProjectItemParent>()->SetFirstChild(sourceFile);
 
 			auto hr = sourceFile.try_query<IProjectFileProperties>()->put_BuildTool(BuildToolKind::CustomBuildTool);

@@ -211,7 +211,16 @@ public:
 			return S_OK;
 		}
 		else
-			RETURN_HR(E_NOTIMPL);
+		{
+			// Neither clone nor open. So far I haven't found a scenario where VS calls us like this.
+			// It's useful for tests, where we need a blank project.
+			RETURN_HR_IF(E_UNEXPECTED, !!pszFilename);
+			RETURN_HR_IF(E_UNEXPECTED, !pszLocation);
+
+			_location = wil::make_hlocal_string_nothrow(pszLocation); RETURN_IF_NULL_ALLOC(_location);
+
+			return S_OK;
+		}	
 	}
 
 	~Z80Project()
