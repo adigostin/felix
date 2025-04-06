@@ -572,7 +572,7 @@ public:
 		return S_OK;
 	}
 
-	static HRESULT EnumDescendants (IVsHierarchy* hier, VSITEMID from, const stdext::inplace_function<HRESULT(IProjectItem*)>& filter)
+	static HRESULT EnumDescendants (IVsHierarchy* hier, VSITEMID from, const stdext::inplace_function<HRESULT(IChildNode*)>& filter)
 	{
 		// TODO: search in depth too when we'll support directories
 
@@ -584,7 +584,7 @@ public:
 			hr = hier->GetProperty(V_VSITEMID(&childItemId), VSHPROPID_BrowseObject, &obj);
 			if (SUCCEEDED(hr) && (obj.vt == VT_DISPATCH) && obj.pdispVal)
 			{
-				com_ptr<IProjectItem> item;
+				com_ptr<IChildNode> item;
 				hr = obj.pdispVal->QueryInterface(&item);
 				if (SUCCEEDED(hr))
 				{
@@ -619,9 +619,9 @@ public:
 		hr = ParseCommandLines (preBuildProps, projectDir.bstrVal, steps);RETURN_IF_FAILED(hr);
 		
 		// First build the files with a custom build tool. This is similar to what VS does.
-		hr = EnumDescendants (_hier, VSITEMID_ROOT, [this, &steps, workDir = projectDir.bstrVal](IProjectItem* item)
+		hr = EnumDescendants (_hier, VSITEMID_ROOT, [this, &steps, workDir = projectDir.bstrVal](IChildNode* item)
 			{
-				com_ptr<IProjectFileProperties> file;
+				com_ptr<IFileNodeProperties> file;
 				if (SUCCEEDED(item->QueryInterface(&file)))
 				{
 					BuildToolKind tool;

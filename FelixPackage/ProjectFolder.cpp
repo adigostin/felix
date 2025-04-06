@@ -6,14 +6,14 @@
 
 using namespace Microsoft::VisualStudio::Imaging;
 
-struct ProjectFolder : IProjectFolder, IProjectItemParent, IProjectFolderProperties
+struct ProjectFolder : IFolderNode, IParentNode, IFolderNodeProperties
 {
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _hier;
 	VSITEMID _itemId = VSITEMID_NIL;
 	VSITEMID _parentItemId = VSITEMID_NIL;
-	com_ptr<IProjectItem> _next;
-	com_ptr<IProjectItem> _firstChild;
+	com_ptr<IChildNode> _next;
+	com_ptr<IChildNode> _firstChild;
 	wil::unique_bstr _name; // directory name, no path components needed
 
 public:
@@ -32,12 +32,12 @@ public:
 		RETURN_HR_IF(E_POINTER, !ppvObject);
 		*ppvObject = nullptr;
 
-		if (   TryQI<IUnknown>(static_cast<IProjectFolderProperties*>(this), riid, ppvObject)
+		if (   TryQI<IUnknown>(static_cast<IFolderNodeProperties*>(this), riid, ppvObject)
 			|| TryQI<IDispatch>(this, riid, ppvObject)
-			|| TryQI<IProjectFolderProperties>(this, riid, ppvObject)
-			|| TryQI<IProjectFolder>(this, riid, ppvObject)
-			|| TryQI<IProjectItem>(this, riid, ppvObject)
-			|| TryQI<IProjectItemParent>(this, riid, ppvObject)
+			|| TryQI<IFolderNodeProperties>(this, riid, ppvObject)
+			|| TryQI<IFolderNode>(this, riid, ppvObject)
+			|| TryQI<IChildNode>(this, riid, ppvObject)
+			|| TryQI<IParentNode>(this, riid, ppvObject)
 			|| TryQI<INode>(this, riid, ppvObject)
 			)
 			return S_OK;
@@ -50,9 +50,9 @@ public:
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IProjectFolderProperties);
+	IMPLEMENT_IDISPATCH(IID_IFolderNodeProperties);
 
-	#pragma region IProjectFolder
+	#pragma region IFolderNode
 	virtual HRESULT STDMETHODCALLTYPE get___id (BSTR *value) override
 	{
 		// Shown by VS at the top of the Properties Window.
@@ -80,7 +80,7 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region IProjectItem
+	#pragma region IChildNode
     virtual VSITEMID STDMETHODCALLTYPE GetItemId() override
 	{
 		return _itemId;
@@ -113,7 +113,7 @@ public:
 		if (!_name || !_name[0])
 			RETURN_HR(E_UNEXPECTED);
 
-		com_ptr<IProjectItem> parentItem;
+		com_ptr<IChildNode> parentItem;
 		auto hr = _parent->Resolve(&parentItem); RETURN_IF_FAILED(hr);
 		unique_bstr parentMk;
 		hr = parentItem->GetMkDocument(&parentMk); RETURN_IF_FAILED(hr);
@@ -125,12 +125,12 @@ public:
 		*/
 	}
 
-    virtual IProjectItem *STDMETHODCALLTYPE Next() override
+    virtual IChildNode *STDMETHODCALLTYPE Next() override
 	{
 		return _next;
 	}
 
-    virtual void STDMETHODCALLTYPE SetNext (IProjectItem *next) override
+    virtual void STDMETHODCALLTYPE SetNext (IChildNode *next) override
 	{
 		_next = next;
 	}
@@ -321,13 +321,13 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region IProjectItemParent
-	virtual IProjectItem *STDMETHODCALLTYPE FirstChild() override
+	#pragma region IParentNode
+	virtual IChildNode *STDMETHODCALLTYPE FirstChild() override
 	{
 		return _firstChild;
 	}
 
-	virtual void STDMETHODCALLTYPE SetFirstChild (IProjectItem *child) override
+	virtual void STDMETHODCALLTYPE SetFirstChild (IChildNode *child) override
 	{
 		_firstChild = child;
 	}
@@ -397,7 +397,7 @@ public:
 	#pragma warning(pop)
 };
 
-HRESULT MakeProjectFolder (IProjectFolder** ppFolder)
+HRESULT MakeProjectFolder (IFolderNode** ppFolder)
 {
 	auto p = com_ptr(new (std::nothrow) ProjectFolder()); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance(); RETURN_IF_FAILED(hr);

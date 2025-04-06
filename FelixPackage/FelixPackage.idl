@@ -148,7 +148,7 @@ library ATLProject1Lib
 	}
 
 	[object, uuid(680DBE9B-ABED-41BE-8A26-30446EEC47FB), dual, nonextensible, pointer_default(unique)]
-	interface IProjectFileProperties : IDispatch
+	interface IFileNodeProperties : IDispatch
 	{
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
 
@@ -167,7 +167,7 @@ library ATLProject1Lib
 	};
 
 	[object, uuid(9BBC87D3-F9EA-46E4-804F-2E7C0C1D365F), dual, nonextensible, pointer_default(unique)]
-	interface IProjectFolderProperties : IDispatch
+	interface IFolderNodeProperties : IDispatch
 	{
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
 

@@ -12,9 +12,9 @@
 
 using namespace Microsoft::VisualStudio::Imaging;
 
-struct ProjectFile 
-	: IProjectFile
-	, IProjectFileProperties
+struct FileNode 
+	: IFileNode
+	, IFileNodeProperties
 	, IVsPerPropertyBrowsing
 	, IConnectionPointContainer
 	, IPropertyNotifySink
@@ -22,7 +22,7 @@ struct ProjectFile
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _hier;
 	VSITEMID _itemId = VSITEMID_NIL;
-	wil::com_ptr_nothrow<IProjectItem> _next;
+	wil::com_ptr_nothrow<IChildNode> _next;
 	VSITEMID _parentItemId = VSITEMID_NIL;
 	VSCOOKIE _docCookie = VSDOCCOOKIE_NIL;
 	wil::unique_hlocal_string _pathRelativeToProjectDir;
@@ -36,18 +36,18 @@ public:
 	HRESULT InitInstance()
 	{
 		HRESULT hr;
-		hr = _weakRefToThis.InitInstance(static_cast<IProjectFile*>(this)); RETURN_IF_FAILED(hr);
+		hr = _weakRefToThis.InitInstance(static_cast<IFileNode*>(this)); RETURN_IF_FAILED(hr);
 		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
 		hr = MakeCustomBuildToolProperties(&_customBuildToolProps); RETURN_IF_FAILED(hr);
 		hr = AdviseSink<IPropertyNotifySink>(_customBuildToolProps, _weakRefToThis, &_cbtPropNotifyToken); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
-	ProjectFile()
+	FileNode()
 	{
 	}
 
-	~ProjectFile()
+	~FileNode()
 	{
 	}
 
@@ -58,9 +58,9 @@ public:
 		*ppvObject = nullptr;
 
 		if (   TryQI<IUnknown>(static_cast<IDispatch*>(this), riid, ppvObject)
-			|| TryQI<IProjectFile>(this, riid, ppvObject)
-			|| TryQI<IProjectItem>(this, riid, ppvObject)
-			|| TryQI<IProjectFileProperties>(this, riid, ppvObject)
+			|| TryQI<IFileNode>(this, riid, ppvObject)
+			|| TryQI<IChildNode>(this, riid, ppvObject)
+			|| TryQI<IFileNodeProperties>(this, riid, ppvObject)
 			|| TryQI<IDispatch>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
@@ -112,9 +112,9 @@ public:
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IProjectFileProperties);
+	IMPLEMENT_IDISPATCH(IID_IFileNodeProperties);
 
-	#pragma region IProjectItem
+	#pragma region IChildNode
 	virtual VSITEMID STDMETHODCALLTYPE GetItemId() override { return _itemId; }
 
 	virtual HRESULT STDMETHODCALLTYPE SetItemId (IRootNode* root, VSITEMID id) override
@@ -151,9 +151,9 @@ public:
 		return S_OK;
 	}
 	
-	virtual IProjectItem* STDMETHODCALLTYPE Next() override { return _next.get(); }
+	virtual IChildNode* STDMETHODCALLTYPE Next() override { return _next.get(); }
 
-	virtual void STDMETHODCALLTYPE SetNext (IProjectItem* next) override
+	virtual void STDMETHODCALLTYPE SetNext (IChildNode* next) override
 	{
 		//WI_ASSERT (!_next);
 		_next = next;
@@ -682,7 +682,7 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region IProjectFile
+	#pragma region IFileNode
 	virtual HRESULT STDMETHODCALLTYPE get_Path (BSTR *pbstr) override
 	{
 		*pbstr = SysAllocString(_pathRelativeToProjectDir.get()); RETURN_IF_NULL_ALLOC(*pbstr);
@@ -935,9 +935,9 @@ public:
 
 // ============================================================================
 
-HRESULT MakeProjectFile (IProjectFile** file)
+HRESULT MakeFileNode (IFileNode** file)
 {
-	com_ptr<ProjectFile> p = new (std::nothrow) ProjectFile(); RETURN_IF_NULL_ALLOC(p);
+	com_ptr<FileNode> p = new (std::nothrow) FileNode(); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance(); RETURN_IF_FAILED(hr);
 	*file = p.detach();
 	return S_OK;

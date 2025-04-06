@@ -282,15 +282,15 @@ HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProje
 	wil::unique_bstr output_dir;
 	hr = config->GetOutputDirectory(&output_dir); RETURN_IF_FAILED(hr);
 
-	vector_nothrow<com_ptr<IProjectFileProperties>> asmFiles;
+	vector_nothrow<com_ptr<IFileNodeProperties>> asmFiles;
 
-	stdext::inplace_function<HRESULT(IProjectItemParent*)> enumDescendants;
+	stdext::inplace_function<HRESULT(IParentNode*)> enumDescendants;
 
-	enumDescendants = [&enumDescendants, &asmFiles](IProjectItemParent* parent) -> HRESULT
+	enumDescendants = [&enumDescendants, &asmFiles](IParentNode* parent) -> HRESULT
 		{
 			for (auto c = parent->FirstChild(); c; c = c->Next())
 			{
-				if (auto file = wil::try_com_query_nothrow<IProjectFileProperties>(c))
+				if (auto file = wil::try_com_query_nothrow<IFileNodeProperties>(c))
 				{
 					BuildToolKind tool;
 					auto hr = file->get_BuildTool(&tool); RETURN_IF_FAILED(hr);
@@ -299,7 +299,7 @@ HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProje
 						bool pushed = asmFiles.try_push_back(std::move(file)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 					}
 				}
-				else if (auto cAsParent = wil::try_com_query_nothrow<IProjectItemParent>(c))
+				else if (auto cAsParent = wil::try_com_query_nothrow<IParentNode>(c))
 				{
 					auto hr = enumDescendants(cAsParent); RETURN_IF_FAILED(hr);
 				}
@@ -307,7 +307,7 @@ HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProje
 
 			return S_OK;
 		};
-	hr = enumDescendants(wil::try_com_query_nothrow<IProjectItemParent>(hier)); RETURN_IF_FAILED(hr);
+	hr = enumDescendants(wil::try_com_query_nothrow<IParentNode>(hier)); RETURN_IF_FAILED(hr);
 
 	if (asmFiles.empty())
 		return (*ppCmdLine = nullptr), S_OK;
@@ -374,7 +374,7 @@ HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProje
 	// input files
 	for (uint32_t i = 0; i < asmFiles.size(); i++)
 	{
-		IProjectFileProperties* file = asmFiles[i];
+		IFileNodeProperties* file = asmFiles[i];
 		wil::unique_bstr fileRelativePath;
 		hr = file->get_Path(&fileRelativePath);
 		if (SUCCEEDED(hr))
@@ -495,24 +495,24 @@ HRESULT GetPathOf (IVsHierarchy* hier, VSITEMID itemID, wil::unique_process_heap
 }
 
 // Enum depth-first (just because it's simpler) pre-order mode (so that parents get their ItemId before children).
-static HRESULT SetItemIdsTree (IProjectItem* child, IProjectItem* childPrevSibling, IProjectItemParent* addTo)
+static HRESULT SetItemIdsTree (IChildNode* child, IChildNode* childPrevSibling, IParentNode* addTo)
 {
 	com_ptr<IRootNode> root;
 	auto hr = addTo->GetHierarchy(IID_PPV_ARGS(&root)); RETURN_IF_FAILED(hr);
 
-	stdext::inplace_function<HRESULT(IProjectItem*, IProjectItem*, IProjectItemParent*)> enumNodeAndChildren;
+	stdext::inplace_function<HRESULT(IChildNode*, IChildNode*, IParentNode*)> enumNodeAndChildren;
 
-	enumNodeAndChildren = [root, &enumNodeAndChildren](IProjectItem* node, IProjectItem* nodePrevSibling, IProjectItemParent* nodeParent) -> HRESULT
+	enumNodeAndChildren = [root, &enumNodeAndChildren](IChildNode* node, IChildNode* nodePrevSibling, IParentNode* nodeParent) -> HRESULT
 		{
 			auto hr = node->SetItemId(root, root->MakeItemId()); RETURN_IF_FAILED(hr);
 			VARIANT v;
 			InitVariantFromVSITEMID(nodeParent->GetItemId(), &v);
 			hr = node->SetProperty(VSHPROPID_Parent, v); RETURN_IF_FAILED(hr);
 
-			com_ptr<IProjectItemParent> nodeAsParent;
+			com_ptr<IParentNode> nodeAsParent;
 			if (SUCCEEDED(node->QueryInterface(&nodeAsParent)))
 			{
-				IProjectItem* childPrevSibling = nullptr;
+				IChildNode* childPrevSibling = nullptr;
 				for (auto c = nodeAsParent->FirstChild(); c; c = c->Next())
 				{
 					hr = enumNodeAndChildren(c, childPrevSibling, nodeAsParent); RETURN_IF_FAILED(hr);
@@ -541,12 +541,12 @@ static HRESULT SetItemIdsTree (IProjectItem* child, IProjectItem* childPrevSibli
 	return enumNodeAndChildren(child, childPrevSibling, addTo);
 }
 
-HRESULT AddFileToParent (IProjectItem* child, IProjectItemParent* addTo)
+HRESULT AddFileToParent (IChildNode* child, IParentNode* addTo)
 {
 	HRESULT hr;
 	RETURN_HR_IF(E_UNEXPECTED, child->GetItemId() != VSITEMID_NIL);
 
-	IProjectItem* prevChild = nullptr;
+	IChildNode* prevChild = nullptr;
 	if (!addTo->FirstChild())
 		addTo->SetFirstChild(child);
 	else
@@ -556,7 +556,7 @@ HRESULT AddFileToParent (IProjectItem* child, IProjectItemParent* addTo)
 
 		// Do we need to insert it in the first position?
 		wil::unique_variant name;
-		if (!wil::try_com_query_nothrow<IProjectFolder>(addTo->FirstChild())
+		if (!wil::try_com_query_nothrow<IFolderNode>(addTo->FirstChild())
 			&& SUCCEEDED(addTo->FirstChild()->GetProperty(VSHPROPID_SaveName, &name))
 			&& VarBstrCmp(childName.bstrVal, name.bstrVal, InvariantLCID, NORM_IGNORECASE) == VARCMP_LT)
 		{
@@ -567,10 +567,10 @@ HRESULT AddFileToParent (IProjectItem* child, IProjectItemParent* addTo)
 		else
 		{
 			// No, insert it after some existing node
-			IProjectItem* insertAfter = addTo->FirstChild();
+			IChildNode* insertAfter = addTo->FirstChild();
 
 			// Skip any existing folder nodes.
-			while (insertAfter->Next() && wil::try_com_query_nothrow<IProjectFolder>(insertAfter->Next()))
+			while (insertAfter->Next() && wil::try_com_query_nothrow<IFolderNode>(insertAfter->Next()))
 				insertAfter = insertAfter->Next();
 
 			if (insertAfter->Next())
@@ -599,21 +599,21 @@ HRESULT AddFileToParent (IProjectItem* child, IProjectItemParent* addTo)
 	return S_OK;
 }
 
-HRESULT AddFolderToParent (IProjectFolder* child, IProjectItemParent* addTo)
+HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo)
 {
 	HRESULT hr;
 
 	// The item we're adding is supposed to be outside of any hierarchy.
 	RETURN_HR_IF(E_UNEXPECTED, child->GetItemId() != VSITEMID_NIL);
 
-	IProjectItem* prevChild = nullptr;
+	IChildNode* prevChild = nullptr;
 	if (!addTo->FirstChild())
 	{
 		addTo->SetFirstChild(child);
 	}
 	else
 	{
-		if (!wil::try_com_query_nothrow<IProjectFolder>(addTo->FirstChild()))
+		if (!wil::try_com_query_nothrow<IFolderNode>(addTo->FirstChild()))
 		{
 			// Adding first folder; insert it before the files.
 			child->SetNext(addTo->FirstChild());
@@ -637,9 +637,9 @@ HRESULT AddFolderToParent (IProjectFolder* child, IProjectItemParent* addTo)
 			}
 			else
 			{
-				IProjectItem* insertAfter = addTo->FirstChild();
+				IChildNode* insertAfter = addTo->FirstChild();
 				while (insertAfter->Next()
-					&& wil::try_com_query_nothrow<IProjectFolder>(insertAfter->Next())
+					&& wil::try_com_query_nothrow<IFolderNode>(insertAfter->Next())
 					&& SUCCEEDED(insertAfter->Next()->GetProperty(VSHPROPID_SaveName, &name))
 					&& VarBstrCmp(childName.bstrVal, name.bstrVal, InvariantLCID, NORM_IGNORECASE) == VARCMP_GT)
 				{
@@ -662,7 +662,7 @@ HRESULT AddFolderToParent (IProjectFolder* child, IProjectItemParent* addTo)
 	return S_OK;
 }
 
-HRESULT RemoveChildFromParent (IProjectItem* node, IProjectItemParent* removeFrom)
+HRESULT RemoveChildFromParent (IChildNode* node, IParentNode* removeFrom)
 {
 	RETURN_HR(E_NOTIMPL);
 }

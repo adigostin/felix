@@ -6,13 +6,13 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-struct MockSourceFile : IProjectFile, IProjectFileProperties
+struct MockFileNode : IFileNode, IFileNodeProperties
 {
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _hier;
 	VSITEMID _itemId = VSITEMID_NIL;
 	VSITEMID _parentItemId = VSITEMID_NIL;
-	com_ptr<IProjectItem> _next;
+	com_ptr<IChildNode> _next;
 	BuildToolKind _buildTool;
 	wil::unique_hlocal_string _pathRelativeToProjectDir;
 	com_ptr<ICustomBuildToolProperties> _customBuildToolProps;
@@ -26,7 +26,7 @@ struct MockSourceFile : IProjectFile, IProjectFileProperties
 		return S_OK;
 	}
 
-	~MockSourceFile()
+	~MockFileNode()
 	{
 		// TODO: delete file from disk
 	}
@@ -34,11 +34,11 @@ struct MockSourceFile : IProjectFile, IProjectFileProperties
 	#pragma region IUnknown
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
 	{
-		if (   TryQI<IUnknown>(static_cast<IProjectItem*>(this), riid, ppvObject)
+		if (   TryQI<IUnknown>(static_cast<IChildNode*>(this), riid, ppvObject)
 			|| TryQI<IDispatch>(this, riid, ppvObject)
-			|| TryQI<IProjectItem>(this, riid, ppvObject)
-			|| TryQI<IProjectFile>(this, riid, ppvObject)
-			|| TryQI<IProjectFileProperties>(this, riid, ppvObject)
+			|| TryQI<IChildNode>(this, riid, ppvObject)
+			|| TryQI<IFileNode>(this, riid, ppvObject)
+			|| TryQI<IFileNodeProperties>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -50,9 +50,9 @@ struct MockSourceFile : IProjectFile, IProjectFileProperties
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IProjectFileProperties);
+	IMPLEMENT_IDISPATCH(IID_IFileNodeProperties);
 
-	#pragma region IProjectItem
+	#pragma region IChildNode
 	virtual VSITEMID STDMETHODCALLTYPE GetItemId(void) override { return _itemId; }
 
 	virtual HRESULT SetItemId (IRootNode* root, VSITEMID id) override
@@ -82,12 +82,12 @@ struct MockSourceFile : IProjectFile, IProjectFileProperties
 		return S_OK;
 	}
 
-	IProjectItem* STDMETHODCALLTYPE Next(void) override
+	IChildNode* STDMETHODCALLTYPE Next(void) override
 	{
 		return _next;
 	}
 
-	void STDMETHODCALLTYPE SetNext(IProjectItem* next) override
+	void STDMETHODCALLTYPE SetNext(IChildNode* next) override
 	{
 		_next = next;
 	}
@@ -155,7 +155,7 @@ struct MockSourceFile : IProjectFile, IProjectFileProperties
 	}
 	#pragma endregion
 
-	#pragma region IProjectFile
+	#pragma region IFileNode
 	virtual HRESULT STDMETHODCALLTYPE get___id (BSTR *value) override
 	{
 		return E_NOTIMPL;
@@ -191,9 +191,9 @@ struct MockSourceFile : IProjectFile, IProjectFileProperties
 	#pragma endregion
 };
 
-com_ptr<IProjectFile> MakeMockSourceFile (BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir)
+com_ptr<IFileNode> MakeMockFileNode (BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir)
 {
-	auto p = com_ptr (new (std::nothrow) MockSourceFile());
+	auto p = com_ptr (new (std::nothrow) MockFileNode());
 	Assert::IsNotNull(p.get());
 	auto hr = p->InitInstance (buildTool, pathRelativeToProjectDir);
 	Assert::IsTrue(SUCCEEDED(hr));

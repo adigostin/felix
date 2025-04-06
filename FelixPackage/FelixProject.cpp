@@ -33,7 +33,7 @@ class Z80Project
 	//, IVsBuildPropertyStorage
 	//, IVsBuildPropertyStorage2
 	, IRootNode
-	, IProjectItemParent
+	, IParentNode
 	, IPropertyNotifySink // this implementation only used to mark the project as dirty
 	, IVsPerPropertyBrowsing
 {
@@ -48,7 +48,7 @@ class Z80Project
 	bool _isDirty = false;
 	wil::com_ptr_nothrow<IVsUIHierarchy> _parentHierarchy;
 	VSITEMID _parentHierarchyItemId = VSITEMID_NIL; // item id of this project in the parent hierarchy
-	com_ptr<IProjectItem> _firstChild;
+	com_ptr<IChildNode> _firstChild;
 	static inline VSITEMID _nextItemId = 1000;
 	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsCfgProviderEvents>> _cfgProviderEventSinks;
 	VSCOOKIE _nextCfgProviderEventCookie = 1;
@@ -231,13 +231,13 @@ public:
 	// If not found, return S_FALSE and ppItem is null.
 	// If error during enumeration, returns an error code.
 	// The filter function must return S_OK for a match (enumeration stops), S_FALSE for non-match (enumeration continues), or an error code (enumeration stops).
-	HRESULT FindDescendantIf (const stdext::inplace_function<HRESULT(IProjectItem*), 32>& predicate, IProjectItem** ppItem)
+	HRESULT FindDescendantIf (const stdext::inplace_function<HRESULT(IChildNode*), 32>& predicate, IChildNode** ppItem)
 	{
 		*ppItem = nullptr;
 
-		stdext::inplace_function<HRESULT(IProjectItemParent* parent)> enumChildren;
+		stdext::inplace_function<HRESULT(IParentNode* parent)> enumChildren;
 
-		enumChildren = [&predicate, ppItem, &enumChildren](IProjectItemParent* parent) -> HRESULT
+		enumChildren = [&predicate, ppItem, &enumChildren](IParentNode* parent) -> HRESULT
 		{
 			for (auto c = parent->FirstChild(); c; c = c->Next())
 			{
@@ -249,7 +249,7 @@ public:
 					return S_OK;
 				}
 
-				com_ptr<IProjectItemParent> cp;
+				com_ptr<IParentNode> cp;
 				if (SUCCEEDED(c->QueryInterface(&cp)))
 				{
 					auto hr = enumChildren(cp); RETURN_IF_FAILED_EXPECTED(hr);
@@ -265,7 +265,7 @@ public:
 	}
 	
 	// Returns S_OK when found, S_FALSE when not found, error code when it couldn't search.
-	HRESULT FindDescendant (VSITEMID itemid, IProjectItem** ppItem, IProjectItem** ppPrevSibling = nullptr, IProjectItemParent** ppParent = nullptr)
+	HRESULT FindDescendant (VSITEMID itemid, IChildNode** ppItem, IChildNode** ppPrevSibling = nullptr, IParentNode** ppParent = nullptr)
 	{
 		*ppItem = nullptr;
 		if (ppPrevSibling)
@@ -273,11 +273,11 @@ public:
 		if (ppParent)
 			*ppParent = nullptr;
 
-		stdext::inplace_function<HRESULT(IProjectItemParent* parent), 40> enumChildren;
+		stdext::inplace_function<HRESULT(IParentNode* parent), 40> enumChildren;
 
-		enumChildren = [itemid, ppItem, ppPrevSibling, ppParent, &enumChildren](IProjectItemParent* parent) -> HRESULT
+		enumChildren = [itemid, ppItem, ppPrevSibling, ppParent, &enumChildren](IParentNode* parent) -> HRESULT
 		{
-			IProjectItem* prev = nullptr;
+			IChildNode* prev = nullptr;
 			for (auto c = parent->FirstChild(); c; c = c->Next())
 			{
 				if (c->GetItemId() == itemid)
@@ -299,7 +299,7 @@ public:
 					return S_OK;
 				}
 
-				com_ptr<IProjectItemParent> cp;
+				com_ptr<IParentNode> cp;
 				if (SUCCEEDED(c->QueryInterface(&cp)))
 				{
 					auto hr = enumChildren(cp); RETURN_IF_FAILED_EXPECTED(hr);
@@ -650,7 +650,7 @@ public:
 			//|| TryQI<IVsProjectBuildSystem>(this, riid, ppvObject)
 			//|| TryQI<IVsBuildPropertyStorage>(this, riid, ppvObject)
 			//|| TryQI<IVsBuildPropertyStorage2>(this, riid, ppvObject)
-			|| TryQI<IProjectItemParent>(this, riid, ppvObject)
+			|| TryQI<IParentNode>(this, riid, ppvObject)
 			|| TryQI<IRootNode>(this, riid, ppvObject)
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
@@ -846,7 +846,7 @@ public:
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
 
-		com_ptr<IProjectItem> d;
+		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
 			return d->GetGuidProperty(propid, pguid);
 
@@ -875,7 +875,7 @@ public:
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
 
-		com_ptr<IProjectItem> d;
+		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
 			return d->SetGuidProperty(propid, rguid);
 
@@ -1060,7 +1060,7 @@ public:
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
 
-		com_ptr<IProjectItem> d;
+		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
 			return d->GetProperty(propid, pvar);
 
@@ -1131,7 +1131,7 @@ public:
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
 
-		com_ptr<IProjectItem> d;
+		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
 			return d->SetProperty(propid, var);
 
@@ -1170,7 +1170,7 @@ public:
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
 
-		com_ptr<IProjectItem> d;
+		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
 			return d->GetCanonicalName(pbstrName);
 
@@ -1190,8 +1190,8 @@ public:
 			return S_OK;
 		}
 
-		com_ptr<IProjectItem> c;
-		hr = FindDescendantIf([pszName](IProjectItem* c)
+		com_ptr<IChildNode> c;
+		hr = FindDescendantIf([pszName](IChildNode* c)
 			{
 				wil::unique_bstr childCN;
 				auto hr = c->GetCanonicalName(&childCN);
@@ -1359,7 +1359,7 @@ public:
 		if (itemid == VSITEMID_NIL)
 			return OLECMDERR_E_NOTSUPPORTED;
 
-		com_ptr<IProjectItem> d;
+		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
 			return d->QueryStatus (pguidCmdGroup, cCmds, prgCmds, pCmdText);
 
@@ -1384,7 +1384,7 @@ public:
 		RETURN_HR_IF_EXPECTED(OLECMDERR_E_NOTSUPPORTED, itemid == VSITEMID_SELECTION);
 		RETURN_HR_IF_EXPECTED(OLECMDERR_E_NOTSUPPORTED, itemid == VSITEMID_NIL);
 
-		com_ptr<IProjectItem> d;
+		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
 			return d->Exec (pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
 
@@ -1431,10 +1431,10 @@ public:
 					projectNodeIncluded = true;
 				else
 				{
-					com_ptr<IProjectItem> d;
+					com_ptr<IChildNode> d;
 					if (FindDescendant(items[i].itemid, &d) == S_OK)
 					{
-						if (wil::try_com_query_nothrow<IProjectFile>(d))
+						if (wil::try_com_query_nothrow<IFileNode>(d))
 							fileNodesIncluded++;
 					}
 				}
@@ -1450,12 +1450,12 @@ public:
 		}
 		else
 		{
-			com_ptr<IProjectItem> d;
+			com_ptr<IChildNode> d;
 			if (FindDescendant(itemid, &d) == S_OK)
 			{
-				if (wil::try_com_query_nothrow<IProjectFile>(d))
+				if (wil::try_com_query_nothrow<IFileNode>(d))
 					return shell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_ITEMNODE, pts, nullptr);
-				else if (wil::try_com_query_nothrow<IProjectFolder>(d))
+				else if (wil::try_com_query_nothrow<IFolderNode>(d))
 					return shell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_FOLDERNODE, pts, nullptr);
 				return E_NOTIMPL;
 			}
@@ -1574,9 +1574,9 @@ public:
 
 		bool isRelative = PathIsRelative(pszMkDocument);
 
-		wil::com_ptr_nothrow<IProjectItem> c;
+		wil::com_ptr_nothrow<IChildNode> c;
 		auto hr = FindDescendantIf(
-			[pszMkDocument, isRelative](IProjectItem* c)
+			[pszMkDocument, isRelative](IChildNode* c)
 			{
 				wil::unique_bstr path;
 				if (isRelative)
@@ -1627,7 +1627,7 @@ public:
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
 
-		com_ptr<IProjectItem> d;
+		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
 			return d->GetMkDocument(pbstrMkDocument);
 
@@ -1636,7 +1636,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE OpenItem(VSITEMID itemid, REFGUID rguidLogicalView, IUnknown* punkDocDataExisting, IVsWindowFrame** ppWindowFrame) override
 	{
-		com_ptr<IProjectItem> d;
+		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) != S_OK)
 			return E_INVALIDARG;
 
@@ -1747,7 +1747,7 @@ public:
 		#pragma endregion
 	};
 
-	HRESULT AddNewFile (INode* location, LPCTSTR pszFullPathSource, LPCTSTR pszNewFileName, IProjectItem** ppNewNode)
+	HRESULT AddNewFile (INode* location, LPCTSTR pszFullPathSource, LPCTSTR pszNewFileName, IChildNode** ppNewNode)
 	{
 		HRESULT hr;
 
@@ -1773,7 +1773,7 @@ public:
 		return AddExistingFile (location, dest.get(), ppNewNode);
 	}
 
-	HRESULT AddExistingFile (INode* location, LPCTSTR pszFullPathSource, IProjectItem** ppNewFile, BOOL fSilent = FALSE, BOOL fLoad = FALSE)
+	HRESULT AddExistingFile (INode* location, LPCTSTR pszFullPathSource, IChildNode** ppNewFile, BOOL fSilent = FALSE, BOOL fLoad = FALSE)
 	{
 		HRESULT hr;
 
@@ -1787,10 +1787,10 @@ public:
 		if (FAILED(hr))
 			return SetErrorInfo(hr, L"Can't make a relative path from '%s' relative to '%s'.", pszFullPathSource, _location.get());
 
-		com_ptr<IProjectItem> existing;
-		hr = FindDescendantIf([relative=relative.get()](IProjectItem* c)
+		com_ptr<IChildNode> existing;
+		hr = FindDescendantIf([relative=relative.get()](IChildNode* c)
 			{
-				if (auto sf = wil::try_com_query_nothrow<IProjectFileProperties>(c))
+				if (auto sf = wil::try_com_query_nothrow<IFileNodeProperties>(c))
 				{
 					wil::unique_bstr rel;
 					auto hr = sf->get_Path(&rel); RETURN_IF_FAILED(hr);
@@ -1805,9 +1805,9 @@ public:
 		if (hr == S_OK)
 			return SetErrorInfo(HRESULT_FROM_WIN32(ERROR_FILE_EXISTS), L"File already in project:\r\n\r\n%s", pszFullPathSource);
 
-		com_ptr<IProjectFile> file;
-		hr = MakeProjectFile (&file); RETURN_IF_FAILED(hr);
-		com_ptr<IProjectFileProperties> fileProps;
+		com_ptr<IFileNode> file;
+		hr = MakeFileNode(&file); RETURN_IF_FAILED(hr);
+		com_ptr<IFileNodeProperties> fileProps;
 		hr = file->QueryInterface(&fileProps); RETURN_IF_FAILED(hr);
 		hr = fileProps->put_Path(relative.get()); RETURN_IF_FAILED(hr);
 		auto buildTool = _wcsicmp(PathFindExtension(relative.get()), L".asm") ? BuildToolKind::None : BuildToolKind::Assembler;
@@ -1833,7 +1833,7 @@ public:
 					if (node->GetItemId() == itemidLoc)
 						return (location = node), S_OK;
 
-					if (auto nodeAsParent = wil::try_com_query_nothrow<IProjectItemParent>(node))
+					if (auto nodeAsParent = wil::try_com_query_nothrow<IParentNode>(node))
 					{
 						for (auto c = nodeAsParent->FirstChild(); c; c = c->Next())
 						{
@@ -1856,7 +1856,7 @@ public:
 			{
 				// Add New File
 				RETURN_HR_IF(E_INVALIDARG, cFilesToOpen != 1);
-				com_ptr<IProjectItem> pNewNode;
+				com_ptr<IChildNode> pNewNode;
 				hr = AddNewFile (location, rgpszFilesToOpen[0], pszItemName, &pNewNode); RETURN_IF_FAILED_EXPECTED(hr);
 				*pResult = ADDRESULT_Success;
 
@@ -1877,7 +1877,7 @@ public:
 				// Add Existing File
 				for (DWORD i = 0; i < cFilesToOpen; i++)
 				{
-					com_ptr<IProjectItem> pNewNode;
+					com_ptr<IChildNode> pNewNode;
 					hr = AddExistingFile(location, rgpszFilesToOpen[i], &pNewNode); RETURN_IF_FAILED_EXPECTED(hr);
 				}
 
@@ -1897,7 +1897,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE ReopenItem(VSITEMID itemid, REFGUID rguidEditorType, LPCOLESTR pszPhysicalView, REFGUID rguidLogicalView, IUnknown* punkDocDataExisting, IVsWindowFrame** ppWindowFrame) override
 	{
-		com_ptr<IProjectItem> d;
+		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) != S_OK)
 			return E_INVALIDARG;
 
@@ -2300,9 +2300,9 @@ public:
 
 		for (ULONG i = 0; i < cItems; i++)
 		{
-			com_ptr<IProjectItem> d;
-			com_ptr<IProjectItem> prevSibling;
-			com_ptr<IProjectItemParent> parent;
+			com_ptr<IChildNode> d;
+			com_ptr<IChildNode> prevSibling;
+			com_ptr<IParentNode> parent;
 			hr = FindDescendant(itemid[i], &d, &prevSibling, &parent); 
 			RETURN_HR_IF(E_INVALIDARG, hr != S_OK);
 
@@ -2371,7 +2371,7 @@ public:
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);
 
-		com_ptr<IProjectItem> d;
+		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
 			return d->IsItemDirty(punkDocData, pfDirty);
 
@@ -2477,19 +2477,19 @@ public:
 		HRESULT hr;
 		*items = nullptr;
 
-		vector_nothrow<com_ptr<IProjectFileProperties>> files;
+		vector_nothrow<com_ptr<IFileNodeProperties>> files;
 
-		stdext::inplace_function<HRESULT(IProjectItemParent*)> enumDescendants;
+		stdext::inplace_function<HRESULT(IParentNode*)> enumDescendants;
 
-		enumDescendants = [&enumDescendants, &files](IProjectItemParent* parent) -> HRESULT
+		enumDescendants = [&enumDescendants, &files](IParentNode* parent) -> HRESULT
 			{
 				for (auto c = parent->FirstChild(); c; c = c->Next())
 				{
-					if (auto file = wil::try_com_query_nothrow<IProjectFileProperties>(c))
+					if (auto file = wil::try_com_query_nothrow<IFileNodeProperties>(c))
 					{
 						bool pushed = files.try_push_back(std::move(file)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 					}
-					else if (auto cAsParent = wil::try_com_query_nothrow<IProjectItemParent>(c))
+					else if (auto cAsParent = wil::try_com_query_nothrow<IParentNode>(c))
 					{
 						auto hr = enumDescendants(cAsParent); RETURN_IF_FAILED(hr);
 					}
@@ -2534,7 +2534,7 @@ public:
 		{
 			com_ptr<IDispatch> child;
 			hr = SafeArrayGetElement (sa, &i, child.addressof()); RETURN_IF_FAILED(hr);
-			com_ptr<IProjectFile> file;
+			com_ptr<IFileNode> file;
 			hr = child->QueryInterface(&file); RETURN_IF_FAILED(hr);
 			RETURN_HR_IF(E_UNEXPECTED, file->GetItemId() != VSITEMID_NIL);
 			hr = AddFileAndFolders(file); RETURN_IF_FAILED(hr);
@@ -2596,7 +2596,7 @@ public:
 
 		if (dispidProperty == dispidItems)
 		{
-			wil::com_ptr_nothrow<IProjectFile> sourceFile;
+			wil::com_ptr_nothrow<IFileNode> sourceFile;
 			if (SUCCEEDED(child->QueryInterface(&sourceFile)))
 			{
 				*xmlElementNameOut = SysAllocString(FileElementName); RETURN_IF_NULL_ALLOC(*xmlElementNameOut);
@@ -2627,10 +2627,10 @@ public:
 
 			if (!wcscmp(xmlElementName, FileElementName) || !wcscmp(xmlElementName, L"AsmFile"))
 			{
-				wil::com_ptr_nothrow<IProjectFile> file;
+				wil::com_ptr_nothrow<IFileNode> file;
 				VSITEMID itemId = _nextItemId++;
-				auto hr = MakeProjectFile (&file); RETURN_IF_FAILED(hr);
-				com_ptr<IProjectFileProperties> fileProps;
+				auto hr = MakeFileNode(&file); RETURN_IF_FAILED(hr);
+				com_ptr<IFileNodeProperties> fileProps;
 				hr = file->QueryInterface(&fileProps); RETURN_IF_FAILED(hr);
 				if (!wcscmp(xmlElementName, L"AsmFile"))
 					fileProps->put_BuildTool(BuildToolKind::Assembler);
@@ -2645,15 +2645,15 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region IProjectItemParent
+	#pragma region IParentNode
 	virtual VSITEMID STDMETHODCALLTYPE GetItemId() override { return VSITEMID_ROOT; }
 
-	virtual IProjectItem* STDMETHODCALLTYPE FirstChild() override
+	virtual IChildNode* STDMETHODCALLTYPE FirstChild() override
 	{
 		return _firstChild;
 	}
 
-	virtual void STDMETHODCALLTYPE SetFirstChild (IProjectItem *child) override
+	virtual void STDMETHODCALLTYPE SetFirstChild (IChildNode *child) override
 	{
 		_firstChild = child;
 	}
@@ -2790,9 +2790,9 @@ public:
 
 		VSITEMID itemId = _nextItemId++;
 		VSITEMID itemidLoc = VSITEMID_ROOT;
-		com_ptr<IProjectFolder> newFolder;
+		com_ptr<IFolderNode> newFolder;
 		hr = MakeProjectFolder (&newFolder); RETURN_IF_FAILED(hr);
-		hr = newFolder.try_query<IProjectFolderProperties>()->put_FolderName(dirName); RETURN_IF_FAILED(hr);
+		hr = newFolder.try_query<IFolderNodeProperties>()->put_FolderName(dirName); RETURN_IF_FAILED(hr);
 
 		WI_ASSERT(false);
 		/*
@@ -2803,7 +2803,7 @@ public:
 			prevLast = VSITEMID_NIL;
 			_firstChild = newFolder;
 		}
-		else if (!wil::try_com_query_nothrow<IProjectFolder>(_firstChild))
+		else if (!wil::try_com_query_nothrow<IFolderNode>(_firstChild))
 		{
 			// Project contains only files, not folders. Insert it in the first position.
 			prevLast = VSITEMID_NIL;
@@ -2814,7 +2814,7 @@ public:
 		{
 			// Project contains some folders.
 			WI_ASSERT(false);
-			//IProjectItem* last = _firstChild;
+			//IChildNode* last = _firstChild;
 			//while(last->Next())
 			//	last = last->Next();
 			//last->SetNext(newFolder);
@@ -2852,11 +2852,11 @@ public:
 		return S_OK;
 	}
 
-	HRESULT AddFileAndFolders (IProjectFile* file)
+	HRESULT AddFileAndFolders (IFileNode* file)
 	{
 		HRESULT hr;
 
-		com_ptr<IProjectFileProperties> fileProps;
+		com_ptr<IFileNodeProperties> fileProps;
 		hr = file->QueryInterface(&fileProps); RETURN_IF_FAILED(hr);
 		wil::unique_bstr path;
 		hr = fileProps->get_Path(&path); RETURN_IF_FAILED(hr);
@@ -2872,7 +2872,7 @@ public:
 			// then add the file item to it. We assume the path returned by get_Path has gone through
 			// PathCanonicalize and is well-formed.
 			auto pathPtr = path.get();
-			com_ptr<IProjectItemParent> currentParent = this;
+			com_ptr<IParentNode> currentParent = this;
 			while(true)
 			{
 				auto nextPathPtr = wcspbrk(pathPtr, L"/\\");
@@ -2881,18 +2881,18 @@ public:
 				nextPathPtr++;
 
 				std::wstring_view dirName (pathPtr, nextPathPtr - 1);
-				com_ptr<IProjectFolder> insertIn;
+				com_ptr<IFolderNode> insertIn;
 
 				// Do we have a folder item for this directory?
-				for (IProjectItem* c = currentParent->FirstChild(); c != nullptr; c = c->Next())
+				for (IChildNode* c = currentParent->FirstChild(); c != nullptr; c = c->Next())
 				{
-					com_ptr<IProjectFolder> folder;
+					com_ptr<IFolderNode> folder;
 					hr = c->QueryInterface(&folder);
 					if (hr == E_NOINTERFACE)
 						break;
 					RETURN_IF_FAILED(hr);
-					com_ptr<IProjectFolderProperties> folderProps;
-					hr = folder->IProjectItem::QueryInterface(&folderProps); RETURN_IF_FAILED(hr);
+					com_ptr<IFolderNodeProperties> folderProps;
+					hr = folder->IChildNode::QueryInterface(&folderProps); RETURN_IF_FAILED(hr);
 					wil::unique_bstr fn;
 					hr = folderProps->get_FolderName(&fn); RETURN_IF_FAILED(hr);
 					std::wstring_view nodeName (fn.get(), (size_t)SysStringLen(fn.get()));
@@ -2918,7 +2918,7 @@ public:
 					hr = AddFolderToParent(insertIn, currentParent); RETURN_IF_FAILED(hr);
 				}
 
-				hr = insertIn->IProjectItem::QueryInterface(&currentParent); RETURN_IF_FAILED(hr);
+				hr = insertIn->IChildNode::QueryInterface(&currentParent); RETURN_IF_FAILED(hr);
 				pathPtr = nextPathPtr;
 			}
 

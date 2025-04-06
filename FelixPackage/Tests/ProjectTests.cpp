@@ -45,7 +45,7 @@ namespace FelixTests
 			auto hr = MakeFelixProject (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto file = MakeMockSourceFile(BuildToolKind::Assembler, L"test.asm");
+			auto file = MakeMockFileNode(BuildToolKind::Assembler, L"test.asm");
 			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, file->GetItemId());
 
 			{
@@ -59,7 +59,7 @@ namespace FelixTests
 
 				Assert::AreNotEqual<VSITEMID>(VSITEMID_NIL, file->GetItemId());
 
-				auto pip = hier.try_query<IProjectItemParent>();
+				auto pip = hier.try_query<IParentNode>();
 				IUnknown* firstChild = wil::try_com_query_nothrow<IUnknown>(pip->FirstChild());
 				Assert::AreEqual<void*>(file.try_query<IUnknown>().get(), firstChild);
 
@@ -82,10 +82,10 @@ namespace FelixTests
 			auto hr = MakeFelixProject (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto file1 = MakeMockSourceFile(BuildToolKind::Assembler, L"file1.asm");
-			auto file2 = MakeMockSourceFile(BuildToolKind::Assembler, L"testfolder/file2.asm");
+			auto file1 = MakeMockFileNode(BuildToolKind::Assembler, L"file1.asm");
+			auto file2 = MakeMockFileNode(BuildToolKind::Assembler, L"testfolder/file2.asm");
 
-			com_ptr<IProjectFolder> folder;
+			com_ptr<IFolderNode> folder;
 
 			{
 				Assert::AreEqual<VSITEMID>(VSITEMID_NIL, file1->GetItemId());
@@ -107,7 +107,7 @@ namespace FelixTests
 				// First project child should be a folder.
 				auto folderItemId = GetProperty_VSITEMID(hier, VSITEMID_ROOT, VSHPROPID_FirstChild);
 				auto folderDisp = GetProperty_Dispatch(hier, folderItemId, VSHPROPID_BrowseObject);
-				folder = folderDisp.try_query<IProjectFolder>();
+				folder = folderDisp.try_query<IFolderNode>();
 				Assert::IsNotNull(folder.get());
 				Assert::AreEqual<VSITEMID>(VSITEMID_ROOT, GetProperty_VSITEMID(hier, folderItemId, VSHPROPID_Parent));
 				Assert::AreEqual(L"testfolder", GetProperty_String(hier, folderItemId, VSHPROPID_SaveName).get());
@@ -141,10 +141,10 @@ namespace FelixTests
 			auto hr = MakeFelixProject (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto file1 = MakeMockSourceFile(BuildToolKind::Assembler, L"testfolder1/file1.asm");
-			auto file2 = MakeMockSourceFile(BuildToolKind::Assembler, L"testfolder2/file2.asm");
-			com_ptr<IProjectFolder> folder1;
-			com_ptr<IProjectFolder> folder2;
+			auto file1 = MakeMockFileNode(BuildToolKind::Assembler, L"testfolder1/file1.asm");
+			auto file2 = MakeMockFileNode(BuildToolKind::Assembler, L"testfolder2/file2.asm");
+			com_ptr<IFolderNode> folder1;
+			com_ptr<IFolderNode> folder2;
 
 			{
 				SAFEARRAYBOUND bound = { .cElements = 2, .lLbound = 0 };
@@ -159,7 +159,7 @@ namespace FelixTests
 				// First project child should be a folder.
 				auto folder1ItemId = GetProperty_VSITEMID(hier, VSITEMID_ROOT, VSHPROPID_FirstChild);
 				auto folder1Disp = GetProperty_Dispatch(hier, folder1ItemId, VSHPROPID_BrowseObject);
-				folder1 = folder1Disp.try_query<IProjectFolder>();
+				folder1 = folder1Disp.try_query<IFolderNode>();
 				Assert::IsNotNull(folder1.get());
 				Assert::AreEqual<VSITEMID>(VSITEMID_ROOT, GetProperty_VSITEMID(hier, folder1ItemId, VSHPROPID_Parent));
 				Assert::AreEqual(L"testfolder1", GetProperty_String(hier, folder1ItemId, VSHPROPID_SaveName).get());
@@ -167,7 +167,7 @@ namespace FelixTests
 				// Next project child should be the other folder.
 				auto folder2ItemId = GetProperty_VSITEMID(hier, folder1ItemId, VSHPROPID_NextSibling);
 				auto folder2Disp = GetProperty_Dispatch(hier, folder2ItemId, VSHPROPID_BrowseObject);
-				folder2 = folder2Disp.try_query<IProjectFolder>();
+				folder2 = folder2Disp.try_query<IFolderNode>();
 				Assert::AreEqual<VSITEMID>(VSITEMID_ROOT, GetProperty_VSITEMID(hier, folder2ItemId, VSHPROPID_Parent));
 				Assert::AreEqual(L"testfolder2", GetProperty_String(hier, folder2ItemId, VSHPROPID_SaveName).get());
 
@@ -202,10 +202,10 @@ namespace FelixTests
 			auto hr = MakeFelixProject (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto file1 = MakeMockSourceFile(BuildToolKind::Assembler, L"file1.asm");
-			auto file2 = MakeMockSourceFile(BuildToolKind::Assembler, L"file2.asm");
-			auto file3 = MakeMockSourceFile(BuildToolKind::Assembler, L"file3.asm");
-			auto file4 = MakeMockSourceFile(BuildToolKind::Assembler, L"file4.asm");
+			auto file1 = MakeMockFileNode(BuildToolKind::Assembler, L"file1.asm");
+			auto file2 = MakeMockFileNode(BuildToolKind::Assembler, L"file2.asm");
+			auto file3 = MakeMockFileNode(BuildToolKind::Assembler, L"file3.asm");
+			auto file4 = MakeMockFileNode(BuildToolKind::Assembler, L"file4.asm");
 
 			{
 				SAFEARRAYBOUND bound = { .cElements = 4, .lLbound = 0 };
@@ -289,8 +289,8 @@ namespace FelixTests
 			hr = proj->AddItem(VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"test.asm", 1, &templateName, nullptr, &result);
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto pip = hier.try_query<IProjectItemParent>();
-			com_ptr<IProjectItem> firstChild = pip->FirstChild();
+			auto pip = hier.try_query<IParentNode>();
+			com_ptr<IChildNode> firstChild = pip->FirstChild();
 			Assert::IsNotNull(firstChild.get());
 			Assert::AreNotEqual<VSITEMID>(VSITEMID_NIL, firstChild->GetItemId());
 			Assert::AreEqual<VSITEMID>(VSITEMID_ROOT, GetProperty_VSITEMID(hier, firstChild->GetItemId(), VSHPROPID_Parent));
@@ -311,13 +311,13 @@ namespace FelixTests
 			auto hr = MakeFelixProject (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			com_ptr<IProjectFolder> folder;
+			com_ptr<IFolderNode> folder;
 			hr = MakeProjectFolder(&folder);
 			Assert::IsTrue(SUCCEEDED(hr));
-			hr = folder.try_query<IProjectFolderProperties>()->put_FolderName(L"folder");
+			hr = folder.try_query<IFolderNodeProperties>()->put_FolderName(L"folder");
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			hr = AddFolderToParent (folder, hier.try_query<IProjectItemParent>());
+			hr = AddFolderToParent (folder, hier.try_query<IParentNode>());
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			{
@@ -336,16 +336,16 @@ namespace FelixTests
 				hr = proj->AddItem (folder->GetItemId(), VSADDITEMOP_CLONEFILE, L"folder/subfolder/file.asm", 1, &templateName, nullptr, &result);
 				Assert::IsTrue(SUCCEEDED(hr));
 
-				IProjectItem* folderFirstChild = folder.try_query<IProjectItemParent>()->FirstChild();
+				IChildNode* folderFirstChild = folder.try_query<IParentNode>()->FirstChild();
 				Assert::IsNotNull(folderFirstChild);
-				com_ptr<IProjectFolder> subfolder = wil::try_com_query_nothrow<IProjectFolder>(folderFirstChild);
+				com_ptr<IFolderNode> subfolder = wil::try_com_query_nothrow<IFolderNode>(folderFirstChild);
 				Assert::IsNotNull(subfolder.get());
 				Assert::AreEqual(L"subfolder", GetProperty_String(hier, subfolder->GetItemId(), VSHPROPID_SaveName).get());
 				Assert::AreNotEqual(VSITEMID_NIL, subfolder->GetItemId());
 
-				IProjectItem* subfolderFirstChild = subfolder.try_query<IProjectItemParent>()->FirstChild();
+				IChildNode* subfolderFirstChild = subfolder.try_query<IParentNode>()->FirstChild();
 				Assert::IsNotNull(subfolderFirstChild);
-				com_ptr<IProjectFile> file = wil::try_com_query_nothrow<IProjectFile>(subfolderFirstChild);
+				com_ptr<IFileNode> file = wil::try_com_query_nothrow<IFileNode>(subfolderFirstChild);
 				Assert::IsNotNull(file.get());
 				Assert::AreEqual(L"file.asm", GetProperty_String(hier, file->GetItemId(), VSHPROPID_SaveName).get());
 				Assert::AreNotEqual(VSITEMID_NIL, file->GetItemId());
@@ -399,15 +399,15 @@ namespace FelixTests
 			auto hr = MakeFelixProject (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier1));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			com_ptr<IProjectFolder> folder1;
+			com_ptr<IFolderNode> folder1;
 			hr = MakeProjectFolder(&folder1);
-			hr = folder1.try_query<IProjectFolderProperties>()->put_FolderName(L"folder");
+			hr = folder1.try_query<IFolderNodeProperties>()->put_FolderName(L"folder");
 			Assert::IsTrue(SUCCEEDED(hr));
-			hr = AddFolderToParent(folder1, hier1.try_query<IProjectItemParent>());
+			hr = AddFolderToParent(folder1, hier1.try_query<IParentNode>());
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto file1 = MakeMockSourceFile(BuildToolKind::Assembler, L"folder/test.asm");
-			hr = AddFileToParent(file1, folder1.try_query<IProjectItemParent>());
+			auto file1 = MakeMockFileNode(BuildToolKind::Assembler, L"folder/test.asm");
+			hr = AddFileToParent(file1, folder1.try_query<IParentNode>());
 
 			// ------------------------------------------------
 
@@ -425,19 +425,19 @@ namespace FelixTests
 
 			// ---------------------
 
-			auto pip2 = hier2.try_query<IProjectItemParent>();
+			auto pip2 = hier2.try_query<IParentNode>();
 			Assert::IsNotNull(pip2->FirstChild());
-			auto folder2 = wil::try_com_query_nothrow<IProjectFolder>(pip2->FirstChild());
+			auto folder2 = wil::try_com_query_nothrow<IFolderNode>(pip2->FirstChild());
 			Assert::IsNotNull(pip2->FirstChild());
 			wil::unique_bstr folder2Name;
-			hr = folder2.try_query<IProjectFolderProperties>()->get_FolderName(&folder2Name);
+			hr = folder2.try_query<IFolderNodeProperties>()->get_FolderName(&folder2Name);
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::AreEqual(L"folder", folder2Name.get());
 
-			auto file2 = folder2.try_query<IProjectItemParent>()->FirstChild();
+			auto file2 = folder2.try_query<IParentNode>()->FirstChild();
 			Assert::IsNotNull(file2);
 			wil::unique_bstr file2Path;
-			hr = wil::try_com_query_nothrow<IProjectFileProperties>(file2)->get_Path(&file2Path);
+			hr = wil::try_com_query_nothrow<IFileNodeProperties>(file2)->get_Path(&file2Path);
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::AreEqual(L"folder/test.asm", file2Path.get());
 		}
@@ -483,42 +483,42 @@ namespace FelixTests
 			hr = LoadFromXml(hier.try_query<IZ80ProjectProperties>(), ProjectElementName, stream);
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto c = hier.try_query<IProjectItemParent>()->FirstChild();
+			auto c = hier.try_query<IParentNode>()->FirstChild();
 			Assert::IsNotNull(c);
-			auto genFilesFolder = wil::try_com_query_nothrow<IProjectFolder>(c);
+			auto genFilesFolder = wil::try_com_query_nothrow<IFolderNode>(c);
 			Assert::IsNotNull(genFilesFolder.get());
 			Assert::AreEqual(L"GeneratedFiles", GetProperty_String(hier, genFilesFolder->GetItemId(), VSHPROPID_SaveName).get());
 
-			c = genFilesFolder.try_query<IProjectItemParent>()->FirstChild();
-			auto postinc = wil::try_com_query_nothrow<IProjectFile>(c);
+			c = genFilesFolder.try_query<IParentNode>()->FirstChild();
+			auto postinc = wil::try_com_query_nothrow<IFileNode>(c);
 			Assert::IsNotNull(postinc.get());
 			Assert::AreEqual(L"postinclude.inc", GetProperty_String(hier, postinc->GetItemId(), VSHPROPID_SaveName).get());
 
-			auto preinc = wil::try_com_query_nothrow<IProjectFile>(postinc->Next());
+			auto preinc = wil::try_com_query_nothrow<IFileNode>(postinc->Next());
 			Assert::IsNotNull(preinc.get());
 			Assert::AreEqual(L"preinclude.inc", GetProperty_String(hier, preinc->GetItemId(), VSHPROPID_SaveName).get());
 
 			c = genFilesFolder->Next();
 			Assert::IsNotNull(c);
-			auto moreFolder = wil::try_com_query_nothrow<IProjectFolder>(c);
+			auto moreFolder = wil::try_com_query_nothrow<IFolderNode>(c);
 			Assert::IsNotNull(moreFolder.get());
 			Assert::AreEqual(L"More", GetProperty_String(hier, moreFolder->GetItemId(), VSHPROPID_SaveName).get());
 
-			c = moreFolder.try_query<IProjectItemParent>()->FirstChild();
-			auto evenMore = wil::try_com_query_nothrow<IProjectFolder>(c);
+			c = moreFolder.try_query<IParentNode>()->FirstChild();
+			auto evenMore = wil::try_com_query_nothrow<IFolderNode>(c);
 			Assert::IsNotNull(evenMore.get());
 			Assert::AreEqual(L"EvenMore", GetProperty_String(hier, evenMore->GetItemId(), VSHPROPID_SaveName).get());
 
-			c = evenMore.try_query<IProjectItemParent>()->FirstChild();
-			auto fileinc = wil::try_com_query_nothrow<IProjectFile>(c);
+			c = evenMore.try_query<IParentNode>()->FirstChild();
+			auto fileinc = wil::try_com_query_nothrow<IFileNode>(c);
 			Assert::IsNotNull(fileinc.get());
 			Assert::AreEqual(L"file.inc", GetProperty_String(hier, fileinc->GetItemId(), VSHPROPID_SaveName).get());
 
-			auto libasm = wil::try_com_query_nothrow<IProjectFile>(moreFolder->Next());
+			auto libasm = wil::try_com_query_nothrow<IFileNode>(moreFolder->Next());
 			Assert::IsNotNull(libasm.get());
 			Assert::AreEqual(L"lib.asm", GetProperty_String(hier, libasm->GetItemId(), VSHPROPID_SaveName).get());
 
-			auto startasm = wil::try_com_query_nothrow<IProjectFile>(libasm->Next());
+			auto startasm = wil::try_com_query_nothrow<IFileNode>(libasm->Next());
 			Assert::IsNotNull(startasm.get());
 			Assert::AreEqual(L"start.asm", GetProperty_String(hier, startasm->GetItemId(), VSHPROPID_SaveName).get());
 

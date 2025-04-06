@@ -15,10 +15,10 @@ namespace FelixTests
 			auto config = MakeMockProjectConfig(hier);
 			auto pane = MakeMockOutputWindowPane(nullptr);
 
-			com_ptr<IProjectFile> file;
-			auto hr = MakeProjectFile (&file);
+			com_ptr<IFileNode> file;
+			auto hr = MakeFileNode(&file);
 			Assert::IsTrue(SUCCEEDED(hr));
-			hr = AddFileToParent(file, hier.try_query<IProjectItemParent>());
+			hr = AddFileToParent(file, hier.try_query<IParentNode>());
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			wil::unique_variant value;

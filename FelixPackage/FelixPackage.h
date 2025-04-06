@@ -45,7 +45,7 @@ IEnumHierarchyEvents : IUnknown
 	virtual HRESULT GetCount(ULONG* pcelt) = 0;
 };
 
-struct IProjectItem;
+struct IChildNode;
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("29DDAB6E-5A2E-4BD8-A617-E1EAA90E30DA")
 INode : IUnknown
@@ -54,11 +54,11 @@ INode : IUnknown
 };
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("D930CCA1-E515-4569-8DC6-959CD6367654")
-IProjectItemParent : IUnknown
+IParentNode : IUnknown
 {
 	virtual VSITEMID GetItemId() = 0;
-	virtual IProjectItem* FirstChild() = 0;
-	virtual void SetFirstChild (IProjectItem* child) = 0;
+	virtual IChildNode* FirstChild() = 0;
+	virtual void SetFirstChild (IChildNode* child) = 0;
 	virtual HRESULT GetHierarchy (REFIID riid, void** ppvObject) = 0;
 };
 
@@ -72,12 +72,12 @@ IRootNode : INode
 
 // This is the base interface for every node except IRootNode.
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("A2EE7852-34B1-49A9-A3DB-36232AC6680C")
-IProjectItem : INode
+IChildNode : INode
 {
 	virtual HRESULT SetItemId (IRootNode* root, VSITEMID itemId) = 0;
 	virtual HRESULT GetMkDocument (BSTR* pbstrMkDocument) = 0; // returns the full path
-	virtual IProjectItem* Next() = 0; // TODO: keep an unordered_map with itemid/itemptr, then get rid of Next, SetNext, FindDescendant
-	virtual void SetNext (IProjectItem* next) = 0;
+	virtual IChildNode* Next() = 0; // TODO: keep an unordered_map with itemid/itemptr, then get rid of Next, SetNext, FindDescendant
+	virtual void SetNext (IChildNode* next) = 0;
 	virtual HRESULT GetProperty (VSHPROPID propid, VARIANT* pvar) = 0;
 	virtual HRESULT SetProperty (VSHPROPID propid, REFVARIANT var) = 0;
 	virtual HRESULT GetGuidProperty (VSHPROPID propid, GUID* pguid) = 0;
@@ -89,12 +89,12 @@ IProjectItem : INode
 };
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("5F6EA158-4DA8-469A-8FD8-E8C04F31244E")
-IProjectFile : IProjectItem
+IFileNode : IChildNode
 {
 };
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("E5498B79-7C01-4F49-B5EC-8D1C98FF935D")
-IProjectFolder : IProjectItem
+IFolderNode : IChildNode
 {
 };
 
@@ -127,7 +127,7 @@ inline HRESULT InitVariantFromVSITEMID (VSITEMID itemid, VARIANT* pvar)
 }
 
 HRESULT MakeFelixProject (LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject);
-HRESULT MakeProjectFile (IProjectFile** file);
+HRESULT MakeFileNode (IFileNode** file);
 HRESULT ProjectConfig_CreateInstance (IVsHierarchy* hier, IProjectConfig** to);
 HRESULT Z80ProjectFactory_CreateInstance (IServiceProvider* sp, IVsProjectFactory** to);
 HRESULT MakePGPropertyPage (UINT titleStringResId, REFGUID pageGuid, DISPID dispidChildObj, IPropertyPage** to);
@@ -147,12 +147,12 @@ HRESULT MakeProjectConfigBuilder (IVsHierarchy* hier, IProjectConfig* config,
 HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to);
 HRESULT ShowCommandLinePropertyBuilder (HWND hwndParent, BSTR valueBefore, BSTR* valueAfter);
 HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmProps, BSTR* ppCmdLine);
-HRESULT MakeProjectFolder (IProjectFolder** ppFolder);
+HRESULT MakeProjectFolder (IFolderNode** ppFolder);
 BOOL LUtilFixFilename (wchar_t* strName);
 HRESULT QueryEditProjectFile (IVsHierarchy* hier);
 HRESULT GetHierarchyWindow (IVsUIHierarchyWindow** ppHierWindow);
 HRESULT GetPathTo (IVsHierarchy* hier, VSITEMID itemID, wil::unique_process_heap_string& dir);
 HRESULT GetPathOf (IVsHierarchy* hier, VSITEMID itemID, wil::unique_process_heap_string& path);
-HRESULT AddFileToParent (IProjectItem* child, IProjectItemParent* addTo);
-HRESULT AddFolderToParent (IProjectFolder* child, IProjectItemParent* addTo);
-HRESULT RemoveChildFromParent (IProjectItem* child, IProjectItemParent* removeFrom);
+HRESULT AddFileToParent (IChildNode* child, IParentNode* addTo);
+HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo);
+HRESULT RemoveChildFromParent (IChildNode* child, IParentNode* removeFrom);

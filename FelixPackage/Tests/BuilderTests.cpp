@@ -77,12 +77,12 @@ namespace FelixTests
 		static com_ptr<IProjectConfigBuilder> MakeSjasmProjectBuilder (const char* asmFileContent)
 		{
 			auto hier = MakeMockVsHierarchy (tempPath);
-			auto sourceFile = MakeMockSourceFile (BuildToolKind::Assembler, L"test.asm");
+			auto sourceFile = MakeMockFileNode (BuildToolKind::Assembler, L"test.asm");
 			if (asmFileContent)
 				WriteFileOnDisk(tempPath, L"test.asm", asmFileContent);
 			else
 				DeleteFileOnDisk(tempPath, L"test.asm");
-			auto hr = AddFileToParent(sourceFile, hier.try_query<IProjectItemParent>());
+			auto hr = AddFileToParent(sourceFile, hier.try_query<IParentNode>());
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto config = MakeMockProjectConfig(hier);
 			auto pane = MakeMockOutputWindowPane(nullptr);
@@ -174,17 +174,17 @@ namespace FelixTests
 			const wchar_t* cbtCmdLine, IStream* outputStreamUTF16)
 		{
 			auto hier = MakeMockVsHierarchy(tempPath);
-			auto sourceFile = MakeMockSourceFile (BuildToolKind::Assembler, sourceFileName);
+			auto sourceFile = MakeMockFileNode (BuildToolKind::Assembler, sourceFileName);
 			if (sourceFileContent)
 				WriteFileOnDisk(tempPath, sourceFileName, sourceFileContent);
 			else
 				DeleteFileOnDisk(tempPath, sourceFileName);
-			AddFileToParent(sourceFile, hier.try_query<IProjectItemParent>());
+			AddFileToParent(sourceFile, hier.try_query<IParentNode>());
 
-			auto hr = sourceFile.try_query<IProjectFileProperties>()->put_BuildTool(BuildToolKind::CustomBuildTool);
+			auto hr = sourceFile.try_query<IFileNodeProperties>()->put_BuildTool(BuildToolKind::CustomBuildTool);
 			Assert::IsTrue(SUCCEEDED(hr));
 			com_ptr<ICustomBuildToolProperties> cbtProps;
-			hr = sourceFile.try_query<IProjectFileProperties>()->get_CustomBuildToolProperties(&cbtProps);
+			hr = sourceFile.try_query<IFileNodeProperties>()->get_CustomBuildToolProperties(&cbtProps);
 			Assert::IsTrue(SUCCEEDED(hr));
 			hr = cbtProps->put_Description(wil::make_bstr_nothrow(cbtDescription).get());
 			Assert::IsTrue(SUCCEEDED(hr));

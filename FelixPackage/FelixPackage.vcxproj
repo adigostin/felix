@@ -244,7 +244,7 @@ COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Conf
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Tests|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="ProjectFile.cpp" />
+    <ClCompile Include="FileNode.cpp" />
     <ClCompile Include="FelixProject.cpp" />
     <ClCompile Include="ProjectConfig.cpp" />
     <ClCompile Include="Tests\BuilderTests.cpp">
@@ -271,7 +271,7 @@ COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Conf
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="Tests\Mocks\MockSourceFile.cpp">
+    <ClCompile Include="Tests\Mocks\MockFileNode.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
