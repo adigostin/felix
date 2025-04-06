@@ -1500,7 +1500,10 @@ public:
 
 		wil::unique_hlocal_string currentFilePath;
 		if (isTitled)
-			PathAllocCombine(_location.get(), _filename.get(), PathFlags, &currentFilePath);
+		{
+			currentFilePath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(currentFilePath);
+			PathCombine(currentFilePath.get(), _location.get(), _filename.get());
+		}
 
 		if (!pszFilename || (currentFilePath && !wcscmp(pszFilename, currentFilePath.get())))
 		{
@@ -1545,10 +1548,8 @@ public:
 		// Note that we return true for VSHPROPID_MonikerSameAsPersistFile, meaning that
 		// IVsProject::GetMkDocument returns the same as GetCurFile for VSITEMID_ROOT.
 
-		size_t reservedLen = wcslen(_location.get()) + wcslen(_filename.get()) + 10;
-
-		auto buffer = wil::make_cotaskmem_string_nothrow(nullptr, reservedLen); RETURN_IF_NULL_ALLOC(buffer);
-		auto hr = PathCchCombineEx (buffer.get(), reservedLen, _location.get(), _filename.get(), PathFlags); RETURN_IF_FAILED(hr);
+		auto buffer = wil::make_cotaskmem_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(buffer);
+		PathCombine (buffer.get(), _location.get(), _filename.get());
 
 		*ppszFilename = buffer.release();
 		*pnFormatIndex = 0;
@@ -1668,8 +1669,6 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GenerateUniqueItemName(VSITEMID itemidLoc, LPCOLESTR pszExt, LPCOLESTR pszSuggestedRoot, BSTR* pbstrItemName) override
 	{
-		HRESULT hr;
-
 		if (itemidLoc != VSITEMID_ROOT)
 			RETURN_HR(E_NOTIMPL);
 
@@ -1677,8 +1676,8 @@ public:
 		{
 			wchar_t buffer[50];
 			swprintf_s(buffer, L"%s%u%s", pszSuggestedRoot, i, pszExt);
-			wil::unique_hlocal_string dest;
-			hr = PathAllocCombine (_location.get(), buffer, PathFlags, &dest); RETURN_IF_FAILED(hr);
+			auto dest = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(dest);
+			PathCombine (dest.get(), _location.get(), buffer);
 			if (!PathFileExists(dest.get()))
 			{
 				*pbstrItemName = SysAllocString(buffer); RETURN_IF_NULL_ALLOC(*pbstrItemName);
@@ -2785,7 +2784,8 @@ public:
 			if (nameExists)
 				continue;
 
-			hr = PathAllocCombine(_location.get(), dirName, PathFlags, &dirPath); RETURN_IF_FAILED(hr);
+			dirPath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(dirPath);
+			PathCombine(dirPath.get(), _location.get(), dirName);
 			if (CreateDirectory(dirPath.get(), nullptr) || GetLastError() == ERROR_ALREADY_EXISTS)
 				break;
 
