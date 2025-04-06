@@ -54,7 +54,7 @@ namespace FelixTests
 				Assert::IsTrue(SUCCEEDED(hr));
 				LONG i = 0;
 				SafeArrayPutElement (sa.get(), &i, file.try_query<IDispatch>());
-				hr = hier.try_query<IZ80ProjectProperties>()->put_Items(sa.get());
+				hr = hier.try_query<IProjectNodeProperties>()->put_Items(sa.get());
 				Assert::IsTrue(SUCCEEDED(hr));
 
 				Assert::AreNotEqual<VSITEMID>(VSITEMID_NIL, file->GetItemId());
@@ -97,7 +97,7 @@ namespace FelixTests
 				SafeArrayPutElement (sa.get(), &i, file1.try_query<IDispatch>());
 				i++;
 				SafeArrayPutElement (sa.get(), &i, file2.try_query<IDispatch>());
-				hr = hier.try_query<IZ80ProjectProperties>()->put_Items(sa.get());
+				hr = hier.try_query<IProjectNodeProperties>()->put_Items(sa.get());
 				Assert::IsTrue(SUCCEEDED(hr));
 
 				// The project should have assigned them item ids
@@ -153,7 +153,7 @@ namespace FelixTests
 				SafeArrayPutElement (sa.get(), &i, file1.try_query<IDispatch>());
 				i++;
 				SafeArrayPutElement (sa.get(), &i, file2.try_query<IDispatch>());
-				hr = hier.try_query<IZ80ProjectProperties>()->put_Items(sa.get());
+				hr = hier.try_query<IProjectNodeProperties>()->put_Items(sa.get());
 				Assert::IsTrue(SUCCEEDED(hr));
 
 				// First project child should be a folder.
@@ -218,7 +218,7 @@ namespace FelixTests
 				SafeArrayPutElement (sa.get(), &i, file2.try_query<IDispatch>()); // Insert between the two above
 				i++;
 				SafeArrayPutElement (sa.get(), &i, file4.try_query<IDispatch>()); // Add at the end
-				hr = hier.try_query<IZ80ProjectProperties>()->put_Items(sa.get());
+				hr = hier.try_query<IProjectNodeProperties>()->put_Items(sa.get());
 				Assert::IsTrue(SUCCEEDED(hr));
 
 				// First project child should be file1.
@@ -412,7 +412,7 @@ namespace FelixTests
 			// ------------------------------------------------
 
 			auto stream = com_ptr(SHCreateMemStream(nullptr, 0));
-			hr = SaveToXml(hier1.try_query<IZ80ProjectProperties>(), L"Temp", 0, stream);
+			hr = SaveToXml(hier1.try_query<IProjectNodeProperties>(), L"Temp", 0, stream);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			com_ptr<IVsHierarchy> hier2;
@@ -420,7 +420,7 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			hr = stream->Seek({ 0 }, STREAM_SEEK_SET, nullptr);
-			hr = LoadFromXml(hier2.try_query<IZ80ProjectProperties>(), L"Temp", stream);
+			hr = LoadFromXml(hier2.try_query<IProjectNodeProperties>(), L"Temp", stream);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			// ---------------------
@@ -480,7 +480,7 @@ namespace FelixTests
 			auto hr = MakeFelixProject (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			hr = LoadFromXml(hier.try_query<IZ80ProjectProperties>(), ProjectElementName, stream);
+			hr = LoadFromXml(hier.try_query<IProjectNodeProperties>(), ProjectElementName, stream);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			auto c = hier.try_query<IParentNode>()->FirstChild();

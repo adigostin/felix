@@ -18,7 +18,7 @@ static constexpr wchar_t FileElementName[] = L"File";
 
 // What MPF implements: https://docs.microsoft.com/en-us/visualstudio/extensibility/internals/project-model-core-components?view=vs-2022
 class Z80Project
-	: IZ80ProjectProperties    // includes IDispatch
+	: IProjectNodeProperties    // includes IDispatch
 	, IVsProject2              // includes IVsProject
 	, IVsUIHierarchy           // includes IVsHierarchy
 	, IPersistFileFormat       // includes IPersist
@@ -615,7 +615,7 @@ public:
 
 		// TODO: To specify a sticky behavior for the location field, which is the recommended behavior, remember the last location field value and pass it back in when you open the dialog box again.
 		// TODO: To specify sticky behavior for the filter field, which is the recommended behavior, remember the last filter field value and pass it back in when you open the dialog box again.
-		hr = dlg->AddProjectItemDlg (VSITEMID_ROOT, __uuidof(IZ80ProjectProperties), this, flags, nullptr, nullptr, nullptr, nullptr, nullptr);
+		hr = dlg->AddProjectItemDlg (VSITEMID_ROOT, __uuidof(IProjectNodeProperties), this, flags, nullptr, nullptr, nullptr, nullptr, nullptr);
 		if (FAILED(hr) && (hr != OLE_E_PROMPTSAVECANCELLED))
 			return hr;
 
@@ -630,7 +630,7 @@ public:
 
 		RETURN_HR_IF_EXPECTED(E_NOINTERFACE, riid == IID_ICustomCast); // VS abuses this, let's check it first
 
-		if (   TryQI<IZ80ProjectProperties>(this, riid, ppvObject)
+		if (   TryQI<IProjectNodeProperties>(this, riid, ppvObject)
 			|| TryQI<IDispatch>(this, riid, ppvObject)
 			|| TryQI<IUnknown>(static_cast<IVsUIHierarchy*>(this), riid, ppvObject)
 			|| TryQI<IVsHierarchy>(this, riid, ppvObject)
@@ -763,7 +763,7 @@ public:
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IZ80ProjectProperties);
+	IMPLEMENT_IDISPATCH(IID_IProjectNodeProperties);
 
 	#pragma region IVsHierarchy
 	virtual HRESULT STDMETHODCALLTYPE SetSite(IServiceProvider* pSP) override
@@ -810,7 +810,7 @@ public:
 			if (propid == VSHPROPID_CmdUIGuid) // -2016
 			{
 				// TODO: https://microsoft.public.vstudio.extensibility.narkive.com/bCIjzuRK/adding-a-command-to-project-node-context-menu
-				*pguid = __uuidof(IZ80ProjectProperties);
+				*pguid = __uuidof(IProjectNodeProperties);
 				return S_OK;
 			}
 
@@ -1468,7 +1468,7 @@ public:
 	#pragma region IPersistFileFormat
 	virtual HRESULT STDMETHODCALLTYPE GetClassID(CLSID* pClassID) override
 	{
-		*pClassID = __uuidof(IZ80ProjectProperties);
+		*pClassID = __uuidof(IProjectNodeProperties);
 		return S_OK;
 	}
 
@@ -2417,7 +2417,7 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region IZ80ProjectProperties
+	#pragma region IProjectNodeProperties
 	virtual HRESULT STDMETHODCALLTYPE get___id (BSTR *value) override
 	{
 		auto ext = PathFindExtension(_filename.get());

@@ -116,7 +116,7 @@ library ATLProject1Lib
 
 	// IID Same as the pkgdef entry [$RootKey$\Projects\{D438161C-F032-4014-BC5C-20A80EAFF59B}]
 	[object, uuid(D438161C-F032-4014-BC5C-20A80EAFF59B), dual, nonextensible, pointer_default(unique)]
-	interface IZ80ProjectProperties : IDispatch
+	interface IProjectNodeProperties : IDispatch
 	{
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
 

@@ -6,7 +6,7 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IRootNode, IParentNode
+struct MockVsHierarchy : IVsHierarchy, IProjectNodeProperties, IRootNode, IParentNode
 {
 	ULONG _refCount = 0;
 	wil::unique_bstr _projectDir;
@@ -27,7 +27,7 @@ struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IRootNode, IParent
 		if (   TryQI<IUnknown>(static_cast<IVsHierarchy*>(this), riid, ppvObject)
 			|| TryQI<IDispatch>(this, riid, ppvObject)
 			|| TryQI<IVsHierarchy>(this, riid, ppvObject)
-			|| TryQI<IZ80ProjectProperties>(this, riid, ppvObject)
+			|| TryQI<IProjectNodeProperties>(this, riid, ppvObject)
 			|| TryQI<IRootNode>(this, riid, ppvObject)
 			|| TryQI<IParentNode>(this, riid, ppvObject)
 			|| TryQI<INode>(this, riid, ppvObject)
@@ -43,9 +43,9 @@ struct MockVsHierarchy : IVsHierarchy, IZ80ProjectProperties, IRootNode, IParent
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IZ80ProjectProperties);
+	IMPLEMENT_IDISPATCH(IID_IProjectNodeProperties);
 
-	#pragma region IZ80ProjectProperties
+	#pragma region IProjectNodeProperties
 	virtual HRESULT STDMETHODCALLTYPE get___id (BSTR *value) override
 	{
 		return E_NOTIMPL;

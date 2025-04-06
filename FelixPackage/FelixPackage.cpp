@@ -450,7 +450,7 @@ public:
 		hr = Z80ProjectFactory_CreateInstance (_sp.get(), &pf); RETURN_IF_FAILED(hr);
 
 		VSCOOKIE cookie;
-		hr = regSvc->RegisterProjectType (__uuidof(IZ80ProjectProperties), pf.get(), &cookie); RETURN_IF_FAILED(hr);
+		hr = regSvc->RegisterProjectType (__uuidof(IProjectNodeProperties), pf.get(), &cookie); RETURN_IF_FAILED(hr);
 		_projectTypeRegistrationCookie = cookie;
 
 		hr = pSP->QueryService (SID_SVsShellDebugger, &_debugger); RETURN_IF_FAILED(hr);
@@ -591,7 +591,7 @@ public:
 	#pragma region IVsSolutionEvents
 	virtual HRESULT STDMETHODCALLTYPE OnAfterOpenProject(IVsHierarchy* pHierarchy, BOOL fAdded) override
 	{
-		com_ptr<IZ80ProjectProperties> proj;
+		com_ptr<IProjectNodeProperties> proj;
 		if (SUCCEEDED(pHierarchy->QueryInterface(&proj)))
 		{
 			if (!_simulatorWindowFrame)
@@ -798,7 +798,7 @@ HRESULT GetDefaultProjectFileExtension (BSTR* ppExt)
 		hr = StringCchCat(keyName.get(), keyNameLen + 1, regRoot.get()); RETURN_IF_FAILED(hr);
 		STRSAFE_LPWSTR end;
 		hr = StringCchCatEx(keyName.get(), keyNameLen + 1, Projects, &end, nullptr, 0); RETURN_IF_FAILED(hr);
-		StringFromGUID2 (IID_IZ80ProjectProperties, end, GuidStrSize + 1);
+		StringFromGUID2 (IID_IProjectNodeProperties, end, GuidStrSize + 1);
 		wil::unique_hkey key;
 		auto lresult = RegOpenKeyEx(rootKey, keyName.get(), 0, KEY_READ, &key); RETURN_IF_WIN32_ERROR(lresult);
 
