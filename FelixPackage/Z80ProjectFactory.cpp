@@ -45,11 +45,13 @@ public:
 
 	virtual HRESULT __stdcall CreateProject(LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void ** ppvProject, BOOL * pfCanceled) override
 	{
+		// Better doc here: https://learn.microsoft.com/en-us/dotnet/api/microsoft.visualstudio.shell.interop.ivssolution.createproject?view=visualstudiosdk-2022
+
 		RETURN_HR_IF(E_POINTER, !ppvProject || !pfCanceled);
 		*ppvProject = nullptr;
 		*pfCanceled = TRUE;
 
-		auto hr = MakeFelixProject (_sp.get(), pszFilename, pszLocation, pszName, grfCreateFlags, iidProject, ppvProject); RETURN_IF_FAILED_EXPECTED(hr);
+		auto hr = MakeFelixProject (pszFilename, pszLocation, pszName, grfCreateFlags, iidProject, ppvProject); RETURN_IF_FAILED_EXPECTED(hr);
 	
 		*pfCanceled = FALSE;
 		return S_OK;

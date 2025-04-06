@@ -38,7 +38,7 @@ class Z80Project
 	, IVsHierarchyEvents // this implementation only forwards calls to subscribed sinks
 	, IVsPerPropertyBrowsing
 {
-	wil::com_ptr_nothrow<IServiceProvider> _sp;
+	wil::com_ptr_nothrow<IServiceProvider> _sp = serviceProvider;
 	ULONG _refCount = 0;
 	GUID _projectInstanceGuid;
 	wil::unique_hlocal_string _location;
@@ -67,7 +67,7 @@ class Z80Project
 	WeakRefToThis _weakRefToThis;
 	wil::unique_bstr _autoOpenFiles;
 
-	static HRESULT CreateProjectFilesFromTemplate (IServiceProvider* sp, const wchar_t* fromProjFilePath, const wchar_t* location, const wchar_t* filename)
+	static HRESULT CreateProjectFilesFromTemplate (const wchar_t* fromProjFilePath, const wchar_t* location, const wchar_t* filename)
 	{
 		// Prepare the file operations.
 
@@ -75,7 +75,7 @@ class Z80Project
 		auto hr = CoCreateInstance(__uuidof(FileOperation), NULL, CLSCTX_ALL, IID_PPV_ARGS(&pfo)); RETURN_IF_FAILED(hr);
 
 		wil::com_ptr_nothrow<IVsUIShell> shell;
-		hr = sp->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
+		hr = serviceProvider->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
 
 		HWND ownerHwnd;
 		hr = shell->GetDialogOwnerHwnd(&ownerHwnd); RETURN_IF_FAILED(hr);
@@ -161,11 +161,9 @@ class Z80Project
 	}
 
 public:
-	HRESULT InitInstance (IServiceProvider* sp, LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags)
+	HRESULT InitInstance (LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags)
 	{
 		HRESULT hr;
-
-		_sp = sp;
 
 		hr = _weakRefToThis.InitInstance(static_cast<IVsHierarchy*>(this));
 
@@ -176,7 +174,7 @@ public:
 			const wchar_t* ext = ::PathFindExtension(pszName);
 			_caption = wil::make_hlocal_string_nothrow(pszName, ext - pszName); RETURN_IF_NULL_ALLOC(_caption);
 
-			hr = CreateProjectFilesFromTemplate (sp, pszFilename, pszLocation, pszName); RETURN_IF_FAILED(hr);
+			hr = CreateProjectFilesFromTemplate (pszFilename, pszLocation, pszName); RETURN_IF_FAILED(hr);
 
 			wil::unique_hlocal_string projFilePath;
 			hr = PathAllocCombine (pszLocation, pszName, PathFlags, &projFilePath); RETURN_IF_FAILED(hr);
@@ -2656,9 +2654,9 @@ public:
 
 };
 
-HRESULT MakeFelixProject (IServiceProvider* sp, LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject)
+HRESULT MakeFelixProject (LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject)
 {
 	wil::com_ptr_nothrow<Z80Project> p = new (std::nothrow) Z80Project(); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance(sp, pszFilename, pszLocation, pszName, grfCreateFlags); RETURN_IF_FAILED_EXPECTED(hr);
+	auto hr = p->InitInstance (pszFilename, pszLocation, pszName, grfCreateFlags); RETURN_IF_FAILED_EXPECTED(hr);
 	return p->QueryInterface (iidProject, ppvProject);
 }
