@@ -1646,7 +1646,15 @@ public:
 		hr = _sp->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED_EXPECTED(hr);
 
 		hr = uiShellOpenDocument->OpenStandardEditor(OSE_ChooseBestStdEditor, mkDocument.get(), rguidLogicalView,
-			L"%3", this, itemid, punkDocDataExisting, nullptr, ppWindowFrame); RETURN_IF_FAILED_EXPECTED(hr);
+			L"%3", this, itemid, punkDocDataExisting, nullptr, ppWindowFrame);
+		if (FAILED(hr))
+		{
+			if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
+				return SetErrorInfo(hr, L"File not found.\r\n\r\n%s", mkDocument.get());
+			if (hr == HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND))
+				return SetErrorInfo(hr, L"Path to the file was not found.\r\n\r\n%s", mkDocument.get());
+			return hr;
+		}
 
 		wil::unique_variant var;
 		hr = (*ppWindowFrame)->GetProperty(VSFPROPID_DocCookie, &var); LOG_IF_FAILED(hr);
