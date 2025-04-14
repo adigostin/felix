@@ -9,16 +9,17 @@ using namespace Microsoft::VisualStudio::Imaging;
 struct FolderNode : IFolderNode, IParentNode, IFolderNodeProperties
 {
 	ULONG _refCount = 0;
-	com_ptr<IWeakRef> _hier;
+	com_ptr<IWeakRef> _parent;
 	VSITEMID _itemId = VSITEMID_NIL;
-	VSITEMID _parentItemId = VSITEMID_NIL;
 	com_ptr<IChildNode> _next;
 	com_ptr<IChildNode> _firstChild;
 	wil::unique_bstr _name; // directory name, no path components needed
+	WeakRefToThis _weakRefToThis;
 
 public:
 	HRESULT InitInstance()
 	{
+		auto hr = _weakRefToThis.InitInstance(static_cast<IFolderNode*>(this)); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
@@ -41,6 +42,9 @@ public:
 			|| TryQI<INode>(this, riid, ppvObject)
 			)
 			return S_OK;
+
+		if (riid == __uuidof(IWeakRef))
+			return _weakRefToThis.QueryIWeakRef(ppvObject);
 
 		return E_NOINTERFACE;
 	}
@@ -86,43 +90,39 @@ public:
 		return _itemId;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE SetItemId (IProjectNode* root, VSITEMID id) override
+	virtual HRESULT STDMETHODCALLTYPE SetItemId (IParentNode* parent, VSITEMID id) override
 	{
 		if (id != VSITEMID_NIL)
 		{
 			// setting it
 			RETURN_HR_IF(E_UNEXPECTED, _itemId != VSITEMID_NIL);
-			RETURN_HR_IF(E_UNEXPECTED, _hier);
+			RETURN_HR_IF(E_UNEXPECTED, _parent);
 		}
 		else
 		{
 			// clearing it
 			RETURN_HR_IF(E_UNEXPECTED, _itemId == VSITEMID_NIL);
-			RETURN_HR_IF(E_UNEXPECTED, !_hier);
+			RETURN_HR_IF(E_UNEXPECTED, !_parent);
 		}
 
-		auto hr = root->QueryInterface(&_hier); RETURN_IF_FAILED(hr);
+		auto hr = parent->QueryInterface(IID_PPV_ARGS(_parent.addressof())); RETURN_IF_FAILED(hr);
 		_itemId = id;
 		return S_OK;
 	}
 
+	virtual HRESULT GetParent (IParentNode** ppParent) override
+	{
+		RETURN_HR_IF(E_UNEXPECTED, !_parent);
+		return _parent->QueryInterface(IID_PPV_ARGS(ppParent));
+	}
+
     virtual HRESULT STDMETHODCALLTYPE GetMkDocument (BSTR *pbstrMkDocument) override
 	{
-		return E_NOTIMPL; // We'll never support this
-		/*
-		if (!_name || !_name[0])
-			RETURN_HR(E_UNEXPECTED);
-
-		com_ptr<IChildNode> parentItem;
-		auto hr = _parent->Resolve(&parentItem); RETURN_IF_FAILED(hr);
-		unique_bstr parentMk;
-		hr = parentItem->GetMkDocument(&parentMk); RETURN_IF_FAILED(hr);
-
-		wil::unique_hlocal_string filePath;
-		hr = PathAllocCombine (parentMk, _name, PathFlags, &filePath); RETURN_IF_FAILED(hr);
-		*pbstrMkDocument = SysAllocString(filePath.get()); RETURN_IF_NULL_ALLOC(*pbstrMkDocument);
+		wil::unique_process_heap_string str;
+		auto hr = GetPathOf(this, str); RETURN_IF_FAILED(hr);
+		auto bstr = wil::make_bstr_nothrow(str.get()); RETURN_IF_NULL_ALLOC(bstr);
+		*pbstrMkDocument = bstr.release();
 		return S_OK;
-		*/
 	}
 
     virtual IChildNode *STDMETHODCALLTYPE Next() override
@@ -137,8 +137,14 @@ public:
 
     virtual HRESULT STDMETHODCALLTYPE GetProperty (VSHPROPID propid, VARIANT *pvar) override
 	{
+		HRESULT hr;
+
 		if (propid == VSHPROPID_Parent) // -1000
-			return InitVariantFromInt32 (_parentItemId, pvar);
+		{
+			com_ptr<INode> parent;
+			hr = _parent->QueryInterface(IID_PPV_ARGS(&parent)); RETURN_IF_FAILED(hr);
+			return InitVariantFromInt32 (parent->GetItemId(), pvar);
+		}
 
 		if (   propid == VSHPROPID_FirstChild // -1001
 			|| propid == VSHPROPID_FirstVisibleChild) // -2041
@@ -189,6 +195,7 @@ public:
 			|| propid == VSHPROPID_ItemDocCookie // -2034
 			|| propid == VSHPROPID_IsHiddenItem // -2043
 			|| propid == VSHPROPID_OverlayIconIndex	// -2048
+			|| propid == VSHPROPID_ExternalItem // -2103
 			|| propid == VSHPROPID_ProvisionalViewingStatus // -2112
 		)
 			return E_NOTIMPL;
@@ -204,22 +211,7 @@ public:
 		HRESULT hr;
 
 		if (propid == VSHPROPID_Parent)
-		{
-			RETURN_HR_IF(E_INVALIDARG, var.vt != VT_VSITEMID);
-			if (V_VSITEMID(&var) != VSITEMID_NIL)
-			{
-				// setting it
-				RETURN_HR_IF(E_UNEXPECTED, _parentItemId != VSITEMID_NIL);
-			}
-			else
-			{
-				// clearing it
-				RETURN_HR_IF(E_UNEXPECTED, _parentItemId == VSITEMID_NIL);
-			}
-
-			_parentItemId = V_VSITEMID(&var);
-			return S_OK;
-		}
+			RETURN_HR(E_UNEXPECTED); // Set this via SetItemId
 
 		if (propid == VSHPROPID_EditLabel)
 		{
@@ -331,11 +323,6 @@ public:
 	{
 		_firstChild = child;
 	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetHierarchy (REFIID riid, void **ppvObject) override
-	{
-		return _hier->QueryInterface(riid, ppvObject);
-	}
 	#pragma endregion
 
 	#pragma warning(push)
@@ -345,7 +332,7 @@ public:
 		HRESULT hr;
 
 		com_ptr<IVsHierarchy> hier;
-		hr = _hier->QueryInterface(&hier); RETURN_IF_FAILED(hr);
+		hr = FindHier(static_cast<IChildNode*>(this), IID_PPV_ARGS(&hier)); RETURN_IF_FAILED(hr);
 
 		hr = QueryEditProjectFile(hier); RETURN_IF_FAILED_EXPECTED(hr);
 
@@ -355,6 +342,8 @@ public:
 		wil::unique_process_heap_string oldFullPath;
 		hr = GetPathOf(hier, _itemId, oldFullPath); RETURN_IF_FAILED(hr);
 
+		RETURN_HR(E_NOTIMPL);
+		/*
 		wil::unique_process_heap_string newFullPath;
 		hr = GetPathTo (hier, _parentItemId, newFullPath); RETURN_IF_FAILED(hr);
 		hr = wil::str_concat_nothrow (newFullPath, L"\\", newName); RETURN_IF_FAILED(hr);
@@ -365,6 +354,7 @@ public:
 
 		*pbstrNewName = newName.release();
 		return S_OK;
+		*/
 	}
 
 	HRESULT RenameNode (const wchar_t* newName)
@@ -373,8 +363,10 @@ public:
 
 		_name = wil::make_bstr_nothrow(newName); RETURN_IF_NULL_ALLOC(_name);
 		
+		com_ptr<IProjectNode> hier;
+		hr = FindHier(static_cast<IChildNode*>(this), IID_PPV_ARGS(&hier)); RETURN_IF_FAILED(hr);
 		com_ptr<IEnumHierarchyEvents> enu;
-		hr = _hier.try_query<IProjectNode>()->EnumHierarchyEventSinks(&enu); RETURN_IF_FAILED(hr);
+		hr = hier->EnumHierarchyEventSinks(&enu); RETURN_IF_FAILED(hr);
 		com_ptr<IVsHierarchyEvents> sink;
 		ULONG fetched;
 		while (SUCCEEDED(enu->Next(1, &sink, &fetched)) && fetched)

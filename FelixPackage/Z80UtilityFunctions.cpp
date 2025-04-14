@@ -464,51 +464,94 @@ HRESULT GetHierarchyWindow (IVsUIHierarchyWindow** ppHierWindow)
 	return docViewVar.punkVal->QueryInterface(ppHierWindow);
 }
 
-HRESULT GetPathTo (IVsHierarchy* hier, VSITEMID itemID, wil::unique_process_heap_string& dir)
+HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir)
 {
-	if (itemID == VSITEMID_ROOT)
+	HRESULT hr;
+
+	com_ptr<IParentNode> parent;
+	hr = node->GetParent(&parent); RETURN_IF_FAILED(hr);
+	if (auto hier = parent.try_query<IVsHierarchy>())
 	{
-		// Get project dir...
-		wil::unique_variant projectDir;
-		auto hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(E_UNEXPECTED, projectDir.vt != VT_BSTR);
-		dir = wil::make_process_heap_string_nothrow (projectDir.bstrVal); RETURN_IF_NULL_ALLOC(dir);
+		wil::unique_variant projDir;
+		hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projDir); RETURN_IF_FAILED(hr);
+		dir = wil::make_process_heap_string_nothrow(projDir.bstrVal); RETURN_IF_NULL_ALLOC(dir);
 		return S_OK;
 	}
 	else
 	{
-		// Get path of parent node...
-		wil::unique_variant parent;
-		auto hr = hier->GetProperty(itemID, VSHPROPID_Parent, &parent); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(E_UNEXPECTED, parent.vt != VT_VSITEMID);
-		return GetPathTo (hier, V_VSITEMID(&parent), dir);
+		com_ptr<IChildNode> parentAsChild;
+		hr = parent->QueryInterface(IID_PPV_ARGS(&parentAsChild)); RETURN_IF_FAILED(hr);
+		hr = GetPathTo (parentAsChild, dir);
+
+		wil::unique_variant parentName;
+		hr = parentAsChild->GetProperty(VSHPROPID_SaveName, &parentName); RETURN_IF_FAILED(hr);
+
+		hr = wil::str_concat_nothrow(dir, L"\\", parentName.bstrVal); RETURN_IF_FAILED(hr);
 	}
+		
+	return S_OK;
 }
 
 HRESULT GetPathOf (IVsHierarchy* hier, VSITEMID itemID, wil::unique_process_heap_string& path)
 {
+	RETURN_HR(E_NOTIMPL);
+	/*
 	auto hr = GetPathTo (hier, itemID, path); RETURN_IF_FAILED(hr);
 	wil::unique_variant name;
 	hr = hier->GetProperty(itemID, VSHPROPID_SaveName, &name); RETURN_IF_FAILED(hr);
 	RETURN_HR_IF(E_UNEXPECTED, name.vt != VT_BSTR);		
 	hr = wil::str_concat_nothrow(path, L"\\", name.bstrVal); RETURN_IF_FAILED(hr);
 	return S_OK;
+	*/
+}
+
+HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path)
+{
+	com_ptr<IVsHierarchy> hier;
+	auto hr = FindHier(node, IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
+	hr = GetPathTo (node, path); RETURN_IF_FAILED(hr);
+	wil::unique_variant name;
+	hr = hier->GetProperty(node->GetItemId(), VSHPROPID_SaveName, &name); RETURN_IF_FAILED(hr);
+	RETURN_HR_IF(E_UNEXPECTED, name.vt != VT_BSTR);		
+	hr = wil::str_concat_nothrow(path, L"\\", name.bstrVal); RETURN_IF_FAILED(hr);
+	return S_OK;
+}
+
+HRESULT FindHier (IChildNode* from, REFIID riid, void** ppvHier)
+{
+	com_ptr<IParentNode> parent;
+	auto hr = from->GetParent(&parent); RETURN_IF_FAILED(hr);
+	return FindHier(parent, riid, ppvHier);
+}
+
+HRESULT FindHier (IParentNode* from, REFIID riid, void** ppvHier)
+{
+	com_ptr<IVsHierarchy> hier;
+	auto hr = from->QueryInterface(IID_PPV_ARGS(hier.addressof()));
+	if (hr == S_OK)
+		return hier->QueryInterface(riid, ppvHier);
+	if (hr != E_NOINTERFACE)
+		RETURN_HR(hr);
+
+	com_ptr<IChildNode> pc;
+	hr = from->QueryInterface(IID_PPV_ARGS(&pc)); RETURN_IF_FAILED(hr);
+	return FindHier(pc, riid, ppvHier);
 }
 
 // Enum depth-first (just because it's simpler) pre-order mode (so that parents get their ItemId before children).
 static HRESULT SetItemIdsTree (IChildNode* child, IChildNode* childPrevSibling, IParentNode* addTo)
 {
 	com_ptr<IProjectNode> root;
-	auto hr = addTo->GetHierarchy(IID_PPV_ARGS(&root)); RETURN_IF_FAILED(hr);
+	auto hr = FindHier(addTo, IID_PPV_ARGS(&root)); RETURN_IF_FAILED(hr);
 
 	stdext::inplace_function<HRESULT(IChildNode*, IChildNode*, IParentNode*)> enumNodeAndChildren;
 
 	enumNodeAndChildren = [root, &enumNodeAndChildren](IChildNode* node, IChildNode* nodePrevSibling, IParentNode* nodeParent) -> HRESULT
 		{
-			auto hr = node->SetItemId(root, root->MakeItemId()); RETURN_IF_FAILED(hr);
-			VARIANT v;
-			InitVariantFromVSITEMID(nodeParent->GetItemId(), &v);
-			hr = node->SetProperty(VSHPROPID_Parent, v); RETURN_IF_FAILED(hr);
+			auto hr = node->SetItemId(nodeParent, root->MakeItemId()); RETURN_IF_FAILED(hr);
+			//VARIANT v;
+			//InitVariantFromVSITEMID(nodeParent->GetItemId(), &v);
+			//hr = node->SetProperty(VSHPROPID_Parent, v); RETURN_IF_FAILED(hr);
 
 			com_ptr<IParentNode> nodeAsParent;
 			if (SUCCEEDED(node->QueryInterface(&nodeAsParent)))
@@ -542,7 +585,7 @@ static HRESULT SetItemIdsTree (IChildNode* child, IChildNode* childPrevSibling, 
 	return enumNodeAndChildren(child, childPrevSibling, addTo);
 }
 
-HRESULT AddFileToParent (IChildNode* child, IParentNode* addTo)
+HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo)
 {
 	HRESULT hr;
 	RETURN_HR_IF(E_UNEXPECTED, child->GetItemId() != VSITEMID_NIL);
@@ -552,14 +595,17 @@ HRESULT AddFileToParent (IChildNode* child, IParentNode* addTo)
 		addTo->SetFirstChild(child);
 	else
 	{
-		wil::unique_variant childName;
-		hr = child->GetProperty(VSHPROPID_SaveName, &childName); RETURN_IF_FAILED(hr);
+		com_ptr<IFileNodeProperties> childProps;
+		hr = child->QueryInterface(IID_PPV_ARGS(childProps.addressof())); RETURN_IF_FAILED(hr);
+		wil::unique_bstr childPath;
+		hr = childProps->get_Path(&childPath); RETURN_IF_FAILED(hr);
+		const wchar_t* childName = PathFindFileName(childPath.get());
 
 		// Do we need to insert it in the first position?
 		wil::unique_variant name;
 		if (!wil::try_com_query_nothrow<IFolderNode>(addTo->FirstChild())
 			&& SUCCEEDED(addTo->FirstChild()->GetProperty(VSHPROPID_SaveName, &name))
-			&& VarBstrCmp(childName.bstrVal, name.bstrVal, InvariantLCID, NORM_IGNORECASE) == VARCMP_LT)
+			&& _wcsicmp(childName, name.bstrVal) < 0)
 		{
 			// Yes
 			child->SetNext(addTo->FirstChild());
@@ -578,7 +624,7 @@ HRESULT AddFileToParent (IChildNode* child, IParentNode* addTo)
 			{
 				while (insertAfter->Next()
 					&& SUCCEEDED(insertAfter->Next()->GetProperty(VSHPROPID_SaveName, &name))
-					&& VarBstrCmp(childName.bstrVal, name.bstrVal, InvariantLCID, NORM_IGNORECASE) == VARCMP_GT)
+					&& _wcsicmp(childName, name.bstrVal) > 0)
 				{
 					insertAfter = insertAfter->Next();
 				}

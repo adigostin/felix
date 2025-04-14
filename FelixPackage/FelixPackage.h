@@ -59,7 +59,6 @@ IParentNode : IUnknown
 	virtual VSITEMID GetItemId() = 0;
 	virtual IChildNode* FirstChild() = 0;
 	virtual void SetFirstChild (IChildNode* child) = 0;
-	virtual HRESULT GetHierarchy (REFIID riid, void** ppvObject) = 0;
 };
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("F36A3A6C-01AF-423B-86FD-DB071AA47E97")
@@ -74,7 +73,8 @@ IProjectNode : INode
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("A2EE7852-34B1-49A9-A3DB-36232AC6680C")
 IChildNode : INode
 {
-	virtual HRESULT SetItemId (IProjectNode* root, VSITEMID itemId) = 0;
+	virtual HRESULT GetParent (IParentNode** ppParent) = 0;
+	virtual HRESULT SetItemId (IParentNode* parent, VSITEMID itemId) = 0;
 	virtual HRESULT GetMkDocument (BSTR* pbstrMkDocument) = 0; // returns the full path
 	virtual IChildNode* Next() = 0; // TODO: keep an unordered_map with itemid/itemptr, then get rid of Next, SetNext, FindDescendant
 	virtual void SetNext (IChildNode* next) = 0;
@@ -149,8 +149,11 @@ HRESULT MakeFolderNode (IFolderNode** ppFolder);
 BOOL LUtilFixFilename (wchar_t* strName);
 HRESULT QueryEditProjectFile (IVsHierarchy* hier);
 HRESULT GetHierarchyWindow (IVsUIHierarchyWindow** ppHierWindow);
-HRESULT GetPathTo (IVsHierarchy* hier, VSITEMID itemID, wil::unique_process_heap_string& dir);
+HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir);
 HRESULT GetPathOf (IVsHierarchy* hier, VSITEMID itemID, wil::unique_process_heap_string& path);
-HRESULT AddFileToParent (IChildNode* child, IParentNode* addTo);
+HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path);
+HRESULT FindHier (IChildNode* from, REFIID riid, void** ppvHier);
+HRESULT FindHier (IParentNode* from, REFIID riid, void** ppvHier);
+HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo);
 HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo);
 HRESULT RemoveChildFromParent (IChildNode* child, IParentNode* removeFrom);

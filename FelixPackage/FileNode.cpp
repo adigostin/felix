@@ -8,6 +8,7 @@
 #include "guids.h"
 #include <vsmanaged.h>
 #include <KnownImageIds.h>
+#include <variant>
 
 using namespace Microsoft::VisualStudio::Imaging;
 
@@ -19,10 +20,9 @@ struct FileNode
 	, IPropertyNotifySink
 {
 	ULONG _refCount = 0;
-	com_ptr<IWeakRef> _hier;
 	VSITEMID _itemId = VSITEMID_NIL;
 	wil::com_ptr_nothrow<IChildNode> _next;
-	VSITEMID _parentItemId = VSITEMID_NIL;
+	com_ptr<IWeakRef> _parent;
 	VSCOOKIE _docCookie = VSDOCCOOKIE_NIL;
 	wil::unique_hlocal_string _pathRelativeToProjectDir;
 	BuildToolKind _buildTool = BuildToolKind::None;
@@ -116,37 +116,39 @@ public:
 	#pragma region IChildNode
 	virtual VSITEMID STDMETHODCALLTYPE GetItemId() override { return _itemId; }
 
-	virtual HRESULT STDMETHODCALLTYPE SetItemId (IProjectNode* root, VSITEMID id) override
+	virtual HRESULT GetParent (IParentNode** ppParent) override
+	{
+		RETURN_HR_IF(E_UNEXPECTED, !_parent);
+		return _parent->QueryInterface(IID_PPV_ARGS(ppParent));
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE SetItemId (IParentNode* parent, VSITEMID id) override
 	{
 		if (id != VSITEMID_NIL)
 		{
 			// setting it
 			RETURN_HR_IF(E_UNEXPECTED, _itemId != VSITEMID_NIL);
-			RETURN_HR_IF(E_UNEXPECTED, _hier);
+			RETURN_HR_IF(E_UNEXPECTED, _parent);
 		}
 		else
 		{
 			// clearing it
 			RETURN_HR_IF(E_UNEXPECTED, _itemId == VSITEMID_NIL);
-			RETURN_HR_IF(E_UNEXPECTED, !_hier);
+			RETURN_HR_IF(E_UNEXPECTED, !_parent);
 		}
 
-		auto hr = root->QueryInterface(&_hier); RETURN_IF_FAILED(hr);
+		auto hr = parent->QueryInterface(IID_PPV_ARGS(_parent.addressof())); RETURN_IF_FAILED(hr);
 		_itemId = id;
 		return S_OK;
 	}
 		
 	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (BSTR* pbstrMkDocument) override
 	{
-		com_ptr<IVsHierarchy> hier;
-		auto hr = _hier->QueryInterface(&hier); RETURN_IF_FAILED_EXPECTED(hr);
-		wil::unique_variant location;
-		hr = hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &location); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(E_FAIL, location.vt != VT_BSTR);
-
-		wchar_t filePath[MAX_PATH];
-		PathCombine (filePath, location.bstrVal, _pathRelativeToProjectDir.get());
-		*pbstrMkDocument = SysAllocString(filePath); RETURN_IF_NULL_ALLOC(*pbstrMkDocument);
+		RETURN_HR_IF(E_UNEXPECTED, !_parent);
+		wil::unique_process_heap_string str;
+		auto hr = GetPathOf (this, str); RETURN_IF_FAILED(hr);
+		auto bstr = wil::make_bstr_nothrow(str.get()); RETURN_IF_NULL_ALLOC(bstr);
+		*pbstrMkDocument = bstr.release();
 		return S_OK;
 	}
 	
@@ -160,6 +162,9 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetProperty (VSHPROPID propid, VARIANT* pvar) override
 	{
+		HRESULT hr;
+
+		RETURN_HR_IF(E_UNEXPECTED, !_parent);
 		/*
 		OutputDebugStringA("ProjectFile::GetProperty propid=");
 		char buffer[20];
@@ -176,7 +181,11 @@ public:
 		switch (propid)
 		{
 			case VSHPROPID_Parent: // -1000
-				return InitVariantFromInt32 (_parentItemId, pvar);
+			{
+				com_ptr<INode> parent;
+				hr = _parent->QueryInterface(IID_PPV_ARGS(parent.addressof())); RETURN_IF_FAILED(hr);
+				return InitVariantFromInt32 (parent->GetItemId(), pvar);
+			}
 
 			case VSHPROPID_FirstChild: // -1001
 				return InitVariantFromInt32 (VSITEMID_NIL, pvar);
@@ -225,14 +234,9 @@ public:
 			case VSHPROPID_DescriptiveName: // -2108
 			{
 				// Tooltip when hovering the document tab with the mouse, maybe other things too.
-				com_ptr<IVsHierarchy> hier;
-				auto hr = _hier->QueryInterface(&hier); RETURN_IF_FAILED_EXPECTED(hr);
-				wil::unique_variant loc;
-				hr = hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &loc); RETURN_IF_FAILED(hr);
-				RETURN_HR_IF(E_FAIL, loc.vt != VT_BSTR);
-				wchar_t path[MAX_PATH];
-				PathCombine (path, loc.bstrVal, _pathRelativeToProjectDir.get()); RETURN_IF_FAILED(hr);
-				return InitVariantFromString (path, pvar);
+				wil::unique_process_heap_string str;
+				hr = GetPathOf(this, str); RETURN_IF_FAILED(hr);
+				return InitVariantFromString(str.get(), pvar);
 			}
 
 			case VSHPROPID_ProvisionalViewingStatus: // -2112
@@ -283,9 +287,7 @@ public:
 		switch(propid)
 		{
 			case VSHPROPID_Parent:
-				RETURN_HR_IF(E_INVALIDARG, var.vt != VT_VSITEMID);
-				_parentItemId = V_VSITEMID(&var);
-				return S_OK;
+				RETURN_HR(E_UNEXPECTED); // Set this via SetItemId
 
 			case VSHPROPID_EditLabel: // -2026
 				RETURN_HR_IF(E_INVALIDARG, var.vt != VT_BSTR);
@@ -610,7 +612,7 @@ public:
 			if (nCmdID == cmdidOpen) // 261
 			{
 				com_ptr<IVsProject2> vsp;
-				auto hr = _hier->QueryInterface(&vsp); RETURN_IF_FAILED(hr);
+				hr = FindHier(this, IID_PPV_ARGS(vsp.addressof())); RETURN_IF_FAILED(hr);
 				wil::com_ptr_nothrow<IVsWindowFrame> windowFrame;
 				hr = vsp->OpenItem (_itemId, LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &windowFrame); RETURN_IF_FAILED_EXPECTED(hr);
 				hr = windowFrame->Show(); RETURN_IF_FAILED_EXPECTED(hr);
@@ -664,7 +666,7 @@ public:
 			if (nCmdID == UIHWCMDID_DoubleClick || nCmdID == UIHWCMDID_EnterKey)
 			{
 				wil::com_ptr_nothrow<IVsProject2> vsp;
-				hr = _hier->QueryInterface(&vsp); RETURN_IF_FAILED(hr);
+				hr = FindHier(this, IID_PPV_ARGS(vsp.addressof())); RETURN_IF_FAILED(hr);
 				wil::com_ptr_nothrow<IVsWindowFrame> windowFrame;
 				hr = vsp->OpenItem (_itemId, LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &windowFrame); RETURN_IF_FAILED_EXPECTED(hr);
 				hr = windowFrame->Show();
@@ -720,10 +722,11 @@ public:
 		if (_buildTool != value)
 		{
 			_buildTool = value;
-			if (_hier)
+			if (_parent)
 			{
-				if (auto sink = wil::try_com_query_nothrow<IPropertyNotifySink>(_hier))
-					sink->OnChanged(DISPID_UNKNOWN);
+				com_ptr<IPropertyNotifySink> sink;
+				auto hr = FindHier(this, IID_PPV_ARGS(sink.addressof())); RETURN_IF_FAILED(hr);
+				sink->OnChanged(DISPID_UNKNOWN);
 				_propNotifyCP->NotifyPropertyChanged(dispidBuildToolKind);
 				_propNotifyCP->NotifyPropertyChanged(dispidCustomBuildToolProps);
 			}
@@ -810,8 +813,9 @@ public:
 	#pragma region IPropertyNotifySink
 	virtual HRESULT STDMETHODCALLTYPE OnChanged (DISPID dispID) override
 	{
-		if (auto sink = wil::try_com_query_nothrow<IPropertyNotifySink>(_hier))
-			sink->OnChanged(DISPID_UNKNOWN);
+		com_ptr<IPropertyNotifySink> sink;
+		auto hr = FindHier(this, IID_PPV_ARGS(sink.addressof())); RETURN_IF_FAILED(hr);
+		sink->OnChanged(DISPID_UNKNOWN);
 		return S_OK;
 	}
 
@@ -826,9 +830,9 @@ public:
 		HRESULT hr;
 
 		com_ptr<IVsHierarchy> hier;
-		hr = _hier->QueryInterface(&hier); RETURN_IF_FAILED_EXPECTED(hr);
+		hr = FindHier(this, IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
 		com_ptr<IVsProject> project;
-		hr = _hier->QueryInterface(&project); RETURN_IF_FAILED(hr);
+		hr = hier->QueryInterface(&project); RETURN_IF_FAILED(hr);
 
 		wil::unique_variant projectDir;
 		hr = hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
@@ -916,7 +920,7 @@ public:
 		//_buildTool = _wcsicmp(PathFindExtension(_pathRelativeToProjectDir.get()), L".asm") ? BuildToolKind::None : BuildToolKind::Assembler;
 
 		com_ptr<IEnumHierarchyEvents> enu;
-		hr = _hier.try_query<IProjectNode>()->EnumHierarchyEventSinks(&enu); RETURN_IF_FAILED(hr);
+		hr = hier.try_query<IProjectNode>()->EnumHierarchyEventSinks(&enu); RETURN_IF_FAILED(hr);
 		com_ptr<IVsHierarchyEvents> sink;
 		ULONG fetched;
 		while (SUCCEEDED(enu->Next(1, &sink, &fetched)) && fetched)
@@ -937,7 +941,7 @@ public:
 
 		// Mark project as dirty.
 		com_ptr<IPropertyNotifySink> pns;
-		hr = _hier->QueryInterface(&pns); LOG_IF_FAILED(hr);
+		hr = hier->QueryInterface(&pns); LOG_IF_FAILED(hr);
 		if (SUCCEEDED(hr))
 			pns->OnChanged(dispidItems);
 

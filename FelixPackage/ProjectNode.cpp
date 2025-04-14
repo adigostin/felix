@@ -650,6 +650,7 @@ public:
 			//|| TryQI<IVsBuildPropertyStorage2>(this, riid, ppvObject)
 			|| TryQI<IParentNode>(this, riid, ppvObject)
 			|| TryQI<IProjectNode>(this, riid, ppvObject)
+			|| TryQI<INode>(this, riid, ppvObject)
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 		)
@@ -2667,11 +2668,6 @@ public:
 	virtual void STDMETHODCALLTYPE SetFirstChild (IChildNode *child) override
 	{
 		_firstChild = child;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetHierarchy (REFIID riid, void **ppvObject) override
-	{
-		return QueryInterface(riid, ppvObject);
 	}
 	#pragma endregion
 
