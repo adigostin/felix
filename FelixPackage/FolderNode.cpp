@@ -85,7 +85,7 @@ public:
 	#pragma endregion
 
 	#pragma region IChildNode
-    virtual VSITEMID STDMETHODCALLTYPE GetItemId() override
+	virtual VSITEMID STDMETHODCALLTYPE GetItemId() override
 	{
 		return _itemId;
 	}
@@ -116,17 +116,17 @@ public:
 		return _parent->QueryInterface(IID_PPV_ARGS(ppParent));
 	}
 
-    virtual IChildNode *STDMETHODCALLTYPE Next() override
+	virtual IChildNode *STDMETHODCALLTYPE Next() override
 	{
 		return _next;
 	}
 
-    virtual void STDMETHODCALLTYPE SetNext (IChildNode *next) override
+	virtual void STDMETHODCALLTYPE SetNext (IChildNode *next) override
 	{
 		_next = next;
 	}
 
-    virtual HRESULT STDMETHODCALLTYPE GetProperty (VSHPROPID propid, VARIANT *pvar) override
+	virtual HRESULT STDMETHODCALLTYPE GetProperty (VSHPROPID propid, VARIANT *pvar) override
 	{
 		HRESULT hr;
 
@@ -197,7 +197,7 @@ public:
 		#endif
 	}
 
-    virtual HRESULT STDMETHODCALLTYPE SetProperty (VSHPROPID propid, REFVARIANT var) override
+	virtual HRESULT STDMETHODCALLTYPE SetProperty (VSHPROPID propid, REFVARIANT var) override
 	{
 		HRESULT hr;
 
@@ -237,7 +237,7 @@ public:
 		#endif
 	}
 
-    virtual HRESULT STDMETHODCALLTYPE GetGuidProperty (VSHPROPID propid, GUID *pguid) override
+	virtual HRESULT STDMETHODCALLTYPE GetGuidProperty (VSHPROPID propid, GUID *pguid) override
 	{
 		if (propid == VSHPROPID_TypeGuid) // -1004
 			return (*pguid = GUID_ItemType_PhysicalFolder), S_OK;
@@ -254,27 +254,27 @@ public:
 		#endif
 	}
 
-    virtual HRESULT STDMETHODCALLTYPE SetGuidProperty (VSHPROPID propid, REFGUID rguid) override
+	virtual HRESULT STDMETHODCALLTYPE SetGuidProperty (VSHPROPID propid, REFGUID rguid) override
 	{
 		RETURN_HR(E_NOTIMPL);
 	}
 
-    virtual HRESULT STDMETHODCALLTYPE GetCanonicalName (BSTR *pbstrName) override
+	virtual HRESULT STDMETHODCALLTYPE GetCanonicalName (BSTR *pbstrName) override
 	{
 		return E_NOTIMPL; // we'll never support this for folders
 	}
 
-    virtual HRESULT STDMETHODCALLTYPE IsItemDirty (IUnknown *punkDocData, BOOL *pfDirty) override
+	virtual HRESULT STDMETHODCALLTYPE IsItemDirty (IUnknown *punkDocData, BOOL *pfDirty) override
 	{
 		RETURN_HR(E_NOTIMPL);
 	}
 
-    virtual HRESULT STDMETHODCALLTYPE QueryStatus (const GUID *pguidCmdGroup, ULONG cCmds, OLECMD prgCmds[], OLECMDTEXT *pCmdText) override
+	virtual HRESULT STDMETHODCALLTYPE QueryStatus (const GUID *pguidCmdGroup, ULONG cCmds, OLECMD prgCmds[], OLECMDTEXT *pCmdText) override
 	{
 		return OLECMDERR_E_NOTSUPPORTED;
 	}
 
-    virtual HRESULT STDMETHODCALLTYPE Exec (const GUID *pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT *pvaIn, VARIANT *pvaOut) override
+	virtual HRESULT STDMETHODCALLTYPE Exec (const GUID *pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT *pvaIn, VARIANT *pvaOut) override
 	{
 		HRESULT hr;
 
