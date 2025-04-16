@@ -154,4 +154,4 @@ HRESULT FindHier (IChildNode* from, REFIID riid, void** ppvHier);
 HRESULT FindHier (IParentNode* from, REFIID riid, void** ppvHier);
 HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo);
 HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo);
-HRESULT RemoveChildFromParent (IChildNode* child, IParentNode* removeFrom);
+HRESULT RemoveChildFromParent (IChildNode* child);

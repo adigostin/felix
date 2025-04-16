@@ -693,7 +693,7 @@ HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo)
 	return S_OK;
 }
 
-HRESULT RemoveChildFromParent (IChildNode* node, IParentNode* removeFrom)
+HRESULT RemoveChildFromParent (IChildNode* node)
 {
 	RETURN_HR(E_NOTIMPL);
 }

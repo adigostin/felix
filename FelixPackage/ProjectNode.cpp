@@ -263,37 +263,20 @@ public:
 	}
 	
 	// Returns S_OK when found, S_FALSE when not found, error code when it couldn't search.
-	HRESULT FindDescendant (VSITEMID itemid, IChildNode** ppItem, IChildNode** ppPrevSibling = nullptr, IParentNode** ppParent = nullptr)
+	HRESULT FindDescendant (VSITEMID itemid, IChildNode** ppItem)
 	{
 		*ppItem = nullptr;
-		if (ppPrevSibling)
-			*ppPrevSibling = nullptr;
-		if (ppParent)
-			*ppParent = nullptr;
 
-		stdext::inplace_function<HRESULT(IParentNode* parent), 40> enumChildren;
+		stdext::inplace_function<HRESULT(IParentNode* parent)> enumChildren;
 
-		enumChildren = [itemid, ppItem, ppPrevSibling, ppParent, &enumChildren](IParentNode* parent) -> HRESULT
+		enumChildren = [itemid, ppItem, &enumChildren](IParentNode* parent) -> HRESULT
 		{
-			IChildNode* prev = nullptr;
 			for (auto c = parent->FirstChild(); c; c = c->Next())
 			{
 				if (c->GetItemId() == itemid)
 				{
 					*ppItem = c;
 					(*ppItem)->AddRef();
-
-					if (ppPrevSibling && prev)
-					{
-						*ppPrevSibling = prev;
-						(*ppPrevSibling)->AddRef();
-					}
-					if (ppParent)
-					{
-						*ppParent = parent;
-						(*ppParent)->AddRef();
-					}
-
 					return S_OK;
 				}
 
@@ -304,8 +287,6 @@ public:
 					if (hr == S_OK)
 						return S_OK;
 				}
-
-				prev = c;
 			}
 
 			return S_FALSE;
@@ -2316,9 +2297,7 @@ public:
 		for (ULONG i = 0; i < cItems; i++)
 		{
 			com_ptr<IChildNode> d;
-			com_ptr<IChildNode> prevSibling;
-			com_ptr<IParentNode> parent;
-			hr = FindDescendant(itemid[i], &d, &prevSibling, &parent); 
+			hr = FindDescendant(itemid[i], &d); 
 			RETURN_HR_IF(E_INVALIDARG, hr != S_OK);
 
 			wil::unique_process_heap_string mk;
@@ -2348,7 +2327,7 @@ public:
 				return S_FALSE;
 			}
 
-			hr = RemoveChildFromParent(d, parent); RETURN_IF_FAILED(hr);
+			hr = RemoveChildFromParent(d); RETURN_IF_FAILED(hr);
 
 			if (dwDelItemOp == DELITEMOP_DeleteFromStorage)
 			{
