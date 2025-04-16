@@ -330,13 +330,11 @@ public:
 		auto newName = wil::make_bstr_nothrow(proposedName); RETURN_IF_NULL_ALLOC(newName);
 		LUtilFixFilename(newName.get());
 
-		RETURN_HR(E_NOTIMPL);
-		/*
 		wil::unique_process_heap_string oldFullPath;
-		hr = GetPathOf(hier, _itemId, oldFullPath); RETURN_IF_FAILED(hr);
+		hr = GetPathOf(this, oldFullPath); RETURN_IF_FAILED(hr);
 
 		wil::unique_process_heap_string newFullPath;
-		hr = GetPathTo (hier, _parentItemId, newFullPath); RETURN_IF_FAILED(hr);
+		hr = GetPathTo(this, newFullPath); RETURN_IF_FAILED(hr);
 		hr = wil::str_concat_nothrow (newFullPath, L"\\", newName); RETURN_IF_FAILED(hr);
 
 		BOOL bres = MoveFile(oldFullPath.get(), newFullPath.get());
@@ -345,7 +343,6 @@ public:
 
 		*pbstrNewName = newName.release();
 		return S_OK;
-		*/
 	}
 
 	HRESULT RenameNode (const wchar_t* newName)
