@@ -1585,16 +1585,14 @@ public:
 					if (hr == E_NOTIMPL)
 						return S_FALSE;
 					RETURN_IF_FAILED(hr);
+					return wcscmp(pszMkDocument, path.get()) ? S_FALSE : S_OK;
 				}
 				else
 				{
-					auto hr = c->GetMkDocument(&path);
-					if (hr == E_NOTIMPL)
-						return S_FALSE;
-					RETURN_IF_FAILED(hr);
+					wil::unique_process_heap_string path;
+					auto hr = GetPathOf (c, path); RETURN_IF_FAILED(hr);
+					return wcscmp(pszMkDocument, path.get()) ? S_FALSE : S_OK;
 				}
-
-				return wcscmp(pszMkDocument, path.get()) ? S_FALSE : S_OK;
 			}, &c); RETURN_IF_FAILED(hr);
 
 		if (hr == S_FALSE)
@@ -1629,7 +1627,12 @@ public:
 
 		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
-			return d->GetMkDocument(pbstrMkDocument);
+		{
+			wil::unique_process_heap_string path;
+			auto hr = GetPathOf(d, path); RETURN_IF_FAILED(hr);
+			*pbstrMkDocument = SysAllocString (path.get()); RETURN_IF_NULL_ALLOC(*pbstrMkDocument);
+			return S_OK;
+		}
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
@@ -1640,8 +1643,8 @@ public:
 		if (FindDescendant(itemid, &d) != S_OK)
 			return E_INVALIDARG;
 
-		wil::unique_bstr mkDocument;
-		auto hr = d->GetMkDocument(&mkDocument); RETURN_IF_FAILED(hr);
+		wil::unique_process_heap_string mkDocument;
+		auto hr = GetPathOf(d, mkDocument); RETURN_IF_FAILED(hr);
 
 		wil::com_ptr_nothrow<IVsUIShellOpenDocument> uiShellOpenDocument;
 		hr = _sp->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED_EXPECTED(hr);
@@ -1913,8 +1916,8 @@ public:
 		if (FindDescendant(itemid, &d) != S_OK)
 			return E_INVALIDARG;
 
-		wil::unique_bstr mkDocument;
-		auto hr = d->GetMkDocument(&mkDocument); RETURN_IF_FAILED(hr);
+		wil::unique_process_heap_string mkDocument;
+		auto hr = GetPathOf(d, mkDocument); RETURN_IF_FAILED(hr);
 
 		com_ptr<IVsUIShellOpenDocument> uiShellOpenDocument;
 		hr = _sp->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED(hr);
@@ -2318,8 +2321,8 @@ public:
 			hr = FindDescendant(itemid[i], &d, &prevSibling, &parent); 
 			RETURN_HR_IF(E_INVALIDARG, hr != S_OK);
 
-			wil::unique_bstr mk;
-			hr = d->GetMkDocument(&mk); RETURN_IF_FAILED(hr);
+			wil::unique_process_heap_string mk;
+			hr = GetPathOf(d, mk); RETURN_IF_FAILED(hr);
 
 			com_ptr<IVsHierarchy> docHier;
 			VSITEMID docItemId;
@@ -2796,49 +2799,14 @@ public:
 				RETURN_HR(E_UNEXPECTED);
 		}
 
-		VSITEMID itemId = _nextItemId++;
-		VSITEMID itemidLoc = VSITEMID_ROOT;
 		com_ptr<IFolderNode> newFolder;
 		hr = MakeFolderNode (&newFolder); RETURN_IF_FAILED(hr);
 		hr = newFolder.try_query<IFolderNodeProperties>()->put_FolderName(dirName); RETURN_IF_FAILED(hr);
 
-		WI_ASSERT(false);
-		/*
-		VSITEMID prevLast;
-		if (!_firstChild)
-		{
-			// Project is empty.
-			prevLast = VSITEMID_NIL;
-			_firstChild = newFolder;
-		}
-		else if (!wil::try_com_query_nothrow<IFolderNode>(_firstChild))
-		{
-			// Project contains only files, not folders. Insert it in the first position.
-			prevLast = VSITEMID_NIL;
-			newFolder->SetNext(_firstChild);
-			_firstChild = newFolder;
-		}
-		else
-		{
-			// Project contains some folders.
-			WI_ASSERT(false);
-			//IChildNode* last = _firstChild;
-			//while(last->Next())
-			//	last = last->Next();
-			//last->SetNext(newFolder);
-			//prevLast = last->GetItemId();
-		}
+		hr = AddFolderToParent (newFolder, this); RETURN_IF_FAILED(hr);
 
 		_isDirty = true;
 
-		for (auto& sink : _hierarchyEventSinks)
-		{
-			sink.second->OnItemAdded (itemidLoc, prevLast, newFolder->GetItemId());
-
-			// Since our expandable status may have changed, we need to refresh it in the UI.
-			sink.second->OnPropertyChanged (itemidLoc, VSHPROPID_Expandable, 0);
-		}
-		*/
 		com_ptr<IVsUIHierarchyWindow> uiWindow;
 		if (SUCCEEDED(GetHierarchyWindow(uiWindow.addressof())))
 		{

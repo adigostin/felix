@@ -75,7 +75,6 @@ IChildNode : INode
 {
 	virtual HRESULT GetParent (IParentNode** ppParent) = 0;
 	virtual HRESULT SetItemId (IParentNode* parent, VSITEMID itemId) = 0;
-	virtual HRESULT GetMkDocument (BSTR* pbstrMkDocument) = 0; // returns the full path
 	virtual IChildNode* Next() = 0; // TODO: keep an unordered_map with itemid/itemptr, then get rid of Next, SetNext, FindDescendant
 	virtual void SetNext (IChildNode* next) = 0;
 	virtual HRESULT GetProperty (VSHPROPID propid, VARIANT* pvar) = 0;
@@ -150,7 +149,6 @@ BOOL LUtilFixFilename (wchar_t* strName);
 HRESULT QueryEditProjectFile (IVsHierarchy* hier);
 HRESULT GetHierarchyWindow (IVsUIHierarchyWindow** ppHierWindow);
 HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir);
-HRESULT GetPathOf (IVsHierarchy* hier, VSITEMID itemID, wil::unique_process_heap_string& path);
 HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path);
 HRESULT FindHier (IChildNode* from, REFIID riid, void** ppvHier);
 HRESULT FindHier (IParentNode* from, REFIID riid, void** ppvHier);

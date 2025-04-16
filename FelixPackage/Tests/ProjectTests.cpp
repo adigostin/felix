@@ -551,8 +551,8 @@ namespace FelixTests
 
 			auto file = hier.try_query<IParentNode>()->FirstChild();
 
-			wil::unique_bstr oldFullPath;
-			hr = file->GetMkDocument(&oldFullPath);
+			wil::unique_process_heap_string oldFullPath;
+			hr = GetPathOf (file, oldFullPath);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			wil::unique_hfile handle (CreateFile(oldFullPath.get(), GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL));

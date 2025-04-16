@@ -492,19 +492,6 @@ HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir)
 	return S_OK;
 }
 
-HRESULT GetPathOf (IVsHierarchy* hier, VSITEMID itemID, wil::unique_process_heap_string& path)
-{
-	RETURN_HR(E_NOTIMPL);
-	/*
-	auto hr = GetPathTo (hier, itemID, path); RETURN_IF_FAILED(hr);
-	wil::unique_variant name;
-	hr = hier->GetProperty(itemID, VSHPROPID_SaveName, &name); RETURN_IF_FAILED(hr);
-	RETURN_HR_IF(E_UNEXPECTED, name.vt != VT_BSTR);		
-	hr = wil::str_concat_nothrow(path, L"\\", name.bstrVal); RETURN_IF_FAILED(hr);
-	return S_OK;
-	*/
-}
-
 HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path)
 {
 	com_ptr<IVsHierarchy> hier;
@@ -549,9 +536,6 @@ static HRESULT SetItemIdsTree (IChildNode* child, IChildNode* childPrevSibling, 
 	enumNodeAndChildren = [root, &enumNodeAndChildren](IChildNode* node, IChildNode* nodePrevSibling, IParentNode* nodeParent) -> HRESULT
 		{
 			auto hr = node->SetItemId(nodeParent, root->MakeItemId()); RETURN_IF_FAILED(hr);
-			//VARIANT v;
-			//InitVariantFromVSITEMID(nodeParent->GetItemId(), &v);
-			//hr = node->SetProperty(VSHPROPID_Parent, v); RETURN_IF_FAILED(hr);
 
 			com_ptr<IParentNode> nodeAsParent;
 			if (SUCCEEDED(node->QueryInterface(&nodeAsParent)))

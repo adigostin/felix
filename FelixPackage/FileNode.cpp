@@ -142,16 +142,6 @@ public:
 		return S_OK;
 	}
 		
-	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (BSTR* pbstrMkDocument) override
-	{
-		RETURN_HR_IF(E_UNEXPECTED, !_parent);
-		wil::unique_process_heap_string str;
-		auto hr = GetPathOf (this, str); RETURN_IF_FAILED(hr);
-		auto bstr = wil::make_bstr_nothrow(str.get()); RETURN_IF_NULL_ALLOC(bstr);
-		*pbstrMkDocument = bstr.release();
-		return S_OK;
-	}
-	
 	virtual IChildNode* STDMETHODCALLTYPE Next() override { return _next.get(); }
 
 	virtual void STDMETHODCALLTYPE SetNext (IChildNode* next) override

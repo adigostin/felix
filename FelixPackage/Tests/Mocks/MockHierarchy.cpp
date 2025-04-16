@@ -209,11 +209,6 @@ struct MockVsHierarchy : IVsHierarchy, IProjectNodeProperties, IProjectNode, IPa
 	{
 		_firstChild = firstChild;
 	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetHierarchy (REFIID riid, void **ppvObject) override
-	{
-		return QueryInterface(riid, ppvObject);
-	}
 	#pragma endregion
 
 	#pragma region IProjectNode

@@ -9,9 +9,8 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 struct MockFileNode : IFileNode, IFileNodeProperties
 {
 	ULONG _refCount = 0;
-	com_ptr<IWeakRef> _hier;
+	com_ptr<IWeakRef> _parent;
 	VSITEMID _itemId = VSITEMID_NIL;
-	VSITEMID _parentItemId = VSITEMID_NIL;
 	com_ptr<IChildNode> _next;
 	BuildToolKind _buildTool;
 	wil::unique_hlocal_string _pathRelativeToProjectDir;
@@ -53,32 +52,21 @@ struct MockFileNode : IFileNode, IFileNodeProperties
 	IMPLEMENT_IDISPATCH(IID_IFileNodeProperties);
 
 	#pragma region IChildNode
-	virtual VSITEMID STDMETHODCALLTYPE GetItemId(void) override { return _itemId; }
-
-	virtual HRESULT SetItemId (IProjectNode* root, VSITEMID id) override
+	virtual HRESULT GetParent (IParentNode** ppParent) override
 	{
-		Assert::IsNull(_hier.get());
-		Assert::AreEqual<VSITEMID>(VSITEMID_NIL, _itemId);
-		auto hr = root->QueryInterface(&_hier);
-		Assert::IsTrue(SUCCEEDED(hr));
-		_itemId = id;
-		return S_OK;
+		RETURN_HR_IF(E_UNEXPECTED, !_parent);
+		return _parent->QueryInterface(IID_PPV_ARGS(ppParent));
 	}
 
-	HRESULT STDMETHODCALLTYPE GetMkDocument(BSTR* pbstrMkDocument) override
+	virtual VSITEMID STDMETHODCALLTYPE GetItemId(void) override { return _itemId; }
+
+	virtual HRESULT SetItemId (IParentNode* parent, VSITEMID itemId) override
 	{
-		com_ptr<IVsHierarchy> hier;
-		auto hr = _hier->QueryInterface(&hier);
+		Assert::IsNull(_parent.get());
+		Assert::AreEqual<VSITEMID>(VSITEMID_NIL, _itemId);
+		auto hr = parent->QueryInterface(&_parent);
 		Assert::IsTrue(SUCCEEDED(hr));
-		Assert::IsNotNull(hier.get());
-		wil::unique_variant projectDir;
-		hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir);
-		Assert::IsTrue(SUCCEEDED(hr));
-		Assert::IsTrue(projectDir.vt == VT_BSTR);
-		auto filePath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH);
-		PathCombine(filePath.get(), projectDir.bstrVal, _pathRelativeToProjectDir.get());
-		Assert::IsTrue(SUCCEEDED(hr));
-		*pbstrMkDocument = SysAllocString(filePath.get()); RETURN_IF_NULL_ALLOC(*pbstrMkDocument);
+		_itemId = itemId;
 		return S_OK;
 	}
 
@@ -111,7 +99,11 @@ struct MockFileNode : IFileNode, IFileNodeProperties
 				return InitVariantFromVSITEMID(_next ? _next->GetItemId() : VSITEMID_NIL, pvar);
 
 			case VSHPROPID_Parent:
-				return InitVariantFromVSITEMID(_parentItemId, pvar);
+			{
+				com_ptr<INode> parent;
+				auto hr = _parent->QueryInterface(IID_PPV_ARGS(parent.addressof())); RETURN_IF_FAILED(hr);
+				return InitVariantFromInt32 (parent->GetItemId(), pvar);
+			}
 		}
 
 		return E_NOTIMPL;
@@ -119,14 +111,6 @@ struct MockFileNode : IFileNode, IFileNodeProperties
 
 	HRESULT STDMETHODCALLTYPE SetProperty(VSHPROPID propid, REFVARIANT var) override
 	{
-		if (propid == VSHPROPID_Parent)
-		{
-			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, _parentItemId);
-			Assert::AreEqual<VARTYPE>(VT_VSITEMID, var.vt);
-			_parentItemId = V_VSITEMID(&var);
-			return S_OK;
-		}
-
 		return E_NOTIMPL;
 	}
 	HRESULT STDMETHODCALLTYPE GetGuidProperty(VSHPROPID propid, GUID* pguid) override

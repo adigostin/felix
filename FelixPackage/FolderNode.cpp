@@ -116,15 +116,6 @@ public:
 		return _parent->QueryInterface(IID_PPV_ARGS(ppParent));
 	}
 
-    virtual HRESULT STDMETHODCALLTYPE GetMkDocument (BSTR *pbstrMkDocument) override
-	{
-		wil::unique_process_heap_string str;
-		auto hr = GetPathOf(this, str); RETURN_IF_FAILED(hr);
-		auto bstr = wil::make_bstr_nothrow(str.get()); RETURN_IF_NULL_ALLOC(bstr);
-		*pbstrMkDocument = bstr.release();
-		return S_OK;
-	}
-
     virtual IChildNode *STDMETHODCALLTYPE Next() override
 	{
 		return _next;
@@ -339,11 +330,11 @@ public:
 		auto newName = wil::make_bstr_nothrow(proposedName); RETURN_IF_NULL_ALLOC(newName);
 		LUtilFixFilename(newName.get());
 
+		RETURN_HR(E_NOTIMPL);
+		/*
 		wil::unique_process_heap_string oldFullPath;
 		hr = GetPathOf(hier, _itemId, oldFullPath); RETURN_IF_FAILED(hr);
 
-		RETURN_HR(E_NOTIMPL);
-		/*
 		wil::unique_process_heap_string newFullPath;
 		hr = GetPathTo (hier, _parentItemId, newFullPath); RETURN_IF_FAILED(hr);
 		hr = wil::str_concat_nothrow (newFullPath, L"\\", newName); RETURN_IF_FAILED(hr);
