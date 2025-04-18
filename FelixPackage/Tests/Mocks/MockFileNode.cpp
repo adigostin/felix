@@ -60,13 +60,23 @@ struct MockFileNode : IFileNode, IFileNodeProperties
 
 	virtual VSITEMID STDMETHODCALLTYPE GetItemId(void) override { return _itemId; }
 
-	virtual HRESULT SetItemId (IParentNode* parent, VSITEMID itemId) override
+	virtual HRESULT STDMETHODCALLTYPE SetItemId (IParentNode* parent, VSITEMID id) override
 	{
-		Assert::IsNull(_parent.get());
-		Assert::AreEqual<VSITEMID>(VSITEMID_NIL, _itemId);
-		auto hr = parent->QueryInterface(&_parent);
-		Assert::IsTrue(SUCCEEDED(hr));
-		_itemId = itemId;
+		RETURN_HR_IF(E_INVALIDARG, id == VSITEMID_NIL);
+		RETURN_HR_IF(E_INVALIDARG, !parent);
+		RETURN_HR_IF(E_UNEXPECTED, _itemId != VSITEMID_NIL);
+		RETURN_HR_IF(E_UNEXPECTED, _parent);
+		auto hr = parent->QueryInterface(IID_PPV_ARGS(_parent.addressof())); RETURN_IF_FAILED(hr);
+		_itemId = id;
+		return S_OK;
+	}
+
+	virtual HRESULT ClearItemId() override
+	{
+		RETURN_HR_IF(E_UNEXPECTED, _itemId == VSITEMID_NIL);
+		RETURN_HR_IF(E_UNEXPECTED, !_parent);
+		_itemId = VSITEMID_NIL;
+		_parent = nullptr;
 		return S_OK;
 	}
 

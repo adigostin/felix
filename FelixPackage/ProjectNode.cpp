@@ -2273,14 +2273,10 @@ public:
 		__RPC__in_ecount_full(cItems) VSITEMID itemid[  ],
 		VSDELETEHANDLEROPTIONS dwFlags) override
 	{
-		if ((dwDelItemOp != DELITEMOP_RemoveFromProject) && (dwDelItemOp != DELITEMOP_DeleteFromStorage))
-			RETURN_HR(E_ABORT);
+		HRESULT hr;
 
 		for (ULONG i = 0; i < cItems; i++)
 			RETURN_HR_IF(E_NOTIMPL, itemid[i] == VSITEMID_ROOT); // see example in PrjHier.cpp
-
-		com_ptr<IVsUIShell> shell;
-		auto hr = _sp->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
 
 		com_ptr<IVsSolution> solution;
 		hr = _sp->QueryService(SID_SVsSolution, &solution); RETURN_IF_FAILED(hr);
@@ -2288,11 +2284,22 @@ public:
 		com_ptr<IVsRunningDocumentTable> rdt;
 		hr = _sp->QueryService(SID_SVsRunningDocumentTable, &rdt); RETURN_IF_FAILED(hr);
 
-		HWND ownerHwnd;
-		hr = shell->GetDialogOwnerHwnd(&ownerHwnd); RETURN_IF_FAILED(hr);
 		wil::com_ptr_nothrow<IFileOperation> pfo;
 		hr = CoCreateInstance(__uuidof(FileOperation), NULL, CLSCTX_ALL, IID_PPV_ARGS(&pfo)); RETURN_IF_FAILED(hr);
-		hr = pfo->SetOwnerWindow(ownerHwnd); RETURN_IF_FAILED(hr);
+		DWORD fof;
+		if (dwFlags & DHO_SUPPRESS_UI)
+		{
+			hr = pfo->SetOperationFlags(FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT); RETURN_IF_FAILED(hr);
+		}
+		else
+		{
+			com_ptr<IVsUIShell> shell;
+			auto hr = _sp->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
+			HWND ownerHwnd;
+			hr = shell->GetDialogOwnerHwnd(&ownerHwnd); RETURN_IF_FAILED(hr);
+			hr = pfo->SetOwnerWindow(ownerHwnd); RETURN_IF_FAILED(hr);
+			hr = pfo->SetOperationFlags(FOF_NOCONFIRMATION); RETURN_IF_FAILED(hr);
+		}
 
 		for (ULONG i = 0; i < cItems; i++)
 		{
@@ -2307,24 +2314,11 @@ public:
 			VSITEMID docItemId;
 			com_ptr<IUnknown> docData;
 			VSCOOKIE docCookie;
-			hr = rdt->FindAndLockDocument (RDT_NoLock, (LPCOLESTR)mk.get(), &docHier, &docItemId, &docData, &docCookie); LOG_IF_FAILED(hr);
+			hr = rdt->FindAndLockDocument (RDT_NoLock, (LPCOLESTR)mk.get(), &docHier, &docItemId, &docData, &docCookie);
 			if (hr == S_OK && docHier.get() == this && docItemId == itemid[i])
 			{
 				auto slnCloseOpts = (dwDelItemOp == DELITEMOP_DeleteFromStorage) ? SLNSAVEOPT_NoSave : SLNSAVEOPT_PromptSave;
 				hr = solution->CloseSolutionElement (slnCloseOpts, nullptr, docCookie); RETURN_IF_FAILED_EXPECTED(hr);
-			}
-
-			wil::unique_variant firstChild;
-			hr = d->GetProperty(VSHPROPID_FirstChild, &firstChild); RETURN_IF_FAILED(hr);
-			if (V_VSITEMID(&firstChild) != VSITEMID_NIL)
-			{
-				if (!(dwFlags & DHO_SUPPRESS_UI))
-				{
-					LONG res;
-					hr = shell->ShowMessageBox(0, CLSID_NULL, (LPOLESTR)L"Not Implemented", (LPOLESTR)L"Deleting parent nodes not yet implemented",
-						nullptr, 0, OLEMSGBUTTON_OK, OLEMSGDEFBUTTON_FIRST, OLEMSGICON_WARNING, FALSE, &res); RETURN_IF_FAILED(hr);
-				}
-				return S_FALSE;
 			}
 
 			hr = RemoveChildFromParent(d); RETURN_IF_FAILED(hr);

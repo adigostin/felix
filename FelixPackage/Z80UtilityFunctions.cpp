@@ -693,7 +693,63 @@ HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo)
 	return S_OK;
 }
 
+// Enum depth-first (just because it's simpler) post-order mode (so that children clear their ItemId before parent).
+static HRESULT ClearItemIdsTree (IChildNode* child)
+{
+	com_ptr<IProjectNode> root;
+	auto hr = FindHier(child, IID_PPV_ARGS(&root)); RETURN_IF_FAILED(hr);
+
+	stdext::inplace_function<HRESULT(IChildNode*)> enumNodeAndChildren;
+
+	enumNodeAndChildren = [root, &enumNodeAndChildren](IChildNode* node) -> HRESULT
+		{
+			HRESULT hr;
+
+			com_ptr<IParentNode> nodeAsParent;
+			if (SUCCEEDED(node->QueryInterface(&nodeAsParent)))
+			{
+				for (auto c = nodeAsParent->FirstChild(); c; c = c->Next())
+					hr = enumNodeAndChildren(c); RETURN_IF_FAILED(hr);
+			}
+
+			VSITEMID itemId = node->GetItemId();
+			hr = node->ClearItemId(); RETURN_IF_FAILED(hr);
+
+			com_ptr<IEnumHierarchyEvents> eventSinks;
+			if (SUCCEEDED(root->EnumHierarchyEventSinks(&eventSinks)) && eventSinks)
+			{
+				com_ptr<IVsHierarchyEvents> sink;
+				ULONG fetched;
+				while (SUCCEEDED(eventSinks->Next(1, &sink, &fetched)) && fetched)
+					sink->OnItemDeleted(itemId);
+			}
+
+			return S_OK;
+		};
+
+	return enumNodeAndChildren(child);
+}
+
 HRESULT RemoveChildFromParent (IChildNode* node)
 {
-	RETURN_HR(E_NOTIMPL);
+	HRESULT hr;
+
+	com_ptr<IParentNode> parent;
+	hr = node->GetParent(&parent); RETURN_IF_FAILED(hr);
+
+	hr = ClearItemIdsTree(node); RETURN_IF_FAILED(hr);
+
+	if (parent->FirstChild() == node)
+		parent->SetFirstChild(nullptr);
+	else
+	{
+		auto prev = parent->FirstChild();
+		while(prev->Next() && (prev->Next() != node))
+			prev = prev->Next();
+		RETURN_HR_IF(E_UNEXPECTED, !prev->Next());
+		prev->SetNext(node->Next());
+		node->SetNext(nullptr);
+	}
+
+	return S_OK;
 }

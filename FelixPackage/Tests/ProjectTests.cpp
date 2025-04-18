@@ -248,11 +248,8 @@ namespace FelixTests
 		TEST_METHOD(PutItemsTwoDirsUnsorted)
 		{
 		}
-		TEST_METHOD(PutItemsOneFileInOneSubfolder)
-		{
-		}
 
-		TEST_METHOD(PutItemsGetItemsSameWithFolders)
+		TEST_METHOD(PutItemsOneFileInOneSubfolder)
 		{
 		}
 
@@ -262,6 +259,30 @@ namespace FelixTests
 
 		TEST_METHOD(RemoveItemsFromRootNode)
 		{
+			com_ptr<IVsHierarchy> hier;
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			auto file = MakeMockFileNode(BuildToolKind::Assembler, L"file.asm");
+			SAFEARRAYBOUND bound = { .cElements = 1, .lLbound = 0 };
+			auto sa = unique_safearray(SafeArrayCreate(VT_DISPATCH, 1, &bound));
+			LONG i = 0;
+			SafeArrayPutElement (sa.get(), &i, file.try_query<IDispatch>());
+			hr = hier.try_query<IProjectNodeProperties>()->put_Items(sa.get());
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			com_ptr<IVsHierarchyDeleteHandler3> dh;
+			hr = hier->QueryInterface(IID_PPV_ARGS(&dh));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			VSITEMID id = file->GetItemId();
+			hr = dh->DeleteItems (1, DELITEMOP_RemoveFromProject, &id, DHO_SUPPRESS_UI);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_variant firstChild;
+			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &firstChild);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, V_VSITEMID(&firstChild));
 		}
 
 		TEST_METHOD(RemoveItemsFromFolderNode)

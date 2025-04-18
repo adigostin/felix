@@ -75,6 +75,7 @@ IChildNode : INode
 {
 	virtual HRESULT GetParent (IParentNode** ppParent) = 0;
 	virtual HRESULT SetItemId (IParentNode* parent, VSITEMID itemId) = 0;
+	virtual HRESULT ClearItemId() = 0;
 	virtual IChildNode* Next() = 0; // TODO: keep an unordered_map with itemid/itemptr, then get rid of Next, SetNext, FindDescendant
 	virtual void SetNext (IChildNode* next) = 0;
 	virtual HRESULT GetProperty (VSHPROPID propid, VARIANT* pvar) = 0;

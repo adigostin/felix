@@ -124,24 +124,24 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE SetItemId (IParentNode* parent, VSITEMID id) override
 	{
-		if (id != VSITEMID_NIL)
-		{
-			// setting it
-			RETURN_HR_IF(E_UNEXPECTED, _itemId != VSITEMID_NIL);
-			RETURN_HR_IF(E_UNEXPECTED, _parent);
-		}
-		else
-		{
-			// clearing it
-			RETURN_HR_IF(E_UNEXPECTED, _itemId == VSITEMID_NIL);
-			RETURN_HR_IF(E_UNEXPECTED, !_parent);
-		}
-
+		RETURN_HR_IF(E_INVALIDARG, id == VSITEMID_NIL);
+		RETURN_HR_IF(E_INVALIDARG, !parent);
+		RETURN_HR_IF(E_UNEXPECTED, _itemId != VSITEMID_NIL);
+		RETURN_HR_IF(E_UNEXPECTED, _parent);
 		auto hr = parent->QueryInterface(IID_PPV_ARGS(_parent.addressof())); RETURN_IF_FAILED(hr);
 		_itemId = id;
 		return S_OK;
 	}
 		
+	virtual HRESULT ClearItemId() override
+	{
+		RETURN_HR_IF(E_UNEXPECTED, _itemId == VSITEMID_NIL);
+		RETURN_HR_IF(E_UNEXPECTED, !_parent);
+		_itemId = VSITEMID_NIL;
+		_parent = nullptr;
+		return S_OK;
+	}
+
 	virtual IChildNode* STDMETHODCALLTYPE Next() override { return _next.get(); }
 
 	virtual void STDMETHODCALLTYPE SetNext (IChildNode* next) override
