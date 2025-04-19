@@ -188,6 +188,8 @@ public:
 			|| propid == VSHPROPID_OverlayIconIndex	// -2048
 			|| propid == VSHPROPID_ExternalItem // -2103
 			|| propid == VSHPROPID_ProvisionalViewingStatus // -2112
+			|| propid == -2177 // VSHPROPID_PreserveExpandCollapseState
+
 		)
 			return E_NOTIMPL;
 

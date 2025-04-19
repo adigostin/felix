@@ -1,6 +1,7 @@
 
 #pragma once
 #include "shared/com.h"
+#include "shared/inplace_function.h"
 #include "FelixPackage.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -12,7 +13,9 @@ extern com_ptr<IVsHierarchy> MakeMockVsHierarchy (const wchar_t* projectDir);
 extern com_ptr<IFileNode> MakeMockFileNode (BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir);
 extern com_ptr<IVsOutputWindowPane2> MakeMockOutputWindowPane (IStream* outputStreamUTF16);
 extern com_ptr<IServiceProvider> MakeMockServiceProvider();
-com_ptr<IVsHierarchyEvents> MakeMockHierarchyEventSink();
+
+using PropChangedCallback = stdext::inplace_function<void(VSITEMID itemid, VSHPROPID propid, DWORD flags)>;
+com_ptr<IVsHierarchyEvents> MakeMockHierarchyEventSink (PropChangedCallback propChanged);
 
 extern void WriteFileOnDisk(const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir, const char* fileContent = nullptr);
 extern void DeleteFileOnDisk(const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir);

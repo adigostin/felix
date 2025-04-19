@@ -8,12 +8,14 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 com_ptr<IVsSolution> MakeMockSolution();
 com_ptr<IVsRunningDocumentTable> MakeMockRDT();
+com_ptr<IVsShell> MakeMockShell();
 
 struct MockServiceProvider : IServiceProvider
 {
 	ULONG _refCount = 0;
 	com_ptr<IVsSolution> _solution = MakeMockSolution();
 	com_ptr<IVsRunningDocumentTable> _rdt = MakeMockRDT();
+	com_ptr<IVsShell> _shell = MakeMockShell();
 
 	#pragma region IUnknown
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
@@ -36,6 +38,9 @@ struct MockServiceProvider : IServiceProvider
 
 		if (guidService == SID_SVsTrackProjectDocuments)
 			return E_NOTIMPL;
+
+		if (guidService == SID_SVsShell)
+			return _shell->QueryInterface(riid, ppvObject);
 
 		if (guidService == SID_SVsUIShell)
 			return E_NOTIMPL;

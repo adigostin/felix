@@ -3,12 +3,18 @@
 #include "CppUnitTest.h"
 #include "Z80Xml.h"
 #include "shared/com.h"
+#include "../Mocks.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 struct MockHierarchyEventSink : IVsHierarchyEvents
 {
 	ULONG _refCount = 0;
+	PropChangedCallback _propChanged;
+	
+	MockHierarchyEventSink (PropChangedCallback propChanged)
+		: _propChanged(std::move(propChanged))
+	{ }
 
 	#pragma region IUnknown
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
@@ -42,6 +48,8 @@ struct MockHierarchyEventSink : IVsHierarchyEvents
 
     virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged (VSITEMID itemid, VSHPROPID propid, DWORD flags) override
 	{
+		if(_propChanged)
+			_propChanged(itemid, propid, flags);
 		return S_OK;
 	}
 
@@ -57,7 +65,7 @@ struct MockHierarchyEventSink : IVsHierarchyEvents
     #pragma endregion
 };
 
-com_ptr<IVsHierarchyEvents> MakeMockHierarchyEventSink()
+com_ptr<IVsHierarchyEvents> MakeMockHierarchyEventSink(PropChangedCallback propChanged)
 {
-	return com_ptr(new (std::nothrow) MockHierarchyEventSink());
+	return com_ptr(new (std::nothrow) MockHierarchyEventSink(std::move(propChanged)));
 }

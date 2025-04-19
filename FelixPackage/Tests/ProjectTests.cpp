@@ -3,6 +3,8 @@
 #include "CppUnitTest.h"
 #include "Mocks.h"
 #include "Z80Xml.h"
+#include "guids.h"
+#include "../FelixPackageUi/resource.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -289,6 +291,146 @@ namespace FelixTests
 		{
 		}
 
+		TEST_METHOD(RemoveNestedFoldersNoFiles)
+		{
+		}
+
+		TEST_METHOD(AddFolderCommand)
+		{
+			com_ptr<IVsUIHierarchy> hier;
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_variant expandable;
+			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_Expandable, &expandable);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<VARTYPE>(VT_BOOL, expandable.vt);
+			Assert::AreEqual(VARIANT_FALSE, expandable.boolVal);
+
+			bool expandableChanged = false;
+			auto propChanged = [&expandableChanged](VSITEMID itemid, VSHPROPID propid, DWORD flags)
+				{
+					if (itemid == VSITEMID_ROOT && propid == VSHPROPID_Expandable)
+						expandableChanged = true;
+				};
+
+			auto sink = MakeMockHierarchyEventSink(std::move(propChanged));
+			VSCOOKIE hierEventsCookie;
+			hr = hier->AdviseHierarchyEvents(sink, &hierEventsCookie);
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto unadvise = wil::scope_exit([hier=hier.get(), hierEventsCookie]() { hier->UnadviseHierarchyEvents(hierEventsCookie); });
+
+			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_variant child;
+			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &child);
+			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_variant childDisp;
+			hr = hier->GetProperty(V_VSITEMID(&child), VSHPROPID_BrowseObject, &childDisp);
+			Assert::IsTrue(SUCCEEDED(hr));
+			com_ptr<IFolderNodeProperties> folderProps;
+			hr = childDisp.pdispVal->QueryInterface(IID_PPV_ARGS(&folderProps));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			Assert::IsTrue(expandableChanged);
+
+			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_Expandable, &expandable);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<VARTYPE>(VT_BOOL, expandable.vt);
+			Assert::AreEqual(VARIANT_TRUE, expandable.boolVal);
+		}
+
+		TEST_METHOD(AddSubFolderCommand)
+		{
+			com_ptr<IVsUIHierarchy> hier;
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_variant folderItemId;
+			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &folderItemId);
+			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_variant folderDisp;
+			hr = hier->GetProperty(V_VSITEMID(&folderItemId), VSHPROPID_BrowseObject, &folderDisp);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_variant expandable;
+			hr = hier->GetProperty(V_VSITEMID(&folderItemId), VSHPROPID_Expandable, &expandable);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<VARTYPE>(VT_BOOL, expandable.vt);
+			Assert::AreEqual(VARIANT_FALSE, expandable.boolVal);
+
+			bool expandableChanged = false;
+			auto propChanged = [&expandableChanged, id=V_VSITEMID(&folderItemId)](VSITEMID itemid, VSHPROPID propid, DWORD flags)
+				{
+					if (itemid == id && propid == VSHPROPID_Expandable)
+						expandableChanged = true;
+				};
+			auto sink = MakeMockHierarchyEventSink(std::move(propChanged));
+			VSCOOKIE hierEventsCookie;
+			hr = hier->AdviseHierarchyEvents(sink, &hierEventsCookie);
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto unadvise = wil::scope_exit([hier=hier.get(), hierEventsCookie]() { hier->UnadviseHierarchyEvents(hierEventsCookie); });
+
+			hr = hier->ExecCommand(V_VSITEMID(&folderItemId), &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_variant subFolderItemId;
+			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &subFolderItemId);
+			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_variant subFolderDisp;
+			hr = hier->GetProperty(V_VSITEMID(&subFolderItemId), VSHPROPID_BrowseObject, &subFolderDisp);
+			Assert::IsTrue(SUCCEEDED(hr));
+			com_ptr<IFolderNodeProperties> folderProps;
+			hr = subFolderDisp.pdispVal->QueryInterface(IID_PPV_ARGS(&folderProps));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			Assert::IsTrue(expandableChanged);
+
+			hr = hier->GetProperty(V_VSITEMID(&subFolderItemId), VSHPROPID_Expandable, &expandable);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<VARTYPE>(VT_BOOL, expandable.vt);
+			Assert::AreEqual(VARIANT_TRUE, expandable.boolVal);
+		}
+
+		TEST_METHOD(AddFolderCommand_FolderExistsInHier)
+		{
+			com_ptr<IVsUIHierarchy> hier;
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+		}
+
+		TEST_METHOD(AddFolderCommand_FolderExistsOnDisk)
+		{
+			com_ptr<IVsUIHierarchy> hier;
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_variant child;
+			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &child);
+
+			com_ptr<IVsHierarchyDeleteHandler3> dh;
+			hr = hier->QueryInterface(IID_PPV_ARGS(&dh));
+			Assert::IsTrue(SUCCEEDED(hr));
+			dh->DeleteItems(1, DELITEMOP_RemoveFromProject, (VSITEMID*)&child.lVal, DHO_SUPPRESS_UI);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+		}
+
 		TEST_METHOD(AddItemNew)
 		{
 			com_ptr<IVsHierarchy> hier;
@@ -383,7 +525,7 @@ namespace FelixTests
 		{
 			com_ptr<IVsHierarchy> hier;
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
-			auto sink = MakeMockHierarchyEventSink();
+			auto sink = MakeMockHierarchyEventSink(nullptr);
 			VSCOOKIE cookie;
 			hr = hier->AdviseHierarchyEvents(sink, &cookie);
 			Assert::IsTrue(SUCCEEDED(hr));

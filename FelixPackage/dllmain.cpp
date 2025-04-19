@@ -30,7 +30,7 @@ BOOL APIENTRY DllMain(HMODULE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
 	return TRUE;
 }
 
-extern "C" HRESULT __stdcall DllGetClassObject (REFCLSID rclsid, REFIID riid, LPVOID* ppv)
+STDAPI DllGetClassObject (REFCLSID rclsid, REFIID riid, LPVOID* ppv)
 {
 	*ppv = nullptr;
 
@@ -76,7 +76,7 @@ extern "C" HRESULT __stdcall DllGetClassObject (REFCLSID rclsid, REFIID riid, LP
 	return p->QueryInterface(riid, ppv);
 }
 
-extern "C" HRESULT __stdcall DllCanUnloadNow()
+STDAPI DllCanUnloadNow()
 {
 	return S_FALSE;
 }

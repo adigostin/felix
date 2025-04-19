@@ -265,7 +265,8 @@ public:
 	// Returns S_OK when found, S_FALSE when not found, error code when it couldn't search.
 	HRESULT FindDescendant (VSITEMID itemid, IChildNode** ppItem)
 	{
-		*ppItem = nullptr;
+		if (ppItem)
+			*ppItem = nullptr;
 
 		stdext::inplace_function<HRESULT(IParentNode* parent)> enumChildren;
 
@@ -275,8 +276,11 @@ public:
 			{
 				if (c->GetItemId() == itemid)
 				{
-					*ppItem = c;
-					(*ppItem)->AddRef();
+					if (ppItem)
+					{
+						*ppItem = c;
+						(*ppItem)->AddRef();
+					}
 					return S_OK;
 				}
 
@@ -315,7 +319,6 @@ public:
 				case cmdidExit: // 229
 				case cmdidPropertyPages: // 232
 				case cmdidAddExistingItem: // 244
-				case cmdidNewFolder: // 245
 				case cmdidStepInto: // 248
 				case cmdidPropSheetOrProperties: // 397
 				case cmdidCloseDocument: // 658
@@ -550,8 +553,6 @@ public:
 				return ProcessCommandAddItem(TRUE);
 			if (nCmdID == cmdidAddExistingItem) // 244
 				return ProcessCommandAddItem(FALSE);
-			if (nCmdID == cmdidNewFolder) // 245
-				return ProcessCommandAddNewFolder();
 
 			return OLECMDERR_E_NOTSUPPORTED;
 		}
@@ -1322,6 +1323,19 @@ public:
 			return S_OK;
 		}
 
+		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97 && cCmds == 1 && prgCmds[0].cmdID == cmdidNewFolder) // 245
+		{
+			com_ptr<IChildNode> node;
+			if (itemid != VSITEMID_SELECTION
+				&& itemid != VSITEMID_NIL
+				&& (itemid == VSITEMID_ROOT
+					|| (FindDescendant(itemid, &node) == S_OK && node.try_query<IFolderNode>())))
+			{
+				prgCmds[0].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
+				return S_OK;
+			}
+		}
+
 		if (itemid == VSITEMID_ROOT)
 		{
 			for (ULONG i = 0; i < cCmds; i++)
@@ -1354,6 +1368,9 @@ public:
 
 		if (*pguidCmdGroup == CMDSETID_StandardCommandSet2K && nCmdID == ECMD_SLNREFRESH)
 			return RefreshHierarchy();
+
+		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97 && nCmdID == cmdidNewFolder) // 245
+			return ProcessCommandAddNewFolder(itemid);
 
 		if (itemid == VSITEMID_ROOT)
 			return ExecCommandOnProjectNode (pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
@@ -2737,19 +2754,33 @@ public:
 		return S_OK;
 	}
 
-	HRESULT ProcessCommandAddNewFolder()
+	HRESULT ProcessCommandAddNewFolder (VSITEMID parentItemId)
 	{
 		HRESULT hr;
 
+		com_ptr<IParentNode> parent;
+		if (parentItemId == VSITEMID_ROOT)
+			parent = this;
+		else
+		{
+			com_ptr<IChildNode> node;
+			hr = FindDescendant(parentItemId, &node); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_INVALIDARG, hr == S_FALSE);
+			hr = node->QueryInterface(IID_PPV_ARGS(&parent)); RETURN_IF_FAILED(hr);
+		}
+
+		com_ptr<IVsShell> shell;
+		hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
+		wil::unique_bstr newFolderName;
+		hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_NEW_FOLDER_NAME, &newFolderName); RETURN_IF_FAILED(hr);
+
 		wchar_t dirName[20];
-		wil::unique_hlocal_string dirPath;
 		for (uint32_t i = 1;;)
 		{
-			swprintf_s(dirName, L"NewFolder%u", i);
+			swprintf_s(dirName, newFolderName.get(), i);
 
 			// Search for a node with the same name in the same location (not deeper).
 			bool nameExists = false;
-			for (auto c = _firstChild.get(); c; c = c->Next())
+			for (auto c = parent->FirstChild(); !!c; c = c->Next())
 			{
 				wil::unique_variant nameVar;
 				hr = c->GetProperty(VSHPROPID_Name, &nameVar); RETURN_IF_FAILED(hr);
@@ -2759,13 +2790,14 @@ public:
 					break;
 				}
 			}
-			if (nameExists)
-				continue;
-
-			dirPath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(dirPath);
-			PathCombine(dirPath.get(), _location.get(), dirName);
-			if (CreateDirectory(dirPath.get(), nullptr) || GetLastError() == ERROR_ALREADY_EXISTS)
-				break;
+			
+			if (!nameExists)
+			{
+				wil::unique_hlocal_string dirPath;
+				hr = wil::str_concat_nothrow(dirPath, _location, L"\\", dirName); RETURN_IF_FAILED(hr);
+				if (CreateDirectory(dirPath.get(), nullptr) || GetLastError() == ERROR_ALREADY_EXISTS)
+					break;
+			}
 
 			i++;
 			if (i == 100)
@@ -2776,7 +2808,7 @@ public:
 		hr = MakeFolderNode (&newFolder); RETURN_IF_FAILED(hr);
 		hr = newFolder.try_query<IFolderNodeProperties>()->put_FolderName(dirName); RETURN_IF_FAILED(hr);
 
-		hr = AddFolderToParent (newFolder, this); RETURN_IF_FAILED(hr);
+		hr = AddFolderToParent (newFolder, parent); RETURN_IF_FAILED(hr);
 
 		_isDirty = true;
 

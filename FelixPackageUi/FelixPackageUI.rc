@@ -169,6 +169,7 @@ BEGIN
                             "Optional command line to be executed after the files are compiled/built."
     IDS_PRE_POST_BUILD_DESCRIPTION_DESCRIPTION 
                             "Message to be printed to the Output Window (and to the build log) when this command is executed."
+    IDS_NEW_FOLDER_NAME     "NewFolder%u"
 END
 
 #endif    // English (United States) resources
