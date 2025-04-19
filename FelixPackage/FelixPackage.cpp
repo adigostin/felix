@@ -10,6 +10,11 @@
 #include "DebugEngine/DebugEngine.h"
 #include "sentry.h"
 
+MIDL_INTERFACE("F761DCEE-D880-49B3-80CF-57D310DBF49B")
+IMockServiceProvider : IUnknown
+{
+};
+
 const wchar_t Z80AsmLanguageName[]  = L"Z80Asm";
 const wchar_t SingleDebugPortName[] = L"Single Z80 Port";
 const GUID Z80AsmLanguageGuid = { 0x598BC226, 0x2E96, 0x43AD, { 0xAD, 0x42, 0x67, 0xD9, 0xCC, 0x6F, 0x75, 0xF6 } };
@@ -37,12 +42,8 @@ class FelixPackageImpl : public IVsPackage, IVsSolutionEvents, IOleCommandTarget
 	ULONG _refCount = 0;
 	wil::unique_hlocal_string _packageDir;
 	wil::com_ptr_nothrow<IVsLanguageInfo> _z80AsmLanguageInfo;
-	wil::com_ptr_nothrow<IServiceProvider> _sp;
-	static inline HMODULE _uiLibrary = nullptr;
 	VSCOOKIE _projectTypeRegistrationCookie = VSCOOKIE_NIL;
 	VSCOOKIE _solutionEventsCookie = VSCOOKIE_NIL;
-	wil::com_ptr_nothrow<IVsDebugger> _debugger;
-	bool _advisedDebugEventCallback = false;
 	VSCOOKIE _profferLanguageServiceCookie = VSCOOKIE_NIL;
 	VSCOOKIE _profferZXSimulatorServiceCookie = VSCOOKIE_NIL;
 	wil::com_ptr_nothrow<IVsWindowFrame> _simulatorWindowFrame;
@@ -118,7 +119,7 @@ public:
 	HRESULT CreateZxSpectrumSimulator()
 	{
 		wil::com_ptr_nothrow<IProfferService> srpProffer;
-		auto hr = _sp->QueryService (SID_SProfferService, &srpProffer); RETURN_IF_FAILED(hr);
+		auto hr = serviceProvider->QueryService (SID_SProfferService, &srpProffer); RETURN_IF_FAILED(hr);
 		
 		hr = MakeSimulator(_packageDir.get(), BinaryFilename, &_simulator); RETURN_IF_FAILED(hr);
 		hr = srpProffer->ProfferService (SID_Simulator, this, &_profferZXSimulatorServiceCookie); RETURN_IF_FAILED(hr);
@@ -130,11 +131,11 @@ public:
 
 	void ReleaseZxSpectrumSimulator()
 	{
-		wil::com_ptr_nothrow<IProfferService> srpProffer;
-		auto hr = _sp->QueryService (SID_SProfferService, &srpProffer); LOG_IF_FAILED(hr);
-		if (SUCCEEDED(hr))
+		if (_profferZXSimulatorServiceCookie)
 		{
-			if (_profferZXSimulatorServiceCookie)
+			wil::com_ptr_nothrow<IProfferService> srpProffer;
+			auto hr = serviceProvider->QueryService (SID_SProfferService, &srpProffer); LOG_IF_FAILED(hr);
+			if (SUCCEEDED(hr))
 			{
 				hr = srpProffer->RevokeService (_profferZXSimulatorServiceCookie); LOG_IF_FAILED(hr);
 				_profferZXSimulatorServiceCookie = VSCOOKIE_NIL;
@@ -184,9 +185,6 @@ public:
 	{
 		HRESULT hr;
 
-		if (!_uiLibrary)
-			return;
-
 		com_ptr<IVsSettingsManager> sm;
 		hr = serviceProvider->QueryService(SID_SVsSettingsManager, &sm);
 		if (FAILED(hr))
@@ -209,15 +207,23 @@ public:
 				hr = uiShell->GetDialogOwnerHwnd(&parent);
 				if (SUCCEEDED(hr))
 				{
-					INT_PTR res = DialogBoxParamW (_uiLibrary, MAKEINTRESOURCE(IDD_REPORT_ERROR), parent, TelemetryDialogProc, (LPARAM)(void*)&failure);
-					if (res == IDYES)
+					com_ptr<IVsShell> shell;
+					hr = serviceProvider->QueryService(SID_SVsShell, &shell); 
 					{
-						if (SUCCEEDED(wss->CreateCollection(SettingsCollection)))
-							wss->SetBool(SettingsCollection, AlwaysReportSettingsName, TRUE);
-					}
+						static HMODULE _uiLibrary = nullptr;
+						if (_uiLibrary || SUCCEEDED(shell->LoadUILibrary(CLSID_FelixPackage, 0, (DWORD_PTR*)&_uiLibrary)))
+						{
+							INT_PTR res = DialogBoxParamW (_uiLibrary, MAKEINTRESOURCE(IDD_REPORT_ERROR), parent, TelemetryDialogProc, (LPARAM)(void*)&failure);
+							if (res == IDYES)
+							{
+								if (SUCCEEDED(wss->CreateCollection(SettingsCollection)))
+									wss->SetBool(SettingsCollection, AlwaysReportSettingsName, TRUE);
+							}
 
-					if (res == IDYES || res == IDOK)
-						report = TRUE;
+							if (res == IDYES || res == IDOK)
+								report = TRUE;
+						}
+					}
 				}
 			}
 		}
@@ -428,40 +434,37 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE SetSite (IServiceProvider *pSP) override
 	{
 		HRESULT hr;
-		WI_ASSERT(!_sp);
 		WI_ASSERT(!serviceProvider);
 		
-		_sp = pSP;
 		serviceProvider = pSP;
 
-		InitSentry();
-
-		com_ptr<IVsShell> shell;
-		hr = serviceProvider->QueryService(SID_SVsShell, &shell);
-		hr = shell->LoadUILibrary(CLSID_FelixPackage, 0, (DWORD_PTR*)&_uiLibrary); RETURN_IF_FAILED(hr);
+		if (!serviceProvider.try_query<IMockServiceProvider>())
+			InitSentry();
 
 		wil::com_ptr_nothrow<IVsSolution> solutionService;
-		hr = pSP->QueryService (SID_SVsSolution, &solutionService); RETURN_IF_FAILED(hr);
+		hr = pSP->QueryService (SID_SVsSolution, IID_PPV_ARGS(&solutionService)); RETURN_IF_FAILED(hr);
 		hr = solutionService->AdviseSolutionEvents (this, &_solutionEventsCookie); RETURN_IF_FAILED(hr);
 
 		wil::com_ptr_nothrow<IVsRegisterProjectTypes> regSvc;
 		hr = pSP->QueryService (SID_SVsRegisterProjectTypes, &regSvc); RETURN_IF_FAILED(hr);
 		wil::com_ptr_nothrow<IVsProjectFactory> pf;
-		hr = MakeProjectFactory(_sp.get(), &pf); RETURN_IF_FAILED(hr);
+		hr = MakeProjectFactory(serviceProvider, &pf); RETURN_IF_FAILED(hr);
 
 		VSCOOKIE cookie;
 		hr = regSvc->RegisterProjectType (__uuidof(IProjectNodeProperties), pf.get(), &cookie); RETURN_IF_FAILED(hr);
 		_projectTypeRegistrationCookie = cookie;
 
-		hr = pSP->QueryService (SID_SVsShellDebugger, &_debugger); RETURN_IF_FAILED(hr);
-		hr = _debugger->AdviseDebugEventCallback(static_cast<IDebugEventCallback2*>(this)); RETURN_IF_FAILED(hr);
-		_advisedDebugEventCallback = true;
-
 		wil::com_ptr_nothrow<IProfferService> srpProffer;
-		hr = pSP->QueryService (SID_SProfferService, &srpProffer); RETURN_IF_FAILED(hr);
-		hr = srpProffer->ProfferService (Z80AsmLanguageGuid, this, &_profferLanguageServiceCookie); RETURN_IF_FAILED(hr);
+		hr = pSP->QueryService (SID_SProfferService, IID_PPV_ARGS(&srpProffer));
+		if (SUCCEEDED(hr))
+		{
+			hr = srpProffer->ProfferService (Z80AsmLanguageGuid, this, &_profferLanguageServiceCookie); RETURN_IF_FAILED(hr);
+		}
 
-		hr = CreateZxSpectrumSimulator(); RETURN_IF_FAILED(hr);
+		if (!serviceProvider.try_query<IMockServiceProvider>())
+		{
+			hr = CreateZxSpectrumSimulator(); RETURN_IF_FAILED(hr);
+		}
 
 		return S_OK;
 	}
@@ -478,23 +481,16 @@ public:
 
 		ReleaseZxSpectrumSimulator();
 
-		wil::com_ptr_nothrow<IProfferService> srpProffer;
-		hr = _sp->QueryService (SID_SProfferService, &srpProffer); LOG_IF_FAILED(hr);
-		if (srpProffer)
+		if (_profferLanguageServiceCookie)
 		{
-			if (_profferLanguageServiceCookie)
+			wil::com_ptr_nothrow<IProfferService> srpProffer;
+			hr = serviceProvider->QueryService (SID_SProfferService, &srpProffer); LOG_IF_FAILED(hr);
+			if (SUCCEEDED(hr))
 			{
 				hr = srpProffer->RevokeService (_profferLanguageServiceCookie); LOG_IF_FAILED(hr);
 				_profferLanguageServiceCookie = VSCOOKIE_NIL;
 			}
 		}
-
-		if (_advisedDebugEventCallback)
-		{
-			hr = _debugger->UnadviseDebugEventCallback(static_cast<IDebugEventCallback2*>(this)); LOG_IF_FAILED(hr);
-			_advisedDebugEventCallback = false;
-		}
-		_debugger = nullptr;
 
 		if (_simulatorWindowFrame)
 		{
@@ -505,7 +501,7 @@ public:
 		if (_projectTypeRegistrationCookie != VSCOOKIE_NIL)
 		{
 			wil::com_ptr_nothrow<IVsRegisterProjectTypes> regSvc;
-			hr = _sp->QueryService (SID_SVsRegisterProjectTypes, &regSvc); LOG_IF_FAILED(hr);
+			hr = serviceProvider->QueryService (SID_SVsRegisterProjectTypes, &regSvc); LOG_IF_FAILED(hr);
 			if (SUCCEEDED(hr))
 			{
 				regSvc->UnregisterProjectType(_projectTypeRegistrationCookie);
@@ -516,7 +512,7 @@ public:
 		if (_solutionEventsCookie != VSCOOKIE_NIL)
 		{
 			wil::com_ptr_nothrow<IVsSolution> solutionService;
-			hr = _sp->QueryService (SID_SVsSolution, &solutionService); LOG_IF_FAILED(hr);
+			hr = serviceProvider->QueryService (SID_SVsSolution, &solutionService); LOG_IF_FAILED(hr);
 			if (SUCCEEDED(hr))
 			{
 				hr = solutionService->UnadviseSolutionEvents(_solutionEventsCookie); LOG_IF_FAILED(hr);
@@ -524,8 +520,6 @@ public:
 					_solutionEventsCookie = VSCOOKIE_NIL;
 			}
 		}
-
-		::FreeLibrary(_uiLibrary);
 
 		if (_sentryOptions)
 		{
@@ -535,7 +529,7 @@ public:
 
 		wil::SetResultTelemetryFallback(nullptr);
 
-		_sp = nullptr;
+		serviceProvider = nullptr;
 
 		return S_OK;
 	}
@@ -548,7 +542,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE CreateTool (REFGUID rguidPersistenceSlot) override
 	{
 		if (rguidPersistenceSlot == CLSID_FelixPersistenceSlot)
-			return CreateSimulatorToolWindow(_sp.get(), &_simulatorWindowFrame);
+			return CreateSimulatorToolWindow(&_simulatorWindowFrame);
 
 		RETURN_HR(E_NOTIMPL);
 	}
@@ -596,7 +590,7 @@ public:
 		{
 			if (!_simulatorWindowFrame)
 			{
-				auto hr = CreateSimulatorToolWindow (_sp.get(), &_simulatorWindowFrame); LOG_IF_FAILED(hr);
+				auto hr = CreateSimulatorToolWindow (&_simulatorWindowFrame); LOG_IF_FAILED(hr);
 			}
 
 			if (_simulatorWindowFrame)
@@ -689,7 +683,7 @@ public:
 			{
 				if (!_simulatorWindowFrame)
 				{
-					auto hr = CreateSimulatorToolWindow(_sp.get(), &_simulatorWindowFrame); RETURN_IF_FAILED(hr);
+					auto hr = CreateSimulatorToolWindow(&_simulatorWindowFrame); RETURN_IF_FAILED(hr);
 				}
 
 				if (_simulatorWindowFrame)
@@ -707,12 +701,12 @@ public:
 	}
 	#pragma endregion
 
-	static HRESULT CreateSimulatorToolWindow (IServiceProvider* sp, IVsWindowFrame** ppFrame)
+	static HRESULT CreateSimulatorToolWindow (IVsWindowFrame** ppFrame)
 	{
 		HRESULT hr;
 
 		wil::com_ptr_nothrow<IVsUIShell> shell;
-		hr = sp->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
+		hr = serviceProvider->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
 
 		wil::com_ptr_nothrow<IVsWindowPane> pane;
 		hr = SimulatorWindowPane_CreateInstance (&pane); RETURN_IF_FAILED(hr);
@@ -743,7 +737,7 @@ public:
 			// we'll see about that.
 			if (!_simulatorWindowFrame)
 			{
-				auto hr = CreateSimulatorToolWindow(_sp.get(), &_simulatorWindowFrame); RETURN_IF_FAILED(hr);
+				auto hr = CreateSimulatorToolWindow(&_simulatorWindowFrame); RETURN_IF_FAILED(hr);
 			}
 
 			if (_simulatorWindowFrame)

@@ -72,11 +72,13 @@ class ProjectNode
 		auto hr = CoCreateInstance(__uuidof(FileOperation), NULL, CLSCTX_ALL, IID_PPV_ARGS(&pfo)); RETURN_IF_FAILED(hr);
 
 		wil::com_ptr_nothrow<IVsUIShell> shell;
-		hr = serviceProvider->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
-
-		HWND ownerHwnd;
-		hr = shell->GetDialogOwnerHwnd(&ownerHwnd); RETURN_IF_FAILED(hr);
-		hr = pfo->SetOwnerWindow(ownerHwnd); RETURN_IF_FAILED(hr);
+		hr = serviceProvider->QueryService(SID_SVsUIShell, &shell);
+		if (SUCCEEDED(hr))
+		{
+			HWND ownerHwnd;
+			hr = shell->GetDialogOwnerHwnd(&ownerHwnd); RETURN_IF_FAILED(hr);
+			hr = pfo->SetOwnerWindow(ownerHwnd); RETURN_IF_FAILED(hr);
+		}
 
 		// -----------------------------------------
 		// Create shell items for the source project file, source folder, destination folder.
@@ -145,10 +147,13 @@ class ProjectNode
 			}
 		}
 
-		wil::com_ptr_nothrow<IShellItemArray> sourceFiles;
-		hr = SHCreateShellItemArray (nullptr, projectTemplateDir.get(), (UINT)itemIDListCount, const_cast<LPCITEMIDLIST*>(itemIDList[0].addressof()), &sourceFiles); RETURN_IF_FAILED(hr);
+		if (itemIDListCount)
+		{
+			wil::com_ptr_nothrow<IShellItemArray> sourceFiles;
+			hr = SHCreateShellItemArray (nullptr, projectTemplateDir.get(), (UINT)itemIDListCount, const_cast<LPCITEMIDLIST*>(itemIDList[0].addressof()), &sourceFiles); RETURN_IF_FAILED(hr);
 
-		hr = pfo->CopyItems (sourceFiles.get(), destinationFolder.get()); RETURN_IF_FAILED(hr);
+			hr = pfo->CopyItems (sourceFiles.get(), destinationFolder.get()); RETURN_IF_FAILED(hr);
+		}
 
 		// ----------------------------------------------------------------------
 
@@ -174,7 +179,7 @@ public:
 			hr = CreateProjectFilesFromTemplate (pszFilename, pszLocation, pszName); RETURN_IF_FAILED(hr);
 
 			wchar_t projFilePath[MAX_PATH];
-			PathCombine (projFilePath, pszLocation, pszName); RETURN_IF_FAILED(hr);
+			PathCombine (projFilePath, pszLocation, pszName);
 
 			com_ptr<IStream> stream;
 			auto hr = SHCreateStreamOnFileEx(projFilePath, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, 0, nullptr, &stream); RETURN_IF_FAILED(hr);

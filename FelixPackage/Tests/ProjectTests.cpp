@@ -4,11 +4,14 @@
 #include "Mocks.h"
 #include "Z80Xml.h"
 #include "guids.h"
+#include "FelixPackage.h"
 #include "../FelixPackageUi/resource.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 wchar_t tempPath[MAX_PATH + 1];
+
+extern com_ptr<IServiceProvider> MakeMockServiceProvider();
 
 #pragma warning (push)
 #pragma warning (disable: 4995)

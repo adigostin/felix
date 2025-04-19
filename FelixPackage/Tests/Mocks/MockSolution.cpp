@@ -1,20 +1,23 @@
 
 #include "pch.h"
 #include "CppUnitTest.h"
-#include "FelixPackage.h"
 #include "shared/com.h"
+#include "shared/unordered_map_nothrow.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-struct MockSolution : IVsSolution
+struct MockSolution : IVsSolution, IVsRegisterProjectTypes
 {
 	ULONG _refCount = 0;
+	VSCOOKIE _nextProjectTypeCookie = 1;
+	unordered_map_nothrow<VSCOOKIE, std::pair<GUID, com_ptr<IVsProjectFactory>>> _projectFactories;
 
 	#pragma region IUnknown
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
 	{
-		if (   TryQI<IUnknown>(this, riid, ppvObject)
+		if (   TryQI<IUnknown>(static_cast<IVsSolution*>(this), riid, ppvObject)
 			|| TryQI<IVsSolution>(this, riid, ppvObject)
+			|| TryQI<IVsRegisterProjectTypes>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -44,7 +47,12 @@ struct MockSolution : IVsSolution
 		/* [in] */ __RPC__in REFIID iidProject,
 		/* [iid_is][out] */ __RPC__deref_out_opt void** ppProject) override
 	{
-		Assert::Fail(L"Not Implemented");
+		auto it = _projectFactories.find_if([&rguidProjectType](auto& p) { return p.second.first == rguidProjectType; });
+		Assert::IsTrue(it != _projectFactories.end());
+		BOOL canceled;
+		auto hr = it->second.second->CreateProject(lpszMoniker, lpszLocation, lpszName, grfCreateFlags, iidProject, ppProject, &canceled);
+		Assert::IsTrue(SUCCEEDED(hr));
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GenerateUniqueProjectName(
@@ -80,13 +88,13 @@ struct MockSolution : IVsSolution
 		/* [in] */ __RPC__in_opt IVsSolutionEvents* pSink,
 		/* [out] */ __RPC__out VSCOOKIE* pdwCookie) override
 	{
-		Assert::Fail(L"Not Implemented");
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE UnadviseSolutionEvents(
 		/* [in] */ VSCOOKIE dwCookie) override
 	{
-		Assert::Fail(L"Not Implemented");
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE SaveSolutionElement(
@@ -307,6 +315,27 @@ struct MockSolution : IVsSolution
 		/* [out] */ __RPC__out BOOL* pfCanCreate) override
 	{
 		Assert::Fail(L"Not Implemented");
+	}
+	#pragma endregion
+
+	#pragma region IVsRegisterProjectTypes
+	virtual HRESULT STDMETHODCALLTYPE RegisterProjectType( 
+		REFGUID rguidProjType,
+		IVsProjectFactory *pVsPF,
+		VSCOOKIE *pdwCookie) override
+	{
+		VSCOOKIE cookie = _nextProjectTypeCookie++;
+		(void)_projectFactories.try_insert({ cookie, { rguidProjType, pVsPF } });
+		*pdwCookie = cookie;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE UnregisterProjectType (VSCOOKIE dwCookie) override
+	{
+		auto it = _projectFactories.find(dwCookie);
+		Assert::IsTrue (it != _projectFactories.end());
+		_projectFactories.erase(it);
+		return S_OK;
 	}
 	#pragma endregion
 };

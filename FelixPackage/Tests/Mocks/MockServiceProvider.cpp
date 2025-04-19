@@ -1,16 +1,20 @@
 
 #include "pch.h"
 #include "CppUnitTest.h"
-#include "FelixPackage.h"
 #include "shared/com.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
+
+MIDL_INTERFACE("F761DCEE-D880-49B3-80CF-57D310DBF49B")
+IMockServiceProvider : IUnknown
+{
+};
 
 com_ptr<IVsSolution> MakeMockSolution();
 com_ptr<IVsRunningDocumentTable> MakeMockRDT();
 com_ptr<IVsShell> MakeMockShell();
 
-struct MockServiceProvider : IServiceProvider
+struct MockServiceProvider : IServiceProvider, IMockServiceProvider
 {
 	ULONG _refCount = 0;
 	com_ptr<IVsSolution> _solution = MakeMockSolution();
@@ -20,6 +24,10 @@ struct MockServiceProvider : IServiceProvider
 	#pragma region IUnknown
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
 	{
+		if (   TryQI<IMockServiceProvider>(this, riid, ppvObject)
+		)
+			return S_OK;
+
 		Assert::Fail();
 	}
 
@@ -50,6 +58,12 @@ struct MockServiceProvider : IServiceProvider
 
 		if (guidService == SID_SVsSolution)
 			return _solution->QueryInterface(riid, ppvObject);
+
+		if (guidService == SID_SVsRegisterProjectTypes)
+			return _solution->QueryInterface(riid, ppvObject);
+
+		if (guidService == SID_SProfferService)
+			return E_NOTIMPL;
 
 		Assert::Fail();
 	}

@@ -1,7 +1,6 @@
 
 #include "pch.h"
 #include "CppUnitTest.h"
-#include "FelixPackage.h"
 #include "shared/com.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;

@@ -1,0 +1,115 @@
+
+#include "pch.h"
+#include "CppUnitTest.h"
+#include "shared/com.h"
+
+using namespace Microsoft::VisualStudio::CppUnitTestFramework;
+
+extern com_ptr<IServiceProvider> MakeMockServiceProvider();
+
+
+static HMODULE dll;
+using GCO = HRESULT (STDMETHODCALLTYPE*)(REFCLSID rclsid, REFIID riid, LPVOID* ppv);
+static GCO getClassObject;
+com_ptr<IServiceProvider> sp;
+com_ptr<IVsPackage> package;
+wchar_t tempPath[MAX_PATH + 1];
+wil::unique_hlocal_string templateFullPath;
+
+static const GUID CLSID_FelixPackage = { 0x768BC57B, 0x42A8, 0x42AB, { 0xB3, 0x89, 0x45, 0x79, 0x46, 0xC4, 0xFC, 0x6A } };
+
+static const GUID FelixProjectType = { 0xD438161C, 0xF032, 0x4014, { 0xBC, 0x5C, 0x20, 0xA8, 0x0E, 0xAF, 0xF5, 0x9B } };
+
+static const char TemplateXML[] = ""
+"<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+"<Z80Project Guid=\"{2839FDD7-4C8F-4772-90E6-222C702D045E}\">"
+"  <Configurations>"
+"    <Configuration ConfigName=\"Debug\" PlatformName=\"ZX Spectrum 48K\" />"
+"  </Configurations>"
+"  <Items>"
+"    <File Path=\"file.asm\" BuildTool=\"Assembler\" />"
+"  </Items>"
+"</Z80Project>";
+
+TEST_MODULE_INITIALIZE(InitModule)
+{
+	HRESULT hr;
+
+	GetTempPathW (MAX_PATH + 1, tempPath);
+	wchar_t* end;
+	StringCchCatExW (tempPath, _countof(tempPath), L"FelixTest", &end, NULL, 0);
+	Assert::IsTrue (end < tempPath + _countof(tempPath) - 1);
+	end[1] = 0;
+	SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = tempPath, .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
+	SHFileOperation(&file_op);
+	BOOL bres = CreateDirectory(tempPath, 0);
+	Assert::IsTrue(bres);
+
+	wil::str_concat_nothrow(templateFullPath, tempPath, L"\\template.flx");
+	wil::unique_hfile th (CreateFile(templateFullPath.get(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
+	Assert::IsTrue(th.is_valid());
+	DWORD bytesWritten;
+	bres = WriteFile(th.get(), TemplateXML, sizeof(TemplateXML) - 1, &bytesWritten, nullptr);
+	Assert::IsTrue(bres);
+	th.reset();
+
+	sp = MakeMockServiceProvider();
+
+	dll = LoadLibrary(L"FelixPackage.dll");
+	Assert::IsNotNull(dll);
+	getClassObject = (GCO)GetProcAddress(dll, "DllGetClassObject");
+	Assert::IsNotNull((void*)getClassObject);
+	
+	com_ptr<IClassFactory> packageFactory;
+	hr = getClassObject(CLSID_FelixPackage, IID_PPV_ARGS(&packageFactory));
+	Assert::IsTrue(SUCCEEDED(hr));
+
+	hr = packageFactory->CreateInstance(nullptr, IID_PPV_ARGS(&package));
+	Assert::IsTrue(SUCCEEDED(hr));
+
+	hr = package->SetSite(sp);
+	Assert::IsTrue(SUCCEEDED(hr));
+}
+
+TEST_MODULE_CLEANUP(CleanupModule)
+{
+	if (package)
+	{
+		package->Close();
+		ULONG refCount = package.detach()->Release();
+		Assert::AreEqual((ULONG)0, refCount);
+	}
+
+	if (sp)
+	{
+		ULONG refCount = sp.detach()->Release();
+		Assert::AreEqual((ULONG)0, refCount);
+	}
+}
+
+namespace FelixTests
+{
+	TEST_CLASS(PackageTests)
+	{
+	public:
+		
+		TEST_METHOD(CloneProject)
+		{
+			HRESULT hr;
+
+			com_ptr<IVsSolution> sol;
+			hr = sp->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			static const wchar_t ProjFileName[] = L"TestProject.flx";
+			com_ptr<IVsHierarchy> hier;
+			sol->CreateProject(FelixProjectType, templateFullPath.get(), tempPath, ProjFileName, CPF_CLONEFILE, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_hlocal_string path;
+			hr = wil::str_concat_nothrow(path, tempPath, L"\\", ProjFileName);
+			Assert::IsTrue(SUCCEEDED(hr));
+			DeleteFile(path.get());
+		}
+	};
+}
