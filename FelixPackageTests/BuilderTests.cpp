@@ -1,6 +1,5 @@
 
 #include "pch.h"
-#include "CppUnitTest.h"
 #include "FelixPackage.h"
 #include "shared/com.h"
 #include "shared/inplace_function.h"

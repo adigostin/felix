@@ -49,7 +49,7 @@ struct MockFileNode : IFileNode, IFileNodeProperties
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IFileNodeProperties);
+	IMPLEMENT_IDISPATCH_(__uuidof(IFileNodeProperties), L"FelixPackage.dll");
 
 	#pragma region IChildNode
 	virtual HRESULT GetParent (IParentNode** ppParent) override

@@ -1,5 +1,12 @@
 #pragma once
 
+// We use DLL exports only to be able to call various functions from unit test projects.
+#ifdef FELIX_EXPORTS
+#define FELIX_API __declspec(dllexport)
+#else
+#define FELIX_API __declspec(dllimport)
+#endif
+
 // Note AGO: Reason for this interface is the following: the XML loader needs a way to create objects
 // out of the XML elements it encounters. The "traditional" way is to register somehow factories
 // for each type of object, and pass these factories to the XML loader. This is already complicated,
@@ -38,6 +45,6 @@ typedef enum
 	SAVE_XML_FORCE_SERIALIZE_DEFAULTS = 1,
 } SaveXmlFlags;
 
-HRESULT SaveToXml (IDispatch* obj, PCWSTR elementName, DWORD flags, IStream* stream, UINT nEncodingCodePage = CP_UTF8);
+FELIX_API HRESULT SaveToXml (IDispatch* obj, PCWSTR elementName, DWORD flags, IStream* stream, UINT nEncodingCodePage = CP_UTF8);
 
-HRESULT LoadFromXml (IDispatch* obj, _In_opt_ PCWSTR expectedElementName, IStream* stream, UINT nEncodingCodePage = CP_UTF8);
+FELIX_API HRESULT LoadFromXml (IDispatch* obj, _In_opt_ PCWSTR expectedElementName, IStream* stream, UINT nEncodingCodePage = CP_UTF8);

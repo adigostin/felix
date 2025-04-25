@@ -245,7 +245,7 @@ HRESULT MakeBstrFromString (const char* sl_name_from, const char* sl_name_to, BS
 	return S_OK;
 }
 
-HRESULT MakeBstrFromStreamOnHGlobal (IStream* stream, BSTR* pBstr)
+FELIX_API HRESULT MakeBstrFromStreamOnHGlobal (IStream* stream, BSTR* pBstr)
 {
 	STATSTG stat;
 	auto hr = stream->Stat(&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
@@ -492,7 +492,7 @@ HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir)
 	return S_OK;
 }
 
-HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path)
+FELIX_API HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path)
 {
 	com_ptr<IVsHierarchy> hier;
 	auto hr = FindHier(node, IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
@@ -569,7 +569,7 @@ static HRESULT SetItemIdsTree (IChildNode* child, IChildNode* childPrevSibling, 
 	return enumNodeAndChildren(child, childPrevSibling, addTo);
 }
 
-HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo)
+FELIX_API HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo)
 {
 	HRESULT hr;
 	RETURN_HR_IF(E_UNEXPECTED, child->GetItemId() != VSITEMID_NIL);
@@ -630,7 +630,7 @@ HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo)
 	return S_OK;
 }
 
-HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo)
+FELIX_API HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo)
 {
 	HRESULT hr;
 
@@ -709,7 +709,9 @@ static HRESULT ClearItemIdsTree (IChildNode* child)
 			if (SUCCEEDED(node->QueryInterface(&nodeAsParent)))
 			{
 				for (auto c = nodeAsParent->FirstChild(); c; c = c->Next())
+				{
 					hr = enumNodeAndChildren(c); RETURN_IF_FAILED(hr);
+				}
 			}
 
 			VSITEMID itemId = node->GetItemId();

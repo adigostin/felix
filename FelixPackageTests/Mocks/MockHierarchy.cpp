@@ -43,7 +43,7 @@ struct MockVsHierarchy : IVsHierarchy, IProjectNodeProperties, IProjectNode, IPa
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IProjectNodeProperties);
+	IMPLEMENT_IDISPATCH(__uuidof(IProjectNodeProperties));
 
 	#pragma region IProjectNodeProperties
 	virtual HRESULT STDMETHODCALLTYPE get___id (BSTR *value) override

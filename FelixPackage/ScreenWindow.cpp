@@ -6,6 +6,7 @@
 #include "../FelixPackageUi/CommandIds.h"
 #include "../FelixPackageUi/resource.h"
 #include "guids.h"
+#include "Simulator.h"
 #include <queue>
 
 using unique_cotaskmem_bitmapinfo = wil::unique_any<BITMAPINFO*, decltype(&::CoTaskMemFree), ::CoTaskMemFree>;

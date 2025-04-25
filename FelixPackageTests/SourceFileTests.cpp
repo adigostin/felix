@@ -1,6 +1,5 @@
 
 #include "pch.h"
-#include "CppUnitTest.h"
 #include "Mocks.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -45,7 +44,7 @@ namespace FelixTests
 			com_ptr<IFileNode> file;
 			hr = MakeFileNode(&file);
 			Assert::IsTrue(SUCCEEDED(hr));
-			hr = file.try_query<IFileNodeProperties>()->put_Path(L"file.asm");
+			hr = file.try_query<IFileNodeProperties>()->put_Path(wil::make_bstr_nothrow(L"file.asm").get());
 			Assert::IsTrue(SUCCEEDED(hr));
 			WriteFileOnDisk(tempPath, L"file.asm");
 			hr = AddFileToParent(file, hier.try_query<IParentNode>());

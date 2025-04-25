@@ -13,12 +13,22 @@
 #undef __EXCEPTIONS // WIL and Intellisense look at this
 
 #include <Windows.h>
-#include <ShObjIdl.h>
+#undef GetClassName
+#undef GetClassInfo
+#include <propvarutil.h>
 #include <shellapi.h>
+#include <Shlwapi.h>
+#include <ShObjIdl.h>
+#undef EnumProcesses
 
-#include <vsshell.h>
 #include <ivstrackprojectdocuments2.h>
 #include <ivsqueryeditquerysave2.h>
+#include <msdbg.h>
+#include <vsshell.h>
+#include <vsshell90.h>
+#include <vsshell110.h>
+
+#include <CppUnitTest.h>
 
 // WIL
 #define RESULT_DIAGNOSTICS_LEVEL 4
@@ -26,5 +36,7 @@
 #include <wil/com.h>
 #include <wil/win32_helpers.h>
 #include <wil/wistd_type_traits.h>
+
+extern "C" IMAGE_DOS_HEADER __ImageBase;
 
 #endif //PCH_H

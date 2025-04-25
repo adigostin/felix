@@ -1,49 +1,24 @@
 
 #include "pch.h"
-#include "CppUnitTest.h"
+#include "shared/com.h"
+#include "../FelixPackage/FelixPackage.h"
+#include "../FelixPackage/Z80Xml.h"
 #include "Mocks.h"
-#include "Z80Xml.h"
-#include "guids.h"
-#include "FelixPackage.h"
-#include "../FelixPackageUi/resource.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-wchar_t tempPath[MAX_PATH + 1];
+extern com_ptr<IServiceProvider> sp;
+extern const GUID FelixProjectType = { 0xD438161C, 0xF032, 0x4014, { 0xBC, 0x5C, 0x20, 0xA8, 0x0E, 0xAF, 0xF5, 0x9B } };
+extern wil::unique_hlocal_string templateFullPath;
+extern wchar_t tempPath[];
 
-extern com_ptr<IServiceProvider> MakeMockServiceProvider();
-
-#pragma warning (push)
-#pragma warning (disable: 4995)
-
-TEST_MODULE_INITIALIZE(ModuleInit)
-{
-	serviceProvider = MakeMockServiceProvider();
-
-	GetTempPathW (MAX_PATH + 1, tempPath);
-	wchar_t* end;
-	StringCchCatExW (tempPath, _countof(tempPath), L"FelixTest", &end, NULL, 0);
-	Assert::IsTrue (end < tempPath + _countof(tempPath) - 1);
-	end[1] = 0;
-	SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = tempPath, .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
-	SHFileOperation(&file_op);
-
-	BOOL bres = CreateDirectory(tempPath, 0);
-	Assert::IsTrue(bres);
-}
-
-TEST_MODULE_CLEANUP(ModuleCleanup)
-{
-	SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = tempPath, .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
-	SHFileOperation(&file_op);
-
-	serviceProvider = nullptr;
-}
+com_ptr<IFileNode> MakeMockFileNode (BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir);
 
 namespace FelixTests
 {
 	TEST_CLASS(ProjectTests)
 	{
+	public:
 		TEST_METHOD(PutItemsOneFile)
 		{
 			com_ptr<IVsHierarchy> hier;
@@ -751,5 +726,3 @@ namespace FelixTests
 		}
 	};
 }
-
-#pragma warning (pop)

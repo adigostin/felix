@@ -2916,7 +2916,7 @@ public:
 	}
 };
 
-HRESULT MakeProjectNode (LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject)
+FELIX_API HRESULT MakeProjectNode (LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject)
 {
 	wil::com_ptr_nothrow<ProjectNode> p = new (std::nothrow) ProjectNode(); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance (pszFilename, pszLocation, pszName, grfCreateFlags); RETURN_IF_FAILED_EXPECTED(hr);

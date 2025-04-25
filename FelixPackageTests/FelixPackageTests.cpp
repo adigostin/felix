@@ -18,7 +18,7 @@ wil::unique_hlocal_string templateFullPath;
 
 static const GUID CLSID_FelixPackage = { 0x768BC57B, 0x42A8, 0x42AB, { 0xB3, 0x89, 0x45, 0x79, 0x46, 0xC4, 0xFC, 0x6A } };
 
-static const GUID FelixProjectType = { 0xD438161C, 0xF032, 0x4014, { 0xBC, 0x5C, 0x20, 0xA8, 0x0E, 0xAF, 0xF5, 0x9B } };
+const GUID FelixProjectType = { 0xD438161C, 0xF032, 0x4014, { 0xBC, 0x5C, 0x20, 0xA8, 0x0E, 0xAF, 0xF5, 0x9B } };
 
 static const char TemplateXML[] = ""
 "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
@@ -103,7 +103,7 @@ namespace FelixTests
 
 			static const wchar_t ProjFileName[] = L"TestProject.flx";
 			com_ptr<IVsHierarchy> hier;
-			sol->CreateProject(FelixProjectType, templateFullPath.get(), tempPath, ProjFileName, CPF_CLONEFILE, IID_PPV_ARGS(&hier));
+			hr = sol->CreateProject(FelixProjectType, templateFullPath.get(), tempPath, ProjFileName, CPF_CLONEFILE, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			wil::unique_hlocal_string path;

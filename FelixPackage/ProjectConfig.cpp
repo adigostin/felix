@@ -590,7 +590,7 @@ public:
 	#pragma endregion
 };
 
-HRESULT ProjectConfig_CreateInstance (IVsHierarchy* hier, IProjectConfig** to)
+FELIX_API HRESULT ProjectConfig_CreateInstance (IVsHierarchy* hier, IProjectConfig** to)
 {
 	auto p = com_ptr(new (std::nothrow) ProjectConfig()); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance(hier); RETURN_IF_FAILED(hr);
@@ -1024,7 +1024,7 @@ struct DebuggingPageProperties
 	#pragma endregion
 };
 
-HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigAssemblerProperties** to)
+FELIX_API HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigAssemblerProperties** to)
 {
 	auto p = com_ptr (new (std::nothrow) AssemblerPageProperties()); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance(config); RETURN_IF_FAILED(hr);
@@ -1032,7 +1032,7 @@ HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, IProject
 	return S_OK;
 }
 
-HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to)
+FELIX_API HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to)
 {
 	return DebuggingPageProperties::CreateInstance(to);
 }
@@ -1262,7 +1262,7 @@ struct PrePostBuildPageProperties
 	#pragma endregion
 };
 
-HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to)
+FELIX_API HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to)
 {
 	return PrePostBuildPageProperties::CreateInstance(post, to);
 }

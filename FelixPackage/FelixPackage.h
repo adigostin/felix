@@ -1,7 +1,13 @@
 
 #pragma once
 #include "FelixPackage_h.h"
-#include "Simulator.h"
+
+// We use DLL exports only to be able to call various functions from unit test projects.
+#ifdef FELIX_EXPORTS
+#define FELIX_API __declspec(dllexport)
+#else
+#define FELIX_API __declspec(dllimport)
+#endif
 
 using unique_safearray = wil::unique_any<SAFEARRAY*, decltype(SafeArrayDestroy), &SafeArrayDestroy>;
 
@@ -107,14 +113,14 @@ extern const GUID Z80AsmLanguageGuid;
 extern const wchar_t SettingsCollection[];
 extern const wchar_t SettingLoadSavePath[];
 extern const LCID InvariantLCID;
-extern const wchar_t ProjectElementName[];
+FELIX_API extern const wchar_t ProjectElementName[];
 
 const char* PropIDToString (VSHPROPID propid);
 void PrintProperty (const char* prefix, VSHPROPID propid, const VARIANT* pvar);
 HRESULT MakeBstrFromString (const char* name, BSTR* bstr);
 HRESULT MakeBstrFromString (const char* name, size_t len, BSTR* bstr);
 HRESULT MakeBstrFromString (const char* sl_name_from, const char* sl_name_to, BSTR* to);
-HRESULT MakeBstrFromStreamOnHGlobal (IStream* stream, BSTR* pBstr);
+FELIX_API HRESULT MakeBstrFromStreamOnHGlobal (IStream* stream, BSTR* pBstr);
 
 VARIANT MakeVariantFromVSITEMID (VSITEMID itemid);
 inline HRESULT InitVariantFromVSITEMID (VSITEMID itemid, VARIANT* pvar)
@@ -124,9 +130,9 @@ inline HRESULT InitVariantFromVSITEMID (VSITEMID itemid, VARIANT* pvar)
 	return S_OK;
 }
 
-HRESULT MakeProjectNode (LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject);
-HRESULT MakeFileNode (IFileNode** file);
-HRESULT ProjectConfig_CreateInstance (IVsHierarchy* hier, IProjectConfig** to);
+FELIX_API HRESULT MakeProjectNode (LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject);
+FELIX_API HRESULT MakeFileNode (IFileNode** file);
+FELIX_API HRESULT ProjectConfig_CreateInstance (IVsHierarchy* hier, IProjectConfig** to);
 HRESULT MakeProjectFactory (IServiceProvider* sp, IVsProjectFactory** to);
 HRESULT MakePGPropertyPage (UINT titleStringResId, REFGUID pageGuid, DISPID dispidChildObj, IPropertyPage** to);
 HRESULT MakeAsmPropertyPage (IPropertyPage** to);
@@ -137,22 +143,22 @@ HRESULT MakeDebugEngine (IDebugEngine2** to);
 HRESULT MakeLaunchOptions (IFelixLaunchOptions** ppOptions);
 HRESULT GetDefaultProjectFileExtension (BSTR* ppExt);
 HRESULT SetErrorInfo1 (HRESULT errorHR, ULONG packageStringResId, LPCWSTR arg1);
-HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigAssemblerProperties** to);
-HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to);
-HRESULT MakeCustomBuildToolProperties (ICustomBuildToolProperties** to);
-HRESULT MakeProjectConfigBuilder (IVsHierarchy* hier, IProjectConfig* config,
+FELIX_API HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigAssemblerProperties** to);
+FELIX_API HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to);
+FELIX_API HRESULT MakeCustomBuildToolProperties (ICustomBuildToolProperties** to);
+FELIX_API HRESULT MakeProjectConfigBuilder (IVsHierarchy* hier, IProjectConfig* config,
 	IVsOutputWindowPane2* outputWindowPane, IProjectConfigBuilder** to);
-HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to);
+FELIX_API HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to);
 HRESULT ShowCommandLinePropertyBuilder (HWND hwndParent, BSTR valueBefore, BSTR* valueAfter);
 HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmProps, BSTR* ppCmdLine);
-HRESULT MakeFolderNode (IFolderNode** ppFolder);
+FELIX_API HRESULT MakeFolderNode (IFolderNode** ppFolder);
 BOOL LUtilFixFilename (wchar_t* strName);
 HRESULT QueryEditProjectFile (IVsHierarchy* hier);
 HRESULT GetHierarchyWindow (IVsUIHierarchyWindow** ppHierWindow);
 HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir);
-HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path);
+FELIX_API HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path);
 HRESULT FindHier (IChildNode* from, REFIID riid, void** ppvHier);
 HRESULT FindHier (IParentNode* from, REFIID riid, void** ppvHier);
-HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo);
-HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo);
+FELIX_API HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo);
+FELIX_API HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo);
 HRESULT RemoveChildFromParent (IChildNode* child);

@@ -492,13 +492,17 @@ HRESULT inline SetErrorInfo (HRESULT errorHR, LPCWSTR messageFormat, ...)
 	return errorHR;
 }
 
-#define IMPLEMENT_IDISPATCH(DISP_IID) static ITypeInfo* GetTypeInfo() { \
+#define IMPLEMENT_IDISPATCH_(DISP_IID, filename) static ITypeInfo* GetTypeInfo() { \
 		static com_ptr<ITypeInfo> _typeInfo; \
 		if (!_typeInfo) { \
-			wil::unique_process_heap_string filename; \
-			auto hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, filename); FAIL_FAST_IF_FAILED(hr); \
-			com_ptr<ITypeLib> _typeLib; \
-			hr = LoadTypeLibEx (filename.get(), REGKIND_NONE, &_typeLib); FAIL_FAST_IF_FAILED(hr); \
+			HRESULT hr; com_ptr<ITypeLib> _typeLib; \
+			if(!filename) { \
+				wil::unique_process_heap_string fn; \
+				hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, fn); FAIL_FAST_IF_FAILED(hr); \
+				hr = LoadTypeLibEx (fn.get(), REGKIND_NONE, &_typeLib); FAIL_FAST_IF_FAILED(hr); \
+			} else { \
+				hr = LoadTypeLibEx (filename, REGKIND_NONE, &_typeLib); FAIL_FAST_IF_FAILED(hr); \
+			} \
 			hr = _typeLib->GetTypeInfoOfGuid(DISP_IID, &_typeInfo); FAIL_FAST_IF_FAILED(hr); \
 		} \
 		return _typeInfo.get(); \
@@ -514,7 +518,9 @@ HRESULT inline SetErrorInfo (HRESULT errorHR, LPCWSTR messageFormat, ...)
 	} \
 	virtual HRESULT STDMETHODCALLTYPE Invoke(DISPID dispIdMember, REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr) override final { \
 		return DispInvoke (static_cast<IDispatch*>(this), GetTypeInfo(), dispIdMember, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr); \
-	} \
+	}
+
+#define IMPLEMENT_IDISPATCH(DISP_IID) IMPLEMENT_IDISPATCH_(DISP_IID,NULL)
 
 inline HRESULT copy_bstr (BSTR bstrFrom, BSTR* pbstrTo)
 {

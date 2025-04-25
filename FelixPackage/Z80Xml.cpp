@@ -319,7 +319,7 @@ static HRESULT SaveToXmlInternal (IDispatch* obj, PCWSTR elementName, DWORD flag
 	return S_OK;
 }
 
-HRESULT SaveToXml (IDispatch* obj, PCWSTR elementName, DWORD flags, IStream* to, UINT nEncodingCodePage)
+FELIX_API HRESULT SaveToXml (IDispatch* obj, PCWSTR elementName, DWORD flags, IStream* to, UINT nEncodingCodePage)
 {
 	wil::com_ptr_nothrow<IXmlWriter> writer;
 	auto hr = CreateXmlWriter(IID_PPV_ARGS(&writer), nullptr); RETURN_IF_FAILED(hr);
@@ -617,7 +617,7 @@ static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDis
 	return S_OK;
 }
 
-HRESULT LoadFromXml (IDispatch* obj, _In_opt_ PCWSTR expectedElementName, IStream* stream, UINT nEncodingCodePage)
+FELIX_API HRESULT LoadFromXml (IDispatch* obj, _In_opt_ PCWSTR expectedElementName, IStream* stream, UINT nEncodingCodePage)
 {
 	wil::com_ptr_nothrow<IXmlReader> reader;
 	auto hr = CreateXmlReader(IID_PPV_ARGS(&reader), nullptr); RETURN_IF_FAILED(hr);

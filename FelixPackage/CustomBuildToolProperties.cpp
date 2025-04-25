@@ -175,7 +175,7 @@ struct CustomBuildToolProperties
 
 };
 
-HRESULT MakeCustomBuildToolProperties (ICustomBuildToolProperties** to)
+FELIX_API HRESULT MakeCustomBuildToolProperties (ICustomBuildToolProperties** to)
 {
 	auto p = com_ptr(new (std::nothrow) CustomBuildToolProperties()); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance(); RETURN_IF_FAILED(hr);

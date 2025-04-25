@@ -40,7 +40,7 @@ struct MockProjectConfig : IProjectConfig
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IProjectConfig);
+	IMPLEMENT_IDISPATCH(__uuidof(IProjectConfig));
 
 	#pragma region IProjectConfig
 	virtual HRESULT STDMETHODCALLTYPE get___id(BSTR* value) override

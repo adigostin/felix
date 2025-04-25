@@ -21,7 +21,7 @@ const GUID Z80AsmLanguageGuid = { 0x598BC226, 0x2E96, 0x43AD, { 0xAD, 0x42, 0x67
 const wchar_t SettingsCollection[] = L"FelixSettings";
 const wchar_t SettingLoadSavePath[] = L"LoadSavePath";
 const LCID InvariantLCID = LocaleNameToLCID(LOCALE_NAME_INVARIANT, 0);
-const wchar_t ProjectElementName[] = L"Z80Project";
+FELIX_API const wchar_t ProjectElementName[] = L"Z80Project";
 static const wchar_t AlwaysReportSettingsName[] = L"AlwaysReportErrors";
 static const wchar_t BinaryFilename[] = L"ROMs/Spectrum48K.rom";
 

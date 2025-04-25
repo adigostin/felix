@@ -39,7 +39,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>$(VCInstallDir)Auxiliary\VS\UnitTest\include;$(ProjectDir);$(SolutionDir)wil\include;$(SolutionDir)shared\include;$(SolutionDir)third_party;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VCInstallDir)Auxiliary\VS\UnitTest\include;$(ProjectDir);$(SolutionDir)wil\include;$(SolutionDir)shared\include;$(SolutionDir)third_party;$(SolutionDir)FelixPackage;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp20</LanguageStandard>
@@ -57,11 +57,19 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>DebugFastLink</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(SolutionDir)third_party;$(VCInstallDir)Auxiliary\VS\UnitTest\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>/NOIMPLIB %(AdditionalOptions)</AdditionalOptions>
     </Link>
+    <PostBuildEvent>
+      <Command>REM These are needed in the output directory for running tests
+REM COPY /Y $(SolutionDir)$(Platform)\$(Configuration)\FelixPackage.dll $(SolutionDir)$(Platform)\$(Configuration)
+COPY /Y $(SolutionDir)third_party\sentry.dll $(SolutionDir)$(Platform)\$(Configuration)
+COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Configuration)
+   </Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(VCInstallDir)Auxiliary\VS\UnitTest\include;$(ProjectDir);$(SolutionDir)wil\include;$(SolutionDir)shared\include;$(SolutionDir)third_party;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VCInstallDir)Auxiliary\VS\UnitTest\include;$(ProjectDir);$(SolutionDir)wil\include;$(SolutionDir)shared\include;$(SolutionDir)third_party;$(SolutionDir)FelixPackage;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <StringPooling>true</StringPooling>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -81,21 +89,43 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalLibraryDirectories>$(SolutionDir)third_party;$(VCInstallDir)Auxiliary\VS\UnitTest\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>/NOIMPLIB %(AdditionalOptions)</AdditionalOptions>
     </Link>
+    <PostBuildEvent>
+      <Command>REM These are needed in the output directory for running tests
+COPY /Y $(SolutionDir)$(Platform)\$(Configuration)\FelixPackage.dll $(SolutionDir)$(Platform)\$(Configuration)
+COPY /Y $(SolutionDir)third_party\sentry.dll $(SolutionDir)$(Platform)\$(Configuration)
+COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Configuration)
+   </Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\FelixPackage\Tests\Mocks\MockRDT.cpp" />
-    <ClCompile Include="..\FelixPackage\Tests\Mocks\MockServiceProvider.cpp" />
-    <ClCompile Include="..\FelixPackage\Tests\Mocks\MockShell.cpp" />
-    <ClCompile Include="..\FelixPackage\Tests\Mocks\MockSolution.cpp" />
+    <ClCompile Include="BuilderTests.cpp" />
     <ClCompile Include="FelixPackageTests.cpp" />
+    <ClCompile Include="Mocks\MockFileNode.cpp" />
+    <ClCompile Include="Mocks\MockHierarchy.cpp" />
+    <ClCompile Include="Mocks\MockHierarchyEventSink.cpp" />
+    <ClCompile Include="Mocks\MockOutputWindowPane.cpp" />
+    <ClCompile Include="Mocks\MockProjectConfig.cpp" />
+    <ClCompile Include="Mocks\MockRDT.cpp" />
+    <ClCompile Include="Mocks\MockServiceProvider.cpp" />
+    <ClCompile Include="Mocks\MockShell.cpp" />
+    <ClCompile Include="Mocks\MockSolution.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="ProjectTests.cpp" />
+    <ClCompile Include="SourceFileTests.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Mocks.h" />
     <ClInclude Include="pch.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FelixPackage\FelixPackage.vcxproj">
+      <Project>{79203f4b-6f1f-4d65-ade5-d082617da696}</Project>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

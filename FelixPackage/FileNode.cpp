@@ -944,7 +944,7 @@ public:
 
 // ============================================================================
 
-HRESULT MakeFileNode (IFileNode** file)
+FELIX_API HRESULT MakeFileNode (IFileNode** file)
 {
 	com_ptr<FileNode> p = new (std::nothrow) FileNode(); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance(); RETURN_IF_FAILED(hr);

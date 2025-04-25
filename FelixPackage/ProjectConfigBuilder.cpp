@@ -827,7 +827,7 @@ public:
 	}
 };
 
-HRESULT MakeProjectConfigBuilder (IVsHierarchy* hier, IProjectConfig* config,
+FELIX_API HRESULT MakeProjectConfigBuilder (IVsHierarchy* hier, IProjectConfig* config,
 	IVsOutputWindowPane2* outputWindowPane, IProjectConfigBuilder** to)
 {
 	auto p = com_ptr(new (std::nothrow) ProjectConfigBuilder()); RETURN_IF_NULL_ALLOC(p);
