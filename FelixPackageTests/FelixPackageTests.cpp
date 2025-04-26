@@ -14,7 +14,8 @@ static GCO getClassObject;
 com_ptr<IServiceProvider> sp;
 com_ptr<IVsPackage> package;
 wchar_t tempPath[MAX_PATH + 1];
-wil::unique_hlocal_string templateFullPath;
+wil::unique_process_heap_string templateFullPath;
+wil::unique_process_heap_string TemplatePath_EmptyProject;
 
 static const GUID CLSID_FelixPackage = { 0x768BC57B, 0x42A8, 0x42AB, { 0xB3, 0x89, 0x45, 0x79, 0x46, 0xC4, 0xFC, 0x6A } };
 
@@ -31,6 +32,10 @@ static const char TemplateXML[] = ""
 "  </Items>"
 "</Z80Project>";
 
+static const char TemplateXML_EmptyProject[] = ""
+"<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+"<Z80Project Guid=\"{2839FDD7-4C8F-4772-90E6-222C702D045E}\" />";
+
 TEST_MODULE_INITIALIZE(InitModule)
 {
 	HRESULT hr;
@@ -45,11 +50,22 @@ TEST_MODULE_INITIALIZE(InitModule)
 	BOOL bres = CreateDirectory(tempPath, 0);
 	Assert::IsTrue(bres);
 
-	wil::str_concat_nothrow(templateFullPath, tempPath, L"\\template.flx");
+	wil::str_concat_nothrow(templateFullPath, tempPath, L"\\TemplateOneConfigOneFile");
+	CreateDirectory(templateFullPath.get(), nullptr);
+	wil::str_concat_nothrow(templateFullPath, L"\\proj.flx");
 	wil::unique_hfile th (CreateFile(templateFullPath.get(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
 	Assert::IsTrue(th.is_valid());
 	DWORD bytesWritten;
 	bres = WriteFile(th.get(), TemplateXML, sizeof(TemplateXML) - 1, &bytesWritten, nullptr);
+	Assert::IsTrue(bres);
+	th.reset();
+
+	wil::str_concat_nothrow(TemplatePath_EmptyProject, tempPath, L"\\TemplateEmpty");
+	CreateDirectory(TemplatePath_EmptyProject.get(), nullptr);
+	wil::str_concat_nothrow(TemplatePath_EmptyProject, L"\\proj.flx");
+	th.reset(CreateFile(TemplatePath_EmptyProject.get(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
+	Assert::IsTrue(th.is_valid());
+	bres = WriteFile(th.get(), TemplateXML_EmptyProject, sizeof(TemplateXML_EmptyProject) - 1, &bytesWritten, nullptr);
 	Assert::IsTrue(bres);
 	th.reset();
 

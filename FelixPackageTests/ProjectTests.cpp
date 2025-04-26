@@ -9,7 +9,8 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 extern com_ptr<IServiceProvider> sp;
 extern const GUID FelixProjectType = { 0xD438161C, 0xF032, 0x4014, { 0xBC, 0x5C, 0x20, 0xA8, 0x0E, 0xAF, 0xF5, 0x9B } };
-extern wil::unique_hlocal_string templateFullPath;
+extern wil::unique_process_heap_string templateFullPath;
+extern wil::unique_process_heap_string TemplatePath_EmptyProject;
 extern wchar_t tempPath[];
 
 com_ptr<IFileNode> MakeMockFileNode (BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir);
@@ -433,6 +434,37 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+		}
+
+		TEST_METHOD(AddSubFolder_FolderMissingOnDisk)
+		{
+			com_ptr<IVsSolution> sol;
+			auto hr = sp->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			static const wchar_t ProjFileName[] = L"TestProject.flx";
+			com_ptr<IVsUIHierarchy> hier;
+			hr = sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), tempPath, ProjFileName, CPF_CLONEFILE, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_variant folderItemId;
+			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &folderItemId);
+			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_variant folderSaveName;
+			hier->GetProperty(V_VSITEMID(&folderItemId), VSHPROPID_SaveName, &folderSaveName);
+			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_hlocal_string folderPath;
+			hr = wil::str_concat_nothrow (folderPath, tempPath, L"\\", folderSaveName.bstrVal);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsTrue(PathFileExists(folderPath.get()));
+			BOOL bres = RemoveDirectoryW(folderPath.get());
+			Assert::IsTrue(bres);
+
+			hr = hier->ExecCommand(V_VSITEMID(&folderItemId), &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 		}
 

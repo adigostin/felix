@@ -2805,8 +2805,10 @@ public:
 			{
 				wil::unique_hlocal_string dirPath;
 				hr = wil::str_concat_nothrow(dirPath, parentPath, L"\\", dirName); RETURN_IF_FAILED(hr);
-				if (CreateDirectory(dirPath.get(), nullptr) || GetLastError() == ERROR_ALREADY_EXISTS)
+				int ires = SHCreateDirectoryExW(nullptr, dirPath.get(), nullptr);
+				if (ires == 0 || ires == ERROR_ALREADY_EXISTS)
 					break;
+				RETURN_WIN32(ires);
 			}
 
 			i++;
