@@ -321,8 +321,21 @@ namespace FelixTests
 
 		TEST_METHOD(AddSubFolderCommand)
 		{
+			HRESULT hr;
+
+			wchar_t projDir[MAX_PATH];
+			swprintf_s(projDir, L"%s\\AddSubFolderCommand\0", &tempPath[0]);
+			if (PathFileExists(projDir))
+			{
+				SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = projDir, .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
+				int ires = SHFileOperation(&file_op);
+				Assert::AreEqual(0, ires);
+			}
+			BOOL bres = CreateDirectory(projDir, 0);
+			Assert::IsTrue(bres);
+
 			com_ptr<IVsUIHierarchy> hier;
-			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			hr = MakeProjectNode (nullptr, projDir, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
@@ -334,6 +347,13 @@ namespace FelixTests
 			wil::unique_variant folderDisp;
 			hr = hier->GetProperty(V_VSITEMID(&folderItemId), VSHPROPID_BrowseObject, &folderDisp);
 			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_variant folderSaveName;
+			hier->GetProperty(V_VSITEMID(&folderItemId), VSHPROPID_SaveName, &folderSaveName);
+			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_hlocal_string folderPath;
+			hr = wil::str_concat_nothrow (folderPath, projDir, L"\\", folderSaveName.bstrVal);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsTrue(PathFileExists(folderPath.get()));
 
 			wil::unique_variant expandable;
 			hr = hier->GetProperty(V_VSITEMID(&folderItemId), VSHPROPID_Expandable, &expandable);
@@ -365,6 +385,13 @@ namespace FelixTests
 			com_ptr<IFolderNodeProperties> folderProps;
 			hr = subFolderDisp.pdispVal->QueryInterface(IID_PPV_ARGS(&folderProps));
 			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_variant subFolderSaveName;
+			hier->GetProperty(V_VSITEMID(&subFolderItemId), VSHPROPID_SaveName, &subFolderSaveName);
+			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_hlocal_string subFolderPath;
+			hr = wil::str_concat_nothrow (subFolderPath, folderPath, L"\\", subFolderSaveName.bstrVal);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsTrue(PathFileExists(subFolderPath.get()));
 
 			Assert::IsTrue(expandableChanged);
 

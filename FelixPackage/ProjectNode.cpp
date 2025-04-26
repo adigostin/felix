@@ -2764,13 +2764,18 @@ public:
 		HRESULT hr;
 
 		com_ptr<IParentNode> parent;
+		wil::unique_process_heap_string parentPath;
 		if (parentItemId == VSITEMID_ROOT)
+		{
 			parent = this;
+			parentPath = wil::make_process_heap_string_nothrow(_location.get()); RETURN_IF_NULL_ALLOC(parentPath);
+		}
 		else
 		{
 			com_ptr<IChildNode> node;
 			hr = FindDescendant(parentItemId, &node); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_INVALIDARG, hr == S_FALSE);
 			hr = node->QueryInterface(IID_PPV_ARGS(&parent)); RETURN_IF_FAILED(hr);
+			hr = GetPathOf (node, parentPath); RETURN_IF_FAILED(hr);
 		}
 
 		com_ptr<IVsShell> shell;
@@ -2799,7 +2804,7 @@ public:
 			if (!nameExists)
 			{
 				wil::unique_hlocal_string dirPath;
-				hr = wil::str_concat_nothrow(dirPath, _location, L"\\", dirName); RETURN_IF_FAILED(hr);
+				hr = wil::str_concat_nothrow(dirPath, parentPath, L"\\", dirName); RETURN_IF_FAILED(hr);
 				if (CreateDirectory(dirPath.get(), nullptr) || GetLastError() == ERROR_ALREADY_EXISTS)
 					break;
 			}
