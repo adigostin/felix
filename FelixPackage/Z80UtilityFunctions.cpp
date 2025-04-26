@@ -694,11 +694,8 @@ FELIX_API HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo)
 }
 
 // Enum depth-first (just because it's simpler) post-order mode (so that children clear their ItemId before parent).
-static HRESULT ClearItemIdsTree (IChildNode* child)
+static HRESULT ClearItemIdsTree (IProjectNode* root, IChildNode* child)
 {
-	com_ptr<IProjectNode> root;
-	auto hr = FindHier(child, IID_PPV_ARGS(&root)); RETURN_IF_FAILED(hr);
-
 	stdext::inplace_function<HRESULT(IChildNode*)> enumNodeAndChildren;
 
 	enumNodeAndChildren = [root, &enumNodeAndChildren](IChildNode* node) -> HRESULT
@@ -732,17 +729,17 @@ static HRESULT ClearItemIdsTree (IChildNode* child)
 	return enumNodeAndChildren(child);
 }
 
-HRESULT RemoveChildFromParent (IChildNode* node)
+HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* node)
 {
 	HRESULT hr;
 
 	com_ptr<IParentNode> parent;
 	hr = node->GetParent(&parent); RETURN_IF_FAILED(hr);
 
-	hr = ClearItemIdsTree(node); RETURN_IF_FAILED(hr);
+	hr = ClearItemIdsTree(root, node); RETURN_IF_FAILED(hr);
 
 	if (parent->FirstChild() == node)
-		parent->SetFirstChild(nullptr);
+		parent->SetFirstChild(node->Next());
 	else
 	{
 		auto prev = parent->FirstChild();
@@ -750,8 +747,9 @@ HRESULT RemoveChildFromParent (IChildNode* node)
 			prev = prev->Next();
 		RETURN_HR_IF(E_UNEXPECTED, !prev->Next());
 		prev->SetNext(node->Next());
-		node->SetNext(nullptr);
 	}
+
+	node->SetNext(nullptr);
 
 	return S_OK;
 }

@@ -2343,7 +2343,7 @@ public:
 				hr = solution->CloseSolutionElement (slnCloseOpts, nullptr, docCookie); RETURN_IF_FAILED_EXPECTED(hr);
 			}
 
-			hr = RemoveChildFromParent(d); RETURN_IF_FAILED(hr);
+			hr = RemoveChildFromParent(this, d); RETURN_IF_FAILED(hr);
 
 			if (dwDelItemOp == DELITEMOP_DeleteFromStorage)
 			{
@@ -2358,9 +2358,6 @@ public:
 			}
 
 			_isDirty = true;
-
-			for (auto& sink : _hierarchyEventSinks)
-				sink.second->OnItemDeleted(d->GetItemId());
 		}
 
 		return S_OK;

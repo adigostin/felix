@@ -274,6 +274,42 @@ namespace FelixTests
 		{
 		}
 
+		TEST_METHOD(RemoveItem_FirstOfTwo)
+		{
+			com_ptr<IVsSolution> sol;
+			auto hr = sp->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol)); Assert::IsTrue(SUCCEEDED(hr));
+
+			com_ptr<IVsUIHierarchy> hier;
+			hr = sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), tempPath, L"TestProject.flx", CPF_CLONEFILE, IID_PPV_ARGS(&hier)); Assert::IsTrue(SUCCEEDED(hr));
+
+			com_ptr<IVsProject> proj;
+			hr = hier->QueryInterface(IID_PPV_ARGS(&proj)); Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_process_heap_string path1;
+			wil::str_concat_nothrow(path1, tempPath, L"\\file1.asm");
+			wil::unique_process_heap_string path2;
+			wil::str_concat_nothrow(path2, tempPath, L"\\file2.asm");
+			const wchar_t* files[] = { path1.get(), path2.get() };
+			VSADDRESULT addResult;
+			hr = proj->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, _countof(files), files, nullptr, &addResult); Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<DWORD>(ADDRESULT_Success, addResult);
+
+			wil::unique_variant file1ItemId;
+			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &file1ItemId); Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_variant file2ItemId;
+			hr = hier->GetProperty(V_VSITEMID(&file1ItemId), VSHPROPID_NextSibling, &file2ItemId); Assert::IsTrue(SUCCEEDED(hr));
+
+			com_ptr<IVsHierarchyDeleteHandler3> dh;
+			hr = hier->QueryInterface(IID_PPV_ARGS(&dh)); Assert::IsTrue(SUCCEEDED(hr));
+			hr = dh->DeleteItems(1, DELITEMOP_RemoveFromProject, (VSITEMID*)&V_VSITEMID(&file1ItemId), DHO_SUPPRESS_UI); Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_variant firstChildItemId;
+			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &firstChildItemId); Assert::IsTrue(SUCCEEDED(hr));
+
+			Assert::AreEqual(V_VSITEMID(&file2ItemId), V_VSITEMID(&firstChildItemId));
+		}
+
 		TEST_METHOD(AddFolderCommand)
 		{
 			com_ptr<IVsUIHierarchy> hier;
