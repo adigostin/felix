@@ -13,8 +13,6 @@ extern wil::unique_process_heap_string templateFullPath;
 extern wil::unique_process_heap_string TemplatePath_EmptyProject;
 extern wchar_t tempPath[];
 
-com_ptr<IFileNode> MakeMockFileNode (BuildToolKind buildTool, LPCWSTR pathRelativeToProjectDir);
-
 namespace FelixTests
 {
 	TEST_CLASS(ProjectTests)
@@ -26,7 +24,7 @@ namespace FelixTests
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto file = MakeMockFileNode(BuildToolKind::Assembler, L"test.asm");
+			auto file = MakeFileNode(L"test.asm");
 			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, file->GetItemId());
 
 			{
@@ -63,8 +61,8 @@ namespace FelixTests
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto file1 = MakeMockFileNode(BuildToolKind::Assembler, L"file1.asm");
-			auto file2 = MakeMockFileNode(BuildToolKind::Assembler, L"testfolder/file2.asm");
+			auto file1 = MakeFileNode(L"file1.asm");
+			auto file2 = MakeFileNode(L"testfolder/file2.asm");
 
 			com_ptr<IFolderNode> folder;
 
@@ -122,8 +120,8 @@ namespace FelixTests
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto file1 = MakeMockFileNode(BuildToolKind::Assembler, L"testfolder1/file1.asm");
-			auto file2 = MakeMockFileNode(BuildToolKind::Assembler, L"testfolder2/file2.asm");
+			auto file1 = MakeFileNode(L"testfolder1/file1.asm");
+			auto file2 = MakeFileNode(L"testfolder2/file2.asm");
 			com_ptr<IFolderNode> folder1;
 			com_ptr<IFolderNode> folder2;
 
@@ -183,10 +181,10 @@ namespace FelixTests
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto file1 = MakeMockFileNode(BuildToolKind::Assembler, L"file1.asm");
-			auto file2 = MakeMockFileNode(BuildToolKind::Assembler, L"file2.asm");
-			auto file3 = MakeMockFileNode(BuildToolKind::Assembler, L"file3.asm");
-			auto file4 = MakeMockFileNode(BuildToolKind::Assembler, L"file4.asm");
+			auto file1 = MakeFileNode(L"file1.asm");
+			auto file2 = MakeFileNode(L"file2.asm");
+			auto file3 = MakeFileNode(L"file3.asm");
+			auto file4 = MakeFileNode(L"file4.asm");
 
 			{
 				SAFEARRAYBOUND bound = { .cElements = 4, .lLbound = 0 };
@@ -244,7 +242,7 @@ namespace FelixTests
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto file = MakeMockFileNode(BuildToolKind::Assembler, L"file.asm");
+			auto file = MakeFileNode(L"file.asm");
 			SAFEARRAYBOUND bound = { .cElements = 1, .lLbound = 0 };
 			auto sa = unique_safearray(SafeArrayCreate(VT_DISPATCH, 1, &bound));
 			LONG i = 0;
@@ -635,9 +633,7 @@ namespace FelixTests
 			hr = AddFolderToParent(folder1, hier1.try_query<IParentNode>());
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			com_ptr<IFileNode> file1;
-			hr = MakeFileNode(&file1);
-			hr = file1.try_query<IFileNodeProperties>()->put_Path(wil::make_bstr_nothrow(L"folder/test.asm").get());
+			auto file1 = MakeFileNode(L"folder/test.asm");
 			hr = AddFileToParent(file1, folder1.try_query<IParentNode>());
 
 			// ------------------------------------------------

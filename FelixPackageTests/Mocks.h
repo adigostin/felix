@@ -17,8 +17,9 @@ extern com_ptr<IServiceProvider> MakeMockServiceProvider();
 using PropChangedCallback = stdext::inplace_function<void(VSITEMID itemid, VSHPROPID propid, DWORD flags)>;
 com_ptr<IVsHierarchyEvents> MakeMockHierarchyEventSink (PropChangedCallback propChanged);
 
-extern void WriteFileOnDisk(const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir, const char* fileContent = nullptr);
-extern void DeleteFileOnDisk(const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir);
+com_ptr<IFileNode> MakeFileNode (const wchar_t* pathRelativeToProjectDir);
+void WriteFileOnDisk(const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir, const char* fileContent = nullptr);
+void DeleteFileOnDisk(const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir);
 
 inline VSITEMID GetProperty_VSITEMID (IVsHierarchy* hier, VSITEMID itemid, VSHPROPID propid)
 {

@@ -6,7 +6,7 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-struct MockVsHierarchy : IVsHierarchy, IProjectNodeProperties, IProjectNode, IParentNode
+struct MockVsHierarchy : IVsHierarchy, IProjectNodeProperties, IProjectNode, IParentNode, IPropertyNotifySink
 {
 	ULONG _refCount = 0;
 	wil::unique_bstr _projectDir;
@@ -31,6 +31,7 @@ struct MockVsHierarchy : IVsHierarchy, IProjectNodeProperties, IProjectNode, IPa
 			|| TryQI<IProjectNode>(this, riid, ppvObject)
 			|| TryQI<IParentNode>(this, riid, ppvObject)
 			|| TryQI<INode>(this, riid, ppvObject)
+			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -221,6 +222,18 @@ struct MockVsHierarchy : IVsHierarchy, IProjectNodeProperties, IProjectNode, IPa
 	{
 		*ppSinks = nullptr;
 		return S_FALSE;
+	}
+	#pragma endregion
+
+	#pragma region IPropertyNotifySink
+	virtual HRESULT STDMETHODCALLTYPE OnChanged (DISPID dispID) override
+	{
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnRequestEdit (DISPID dispID) override
+	{
+		return E_NOTIMPL;
 	}
 	#pragma endregion
 };
