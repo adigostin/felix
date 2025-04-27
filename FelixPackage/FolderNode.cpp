@@ -318,8 +318,6 @@ public:
 	}
 	#pragma endregion
 
-	#pragma warning(push)
-	#pragma warning(disable: 4995)
 	HRESULT RenameDirOnFileSystem (const wchar_t* proposedName, BSTR* pbstrNewName)
 	{
 		HRESULT hr;
@@ -376,7 +374,6 @@ public:
 
 		return S_OK;
 	}
-	#pragma warning(pop)
 };
 
 FELIX_API HRESULT MakeFolderNode (IFolderNode** ppFolder)
