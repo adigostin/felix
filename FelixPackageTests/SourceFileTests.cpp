@@ -10,12 +10,16 @@ namespace FelixTests
 	{
 		TEST_METHOD(SourceFileUnnamedTest)
 		{
-			auto hier = MakeMockVsHierarchy(tempPath);
+			HRESULT hr;
+
+			com_ptr<IVsHierarchy> hier;
+			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
 			auto config = MakeProjectConfig(hier);
 			auto pane = MakeMockOutputWindowPane(nullptr);
 
 			com_ptr<IFileNode> file;
-			auto hr = MakeFileNode(&file);
+			hr = MakeFileNode(&file);
 			Assert::IsTrue(SUCCEEDED(hr));
 			hr = AddFileToParent(file, hier.try_query<IParentNode>());
 			Assert::IsTrue(SUCCEEDED(hr));

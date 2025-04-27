@@ -43,12 +43,14 @@ namespace FelixTests
 	{
 		TEST_METHOD(BuildFailsOnEmptyProject)
 		{
-			auto hier = MakeMockVsHierarchy(tempPath);
+			com_ptr<IVsHierarchy> hier;
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
 			auto config = MakeProjectConfig(hier);
 			auto pane = MakeMockOutputWindowPane(nullptr);
 
 			com_ptr<IProjectConfigBuilder> builder;
-			auto hr = MakeProjectConfigBuilder (hier, config, pane, &builder);
+			hr = MakeProjectConfigBuilder (hier, config, pane, &builder);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			hr = builder->StartBuild (nullptr);
@@ -57,10 +59,12 @@ namespace FelixTests
 
 		TEST_METHOD(ProjectConfigHasPrePostBuildProps)
 		{
-			auto hier = MakeMockVsHierarchy(tempPath);
+			com_ptr<IVsHierarchy> hier;
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
 
 			com_ptr<IProjectConfig> config;
-			auto hr = ProjectConfig_CreateInstance(hier, &config);
+			hr = ProjectConfig_CreateInstance(hier, &config);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			com_ptr<IProjectConfigPrePostBuildProperties> props;
@@ -76,7 +80,9 @@ namespace FelixTests
 		static com_ptr<IProjectConfigBuilder> MakeSjasmProjectBuilder (const char* asmFileContent)
 		{
 			HRESULT hr;
-			auto hier = MakeMockVsHierarchy (tempPath);
+			com_ptr<IVsHierarchy> hier;
+			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
 			auto sourceFile = MakeFileNode(L"test.asm");
 			hr = sourceFile.try_query<IFileNodeProperties>()->put_BuildTool(BuildToolKind::Assembler);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -177,7 +183,9 @@ namespace FelixTests
 		{
 			HRESULT hr;
 
-			auto hier = MakeMockVsHierarchy(tempPath);
+			com_ptr<IVsHierarchy> hier;
+			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
 			auto sourceFile = MakeFileNode(sourceFileName);
 			if (sourceFileContent)
 				WriteFileOnDisk(tempPath, sourceFileName, sourceFileContent);
@@ -434,7 +442,9 @@ namespace FelixTests
 		{
 			HRESULT hr;
 
-			auto hier = MakeMockVsHierarchy(tempPath);
+			com_ptr<IVsHierarchy> hier;
+			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
 			auto config = MakeProjectConfig(hier);
 
 			com_ptr<IProjectConfigPrePostBuildProperties> preBuildProps;

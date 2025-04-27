@@ -102,7 +102,6 @@ COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Conf
   <ItemGroup>
     <ClCompile Include="BuilderTests.cpp" />
     <ClCompile Include="FelixPackageTests.cpp" />
-    <ClCompile Include="Mocks\MockHierarchy.cpp" />
     <ClCompile Include="Mocks\MockHierarchyEventSink.cpp" />
     <ClCompile Include="Mocks\MockOutputWindowPane.cpp" />
     <ClCompile Include="Mocks\MockRDT.cpp" />
