@@ -343,91 +343,88 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE QueryStatus (const GUID *pguidCmdGroup, ULONG cCmds, OLECMD prgCmds[], OLECMDTEXT *pCmdText) override
+	virtual HRESULT STDMETHODCALLTYPE QueryStatusCommand (const GUID *pguidCmdGroup, OLECMD* pCmd, OLECMDTEXT *pCmdText) override
 	{
 		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97)
 		{
 			// These are the cmdidXxxYyy constants from stdidcmd.h
-			for (ULONG i = 0; i < cCmds; i++)
+			if (pCmd->cmdID >= 0xF000)
 			{
-				if (prgCmds[i].cmdID >= 0xF000)
+				// debugger stuff, ignored for now
+				pCmd->cmdf = OLECMDF_SUPPORTED;
+			}
+			else if (pCmd->cmdID >= 946 && pCmd->cmdID <= 957)
+			{
+				// refactoring stuff
+				pCmd->cmdf = 0;
+			}
+			else if (pCmd->cmdID >= 122 && pCmd->cmdID <= cmdidSelectAllFields)
+			{
+				// database stuff
+				pCmd->cmdf = 0;
+			}
+			else
+			{
+				switch (pCmd->cmdID)
 				{
-					// debugger stuff, ignored for now
-					prgCmds[i].cmdf = OLECMDF_SUPPORTED;
-				}
-				else if (prgCmds[i].cmdID >= 946 && prgCmds[i].cmdID <= 957)
-				{
-					// refactoring stuff
-					prgCmds[i].cmdf = 0;
-				}
-				else if (prgCmds[i].cmdID >= 122 && prgCmds[i].cmdID <= cmdidSelectAllFields)
-				{
+					case cmdidCopy: // 15
+					case cmdidCut: // 16
+					case cmdidMultiLevelRedo: // 30
+					case cmdidMultiLevelUndo: // 44
+					case cmdidNewProject: // 216
+					case cmdidFileOpen: // 222
+					case cmdidSaveSolution: // 224
+					case cmdidGoto: // 231
+					case cmdidOpen: // 261
+					case cmdidFindInFiles: // 277
+					case cmdidShellNavBackward: // 809
+					case cmdidShellNavForward: // 810
+						pCmd->cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
+						break;
+
+					case cmdidSaveProjectItem: // 331
+					case cmdidSaveProjectItemAs: // 226
+						// TODO: enable it only if it's in the running document list
+						pCmd->cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
+						break;
+
 					// database stuff
-					prgCmds[i].cmdf = 0;
-				}
-				else
-				{
-					switch (prgCmds[i].cmdID)
-					{
-						case cmdidCopy: // 15
-						case cmdidCut: // 16
-						case cmdidMultiLevelRedo: // 30
-						case cmdidMultiLevelUndo: // 44
-						case cmdidNewProject: // 216
-						case cmdidFileOpen: // 222
-						case cmdidSaveSolution: // 224
-						case cmdidGoto: // 231
-						case cmdidOpen: // 261
-						case cmdidFindInFiles: // 277
-						case cmdidShellNavBackward: // 809
-						case cmdidShellNavForward: // 810
-							prgCmds[i].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
-							break;
+					case cmdidVerifySQL: // 107
+					case cmdidPrimaryKey: // 109
+					case cmdidSortAscending: // 112
+					case cmdidSortDescending: // 113
+					case cmdidAppendQuery: // 114
+					case cmdidDeleteQuery: // 116
+					case cmdidMakeTableQuery: // 117
+					case cmdidSelectQuery: // 118
+					case cmdidUpdateQuery: // 119
+					case cmdidTotals: // 121
+					case cmdidRemoveFilter: // 164
+					case cmdidJoinLeftAll: // 169
+					case cmdidJoinRightAll: // 170
+					case cmdidAddToOutput: // 171
+					case cmdidGenerateChangeScript: // 173
+					case cmdidRunQuery: // 201
+					case cmdidClearQuery: // 202
+					case cmdidPropertyPages: // 232
+					case cmdidInsertValuesQuery: // 309
+						pCmd->cmdf = 0;
+						break;
 
-						case cmdidSaveProjectItem: // 331
-						case cmdidSaveProjectItemAs: // 226
-							// TODO: enable it only if it's in the running document list
-							prgCmds[i].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
-							break;
+					case cmdidOpenWith: // 199
+					case cmdidViewForm: // 332
+					case cmdidExceptions: // 339
+					case cmdidViewCode: // 333
+					case cmdidPreviewInBrowser: // 334
+					case cmdidBrowseWith: // 336
+					case cmdidPropSheetOrProperties: // 397
+					case cmdidSolutionCfg:        // 684 - if we say "not supported" here, it seems VS will look in the project afterwards
+					case cmdidSolutionCfgGetList: // 685 - same
+						pCmd->cmdf = 0;
+						break;
 
-						// database stuff
-						case cmdidVerifySQL: // 107
-						case cmdidPrimaryKey: // 109
-						case cmdidSortAscending: // 112
-						case cmdidSortDescending: // 113
-						case cmdidAppendQuery: // 114
-						case cmdidDeleteQuery: // 116
-						case cmdidMakeTableQuery: // 117
-						case cmdidSelectQuery: // 118
-						case cmdidUpdateQuery: // 119
-						case cmdidTotals: // 121
-						case cmdidRemoveFilter: // 164
-						case cmdidJoinLeftAll: // 169
-						case cmdidJoinRightAll: // 170
-						case cmdidAddToOutput: // 171
-						case cmdidGenerateChangeScript: // 173
-						case cmdidRunQuery: // 201
-						case cmdidClearQuery: // 202
-						case cmdidPropertyPages: // 232
-						case cmdidInsertValuesQuery: // 309
-							prgCmds[i].cmdf = 0;
-							break;
-
-						case cmdidOpenWith: // 199
-						case cmdidViewForm: // 332
-						case cmdidExceptions: // 339
-						case cmdidViewCode: // 333
-						case cmdidPreviewInBrowser: // 334
-						case cmdidBrowseWith: // 336
-						case cmdidPropSheetOrProperties: // 397
-						case cmdidSolutionCfg:        // 684 - if we say "not supported" here, it seems VS will look in the project afterwards
-						case cmdidSolutionCfgGetList: // 685 - same
-							prgCmds[i].cmdf = 0;
-							break;
-
-						default:
-							prgCmds[i].cmdf = 0;
-					}
+					default:
+						pCmd->cmdf = 0;
 				}
 			}
 
@@ -436,17 +433,14 @@ public:
 
 		if (*pguidCmdGroup == CMDSETID_StandardCommandSet2K)
 		{
-			for (ULONG i = 0; i < cCmds; i++)
+			switch (pCmd->cmdID)
 			{
-				switch (prgCmds[i].cmdID)
-				{
-					case ECMD_SLNREFRESH: // 222 - button in Solution Explorer
-						prgCmds[i].cmdf = OLECMDF_SUPPORTED;
-						break;
+				case ECMD_SLNREFRESH: // 222 - button in Solution Explorer
+					pCmd->cmdf = OLECMDF_SUPPORTED;
+					break;
 
-					default:
-						prgCmds[i].cmdf = 0;
-				}
+				default:
+					pCmd->cmdf = 0;
 			}
 
 			return S_OK;
@@ -454,18 +448,15 @@ public:
 
 		if (*pguidCmdGroup == CMDSETID_StandardCommandSet10)
 		{
-			for (ULONG i = 0; i < cCmds; i++)
+			switch (pCmd->cmdID)
 			{
-				switch (prgCmds[i].cmdID)
-				{
-					case cmdidShellNavigate1First: // 1000
-					case cmdidExtensionManager: // 3000
-						prgCmds[i].cmdf = 0;
-						break;
+				case cmdidShellNavigate1First: // 1000
+				case cmdidExtensionManager: // 3000
+					pCmd->cmdf = 0;
+					break;
 
-					default:
-						prgCmds[i].cmdf = 0;
-				}
+				default:
+					pCmd->cmdf = 0;
 			}
 
 			return S_OK;
@@ -473,17 +464,14 @@ public:
 
 		if (*pguidCmdGroup == CMDSETID_StandardCommandSet11)
 		{
-			for (ULONG i = 0; i < cCmds; i++)
+			switch (pCmd->cmdID)
 			{
-				switch (prgCmds[i].cmdID)
-				{
-					case cmdidStartupProjectProperties: // 21
-						prgCmds[i].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
-						break;
+				case cmdidStartupProjectProperties: // 21
+					pCmd->cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
+					break;
 
-					default:
-						prgCmds[i].cmdf = 0;
-				}
+				default:
+					pCmd->cmdf = 0;
 			}
 
 			return S_OK;
@@ -584,7 +572,7 @@ public:
 		#endif
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE Exec (const GUID *pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT *pvaIn, VARIANT *pvaOut) override
+	virtual HRESULT STDMETHODCALLTYPE ExecCommand (const GUID *pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT *pvaIn, VARIANT *pvaOut) override
 	{
 		HRESULT hr;
 

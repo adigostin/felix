@@ -139,11 +139,11 @@ struct MockFileNode : IFileNode, IFileNodeProperties
 	{
 		return E_NOTIMPL;
 	}
-	HRESULT STDMETHODCALLTYPE QueryStatus(const GUID* pguidCmdGroup, ULONG cCmds, OLECMD prgCmds[], OLECMDTEXT* pCmdText) override
+	HRESULT STDMETHODCALLTYPE QueryStatusCommand (const GUID* pguidCmdGroup, OLECMD* pCmd, OLECMDTEXT* pCmdText) override
 	{
 		return E_NOTIMPL;
 	}
-	HRESULT STDMETHODCALLTYPE Exec(const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT* pvaIn, VARIANT* pvaOut) override
+	HRESULT STDMETHODCALLTYPE ExecCommand (const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT* pvaIn, VARIANT* pvaOut) override
 	{
 		return E_NOTIMPL;
 	}

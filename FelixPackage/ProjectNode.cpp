@@ -1360,7 +1360,11 @@ public:
 
 		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
-			return d->QueryStatus (pguidCmdGroup, cCmds, prgCmds, pCmdText);
+		{
+			if (cCmds == 1)
+				return d->QueryStatusCommand (pguidCmdGroup, prgCmds, pCmdText);
+			RETURN_HR(E_NOTIMPL);
+		}
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
@@ -1388,7 +1392,7 @@ public:
 
 		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
-			return d->Exec (pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
+			return d->ExecCommand (pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
