@@ -1785,15 +1785,20 @@ public:
 
 		RETURN_HR_IF_NULL(E_INVALIDARG, pszFullPathSource);
 		RETURN_HR_IF_NULL(E_INVALIDARG, pszNewFileName);
+		RETURN_HR_IF(E_INVALIDARG, !!wcspbrk(pszNewFileName, L":/\\"));
 		RETURN_HR_IF_NULL(E_POINTER, ppNewNode);
 
+		// The user chose a hierarchy node as location, but that node may or may not have
+		// a corresponding directory in the file system. Let's make sure the directory exists.
 		wil::unique_process_heap_string locationDir;
-		hr = CreatePathOfNode(location, locationDir); RETURN_IF_FAILED(hr);
+		hr = CreatePathOfNode(location, locationDir); RETURN_IF_FAILED_EXPECTED(hr);
 
 		wil::unique_hlocal_string dest;
 		hr = wil::str_concat_nothrow (dest, locationDir, L"\\", pszNewFileName); RETURN_IF_FAILED(hr);
 
-		BOOL bres = CopyFile(pszFullPathSource, dest.get(), TRUE); RETURN_LAST_ERROR_IF(!bres);
+		BOOL bres = CopyFile(pszFullPathSource, dest.get(), TRUE);
+		if (!bres)
+			return HRESULT_FROM_WIN32(GetLastError());
 
 		// template was read-only, but our file should not be
 		SetFileAttributes(dest.get(), FILE_ATTRIBUTE_ARCHIVE);
@@ -1874,7 +1879,6 @@ public:
 			case VSADDITEMOP_CLONEFILE:
 			{
 				// Add New File
-				RETURN_HR_IF(E_INVALIDARG, wcspbrk(pszItemName, L":/\\") != nullptr);
 				RETURN_HR_IF(E_INVALIDARG, cFilesToOpen != 1);
 				com_ptr<IChildNode> pNewNode;
 				hr = AddNewFile (location, rgpszFilesToOpen[0], pszItemName, &pNewNode); RETURN_IF_FAILED_EXPECTED(hr);
