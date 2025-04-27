@@ -105,7 +105,6 @@ COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Conf
     <ClCompile Include="Mocks\MockHierarchy.cpp" />
     <ClCompile Include="Mocks\MockHierarchyEventSink.cpp" />
     <ClCompile Include="Mocks\MockOutputWindowPane.cpp" />
-    <ClCompile Include="Mocks\MockProjectConfig.cpp" />
     <ClCompile Include="Mocks\MockRDT.cpp" />
     <ClCompile Include="Mocks\MockServiceProvider.cpp" />
     <ClCompile Include="Mocks\MockShell.cpp" />

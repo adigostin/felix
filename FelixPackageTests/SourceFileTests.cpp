@@ -11,7 +11,7 @@ namespace FelixTests
 		TEST_METHOD(SourceFileUnnamedTest)
 		{
 			auto hier = MakeMockVsHierarchy(tempPath);
-			auto config = MakeMockProjectConfig(hier);
+			auto config = MakeProjectConfig(hier);
 			auto pane = MakeMockOutputWindowPane(nullptr);
 
 			com_ptr<IFileNode> file;

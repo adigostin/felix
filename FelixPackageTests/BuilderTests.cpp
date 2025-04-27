@@ -44,7 +44,7 @@ namespace FelixTests
 		TEST_METHOD(BuildFailsOnEmptyProject)
 		{
 			auto hier = MakeMockVsHierarchy(tempPath);
-			auto config = MakeMockProjectConfig(hier);
+			auto config = MakeProjectConfig(hier);
 			auto pane = MakeMockOutputWindowPane(nullptr);
 
 			com_ptr<IProjectConfigBuilder> builder;
@@ -86,7 +86,7 @@ namespace FelixTests
 				DeleteFileOnDisk(tempPath, L"test.asm");
 			hr = AddFileToParent(sourceFile, hier.try_query<IParentNode>());
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto config = MakeMockProjectConfig(hier);
+			auto config = MakeProjectConfig(hier);
 			auto pane = MakeMockOutputWindowPane(nullptr);
 			com_ptr<IProjectConfigBuilder> builder;
 			hr = MakeProjectConfigBuilder (hier, config, pane, &builder);
@@ -195,7 +195,7 @@ namespace FelixTests
 			hr = cbtProps->put_CommandLine(wil::make_bstr_nothrow(cbtCmdLine).get());
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto config = MakeMockProjectConfig(hier);
+			auto config = MakeProjectConfig(hier);
 			auto pane = MakeMockOutputWindowPane(outputStreamUTF16);
 
 			com_ptr<IProjectConfigBuilder> builder;
@@ -435,7 +435,7 @@ namespace FelixTests
 			HRESULT hr;
 
 			auto hier = MakeMockVsHierarchy(tempPath);
-			auto config = MakeMockProjectConfig(hier);
+			auto config = MakeProjectConfig(hier);
 
 			com_ptr<IProjectConfigPrePostBuildProperties> preBuildProps;
 			hr = config->get_PreBuildProperties(&preBuildProps);

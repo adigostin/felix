@@ -17,6 +17,16 @@ com_ptr<IFileNode> MakeFileNode (const wchar_t* pathRelativeToProjectDir)
 	return f;
 }
 
+com_ptr<IProjectConfig> MakeProjectConfig (IVsHierarchy* hier)
+{
+	com_ptr<IProjectConfig> config;
+	auto hr = ProjectConfig_CreateInstance(hier, &config);
+	Assert::IsTrue(SUCCEEDED(hr));
+	hr = config->put_ConfigName(wil::make_bstr_nothrow(L"Debug").get());
+	Assert::IsTrue(SUCCEEDED(hr));
+	return config;
+}
+
 void WriteFileOnDisk (const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir, const char* fileContent)
 {
 	wchar_t mkDoc[MAX_PATH];
