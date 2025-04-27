@@ -267,7 +267,7 @@ public:
 		return enumChildren(this);
 	}
 	
-	// Returns S_OK when found, S_FALSE when not found, error code when it couldn't search.
+	// Returns S_OK when found, S_FALSE when not found.
 	HRESULT FindDescendant (VSITEMID itemid, IChildNode** ppItem)
 	{
 		if (ppItem)
@@ -1266,11 +1266,6 @@ public:
 				)
 				return OLECMDERR_E_NOTSUPPORTED;
 
-			if (nCmdID == cmdidAddNewItem) // 220
-				return ProcessCommandAddItem(TRUE);
-			if (nCmdID == cmdidAddExistingItem) // 244
-				return ProcessCommandAddItem(FALSE);
-
 			return OLECMDERR_E_NOTSUPPORTED;
 		}
 
@@ -1300,7 +1295,7 @@ public:
 		return OLECMDERR_E_UNKNOWNGROUP;
 	}
 
-	HRESULT ProcessCommandAddItem (BOOL fAddNewItem)
+	HRESULT ProcessCommandAddItem (VSITEMID location, BOOL fAddNewItem)
 	{
 		wil::com_ptr_nothrow<IVsAddProjectItemDlg> dlg;
 		auto hr = _sp->QueryService(SID_SVsAddProjectItemDlg, &dlg); RETURN_IF_FAILED(hr);
@@ -1312,7 +1307,7 @@ public:
 
 		// TODO: To specify a sticky behavior for the location field, which is the recommended behavior, remember the last location field value and pass it back in when you open the dialog box again.
 		// TODO: To specify sticky behavior for the filter field, which is the recommended behavior, remember the last filter field value and pass it back in when you open the dialog box again.
-		hr = dlg->AddProjectItemDlg (VSITEMID_ROOT, __uuidof(IProjectNodeProperties), this, flags, nullptr, nullptr, nullptr, nullptr, nullptr);
+		hr = dlg->AddProjectItemDlg (location, __uuidof(IProjectNodeProperties), this, flags, nullptr, nullptr, nullptr, nullptr, nullptr);
 		if (FAILED(hr) && (hr != OLE_E_PROMPTSAVECANCELLED))
 			return hr;
 
@@ -1340,6 +1335,14 @@ public:
 				prgCmds[0].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
 				return S_OK;
 			}
+		}
+
+		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97 && cCmds == 1
+			&& (prgCmds->cmdID == cmdidAddNewItem || prgCmds->cmdID == cmdidAddExistingItem))
+		{
+			if (itemid == VSITEMID_NIL || itemid == VSITEMID_ROOT
+				|| (itemid != VSITEMID_SELECTION && FindDescendant(itemid, nullptr) == S_OK))
+				return (prgCmds->cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED), S_OK;
 		}
 
 		if (itemid == VSITEMID_ROOT)
@@ -1374,8 +1377,14 @@ public:
 		if (*pguidCmdGroup == CMDSETID_StandardCommandSet2K && nCmdID == ECMD_SLNREFRESH)
 			return RefreshHierarchy();
 
-		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97 && nCmdID == cmdidNewFolder) // 245
+		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97 && nCmdID == cmdidNewFolder)
 			return ProcessCommandAddNewFolder(itemid);
+
+		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97 && nCmdID == cmdidAddNewItem)
+			return ProcessCommandAddItem(itemid, TRUE);
+
+		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97 && nCmdID == cmdidAddExistingItem)
+			return ProcessCommandAddItem(itemid, FALSE);
 
 		if (itemid == VSITEMID_ROOT)
 			return ExecCommandOnProjectNode (pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
@@ -1682,16 +1691,27 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GenerateUniqueItemName(VSITEMID itemidLoc, LPCOLESTR pszExt, LPCOLESTR pszSuggestedRoot, BSTR* pbstrItemName) override
 	{
-		if (itemidLoc != VSITEMID_ROOT)
-			RETURN_HR(E_NOTIMPL);
+		HRESULT hr;
+
+		wil::unique_process_heap_string path;
+		if (itemidLoc == VSITEMID_ROOT)
+		{
+			path = wil::make_process_heap_string_nothrow(_location.get()); RETURN_IF_NULL_ALLOC(path);
+		}
+		else
+		{
+			com_ptr<IChildNode> n;
+			hr = FindDescendant(itemidLoc, &n); RETURN_IF_FAILED_EXPECTED(hr); RETURN_HR_IF_EXPECTED(E_INVALIDARG, hr != S_OK);
+			hr = GetPathOf(n, path); RETURN_IF_FAILED_EXPECTED(hr);
+		}
 
 		for (uint32_t i = 0; i < 1000; i++)
 		{
 			wchar_t buffer[50];
 			swprintf_s(buffer, L"%s%u%s", pszSuggestedRoot, i, pszExt);
-			auto dest = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(dest);
-			PathCombine (dest.get(), _location.get(), buffer);
-			if (!PathFileExists(dest.get()))
+			wchar_t dest[MAX_PATH];
+			PathCombine (dest, path.get(), buffer);
+			if (!PathFileExists(dest))
 			{
 				*pbstrItemName = SysAllocString(buffer); RETURN_IF_NULL_ALLOC(*pbstrItemName);
 				return S_OK;
@@ -1759,7 +1779,7 @@ public:
 		#pragma endregion
 	};
 
-	HRESULT AddNewFile (INode* location, LPCTSTR pszFullPathSource, LPCTSTR pszNewFileName, IChildNode** ppNewNode)
+	HRESULT AddNewFile (IParentNode* location, LPCTSTR pszFullPathSource, LPCTSTR pszNewFileName, IChildNode** ppNewNode)
 	{
 		HRESULT hr;
 
@@ -1767,17 +1787,13 @@ public:
 		RETURN_HR_IF_NULL(E_INVALIDARG, pszNewFileName);
 		RETURN_HR_IF_NULL(E_POINTER, ppNewNode);
 
-		wil::unique_hlocal_string src;
-		hr = wil::str_concat_nothrow (src, pszFullPathSource, L"X"); RETURN_IF_FAILED(hr);
-		src.get()[wcslen(src.get()) - 1] = 0;
+		wil::unique_process_heap_string locationDir;
+		hr = CreatePathOfNode(location, locationDir); RETURN_IF_FAILED(hr);
 
 		wil::unique_hlocal_string dest;
-		hr = wil::str_concat_nothrow (dest, _location, L"\\", pszNewFileName, L"X"); RETURN_IF_FAILED(hr);
-		dest.get()[wcslen(dest.get()) - 1] = 0;
+		hr = wil::str_concat_nothrow (dest, locationDir, L"\\", pszNewFileName); RETURN_IF_FAILED(hr);
 
-		// TODO: if the file exists, ask user whether to overwrite
-		SHFILEOPSTRUCTW fo = { .wFunc = FO_COPY, .pFrom = src.get(), .pTo = dest.get(), .fFlags = FOF_NO_UI };
-		hr = SHFileOperationW (&fo); RETURN_IF_FAILED(hr);
+		BOOL bres = CopyFile(pszFullPathSource, dest.get(), TRUE); RETURN_LAST_ERROR_IF(!bres);
 
 		// template was read-only, but our file should not be
 		SetFileAttributes(dest.get(), FILE_ATTRIBUTE_ARCHIVE);
@@ -1785,7 +1801,7 @@ public:
 		return AddExistingFile (location, dest.get(), ppNewNode);
 	}
 
-	HRESULT AddExistingFile (INode* location, LPCTSTR pszFullPathSource, IChildNode** ppNewFile, BOOL fSilent = FALSE, BOOL fLoad = FALSE)
+	HRESULT AddExistingFile (IParentNode* location, LPCTSTR pszFullPathSource, IChildNode** ppNewFile, BOOL fSilent = FALSE, BOOL fLoad = FALSE)
 	{
 		HRESULT hr;
 
@@ -1842,30 +1858,15 @@ public:
 		for (ULONG i = 0; i < cFilesToOpen; i++)
 			RETURN_HR_IF(CO_E_BAD_PATH, PathIsRelative(rgpszFilesToOpen[i]));
 
-		com_ptr<INode> location;
-		if (itemidLoc == VSITEMID_NIL)
+		com_ptr<IParentNode> location;
+		if (itemidLoc == VSITEMID_ROOT)
+			location = this;
+		else
 		{
-			stdext::inplace_function<HRESULT(INode*)> enumNodeAndChildren;
-			enumNodeAndChildren = [this, itemidLoc, &enumNodeAndChildren, &location](INode* node) -> HRESULT
-				{
-					if (node->GetItemId() == itemidLoc)
-						return (location = node), S_OK;
-
-					if (auto nodeAsParent = wil::try_com_query_nothrow<IParentNode>(node))
-					{
-						for (auto c = nodeAsParent->FirstChild(); c; c = c->Next())
-						{
-							auto hr = enumNodeAndChildren(c);
-							if (hr == S_OK || FAILED(hr))
-								return hr;
-						}
-					}
-
-					return S_FALSE;
-				};
-		
-			hr = enumNodeAndChildren(this); RETURN_IF_FAILED(hr);
-			RETURN_HR_IF(E_INVALIDARG, hr == S_FALSE);
+			com_ptr<IChildNode> cn;
+			if (FindDescendant(itemidLoc, &cn) != S_OK)
+				RETURN_HR(E_INVALIDARG);
+			hr = cn->QueryInterface(IID_PPV_ARGS(&location)); RETURN_IF_FAILED(hr);
 		}
 
 		switch(dwAddItemOperation)
@@ -1873,6 +1874,7 @@ public:
 			case VSADDITEMOP_CLONEFILE:
 			{
 				// Add New File
+				RETURN_HR_IF(E_INVALIDARG, wcspbrk(pszItemName, L":/\\") != nullptr);
 				RETURN_HR_IF(E_INVALIDARG, cFilesToOpen != 1);
 				com_ptr<IChildNode> pNewNode;
 				hr = AddNewFile (location, rgpszFilesToOpen[0], pszItemName, &pNewNode); RETURN_IF_FAILED_EXPECTED(hr);
@@ -1893,6 +1895,7 @@ public:
 			case VSADDITEMOP_OPENFILE:
 			{
 				// Add Existing File
+				RETURN_HR_IF(E_INVALIDARG, pszItemName != nullptr);
 				for (DWORD i = 0; i < cFilesToOpen; i++)
 				{
 					com_ptr<IChildNode> pNewNode;

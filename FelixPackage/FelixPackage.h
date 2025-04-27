@@ -162,3 +162,4 @@ HRESULT FindHier (IParentNode* from, REFIID riid, void** ppvHier);
 FELIX_API HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo);
 FELIX_API HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo);
 HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* child);
+HRESULT CreatePathOfNode (IParentNode* node, wil::unique_process_heap_string& pathOut);

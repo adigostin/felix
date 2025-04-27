@@ -753,3 +753,50 @@ HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* node)
 
 	return S_OK;
 }
+
+HRESULT CreatePathOfNode (IParentNode* node, wil::unique_process_heap_string& path)
+{
+	stdext::inplace_function<HRESULT(IParentNode* pn)> createDirRecursively;
+	createDirRecursively = [&createDirRecursively, &path](IParentNode* node) -> HRESULT
+		{
+			if (node->GetItemId() == VSITEMID_ROOT)
+			{
+				com_ptr<IVsHierarchy> hier;
+				auto hr = node->QueryInterface(IID_PPV_ARGS(&hier)); RETURN_IF_FAILED(hr);
+				wil::unique_variant projectDir;
+				hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
+				RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND), !PathFileExists(projectDir.bstrVal));
+				path = wil::make_process_heap_string_nothrow(projectDir.bstrVal); RETURN_IF_NULL_ALLOC(path);
+				return S_OK;
+			}
+			else
+			{
+				com_ptr<IChildNode> cn;
+				auto hr = node->QueryInterface(IID_PPV_ARGS(&cn)); RETURN_IF_FAILED(hr);
+				com_ptr<IParentNode> parent;
+				hr = cn->GetParent(&parent); RETURN_IF_FAILED(hr);
+				hr = createDirRecursively(parent); RETURN_IF_FAILED(hr);
+				wil::unique_variant saveName;
+				hr = cn->GetProperty(VSHPROPID_SaveName, &saveName); RETURN_IF_FAILED(hr);
+				hr = wil::str_concat_nothrow(path, L"\\", saveName.bstrVal); RETURN_IF_FAILED(hr);
+				DWORD attrs = GetFileAttributes(path.get());
+				if (attrs == INVALID_FILE_ATTRIBUTES)
+				{
+					DWORD gle = GetLastError();
+					if (gle != ERROR_FILE_NOT_FOUND)
+						RETURN_WIN32(gle);
+
+					BOOL bres = CreateDirectory(path.get(), nullptr); RETURN_LAST_ERROR_IF(!bres);
+					return S_OK;
+				}
+				else
+				{
+					if ((attrs & FILE_ATTRIBUTE_DIRECTORY) == 0)
+						RETURN_WIN32(ERROR_BAD_PATHNAME);
+					return S_OK;
+				}
+			}
+		};
+
+	return createDirRecursively(node);
+}

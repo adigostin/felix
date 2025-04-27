@@ -569,19 +569,12 @@ namespace FelixTests
 
 				const wchar_t* templateName = templateFullPath;
 				VSADDRESULT result;
-				hr = proj->AddItem (folder->GetItemId(), VSADDITEMOP_CLONEFILE, L"folder/subfolder/file.asm", 1, &templateName, nullptr, &result);
+				hr = proj->AddItem (folder->GetItemId(), VSADDITEMOP_CLONEFILE, L"file.asm", 1, &templateName, nullptr, &result);
 				Assert::IsTrue(SUCCEEDED(hr));
 
 				IChildNode* folderFirstChild = folder.try_query<IParentNode>()->FirstChild();
 				Assert::IsNotNull(folderFirstChild);
-				com_ptr<IFolderNode> subfolder = wil::try_com_query_nothrow<IFolderNode>(folderFirstChild);
-				Assert::IsNotNull(subfolder.get());
-				Assert::AreEqual(L"subfolder", GetProperty_String(hier, subfolder->GetItemId(), VSHPROPID_SaveName).get());
-				Assert::AreNotEqual(VSITEMID_NIL, subfolder->GetItemId());
-
-				IChildNode* subfolderFirstChild = subfolder.try_query<IParentNode>()->FirstChild();
-				Assert::IsNotNull(subfolderFirstChild);
-				com_ptr<IFileNode> file = wil::try_com_query_nothrow<IFileNode>(subfolderFirstChild);
+				com_ptr<IFileNode> file = wil::try_com_query_nothrow<IFileNode>(folderFirstChild);
 				Assert::IsNotNull(file.get());
 				Assert::AreEqual(L"file.asm", GetProperty_String(hier, file->GetItemId(), VSHPROPID_SaveName).get());
 				Assert::AreNotEqual(VSITEMID_NIL, file->GetItemId());
