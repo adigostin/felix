@@ -635,7 +635,9 @@ namespace FelixTests
 			hr = AddFolderToParent(folder1, hier1.try_query<IParentNode>());
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto file1 = MakeMockFileNode(BuildToolKind::Assembler, L"folder/test.asm");
+			com_ptr<IFileNode> file1;
+			hr = MakeFileNode(&file1);
+			hr = file1.try_query<IFileNodeProperties>()->put_Path(wil::make_bstr_nothrow(L"folder/test.asm").get());
 			hr = AddFileToParent(file1, folder1.try_query<IParentNode>());
 
 			// ------------------------------------------------

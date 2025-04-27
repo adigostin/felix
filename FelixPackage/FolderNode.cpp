@@ -130,6 +130,8 @@ public:
 	{
 		HRESULT hr;
 
+		RETURN_HR_IF(E_UNEXPECTED, !_parent); // callable only while in a hierarchy
+
 		if (propid == VSHPROPID_Parent) // -1000
 		{
 			com_ptr<INode> parent;
@@ -202,6 +204,8 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE SetProperty (VSHPROPID propid, REFVARIANT var) override
 	{
 		HRESULT hr;
+
+		RETURN_HR_IF(E_UNEXPECTED, !_parent); // callable only while in a hierarchy
 
 		if (propid == VSHPROPID_Parent)
 			RETURN_HR(E_UNEXPECTED); // Set this via SetItemId

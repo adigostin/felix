@@ -464,7 +464,7 @@ HRESULT GetHierarchyWindow (IVsUIHierarchyWindow** ppHierWindow)
 	return docViewVar.punkVal->QueryInterface(ppHierWindow);
 }
 
-HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir)
+HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir, bool relativeToProjectDir)
 {
 	HRESULT hr;
 
@@ -472,35 +472,52 @@ HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir)
 	hr = node->GetParent(&parent); RETURN_IF_FAILED(hr);
 	if (auto hier = parent.try_query<IVsHierarchy>())
 	{
-		wil::unique_variant projDir;
-		hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projDir); RETURN_IF_FAILED(hr);
-		dir = wil::make_process_heap_string_nothrow(projDir.bstrVal); RETURN_IF_NULL_ALLOC(dir);
-		return S_OK;
+		dir.reset();
+		if (!relativeToProjectDir)
+		{
+			wil::unique_variant projDir;
+			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projDir); RETURN_IF_FAILED(hr);
+			dir = wil::make_process_heap_string_nothrow(projDir.bstrVal); RETURN_IF_NULL_ALLOC(dir);
+		}
 	}
 	else
 	{
 		com_ptr<IChildNode> parentAsChild;
 		hr = parent->QueryInterface(IID_PPV_ARGS(&parentAsChild)); RETURN_IF_FAILED(hr);
-		hr = GetPathTo (parentAsChild, dir);
+		hr = GetPathTo (parentAsChild, dir, relativeToProjectDir);
 
 		wil::unique_variant parentName;
 		hr = parentAsChild->GetProperty(VSHPROPID_SaveName, &parentName); RETURN_IF_FAILED(hr);
 
-		hr = wil::str_concat_nothrow(dir, L"\\", parentName.bstrVal); RETURN_IF_FAILED(hr);
+		if (dir && dir.get()[0])
+		{
+			hr = wil::str_concat_nothrow(dir, L"\\", parentName.bstrVal); RETURN_IF_FAILED(hr);
+		}
+		else
+		{
+			dir = wil::make_process_heap_string_nothrow(parentName.bstrVal); RETURN_IF_NULL_ALLOC(dir);
+		}
 	}
 		
 	return S_OK;
 }
 
-FELIX_API HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path)
+FELIX_API HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path, bool relativeToProjectDir)
 {
 	com_ptr<IVsHierarchy> hier;
 	auto hr = FindHier(node, IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
-	hr = GetPathTo (node, path); RETURN_IF_FAILED(hr);
+	hr = GetPathTo (node, path, relativeToProjectDir); RETURN_IF_FAILED(hr);
 	wil::unique_variant name;
 	hr = hier->GetProperty(node->GetItemId(), VSHPROPID_SaveName, &name); RETURN_IF_FAILED(hr);
-	RETURN_HR_IF(E_UNEXPECTED, name.vt != VT_BSTR);		
-	hr = wil::str_concat_nothrow(path, L"\\", name.bstrVal); RETURN_IF_FAILED(hr);
+	RETURN_HR_IF(E_UNEXPECTED, name.vt != VT_BSTR);
+	if (path && path.get()[0])
+	{
+		hr = wil::str_concat_nothrow(path, L"\\", name.bstrVal); RETURN_IF_FAILED(hr);
+	}
+	else
+	{
+		path = wil::make_process_heap_string_nothrow(name.bstrVal); RETURN_IF_NULL_ALLOC(path);
+	}
 	return S_OK;
 }
 
@@ -653,14 +670,14 @@ FELIX_API HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo)
 		else
 		{
 			// Add it sorted to existing folders and before files (if any).
-			wil::unique_variant childName;
-			hr = child->GetProperty(VSHPROPID_SaveName, &childName); RETURN_IF_FAILED(hr);
+			wil::unique_bstr childName;
+			hr = wil::try_com_query_nothrow<IFolderNodeProperties>(child)->get_FolderName(&childName); RETURN_IF_FAILED(hr);
 
 			wil::unique_variant name;
 
 			// Insert in first position?
 			if (SUCCEEDED(addTo->FirstChild()->GetProperty(VSHPROPID_SaveName, &name))
-				&& VarBstrCmp(childName.bstrVal, name.bstrVal, InvariantLCID, NORM_IGNORECASE) == VARCMP_LT)
+				&& VarBstrCmp(childName.get(), name.bstrVal, InvariantLCID, NORM_IGNORECASE) == VARCMP_LT)
 			{
 				// Yes
 				child->SetNext(addTo->FirstChild());
@@ -672,7 +689,7 @@ FELIX_API HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo)
 				while (insertAfter->Next()
 					&& wil::try_com_query_nothrow<IFolderNode>(insertAfter->Next())
 					&& SUCCEEDED(insertAfter->Next()->GetProperty(VSHPROPID_SaveName, &name))
-					&& VarBstrCmp(childName.bstrVal, name.bstrVal, InvariantLCID, NORM_IGNORECASE) == VARCMP_GT)
+					&& VarBstrCmp(childName.get(), name.bstrVal, InvariantLCID, NORM_IGNORECASE) == VARCMP_GT)
 				{
 					insertAfter = insertAfter->Next();
 				}

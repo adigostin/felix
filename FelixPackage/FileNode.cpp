@@ -24,7 +24,9 @@ struct FileNode
 	wil::com_ptr_nothrow<IChildNode> _next;
 	com_ptr<IWeakRef> _parent;
 	VSCOOKIE _docCookie = VSDOCCOOKIE_NIL;
-	wil::unique_hlocal_string _pathRelativeToProjectDir;
+	// While not in hier (_itemId==VSITEMID_NIL), contains the path relative to project node.
+	// While in hier (_itemId!=VSITEMID_NIL), contains the file name.
+	wil::unique_process_heap_string _pathOrName;
 	BuildToolKind _buildTool = BuildToolKind::None;
 	com_ptr<ICustomBuildToolProperties> _customBuildToolProps;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
@@ -128,7 +130,21 @@ public:
 		RETURN_HR_IF(E_INVALIDARG, !parent);
 		RETURN_HR_IF(E_UNEXPECTED, _itemId != VSITEMID_NIL);
 		RETURN_HR_IF(E_UNEXPECTED, _parent);
-		auto hr = parent->QueryInterface(IID_PPV_ARGS(_parent.addressof())); RETURN_IF_FAILED(hr);
+
+		com_ptr<IWeakRef> p;
+		auto hr = parent->QueryInterface(IID_PPV_ARGS(p.addressof())); RETURN_IF_FAILED(hr);
+
+		// The caller is expected to create folder nodes out of any directory name
+		// contained in _pathOrName, and to add us to the corresponding directory.
+		// We should refactor this. For now let's just retain the file name.
+		wil::unique_process_heap_string name;
+		if (_pathOrName && _pathOrName.get()[0])
+		{
+			name = wil::make_process_heap_string_nothrow(PathFindFileName(_pathOrName.get())); RETURN_IF_NULL_ALLOC(name);
+		}
+		
+		_pathOrName = std::move(name);
+		_parent = std::move(p);
 		_itemId = id;
 		return S_OK;
 	}
@@ -137,8 +153,13 @@ public:
 	{
 		RETURN_HR_IF(E_UNEXPECTED, _itemId == VSITEMID_NIL);
 		RETURN_HR_IF(E_UNEXPECTED, !_parent);
+		
+		wil::unique_process_heap_string pathRelativeToProjectDir;
+		auto hr = GetPathOf (this, pathRelativeToProjectDir, true); RETURN_IF_FAILED(hr);
+		
 		_itemId = VSITEMID_NIL;
 		_parent = nullptr;
+		_pathOrName = std::move(pathRelativeToProjectDir);
 		return S_OK;
 	}
 
@@ -154,7 +175,7 @@ public:
 	{
 		HRESULT hr;
 
-		RETURN_HR_IF(E_UNEXPECTED, !_parent);
+		RETURN_HR_IF(E_UNEXPECTED, !_parent); // callable only while in a hierarchy
 		/*
 		OutputDebugStringA("ProjectFile::GetProperty propid=");
 		char buffer[20];
@@ -187,9 +208,9 @@ public:
 			case VSHPROPID_Caption: // -2003
 			case VSHPROPID_Name: // -2012
 			case VSHPROPID_EditLabel: // -2026
-				if (!_pathRelativeToProjectDir || !_pathRelativeToProjectDir.get()[0])
+				if (!_pathOrName || !_pathOrName.get()[0])
 					return E_NOT_SET;
-				return InitVariantFromString (PathFindFileName(_pathRelativeToProjectDir.get()), pvar);
+				return InitVariantFromString (PathFindFileName(_pathOrName.get()), pvar);
 
 			case VSHPROPID_Expandable: // -2006
 				return InitVariantFromBoolean (FALSE, pvar);
@@ -237,7 +258,7 @@ public:
 
 			case VSHPROPID_IconMonikerId: // -2161
 			{
-				auto ext = PathFindExtension(_pathRelativeToProjectDir.get());
+				auto ext = PathFindExtension(_pathOrName.get());
 				
 				if (!_wcsicmp(ext, L".asm"))
 					return InitVariantFromInt32(KnownImageIds::ASMFile, pvar);
@@ -274,6 +295,8 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE SetProperty (VSHPROPID propid, const VARIANT& var) override
 	{
+		RETURN_HR_IF(E_UNEXPECTED, !_parent); // callable only while in a hierarchy
+
 		switch(propid)
 		{
 			case VSHPROPID_Parent:
@@ -331,8 +354,7 @@ public:
 	{
 		// Returns a unique, string name for an item in the hierarchy.
 		// Used for workspace persistence, such as remembering window positions.
-		*pbstrName = SysAllocString(_pathRelativeToProjectDir.get());
-		return *pbstrName ? S_OK : E_OUTOFMEMORY;
+		return get_Path(pbstrName);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE IsItemDirty (IUnknown *punkDocData, BOOL *pfDirty) override
@@ -662,20 +684,37 @@ public:
 	#pragma endregion
 
 	#pragma region IFileNodeProperties
-	virtual HRESULT STDMETHODCALLTYPE get_Path (BSTR *pbstr) override
+	virtual HRESULT STDMETHODCALLTYPE get_Path (BSTR *pbstrPath) override
 	{
-		*pbstr = SysAllocString(_pathRelativeToProjectDir.get()); RETURN_IF_NULL_ALLOC(*pbstr);
+		if (_itemId == VSITEMID_NIL)
+		{
+			// Not in a hierarchy; we already have the path relative to the project dir.
+			auto str = SysAllocString(_pathOrName.get()); RETURN_IF_NULL_ALLOC(str);
+			*pbstrPath = str;
+		}
+		else
+		{
+			// In a hierarchy.
+			WI_ASSERT(PathFindFileName(_pathOrName.get()) == _pathOrName.get());
+			wil::unique_process_heap_string path;
+			auto hr = GetPathOf(this, path, true); RETURN_IF_FAILED(hr);
+			auto str = SysAllocString(path.get()); RETURN_IF_NULL_ALLOC(str);
+			*pbstrPath = str;
+		}
+
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_Path (BSTR value) override
 	{
+		RETURN_HR_IF(E_UNEXPECTED, _itemId != VSITEMID_NIL);
+
 		size_t len = wcslen(value);
-		auto newValue = wil::make_hlocal_string_nothrow(value, len); RETURN_IF_NULL_ALLOC(newValue);
+		auto newValue = wil::make_process_heap_string_nothrow(value, len); RETURN_IF_NULL_ALLOC(newValue);
 		for(size_t i = 0; i < len; i++)
 			if (newValue.get()[i] == '/')
 				newValue.get()[i] = '\\';
-		_pathRelativeToProjectDir = std::move(newValue);
+		_pathOrName = std::move(newValue);
 		// No need for notification since this is called only when loading from XML.
 		// (Property is read-only in the Properties window - see IsPropertyReadOnly().)
 		return S_OK;
@@ -684,7 +723,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE get___id (BSTR *value) override
 	{
 		// Shown by VS at the top of the Properties Window.
-		auto name = PathFindFileName(_pathRelativeToProjectDir.get());
+		auto name = PathFindFileName(_pathOrName.get());
 		*value = SysAllocString(name); RETURN_IF_NULL_ALLOC(*value);
 		return S_OK;
 	}
@@ -807,18 +846,20 @@ public:
 	{
 		HRESULT hr;
 
+		RETURN_HR_IF(E_UNEXPECTED, _itemId == VSITEMID_NIL);
+		
+		WI_ASSERT(PathFindFileName(_pathOrName.get()) == _pathOrName.get());
+
 		com_ptr<IVsHierarchy> hier;
 		hr = FindHier(this, IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
 		com_ptr<IVsProject> project;
 		hr = hier->QueryInterface(&project); RETURN_IF_FAILED(hr);
 
-		wil::unique_variant projectDir;
-		hr = hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
-		PathRemoveBackslash(projectDir.bstrVal);
+		wil::unique_process_heap_string pathToThis;
+		hr = GetPathTo (this, pathToThis); RETURN_IF_FAILED(hr);
 
-		wil::unique_hlocal_string oldFullPath;
-		hr = wil::str_concat_nothrow(oldFullPath, projectDir.bstrVal, L"\\", _pathRelativeToProjectDir.get()); RETURN_IF_FAILED(hr);
+		wil::unique_process_heap_string oldFullPath;
+		hr = wil::str_concat_nothrow(oldFullPath, pathToThis, L"\\", _pathOrName); RETURN_IF_FAILED(hr);
 
 		hr = QueryEditProjectFile(hier); RETURN_IF_FAILED_EXPECTED(hr);
 
@@ -844,12 +885,8 @@ public:
 		//		return S_OK;
 		//}
 
-		auto relativeDir = wil::make_hlocal_string_nothrow(_pathRelativeToProjectDir.get());
-		// If in subdir, removes file and preceeding backslash or slash; if directly in project dir, removes everything.
-		PathRemoveFileSpec (relativeDir.get());
-		wchar_t newFullPath[MAX_PATH];
-		PathCombine (newFullPath, projectDir.bstrVal, relativeDir.get());
-		PathCombine (newFullPath, newFullPath, newName);
+		wil::unique_process_heap_string newFullPath;
+		hr = wil::str_concat_nothrow(newFullPath, pathToThis, L"\\", newName); RETURN_IF_FAILED(hr);
 
 		BOOL fRenameCanContinue = TRUE;
 		com_ptr<IVsTrackProjectDocuments2> trackProjectDocs;
@@ -857,27 +894,26 @@ public:
 		if (SUCCEEDED(hr))
 		{
 			fRenameCanContinue = FALSE;
-			hr = trackProjectDocs->OnQueryRenameFile (project, oldFullPath.get(), newFullPath, VSRENAMEFILEFLAGS_NoFlags, &fRenameCanContinue);
+			hr = trackProjectDocs->OnQueryRenameFile (project, oldFullPath.get(), newFullPath.get(), VSRENAMEFILEFLAGS_NoFlags, &fRenameCanContinue);
 			if (FAILED(hr) || !fRenameCanContinue)
 				return OLE_E_PROMPTSAVECANCELLED;
 		}
 
-		auto otherPathRelativeToProjectDir = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH);
-		PathCombine (otherPathRelativeToProjectDir.get(), relativeDir.get(), newName);
+		auto otherName = wil::make_process_heap_string_nothrow(newName);
 
-		if (!::MoveFile (oldFullPath.get(), newFullPath))
+		if (!::MoveFile (oldFullPath.get(), newFullPath.get()))
 			return HRESULT_FROM_WIN32(GetLastError());
-		std::swap (_pathRelativeToProjectDir, otherPathRelativeToProjectDir);
-		auto undoRename = wil::scope_exit([this, &otherPathRelativeToProjectDir, &newFullPath, &oldFullPath]
+		std::swap(_pathOrName, otherName);
+		auto undoRename = wil::scope_exit([this, &otherName, &newFullPath, &oldFullPath]
 			{
-				std::swap (_pathRelativeToProjectDir, otherPathRelativeToProjectDir);
-				::MoveFile (newFullPath, oldFullPath.get());
+				std::swap (_pathOrName, otherName);
+				::MoveFile (newFullPath.get(), oldFullPath.get());
 			});
 
 
 		if (dwCookie != VSCOOKIE_NIL)
 		{
-			hr = pRDT->RenameDocument (oldFullPath.get(), newFullPath, HIERARCHY_DONTCHANGE, VSITEMID_NIL);
+			hr = pRDT->RenameDocument (oldFullPath.get(), newFullPath.get(), HIERARCHY_DONTCHANGE, VSITEMID_NIL);
 			if (FAILED(hr))
 			{
 				// We could rename the file on disk, but not in the Running Document Table.
@@ -890,7 +926,7 @@ public:
 
 		// Tell packages that care that it happened. No error checking here.
 		if (trackProjectDocs)
-			trackProjectDocs->OnAfterRenameFile (project, oldFullPath.get(), newFullPath, VSRENAMEFILEFLAGS_NoFlags);
+			trackProjectDocs->OnAfterRenameFile (project, oldFullPath.get(), newFullPath.get(), VSRENAMEFILEFLAGS_NoFlags);
 
 		// This line was changing the build tool when the user renamed the file.
 		// I eventually commented it out, to get behavior similar to that in VS projects

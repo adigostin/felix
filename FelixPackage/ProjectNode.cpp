@@ -2908,14 +2908,12 @@ public:
 				if (!insertIn)
 				{
 					hr = MakeFolderNode (&insertIn); RETURN_IF_FAILED(hr);
-					wil::unique_variant name;
-					name.vt = VT_BSTR;
-					name.bstrVal = SysAllocStringLen(dirName.data(), (UINT)dirName.size()); RETURN_IF_NULL_ALLOC(name.bstrVal);
-					hr = insertIn->SetProperty(VSHPROPID_SaveName, name); RETURN_IF_FAILED(hr);
+					wil::unique_bstr name (SysAllocStringLen(dirName.data(), (UINT)dirName.size())); RETURN_IF_NULL_ALLOC(name);
+					hr = insertIn.try_query<IFolderNodeProperties>()->put_FolderName(name.get()); RETURN_IF_FAILED(hr);
 					hr = AddFolderToParent(insertIn, currentParent); RETURN_IF_FAILED(hr);
 				}
 
-				hr = insertIn->IChildNode::QueryInterface(&currentParent); RETURN_IF_FAILED(hr);
+				hr = insertIn->QueryInterface(&currentParent); RETURN_IF_FAILED(hr);
 				pathPtr = nextPathPtr;
 			}
 
