@@ -304,309 +304,6 @@ public:
 		return enumChildren(this);
 	}
 
-	HRESULT QueryStatusCommandOnProjectNode (const GUID* pguidCmdGroup, ULONG cmdID, __RPC__out DWORD* cmdf, __RPC__out OLECMDTEXT *pCmdText)
-	{
-		if (*pguidCmdGroup == CLSID_FelixPackageCmdSet)
-			return OLECMDERR_E_UNKNOWNGROUP;
-
-		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97)
-		{
-			// These are the cmdidXxxYyy constants from stdidcmd.h
-			switch (cmdID)
-			{
-				case cmdidCopy: // 15
-				case cmdidPaste: // 26
-				case cmdidCut: // 16
-				//case cmdidSave: // 110
-				//case cmdidSaveAs: // 111
-				case cmdidRename: // 150
-				case cmdidAddNewItem: // 220
-				case cmdidExit: // 229
-				case cmdidPropertyPages: // 232
-				case cmdidAddExistingItem: // 244
-				case cmdidStepInto: // 248
-				case cmdidPropSheetOrProperties: // 397
-				case cmdidCloseDocument: // 658
-				case cmdidBuildSln: // 882
-				case cmdidRebuildSln: // 883
-				case cmdidCleanSln: // 885
-				//case cmdidBuildSel: // 886
-				//case cmdidRebuildSel: // 887
-				//case cmdidCleanSel: // 889
-					*cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
-					break;
-					
-				case cmdidToggleBreakpoint: // 255
-				case cmdidInsertBreakpoint: // 375
-				case cmdidEnableBreakpoint: // 376
-					*cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
-					break;
-
-				case cmdidSaveProjectItem: // 331
-					*cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
-					break;
-				case cmdidSaveProjectItemAs: // 226
-				{
-					// This command is actually "Save Selection As", which we want to support for files,
-					// but not for projects (it's too complicated for projects and Visual Studio doesn't
-					// support it either for Visual C++ projects, so it's probably not a big deal).
-
-					com_ptr<IVsMonitorSelection> monsel;
-					auto hr = serviceProvider->QueryService(SID_SVsShellMonitorSelection, &monsel); RETURN_IF_FAILED(hr);
-					com_ptr<IVsHierarchy> hier;
-					VSITEMID selitemid;
-					com_ptr<IVsMultiItemSelect> mis;
-					com_ptr<ISelectionContainer> sc;
-					hr = monsel->GetCurrentSelection (&hier, &selitemid, &mis, &sc); RETURN_IF_FAILED(hr);
-
-					// Enable it only for single-item selection (Save As doesn't make sense for
-					// multiple selections), and only if it is a file node (not a project node).
-					bool enable = (selitemid != VSITEMID_SELECTION) && (selitemid != VSITEMID_ROOT);
-					*cmdf = OLECMDF_SUPPORTED | (enable ? OLECMDF_ENABLED : 0);
-
-					// Note that we still have a scenario where this command is enabled but doesn't work:
-					// Right after a project is opened, if no files were auto-opened, if a file node is selected
-					// in the Solution Explorer, if the focus is in the Solution Explorer window.
-					// We'll deal with this some other time.
-
-					break;
-				}
-
-				default:
-					*cmdf = 0; // not supported
-			}
-
-			return S_OK;
-		}
-
-		if (*pguidCmdGroup == CMDSETID_StandardCommandSet2K)
-		{
-			switch (cmdID)
-			{
-				case cmdidBuildOnlyProject:   // 1603
-				case cmdidRebuildOnlyProject: // 1604
-				case cmdidCleanOnlyProject:   // 1605
-					*cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
-					break;
-
-				default:
-					*cmdf = 0; // not supported
-			}
-
-			return S_OK;
-		}
-
-		if (*pguidCmdGroup == CMDSETID_StandardCommandSet10)
-		{
-			if (cmdID >= cmdidDynamicToolBarListFirst && cmdID <= cmdidDynamicToolBarListLast)
-			{
-				*cmdf = 0; // not supported
-			}
-			else
-			{
-				switch (cmdID)
-				{
-					case cmdidShellNavigate1First: // 1000
-					case cmdidExtensionManager: // 3000
-						*cmdf = 0; // not supported
-						break;
-
-					default:
-						*cmdf = 0; // not supported
-				}
-			}
-
-			return S_OK;
-		}
-
-		if (*pguidCmdGroup == CMDSETID_StandardCommandSet11)
-		{
-			if (cmdID == cmdidStartupProjectProperties) // 21
-			{
-				*cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
-				return S_ALLTHRESHOLD;
-			}
-
-			return E_NOTIMPL;
-		}
-
-		if (*pguidCmdGroup == CMDSETID_StandardCommandSet12)
-			return OLECMDERR_E_UNKNOWNGROUP;
-
-		if (*pguidCmdGroup == CMDSETID_StandardCommandSet16)
-			return OLECMDERR_E_UNKNOWNGROUP;
-
-		if (*pguidCmdGroup == CMDSETID_StandardCommandSet17)
-			return OLECMDERR_E_UNKNOWNGROUP;
-
-		if (*pguidCmdGroup == guidVSDebugCommand)
-		{
-			// These are in VsDbgCmd.h
-			if (cmdID == cmdidBreakpointsWindowShow)
-			{
-				*cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
-				return S_OK;
-			}
-
-			return E_NOTIMPL;
-		}
-
-		#ifdef _DEBUG
-		if (   *pguidCmdGroup == guidUnknownCmdGroup0
-			|| *pguidCmdGroup == guidUnknownCmdGroup5
-			|| *pguidCmdGroup == guidUnknownCmdGroup6
-			|| *pguidCmdGroup == guidUnknownCmdGroup7
-			|| *pguidCmdGroup == guidUnknownCmdGroup8
-			|| *pguidCmdGroup == guidUnknownCmdGroup9
-			|| *pguidCmdGroup == guidSourceExplorerPackage
-			|| *pguidCmdGroup == WebAppCmdId
-			|| *pguidCmdGroup == guidWebProjectPackage
-			|| *pguidCmdGroup == guidBrowserLinkCmdSet
-			|| *pguidCmdGroup == guidUnknownMsenvDll
-			|| *pguidCmdGroup == CMDSETID_HtmEdGrp
-			|| *pguidCmdGroup == guidXmlPkg
-			|| *pguidCmdGroup == XsdDesignerPackage
-			|| *pguidCmdGroup == guidSccProviderPackage
-			|| *pguidCmdGroup == GUID{ 0xB101F7CB, 0x4BB9, 0x46D0, { 0xA4, 0x89, 0x83, 0x0D, 0x45, 0x01, 0x16, 0x0A } } // something from Microsoft.VisualStudio.ProjectSystem.VS.Implementation.dll
-			|| *pguidCmdGroup == GUID{ 0x665CC136, 0x6455, 0x491D, { 0xAB, 0x17, 0xEA, 0xF3, 0x84, 0x7A, 0x23, 0xBC } } // same
-			|| *pguidCmdGroup == guidProjOverviewAppCapabilities
-			|| *pguidCmdGroup == guidTrackProjectRetargetingCmdSet
-			|| *pguidCmdGroup == guidProjectAddTest
-			|| *pguidCmdGroup == guidProjectAddWPF
-			|| *pguidCmdGroup == guidProjectClassWizard
-			|| *pguidCmdGroup == guidDataSources
-			|| *pguidCmdGroup == tfsCmdSet
-			|| *pguidCmdGroup == tfsCmdSet1
-			|| *pguidCmdGroup == guidCmdGroupClassDiagram
-			|| *pguidCmdGroup == guidCmdGroupDatabase
-			|| *pguidCmdGroup == guidCmdGroupTableQueryDesigner
-			|| *pguidCmdGroup == guidXamlCmdSet
-			|| *pguidCmdGroup == guidCmdGroupTestExplorer
-			|| *pguidCmdGroup == guidVSEQTPackageCmdSet
-			|| *pguidCmdGroup == guidSomethingResourcesCmdSet
-			|| *pguidCmdGroup == guidCmdSetPerformance
-			|| *pguidCmdGroup == guidCmdSetEdit
-			|| *pguidCmdGroup == guidCmdSetHelp
-			|| *pguidCmdGroup == guidCmdSetTaskRunnerExplorer
-			|| *pguidCmdGroup == guidCmdSetCtxMenuPrjSolOtherClsWiz
-			|| *pguidCmdGroup == guidCmdSetCodeAnalysis
-			|| *pguidCmdGroup == guidCmdSetCodeMetrics
-			|| *pguidCmdGroup == guidCmdSetClassViewProject
-			|| *pguidCmdGroup == guidCmdSetSolExplPivotStartList
-			|| *pguidCmdGroup == guidCmdSetWebToolsScaffolding
-			|| *pguidCmdGroup == guidCmdSetWebToolsScaffolding2
-			|| *pguidCmdGroup == guidUniversalProjectsCmdSet
-			|| *pguidCmdGroup == guidCmdSetNetAspire
-			|| *pguidCmdGroup == guidCmdSetBowerPackages
-			|| *pguidCmdGroup == guidDotNetCoreWebCmdId
-			|| *pguidCmdGroup == guidCmdSetCSharpInteractive
-			|| *pguidCmdGroup == guidCmdSetTFS
-			|| *pguidCmdGroup == guidSccPkg
-			|| *pguidCmdGroup == guidToolWindowTimestampButton
-			|| *pguidCmdGroup == guidCmdSetSomethingIntellisense
-			|| *pguidCmdGroup == guidCmdSetSomethingTerminal
-			|| *pguidCmdGroup == guidSHLMainMenu
-			|| *pguidCmdGroup == guidCommonIDEPackage
-		)
-			return OLECMDERR_E_UNKNOWNGROUP;
-		#endif
-
-		if (*pguidCmdGroup == guidNuGetDialogCmdSet || *pguidCmdGroup == guidNuGetSomethingCmdSet)
-		{
-			*cmdf = OLECMDF_SUPPORTED | OLECMDF_INVISIBLE;
-			return S_OK;
-		}
-
-		if (*pguidCmdGroup == DebugTargetTypeCommandGuid)
-		{
-			if (cmdID == 0x100)
-			{
-				// DebugTargetTypeCommandId
-				return E_NOTIMPL;
-			}
-
-			return E_NOTIMPL;
-		}
-
-		//BreakIntoDebugger();
-		return OLECMDERR_E_UNKNOWNGROUP;
-	}
-
-	HRESULT ExecCommandOnProjectNode (const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT* pvaIn, VARIANT* pvaOut)
-	{
-		if (!pguidCmdGroup)
-			return E_POINTER;
-
-		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97)
-		{
-			if (   nCmdID == cmdidObjectVerbList0 // 137
-				|| nCmdID == cmdidCloseSolution // 219
-				|| nCmdID == cmdidExit // 229
-				|| nCmdID == cmdidOutputWindow // 237
-				|| nCmdID == cmdidPropSheetOrProperties // 397
-				|| nCmdID == cmdidCloseDocument // 658
-				|| nCmdID == cmdidBuildSel // 886
-				|| nCmdID == cmdidStart          // 295 - ignore it here, and the IDE will pass it to our IVsBuildableProjectCfg
-				|| nCmdID == cmdidStop           // 179 - same
-				|| nCmdID == cmdidDebugProcesses // 213 - same
-				|| nCmdID == cmdidSaveProjectItem // 331 - ignore it here and VS will - if dirty - pass it to IPersistFileFormat::Save
-				|| nCmdID == cmdidSaveProjectItemAs // 226 - same
-			)
-				return OLECMDERR_E_NOTSUPPORTED;
-			
-			if (nCmdID == cmdidAddNewItem) // 220
-				return ProcessCommandAddItem(TRUE);
-			if (nCmdID == cmdidAddExistingItem) // 244
-				return ProcessCommandAddItem(FALSE);
-
-			return OLECMDERR_E_NOTSUPPORTED;
-		}
-
-		if (*pguidCmdGroup == CMDSETID_StandardCommandSet11)
-		{
-			if (nCmdID == cmdidLocateFindTarget)
-				return OLECMDERR_E_NOTSUPPORTED;
-
-			//BreakIntoDebugger();
-			return OLECMDERR_E_NOTSUPPORTED;
-		}
-
-		if (*pguidCmdGroup == CMDSETID_StandardCommandSet2K)
-		{
-			if (nCmdID == ECMD_COMPILE)
-				return OLECMDERR_E_NOTSUPPORTED;
-
-			//BreakIntoDebugger();
-			return OLECMDERR_E_NOTSUPPORTED;
-		}
-
-		if (*pguidCmdGroup == GUID_VsUIHierarchyWindowCmds)
-		{
-			return OLECMDERR_E_NOTSUPPORTED;
-		}
-
-		return OLECMDERR_E_UNKNOWNGROUP;
-	}
-
-	HRESULT ProcessCommandAddItem (BOOL fAddNewItem)
-	{
-		wil::com_ptr_nothrow<IVsAddProjectItemDlg> dlg;
-		auto hr = _sp->QueryService(SID_SVsAddProjectItemDlg, &dlg); RETURN_IF_FAILED(hr);
-		VSADDITEMFLAGS flags;
-		if (fAddNewItem)
-			flags = VSADDITEM_AddNewItems | VSADDITEM_SuggestTemplateName | VSADDITEM_NoOnlineTemplates; /* | VSADDITEM_ShowLocationField */
-		else
-			flags = VSADDITEM_AddExistingItems | VSADDITEM_AllowMultiSelect | VSADDITEM_AllowStickyFilter;
-
-		// TODO: To specify a sticky behavior for the location field, which is the recommended behavior, remember the last location field value and pass it back in when you open the dialog box again.
-		// TODO: To specify sticky behavior for the filter field, which is the recommended behavior, remember the last filter field value and pass it back in when you open the dialog box again.
-		hr = dlg->AddProjectItemDlg (VSITEMID_ROOT, __uuidof(IProjectNodeProperties), this, flags, nullptr, nullptr, nullptr, nullptr, nullptr);
-		if (FAILED(hr) && (hr != OLE_E_PROMPTSAVECANCELLED))
-			return hr;
-
-		return S_OK;
-	}
-
 	#pragma region IUnknown
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
 	{
@@ -1318,6 +1015,310 @@ public:
 		return S_OK;
 	}
 
+
+	HRESULT QueryStatusCommandOnProjectNode (const GUID* pguidCmdGroup, ULONG cmdID, __RPC__out DWORD* cmdf, __RPC__out OLECMDTEXT *pCmdText)
+	{
+		if (*pguidCmdGroup == CLSID_FelixPackageCmdSet)
+			return OLECMDERR_E_UNKNOWNGROUP;
+
+		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97)
+		{
+			// These are the cmdidXxxYyy constants from stdidcmd.h
+			switch (cmdID)
+			{
+			case cmdidCopy: // 15
+			case cmdidPaste: // 26
+			case cmdidCut: // 16
+				//case cmdidSave: // 110
+				//case cmdidSaveAs: // 111
+			case cmdidRename: // 150
+			case cmdidAddNewItem: // 220
+			case cmdidExit: // 229
+			case cmdidPropertyPages: // 232
+			case cmdidAddExistingItem: // 244
+			case cmdidStepInto: // 248
+			case cmdidPropSheetOrProperties: // 397
+			case cmdidCloseDocument: // 658
+			case cmdidBuildSln: // 882
+			case cmdidRebuildSln: // 883
+			case cmdidCleanSln: // 885
+				//case cmdidBuildSel: // 886
+				//case cmdidRebuildSel: // 887
+				//case cmdidCleanSel: // 889
+				*cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
+				break;
+
+			case cmdidToggleBreakpoint: // 255
+			case cmdidInsertBreakpoint: // 375
+			case cmdidEnableBreakpoint: // 376
+				*cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
+				break;
+
+			case cmdidSaveProjectItem: // 331
+				*cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
+				break;
+			case cmdidSaveProjectItemAs: // 226
+			{
+				// This command is actually "Save Selection As", which we want to support for files,
+				// but not for projects (it's too complicated for projects and Visual Studio doesn't
+				// support it either for Visual C++ projects, so it's probably not a big deal).
+
+				com_ptr<IVsMonitorSelection> monsel;
+				auto hr = serviceProvider->QueryService(SID_SVsShellMonitorSelection, &monsel); RETURN_IF_FAILED(hr);
+				com_ptr<IVsHierarchy> hier;
+				VSITEMID selitemid;
+				com_ptr<IVsMultiItemSelect> mis;
+				com_ptr<ISelectionContainer> sc;
+				hr = monsel->GetCurrentSelection (&hier, &selitemid, &mis, &sc); RETURN_IF_FAILED(hr);
+
+				// Enable it only for single-item selection (Save As doesn't make sense for
+				// multiple selections), and only if it is a file node (not a project node).
+				bool enable = (selitemid != VSITEMID_SELECTION) && (selitemid != VSITEMID_ROOT);
+				*cmdf = OLECMDF_SUPPORTED | (enable ? OLECMDF_ENABLED : 0);
+
+				// Note that we still have a scenario where this command is enabled but doesn't work:
+				// Right after a project is opened, if no files were auto-opened, if a file node is selected
+				// in the Solution Explorer, if the focus is in the Solution Explorer window.
+				// We'll deal with this some other time.
+
+				break;
+			}
+
+			default:
+				*cmdf = 0; // not supported
+			}
+
+			return S_OK;
+		}
+
+		if (*pguidCmdGroup == CMDSETID_StandardCommandSet2K)
+		{
+			switch (cmdID)
+			{
+			case cmdidBuildOnlyProject:   // 1603
+			case cmdidRebuildOnlyProject: // 1604
+			case cmdidCleanOnlyProject:   // 1605
+				*cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
+				break;
+
+			default:
+				*cmdf = 0; // not supported
+			}
+
+			return S_OK;
+		}
+
+		if (*pguidCmdGroup == CMDSETID_StandardCommandSet10)
+		{
+			if (cmdID >= cmdidDynamicToolBarListFirst && cmdID <= cmdidDynamicToolBarListLast)
+			{
+				*cmdf = 0; // not supported
+			}
+			else
+			{
+				switch (cmdID)
+				{
+				case cmdidShellNavigate1First: // 1000
+				case cmdidExtensionManager: // 3000
+					*cmdf = 0; // not supported
+					break;
+
+				default:
+					*cmdf = 0; // not supported
+				}
+			}
+
+			return S_OK;
+		}
+
+		if (*pguidCmdGroup == CMDSETID_StandardCommandSet11)
+		{
+			if (cmdID == cmdidStartupProjectProperties) // 21
+			{
+				*cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
+				return S_OK;
+			}
+
+			return E_NOTIMPL;
+		}
+
+		if (*pguidCmdGroup == CMDSETID_StandardCommandSet12)
+			return OLECMDERR_E_UNKNOWNGROUP;
+
+		if (*pguidCmdGroup == CMDSETID_StandardCommandSet16)
+			return OLECMDERR_E_UNKNOWNGROUP;
+
+		if (*pguidCmdGroup == CMDSETID_StandardCommandSet17)
+			return OLECMDERR_E_UNKNOWNGROUP;
+
+		if (*pguidCmdGroup == guidVSDebugCommand)
+		{
+			// These are in VsDbgCmd.h
+			if (cmdID == cmdidBreakpointsWindowShow)
+			{
+				*cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
+				return S_OK;
+			}
+
+			return E_NOTIMPL;
+		}
+
+		#ifdef _DEBUG
+		if (   *pguidCmdGroup == guidUnknownCmdGroup0
+			|| *pguidCmdGroup == guidUnknownCmdGroup5
+			|| *pguidCmdGroup == guidUnknownCmdGroup6
+			|| *pguidCmdGroup == guidUnknownCmdGroup7
+			|| *pguidCmdGroup == guidUnknownCmdGroup8
+			|| *pguidCmdGroup == guidUnknownCmdGroup9
+			|| *pguidCmdGroup == guidSourceExplorerPackage
+			|| *pguidCmdGroup == WebAppCmdId
+			|| *pguidCmdGroup == guidWebProjectPackage
+			|| *pguidCmdGroup == guidBrowserLinkCmdSet
+			|| *pguidCmdGroup == guidUnknownMsenvDll
+			|| *pguidCmdGroup == CMDSETID_HtmEdGrp
+			|| *pguidCmdGroup == guidXmlPkg
+			|| *pguidCmdGroup == XsdDesignerPackage
+			|| *pguidCmdGroup == guidSccProviderPackage
+			|| *pguidCmdGroup == GUID{ 0xB101F7CB, 0x4BB9, 0x46D0, { 0xA4, 0x89, 0x83, 0x0D, 0x45, 0x01, 0x16, 0x0A } } // something from Microsoft.VisualStudio.ProjectSystem.VS.Implementation.dll
+			|| *pguidCmdGroup == GUID{ 0x665CC136, 0x6455, 0x491D, { 0xAB, 0x17, 0xEA, 0xF3, 0x84, 0x7A, 0x23, 0xBC } } // same
+			|| *pguidCmdGroup == guidProjOverviewAppCapabilities
+			|| *pguidCmdGroup == guidTrackProjectRetargetingCmdSet
+			|| *pguidCmdGroup == guidProjectAddTest
+			|| *pguidCmdGroup == guidProjectAddWPF
+			|| *pguidCmdGroup == guidProjectClassWizard
+			|| *pguidCmdGroup == guidDataSources
+			|| *pguidCmdGroup == tfsCmdSet
+			|| *pguidCmdGroup == tfsCmdSet1
+			|| *pguidCmdGroup == guidCmdGroupClassDiagram
+			|| *pguidCmdGroup == guidCmdGroupDatabase
+			|| *pguidCmdGroup == guidCmdGroupTableQueryDesigner
+			|| *pguidCmdGroup == guidXamlCmdSet
+			|| *pguidCmdGroup == guidCmdGroupTestExplorer
+			|| *pguidCmdGroup == guidVSEQTPackageCmdSet
+			|| *pguidCmdGroup == guidSomethingResourcesCmdSet
+			|| *pguidCmdGroup == guidCmdSetPerformance
+			|| *pguidCmdGroup == guidCmdSetEdit
+			|| *pguidCmdGroup == guidCmdSetHelp
+			|| *pguidCmdGroup == guidCmdSetTaskRunnerExplorer
+			|| *pguidCmdGroup == guidCmdSetCtxMenuPrjSolOtherClsWiz
+			|| *pguidCmdGroup == guidCmdSetCodeAnalysis
+			|| *pguidCmdGroup == guidCmdSetCodeMetrics
+			|| *pguidCmdGroup == guidCmdSetClassViewProject
+			|| *pguidCmdGroup == guidCmdSetSolExplPivotStartList
+			|| *pguidCmdGroup == guidCmdSetWebToolsScaffolding
+			|| *pguidCmdGroup == guidCmdSetWebToolsScaffolding2
+			|| *pguidCmdGroup == guidUniversalProjectsCmdSet
+			|| *pguidCmdGroup == guidCmdSetNetAspire
+			|| *pguidCmdGroup == guidCmdSetBowerPackages
+			|| *pguidCmdGroup == guidDotNetCoreWebCmdId
+			|| *pguidCmdGroup == guidCmdSetCSharpInteractive
+			|| *pguidCmdGroup == guidCmdSetTFS
+			|| *pguidCmdGroup == guidSccPkg
+			|| *pguidCmdGroup == guidToolWindowTimestampButton
+			|| *pguidCmdGroup == guidCmdSetSomethingIntellisense
+			|| *pguidCmdGroup == guidCmdSetSomethingTerminal
+			|| *pguidCmdGroup == guidSHLMainMenu
+			|| *pguidCmdGroup == guidCommonIDEPackage
+			)
+			return OLECMDERR_E_UNKNOWNGROUP;
+		#endif
+
+		if (*pguidCmdGroup == guidNuGetDialogCmdSet || *pguidCmdGroup == guidNuGetSomethingCmdSet)
+		{
+			*cmdf = OLECMDF_SUPPORTED | OLECMDF_INVISIBLE;
+			return S_OK;
+		}
+
+		if (*pguidCmdGroup == DebugTargetTypeCommandGuid)
+		{
+			if (cmdID == 0x100)
+			{
+				// DebugTargetTypeCommandId
+				return E_NOTIMPL;
+			}
+
+			return E_NOTIMPL;
+		}
+
+		//BreakIntoDebugger();
+		return OLECMDERR_E_UNKNOWNGROUP;
+	}
+
+	HRESULT ExecCommandOnProjectNode (const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT* pvaIn, VARIANT* pvaOut)
+	{
+		if (!pguidCmdGroup)
+			return E_POINTER;
+
+		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97)
+		{
+			if (   nCmdID == cmdidObjectVerbList0 // 137
+				|| nCmdID == cmdidCloseSolution // 219
+				|| nCmdID == cmdidExit // 229
+				|| nCmdID == cmdidOutputWindow // 237
+				|| nCmdID == cmdidPropSheetOrProperties // 397
+				|| nCmdID == cmdidCloseDocument // 658
+				|| nCmdID == cmdidBuildSel // 886
+				|| nCmdID == cmdidStart          // 295 - ignore it here, and the IDE will pass it to our IVsBuildableProjectCfg
+				|| nCmdID == cmdidStop           // 179 - same
+				|| nCmdID == cmdidDebugProcesses // 213 - same
+				|| nCmdID == cmdidSaveProjectItem // 331 - ignore it here and VS will - if dirty - pass it to IPersistFileFormat::Save
+				|| nCmdID == cmdidSaveProjectItemAs // 226 - same
+				)
+				return OLECMDERR_E_NOTSUPPORTED;
+
+			if (nCmdID == cmdidAddNewItem) // 220
+				return ProcessCommandAddItem(TRUE);
+			if (nCmdID == cmdidAddExistingItem) // 244
+				return ProcessCommandAddItem(FALSE);
+
+			return OLECMDERR_E_NOTSUPPORTED;
+		}
+
+		if (*pguidCmdGroup == CMDSETID_StandardCommandSet11)
+		{
+			if (nCmdID == cmdidLocateFindTarget)
+				return OLECMDERR_E_NOTSUPPORTED;
+
+			//BreakIntoDebugger();
+			return OLECMDERR_E_NOTSUPPORTED;
+		}
+
+		if (*pguidCmdGroup == CMDSETID_StandardCommandSet2K)
+		{
+			if (nCmdID == ECMD_COMPILE)
+				return OLECMDERR_E_NOTSUPPORTED;
+
+			//BreakIntoDebugger();
+			return OLECMDERR_E_NOTSUPPORTED;
+		}
+
+		if (*pguidCmdGroup == GUID_VsUIHierarchyWindowCmds)
+		{
+			return OLECMDERR_E_NOTSUPPORTED;
+		}
+
+		return OLECMDERR_E_UNKNOWNGROUP;
+	}
+
+	HRESULT ProcessCommandAddItem (BOOL fAddNewItem)
+	{
+		wil::com_ptr_nothrow<IVsAddProjectItemDlg> dlg;
+		auto hr = _sp->QueryService(SID_SVsAddProjectItemDlg, &dlg); RETURN_IF_FAILED(hr);
+		VSADDITEMFLAGS flags;
+		if (fAddNewItem)
+			flags = VSADDITEM_AddNewItems | VSADDITEM_SuggestTemplateName | VSADDITEM_NoOnlineTemplates; /* | VSADDITEM_ShowLocationField */
+		else
+			flags = VSADDITEM_AddExistingItems | VSADDITEM_AllowMultiSelect | VSADDITEM_AllowStickyFilter;
+
+		// TODO: To specify a sticky behavior for the location field, which is the recommended behavior, remember the last location field value and pass it back in when you open the dialog box again.
+		// TODO: To specify sticky behavior for the filter field, which is the recommended behavior, remember the last filter field value and pass it back in when you open the dialog box again.
+		hr = dlg->AddProjectItemDlg (VSITEMID_ROOT, __uuidof(IProjectNodeProperties), this, flags, nullptr, nullptr, nullptr, nullptr, nullptr);
+		if (FAILED(hr) && (hr != OLE_E_PROMPTSAVECANCELLED))
+			return hr;
+
+		return S_OK;
+	}
+
 	#pragma region IVsUIHierarchy
 	virtual HRESULT STDMETHODCALLTYPE QueryStatusCommand (VSITEMID itemid, const GUID* pguidCmdGroup, ULONG cCmds, OLECMD prgCmds[], OLECMDTEXT* pCmdText) override
 	{
@@ -1343,14 +1344,9 @@ public:
 
 		if (itemid == VSITEMID_ROOT)
 		{
-			for (ULONG i = 0; i < cCmds; i++)
-			{
-				auto hr = QueryStatusCommandOnProjectNode (pguidCmdGroup, prgCmds[i].cmdID, &prgCmds[i].cmdf, pCmdText ? &pCmdText[i] : nullptr);
-				if (FAILED(hr))
-					return hr;
-			}
-
-			return S_OK;
+			if (cCmds == 1)
+				return QueryStatusCommandOnProjectNode (pguidCmdGroup, prgCmds->cmdID, &prgCmds->cmdf, pCmdText);
+			RETURN_HR(E_NOTIMPL);
 		}
 
 		if (itemid == VSITEMID_SELECTION)
