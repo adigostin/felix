@@ -87,6 +87,79 @@ namespace FelixTests
 			DeleteFile(fullPathNew);
 		}
 
+		TEST_METHOD(RenameFileOutsideProjectDirSameDrive)
+		{
+			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"\\RenameFileOutsideProjectDirSameDrive");
+			CreateDirectory (testDir.get(), nullptr);
+			auto projDir = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\projdir");
+			CreateDirectory (projDir.get(), nullptr);
+
+			com_ptr<IVsHierarchy> hier;
+			auto hr = MakeProjectNode (TemplatePath_EmptyProject.get(), projDir.get(), L"proj.flx", CPF_CLONEFILE, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\file.asm");
+			hr = hier.try_query<IVsProject>()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, (LPCOLESTR*)fileFullPath.addressof(), nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto fileProps = wil::try_com_query_nothrow<IFileNodeProperties>(hier.try_query<IParentNode>()->FirstChild());
+			wil::unique_bstr pathProp;
+			fileProps->get_Path(&pathProp);
+			Assert::AreEqual(L"..\\file.asm", pathProp.get());
+
+			wil::unique_hfile handle (CreateFile(fileFullPath.get(), GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL));
+			Assert::IsTrue(handle.is_valid());
+			handle.reset();
+
+			wil::unique_variant id;
+			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &id);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			auto newFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\new.asm");
+			BOOL bres = DeleteFile(newFullPath.get());
+			Assert::IsTrue(bres || GetLastError() == ERROR_FILE_NOT_FOUND);
+
+			hr = hier->SetProperty(V_VSITEMID(&id), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"new.asm"));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			fileProps->get_Path(&pathProp);
+			Assert::AreEqual(L"..\\new.asm", pathProp.get());
+
+			Assert::IsTrue(PathFileExists(newFullPath.get()));
+			DeleteFile(newFullPath.get());
+		}
+
+		TEST_METHOD(RenameFileOutsideProjectDirOtherDrive)
+		{
+			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"\\RenameFileOutsideProjectDirSameDrive");
+			CreateDirectory(testDir.get(), nullptr);
+
+			com_ptr<IVsHierarchy> hier;
+			auto hr = MakeProjectNode (nullptr, testDir.get(), nullptr, 0, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			Assert::IsTrue(SUCCEEDED(hr));
+			const wchar_t* fileFullPath = L"D:\\FelixTest\\RenameFileOutsideProjectDirSameDrive\\file.asm";
+			hr = hier.try_query<IVsProject>()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, &fileFullPath, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_hfile handle (CreateFile(fileFullPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL));
+			Assert::IsTrue(handle.is_valid());
+			handle.reset();
+
+			wil::unique_variant id;
+			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &id);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			const wchar_t* newFullPath = L"D:\\FelixTest\\RenameFileOutsideProjectDirSameDrive\\new.asm";
+			BOOL bres = DeleteFile(newFullPath);
+			Assert::IsTrue(bres || GetLastError() == ERROR_FILE_NOT_FOUND);
+
+			hr = hier->SetProperty(V_VSITEMID(&id), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"new.asm"));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			Assert::IsTrue(PathFileExists(newFullPath));
+			DeleteFile(newFullPath);
+		}
+
 		TEST_METHOD(AddFileAlreadyExists)
 		{
 			com_ptr<IVsHierarchy> hier;

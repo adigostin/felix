@@ -892,18 +892,13 @@ public:
 
 		RETURN_HR_IF(E_UNEXPECTED, _itemId == VSITEMID_NIL);
 		
-		RETURN_HR_IF(E_NOTIMPL, !PathIsFileSpec(_path.get()));
-
 		com_ptr<IVsHierarchy> hier;
 		hr = FindHier(this, IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
 		com_ptr<IVsProject> project;
 		hr = hier->QueryInterface(&project); RETURN_IF_FAILED(hr);
 
-		wil::unique_process_heap_string pathToThis;
-		hr = GetPathTo (this, pathToThis); RETURN_IF_FAILED(hr);
-
-		wil::unique_process_heap_string oldFullPath;
-		hr = wil::str_concat_nothrow(oldFullPath, pathToThis, L"\\", _path); RETURN_IF_FAILED(hr);
+		wil::unique_bstr oldFullPath;
+		hr = GetMkDocument(hier, &oldFullPath); RETURN_IF_FAILED(hr);
 
 		hr = QueryEditProjectFile(hier); RETURN_IF_FAILED_EXPECTED(hr);
 
@@ -929,9 +924,10 @@ public:
 		//		return S_OK;
 		//}
 
+		auto fn = wcsrchr(oldFullPath.get(), L'\\'); RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), !fn);
 		wil::unique_process_heap_string newFullPath;
-		hr = wil::str_concat_nothrow(newFullPath, pathToThis, L"\\", newName); RETURN_IF_FAILED(hr);
-
+		hr = wil::str_printf_nothrow(newFullPath, L"%.*s\\%s", (int)(fn - oldFullPath.get()), oldFullPath.get(), newName); RETURN_IF_FAILED(hr);
+		
 		BOOL fRenameCanContinue = TRUE;
 		com_ptr<IVsTrackProjectDocuments2> trackProjectDocs;
 		hr = serviceProvider->QueryService (SID_SVsTrackProjectDocuments, &trackProjectDocs);
@@ -943,14 +939,17 @@ public:
 				return OLE_E_PROMPTSAVECANCELLED;
 		}
 
-		auto otherName = wil::make_process_heap_string_nothrow(newName);
+		fn = wcsrchr(_path.get(), L'\\');
+		fn = fn ? (fn + 1) : _path.get();
+		wil::unique_process_heap_string otherPathValue;
+		hr = wil::str_printf_nothrow(otherPathValue, L"%.*s%s", (int)(fn - _path.get()), _path.get(), newName); RETURN_IF_FAILED(hr);
 
 		if (!::MoveFile (oldFullPath.get(), newFullPath.get()))
 			return HRESULT_FROM_WIN32(GetLastError());
-		std::swap(_path, otherName);
-		auto undoRename = wil::scope_exit([this, &otherName, &newFullPath, &oldFullPath]
+		std::swap(_path, otherPathValue);
+		auto undoRename = wil::scope_exit([this, &otherPathValue, &newFullPath, &oldFullPath]
 			{
-				std::swap (_path, otherName);
+				std::swap (_path, otherPathValue);
 				::MoveFile (newFullPath.get(), oldFullPath.get());
 			});
 
