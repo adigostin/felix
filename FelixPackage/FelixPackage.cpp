@@ -32,10 +32,7 @@ static const char SentryReleaseName[] = "0.9.8";
 // {8F0D9E89-4C6C-4B63-83CF-1AA6B6E59BCB}
 GUID SID_Simulator = { 0x8f0d9e89, 0x4c6c, 0x4b63, { 0x83, 0xcf, 0x1a, 0xa6, 0xb6, 0xe5, 0x9b, 0xcb } };
 
-// I know global variables are bad, but there are places in code where
-// it's impossible to reach the IServiceProvider received in IVsPackage::SetSite.
-// One such example is the implementation of IPropertyPage::GetPageInfo.
-wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
+FELIX_API wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 
 class FelixPackageImpl : public IVsPackage, IVsSolutionEvents, IOleCommandTarget, IDebugEventCallback2, IServiceProvider
 {
@@ -448,7 +445,7 @@ public:
 		wil::com_ptr_nothrow<IVsRegisterProjectTypes> regSvc;
 		hr = pSP->QueryService (SID_SVsRegisterProjectTypes, &regSvc); RETURN_IF_FAILED(hr);
 		wil::com_ptr_nothrow<IVsProjectFactory> pf;
-		hr = MakeProjectFactory(serviceProvider, &pf); RETURN_IF_FAILED(hr);
+		hr = MakeProjectFactory(&pf); RETURN_IF_FAILED(hr);
 
 		VSCOOKIE cookie;
 		hr = regSvc->RegisterProjectType (__uuidof(IProjectNodeProperties), pf.get(), &cookie); RETURN_IF_FAILED(hr);

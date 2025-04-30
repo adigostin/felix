@@ -48,10 +48,9 @@ struct ProjectConfig
 	WeakRefToThis _weakRefToThis;
 
 public:
-	HRESULT InitInstance (IVsHierarchy* hier)
+	HRESULT InitInstance()
 	{
 		HRESULT hr;
-		hr = hier->QueryInterface(IID_PPV_ARGS(_hier.addressof())); RETURN_IF_FAILED(hr);
 		_threadId = GetCurrentThreadId();
 		_platformName = wil::make_bstr_nothrow(L"ZX Spectrum 48K"); RETURN_IF_NULL_ALLOC(_platformName);
 		
@@ -460,7 +459,14 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetHierarchy (REFIID riid, void** ppvObject) override
+	virtual HRESULT STDMETHODCALLTYPE SetSite (IProjectNodeProperties* pHier) override
+	{
+		RETURN_HR_IF(E_UNEXPECTED, _hier != nullptr);
+		auto hr = pHier->QueryInterface(IID_PPV_ARGS(_hier.addressof())); RETURN_IF_FAILED(hr);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetSite (REFIID riid, void** ppvObject) override
 	{
 		return _hier->QueryInterface(riid, ppvObject);
 	}
@@ -576,10 +582,13 @@ public:
 	#pragma region IPropertyNotifySink
 	virtual HRESULT STDMETHODCALLTYPE OnChanged (DISPID dispID) override
 	{
-		com_ptr<IPropertyNotifySink> pns;
-		auto hr = _hier->QueryInterface(&pns); LOG_IF_FAILED(hr);
-		if (SUCCEEDED(hr))
+		if (_hier)
+		{
+			com_ptr<IPropertyNotifySink> pns;
+			auto hr = _hier->QueryInterface(&pns); RETURN_IF_FAILED(hr);
 			pns->OnChanged(dispidConfigurations);
+		}
+
 		return S_OK;
 	}
 
@@ -590,10 +599,10 @@ public:
 	#pragma endregion
 };
 
-FELIX_API HRESULT ProjectConfig_CreateInstance (IVsHierarchy* hier, IProjectConfig** to)
+FELIX_API HRESULT MakeProjectConfig (IProjectConfig** to)
 {
 	auto p = com_ptr(new (std::nothrow) ProjectConfig()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance(hier); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance(); RETURN_IF_FAILED(hr);
 	*to = p.detach();
 	return S_OK;
 }

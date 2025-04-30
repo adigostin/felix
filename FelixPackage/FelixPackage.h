@@ -104,7 +104,7 @@ IFolderNode : IChildNode
 {
 };
 
-extern wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
+FELIX_API extern wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 
 extern GUID SID_Simulator;
 extern const wchar_t Z80AsmLanguageName[];
@@ -132,8 +132,8 @@ inline HRESULT InitVariantFromVSITEMID (VSITEMID itemid, VARIANT* pvar)
 
 FELIX_API HRESULT MakeProjectNode (LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject);
 FELIX_API HRESULT MakeFileNode (IFileNode** file);
-FELIX_API HRESULT ProjectConfig_CreateInstance (IVsHierarchy* hier, IProjectConfig** to);
-HRESULT MakeProjectFactory (IServiceProvider* sp, IVsProjectFactory** to);
+FELIX_API HRESULT MakeProjectConfig (IProjectConfig** to);
+HRESULT MakeProjectFactory (IVsProjectFactory** to);
 HRESULT MakePGPropertyPage (UINT titleStringResId, REFGUID pageGuid, DISPID dispidChildObj, IPropertyPage** to);
 HRESULT MakeAsmPropertyPage (IPropertyPage** to);
 HRESULT SimulatorWindowPane_CreateInstance (IVsWindowPane** to);

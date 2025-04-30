@@ -31,9 +31,15 @@ struct MockServiceProvider : IServiceProvider, IMockServiceProvider
 		Assert::Fail();
 	}
 
-	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
+	virtual ULONG STDMETHODCALLTYPE AddRef() override
+	{
+		return ++_refCount;
+	}
 
-	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
+	virtual ULONG STDMETHODCALLTYPE Release() override
+	{
+		return ReleaseST(this, _refCount);
+	}
 	#pragma endregion
 
 	virtual HRESULT STDMETHODCALLTYPE QueryService (REFGUID guidService, REFIID riid, void** ppvObject) override

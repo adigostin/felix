@@ -2,6 +2,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include "shared/com.h"
+#include "../FelixPackage/FelixPackage.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -11,7 +12,6 @@ extern com_ptr<IServiceProvider> MakeMockServiceProvider();
 static HMODULE dll;
 using GCO = HRESULT (STDMETHODCALLTYPE*)(REFCLSID rclsid, REFIID riid, LPVOID* ppv);
 static GCO getClassObject;
-com_ptr<IServiceProvider> sp;
 com_ptr<IVsPackage> package;
 wchar_t tempPath[MAX_PATH + 1];
 wil::unique_process_heap_string templateFullPath;
@@ -69,8 +69,6 @@ TEST_MODULE_INITIALIZE(InitModule)
 	Assert::IsTrue(bres);
 	th.reset();
 
-	sp = MakeMockServiceProvider();
-
 	dll = LoadLibrary(L"FelixPackage.dll");
 	Assert::IsNotNull(dll);
 	getClassObject = (GCO)GetProcAddress(dll, "DllGetClassObject");
@@ -83,6 +81,7 @@ TEST_MODULE_INITIALIZE(InitModule)
 	hr = packageFactory->CreateInstance(nullptr, IID_PPV_ARGS(&package));
 	Assert::IsTrue(SUCCEEDED(hr));
 
+	auto sp = MakeMockServiceProvider();
 	hr = package->SetSite(sp);
 	Assert::IsTrue(SUCCEEDED(hr));
 }
@@ -96,9 +95,9 @@ TEST_MODULE_CLEANUP(CleanupModule)
 		Assert::AreEqual((ULONG)0, refCount);
 	}
 
-	if (sp)
+	if (serviceProvider)
 	{
-		ULONG refCount = sp.detach()->Release();
+		ULONG refCount = serviceProvider.detach()->Release();
 		Assert::AreEqual((ULONG)0, refCount);
 	}
 }
@@ -114,7 +113,7 @@ namespace FelixTests
 			HRESULT hr;
 
 			com_ptr<IVsSolution> sol;
-			hr = sp->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
+			hr = serviceProvider->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			static const wchar_t ProjFileName[] = L"TestProject.flx";

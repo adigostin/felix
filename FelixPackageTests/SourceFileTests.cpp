@@ -15,7 +15,6 @@ namespace FelixTests
 			com_ptr<IVsHierarchy> hier;
 			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto config = MakeProjectConfig(hier);
 			auto pane = MakeMockOutputWindowPane(nullptr);
 
 			com_ptr<IFileNode> file;

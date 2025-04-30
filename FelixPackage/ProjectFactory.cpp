@@ -7,17 +7,7 @@ class ProjectFactory : public IVsProjectFactory
 {
 	ULONG _refCount = 0;
 
-	wil::com_ptr_nothrow<IServiceProvider> _sp;
-
 public:
-	static HRESULT CreateInstance (IServiceProvider* sp, IVsProjectFactory** to)
-	{
-		wil::com_ptr_nothrow<ProjectFactory> p = new (std::nothrow) ProjectFactory(); RETURN_IF_NULL_ALLOC(p);
-		p->_sp = sp;
-		*to = p.detach();
-		return S_OK;
-	}
-
 	#pragma region IUnknown
 	virtual HRESULT __stdcall QueryInterface(REFIID riid, void** ppvObject) override
 	{
@@ -69,8 +59,10 @@ public:
 	#pragma endregion
 };
 
-HRESULT MakeProjectFactory (IServiceProvider* sp, IVsProjectFactory** to)
+HRESULT MakeProjectFactory (IVsProjectFactory** to)
 {
-	return ProjectFactory::CreateInstance(sp, to);
+	auto p = com_ptr(new (std::nothrow) ProjectFactory()); RETURN_IF_NULL_ALLOC(p);
+	*to = p.detach();
+	return S_OK;
 }
 

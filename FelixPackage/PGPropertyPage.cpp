@@ -409,7 +409,7 @@ public:
 		auto hr = _objects.front().GetParent()->QueryInterface(&config); RETURN_IF_FAILED(hr);
 		
 		com_ptr<IVsHierarchy> hier;
-		hr = config->GetHierarchy(IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
+		hr = config->GetSite(IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
 
 		com_ptr<IProjectConfigAssemblerProperties> asmProps;
 		hr = _objects.front().GetChild()->QueryInterface(&asmProps); RETURN_IF_FAILED(hr);

@@ -12,6 +12,7 @@ library ATLProject1Lib
 {
 	importlib("stdole2.tlb");
 
+	interface IProjectNodeProperties;
 	interface IProjectConfigAssemblerProperties;
 	interface IProjectConfigDebugProperties;
 	interface ICommandLineList;
@@ -25,7 +26,8 @@ library ATLProject1Lib
 	{
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
 
-		HRESULT GetHierarchy (REFIID riid, void** ppvObject);
+		HRESULT SetSite (IProjectNodeProperties* pHier);
+		HRESULT GetSite (REFIID riid, void** ppvObject);
 
 		[id(dispidAssemblerProperties), propget] HRESULT AssemblerProperties ([out, retval] IProjectConfigAssemblerProperties** ppProps);
 

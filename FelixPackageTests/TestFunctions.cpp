@@ -17,13 +17,35 @@ com_ptr<IFileNode> MakeFileNode (const wchar_t* pathRelativeToProjectDir)
 	return f;
 }
 
-com_ptr<IProjectConfig> MakeProjectConfig (IVsHierarchy* hier)
+com_ptr<IProjectConfig> AddDebugProjectConfig (IVsHierarchy* hier)
 {
+	HRESULT hr;
+
+	com_ptr<IVsGetCfgProvider> getCfgProvider;
+	hr = hier->QueryInterface(IID_PPV_ARGS(&getCfgProvider));
+	Assert::IsTrue(SUCCEEDED(hr));
+
+	com_ptr<IVsCfgProvider> cfgProvider;
+	hr = getCfgProvider->GetCfgProvider(&cfgProvider);
+	Assert::IsTrue(SUCCEEDED(hr));
+
+	com_ptr<IVsCfgProvider2> cfgProvider2;
+	hr = cfgProvider->QueryInterface(&cfgProvider2);
+	Assert::IsTrue(SUCCEEDED(hr));
+
+	hr = cfgProvider2->AddCfgsOfCfgName(L"Debug", nullptr, FALSE);
+	Assert::IsTrue(SUCCEEDED(hr));
+
+	com_ptr<IVsCfg> cfg;
+	ULONG actual;
+	hr = cfgProvider2->GetCfgs (1, cfg.addressof(), &actual, NULL);
+	Assert::IsTrue(SUCCEEDED(hr));
+	Assert::AreEqual<ULONG>(1, actual);
+
 	com_ptr<IProjectConfig> config;
-	auto hr = ProjectConfig_CreateInstance(hier, &config);
+	hr = cfg->QueryInterface(&config);
 	Assert::IsTrue(SUCCEEDED(hr));
-	hr = config->put_ConfigName(wil::make_bstr_nothrow(L"Debug").get());
-	Assert::IsTrue(SUCCEEDED(hr));
+
 	return config;
 }
 

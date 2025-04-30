@@ -7,7 +7,6 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-extern com_ptr<IServiceProvider> sp;
 extern const GUID FelixProjectType = { 0xD438161C, 0xF032, 0x4014, { 0xBC, 0x5C, 0x20, 0xA8, 0x0E, 0xAF, 0xF5, 0x9B } };
 extern wil::unique_process_heap_string templateFullPath;
 extern wil::unique_process_heap_string TemplatePath_EmptyProject;
@@ -275,7 +274,7 @@ namespace FelixTests
 		TEST_METHOD(RemoveItem_FirstOfTwo)
 		{
 			com_ptr<IVsSolution> sol;
-			auto hr = sp->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol)); Assert::IsTrue(SUCCEEDED(hr));
+			auto hr = serviceProvider->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol)); Assert::IsTrue(SUCCEEDED(hr));
 
 			com_ptr<IVsUIHierarchy> hier;
 			hr = sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), tempPath, L"TestProject.flx", CPF_CLONEFILE, IID_PPV_ARGS(&hier)); Assert::IsTrue(SUCCEEDED(hr));
@@ -474,7 +473,7 @@ namespace FelixTests
 		TEST_METHOD(AddSubFolder_FolderMissingOnDisk)
 		{
 			com_ptr<IVsSolution> sol;
-			auto hr = sp->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
+			auto hr = serviceProvider->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			static const wchar_t ProjFileName[] = L"TestProject.flx";
@@ -606,7 +605,7 @@ namespace FelixTests
 		TEST_METHOD(AddItemNew_NameAlreadyExists)
 		{
 			com_ptr<IVsSolution> sol;
-			auto hr = sp->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
+			auto hr = serviceProvider->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			static const wchar_t ProjFileName[] = L"TestProject.flx";

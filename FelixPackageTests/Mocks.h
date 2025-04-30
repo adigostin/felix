@@ -8,7 +8,7 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 extern wchar_t tempPath[MAX_PATH + 1];
 
-extern com_ptr<IProjectConfig> MakeProjectConfig (IVsHierarchy* hier);
+extern com_ptr<IProjectConfig> AddDebugProjectConfig (IVsHierarchy* hier);
 extern com_ptr<IVsOutputWindowPane2> MakeMockOutputWindowPane (IStream* outputStreamUTF16);
 extern com_ptr<IServiceProvider> MakeMockServiceProvider();
 

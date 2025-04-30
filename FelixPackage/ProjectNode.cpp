@@ -2107,7 +2107,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE AddCfgsOfCfgName(LPCOLESTR pszCfgName, LPCOLESTR pszCloneCfgName, BOOL fPrivate) override
 	{
 		com_ptr<IProjectConfig> newConfig;
-		auto hr = ProjectConfig_CreateInstance (this, &newConfig); RETURN_IF_FAILED_EXPECTED(hr);
+		auto hr = MakeProjectConfig (&newConfig); RETURN_IF_FAILED_EXPECTED(hr);
 
 		if (pszCloneCfgName)
 		{
@@ -2139,6 +2139,8 @@ public:
 
 		bool pushed = _configs.try_push_back(std::move(newConfig)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 		auto removeBack = wil::scope_exit([this] { _configs.remove_back(); });
+
+		hr = _configs.back()->SetSite(this); RETURN_IF_FAILED(hr);
 
 		_isDirty = true;
 
@@ -2498,19 +2500,17 @@ public:
 		LONG ubound;
 		hr = SafeArrayGetUBound(sa, 1, &ubound); RETURN_IF_FAILED(hr);
 
-		vector_nothrow<com_ptr<IProjectConfig>> newConfigs;
 		for (LONG i = 0; i <= ubound; i++)
 		{
 			com_ptr<IDispatch> child;
 			hr = SafeArrayGetElement (sa, &i, child.addressof()); RETURN_IF_FAILED(hr);
 			com_ptr<IProjectConfig> config;
 			hr = child->QueryInterface(&config); RETURN_IF_FAILED(hr);
-			bool pushed = newConfigs.try_push_back(std::move(config)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+			bool pushed = _configs.try_push_back(std::move(config)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+			_configs.back()->SetSite(this);
 		}
 
-		_configs = std::move(newConfigs);
-
-		_isDirty = true;
+		// This is meant to be called only from LoadXml, no need to set dirty flag or send notifications.
 
 		return S_OK;
 	}
@@ -2656,8 +2656,8 @@ public:
 	{
 		if (dispidProperty == dispidConfigurations)
 		{
-			wil::com_ptr_nothrow<IProjectConfig> config;
-			auto hr = ProjectConfig_CreateInstance(this, &config); RETURN_IF_FAILED(hr);
+			com_ptr<IProjectConfig> config;
+			auto hr = MakeProjectConfig(&config); RETURN_IF_FAILED(hr);
 			*childOut = config.detach();
 			return S_OK;
 		}
