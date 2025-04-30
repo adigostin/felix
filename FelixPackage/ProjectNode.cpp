@@ -34,7 +34,7 @@ class ProjectNode
 {
 	ULONG _refCount = 0;
 	GUID _projectInstanceGuid;
-	wil::unique_hlocal_string _location;
+	wil::unique_hlocal_string _projectDir;
 	wil::unique_hlocal_string _filename;
 	wil::unique_hlocal_string _caption;
 	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsHierarchyEvents>> _hierarchyEventSinks;
@@ -169,7 +169,7 @@ public:
 
 		if (grfCreateFlags & CPF_CLONEFILE)
 		{
-			_location = wil::make_hlocal_string_nothrow(pszLocation); RETURN_IF_NULL_ALLOC(_location);
+			_projectDir = wil::make_hlocal_string_nothrow(pszLocation); RETURN_IF_NULL_ALLOC(_projectDir);
 			_filename = wil::make_hlocal_string_nothrow(pszName); RETURN_IF_NULL_ALLOC(_filename);
 			const wchar_t* ext = ::PathFindExtension(pszName);
 			_caption = wil::make_hlocal_string_nothrow(pszName, ext - pszName); RETURN_IF_NULL_ALLOC(_caption);
@@ -194,8 +194,8 @@ public:
 		else if (grfCreateFlags & CPF_OPENFILE)
 		{
 			// pszFilename is the full path of the file to open, the others are NULL.
-			_location = wil::make_hlocal_string_nothrow(pszFilename); RETURN_IF_NULL_ALLOC(_location);
-			PathRemoveFileSpec(_location.get());
+			_projectDir = wil::make_hlocal_string_nothrow(pszFilename); RETURN_IF_NULL_ALLOC(_projectDir);
+			PathRemoveFileSpec(_projectDir.get());
 
 			const wchar_t* fn = PathFindFileName(pszFilename);
 			_filename = wil::make_hlocal_string_nothrow(fn); RETURN_IF_NULL_ALLOC(_filename);
@@ -217,7 +217,7 @@ public:
 			RETURN_HR_IF(E_UNEXPECTED, !!pszFilename);
 			RETURN_HR_IF(E_UNEXPECTED, !pszLocation);
 
-			_location = wil::make_hlocal_string_nothrow(pszLocation); RETURN_IF_NULL_ALLOC(_location);
+			_projectDir = wil::make_hlocal_string_nothrow(pszLocation); RETURN_IF_NULL_ALLOC(_projectDir);
 
 			return S_OK;
 		}	
@@ -627,7 +627,7 @@ public:
 			}
 
 			if (propid == VSHPROPID_ProjectDir) //-2021
-				return InitVariantFromString (_location.get(), pvar);
+				return InitVariantFromString (_projectDir.get(), pvar);
 
 			if (propid == VSHPROPID_TypeName) // -2030
 				return InitVariantFromString (L"Z80", pvar); // Called by 17.11.5 from Help -> About.
@@ -968,7 +968,7 @@ public:
 		}
 
 		auto newFullPath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(newFullPath);
-		PathCombine (newFullPath.get(), _location.get(), newFilename.get());
+		PathCombine (newFullPath.get(), _projectDir.get(), newFilename.get());
 
 		// Check if it exists, but only if the user changed more than character casing.
 		if (_wcsicmp(_filename.get(), newFilename.get()))
@@ -1508,14 +1508,14 @@ public:
 		RETURN_HR_IF(E_NOTIMPL, nFormatIndex != DEF_FORMAT_INDEX);
 
 		// "If the object is in the untitled state and null is passed as the pszFilename, the object returns E_INVALIDARG."
-		bool isTitled = _filename && _filename.get()[0] && _location && _location.get()[0];
+		bool isTitled = _filename && _filename.get()[0] && _projectDir && _projectDir.get()[0];
 		RETURN_HR_IF_EXPECTED(E_INVALIDARG, !isTitled && !pszFilename);
 
 		wil::unique_hlocal_string currentFilePath;
 		if (isTitled)
 		{
 			currentFilePath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(currentFilePath);
-			PathCombine(currentFilePath.get(), _location.get(), _filename.get());
+			PathCombine(currentFilePath.get(), _projectDir.get(), _filename.get());
 		}
 
 		if (!pszFilename || (currentFilePath && !wcscmp(pszFilename, currentFilePath.get())))
@@ -1562,7 +1562,7 @@ public:
 		// IVsProject::GetMkDocument returns the same as GetCurFile for VSITEMID_ROOT.
 
 		auto buffer = wil::make_cotaskmem_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(buffer);
-		PathCombine (buffer.get(), _location.get(), _filename.get());
+		PathCombine (buffer.get(), _projectDir.get(), _filename.get());
 
 		*ppszFilename = buffer.release();
 		*pnFormatIndex = 0;
@@ -1702,7 +1702,7 @@ public:
 		wil::unique_process_heap_string path;
 		if (itemidLoc == VSITEMID_ROOT)
 		{
-			path = wil::make_process_heap_string_nothrow(_location.get()); RETURN_IF_NULL_ALLOC(path);
+			path = wil::make_process_heap_string_nothrow(_projectDir.get()); RETURN_IF_NULL_ALLOC(path);
 		}
 		else
 		{
@@ -1894,13 +1894,13 @@ public:
 		// TODO: there's a lot that needs to be called in IVsTrackProjectDocumentsEvents2
 
 		com_ptr<IFileNode> file;
-		if (PathIsSameRoot(pszFullPathSource, _location.get()))
+		if (PathIsSameRoot(pszFullPathSource, _projectDir.get()))
 		{
 			// File is on same drive as the project. We'll keep its path in a form relative to the project dir.
 			wchar_t relativeUgly[MAX_PATH];
-			BOOL bRes = PathRelativePathTo (relativeUgly, _location.get(), FILE_ATTRIBUTE_DIRECTORY, pszFullPathSource, 0);
+			BOOL bRes = PathRelativePathTo (relativeUgly, _projectDir.get(), FILE_ATTRIBUTE_DIRECTORY, pszFullPathSource, 0);
 			if (!bRes)
-				return SetErrorInfo(E_INVALIDARG, L"Can't make a relative path from '%s' relative to '%s'.", pszFullPathSource, _location.get());
+				return SetErrorInfo(E_INVALIDARG, L"Can't make a relative path from '%s' relative to '%s'.", pszFullPathSource, _projectDir.get());
 
 			for (auto* p = wcschr(relativeUgly, '/'); p; p = wcschr(p, '/'))
 				*p = '\\';
@@ -2837,7 +2837,7 @@ public:
 		if (parentItemId == VSITEMID_ROOT)
 		{
 			parent = this;
-			parentPath = wil::make_process_heap_string_nothrow(_location.get()); RETURN_IF_NULL_ALLOC(parentPath);
+			parentPath = wil::make_process_heap_string_nothrow(_projectDir.get()); RETURN_IF_NULL_ALLOC(parentPath);
 		}
 		else
 		{
