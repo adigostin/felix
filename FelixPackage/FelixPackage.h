@@ -102,6 +102,7 @@ IFileNode : IChildNode
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("E5498B79-7C01-4F49-B5EC-8D1C98FF935D")
 IFolderNode : IChildNode
 {
+	virtual IParentNode* AsParentNode() = 0;
 };
 
 FELIX_API extern wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
@@ -163,8 +164,8 @@ HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir, bool 
 FELIX_API HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path, bool relativeToProjectDir = false);
 HRESULT FindHier (IChildNode* from, REFIID riid, void** ppvHier);
 HRESULT FindHier (IParentNode* from, REFIID riid, void** ppvHier);
-FELIX_API HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo, bool sort);
-FELIX_API HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo, bool sort);
+HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo);
+HRESULT GetOrCreateChildFolder (IParentNode* parent, std::wstring_view folderName, IFolderNode** ppFolder);
 HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* child);
 HRESULT CreatePathOfNode (IParentNode* node, wil::unique_process_heap_string& pathOut);
 HRESULT GetItems (IParentNode* itemsIn, SAFEARRAY** itemsOut);

@@ -234,7 +234,8 @@ public:
 	// The filter function must return S_OK for a match (enumeration stops), S_FALSE for non-match (enumeration continues), or an error code (enumeration stops).
 	HRESULT FindDescendantIf (const stdext::inplace_function<HRESULT(IChildNode*), 32>& predicate, IChildNode** ppItem)
 	{
-		*ppItem = nullptr;
+		if (ppItem)
+			*ppItem = nullptr;
 
 		stdext::inplace_function<HRESULT(IParentNode* parent)> enumChildren;
 
@@ -245,8 +246,11 @@ public:
 				auto hr = predicate(c); RETURN_IF_FAILED_EXPECTED(hr);
 				if (hr == S_OK)
 				{
-					*ppItem = c;
-					(*ppItem)->AddRef();
+					if (ppItem)
+					{
+						*ppItem = c;
+						(*ppItem)->AddRef();
+					}
 					return S_OK;
 				}
 
@@ -1822,14 +1826,70 @@ public:
 		return AddExistingFile (location, dest.get(), ppNewNode);
 	}
 
+	HRESULT EnsureFilePathUniqueInProject (LPCWSTR path)
+	{
+		auto hr = FindDescendantIf([path](IChildNode* node)
+			{
+				if (auto fn = wil::try_com_query_nothrow<IFileNodeProperties>(node))
+				{
+					wil::unique_bstr existingPath;
+					if (SUCCEEDED(fn->get_Path(&existingPath)) && !_wcsicmp(path, existingPath.get()))
+						return S_OK;
+				}
+				return S_FALSE;
+			}, nullptr);
+		if (hr == S_OK)
+			return SetErrorInfo1(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), IDS_FILE_ALREADY_IN_PROJECT, path);
+		return S_OK;
+	}
+
+	static IFileNode* FindChildFileByName (IParentNode* parent, std::wstring_view fileName)
+	{
+		// Skip all folders.
+		auto child = parent->FirstChild();
+		while (child && !wil::try_com_query_nothrow<IFileNode>(child))
+			child = child->Next();
+		if (!child)
+			return nullptr;
+
+		while(child)
+		{
+			auto fn = wil::try_com_query_nothrow<IFileNode>(child);
+			if (!fn)
+				return nullptr;
+
+			wil::unique_variant n;
+			if (SUCCEEDED(fn->GetProperty(VSHPROPID_SaveName, &n)) && V_VT(&n) == VT_BSTR && fileName == V_BSTR(&n))
+				return fn;
+
+			child = child->Next();
+		}
+
+		return nullptr;
+	}
+
+	static HRESULT MakeFileNodeForExistingFile (LPCWSTR path, IFileNode** ppFile)
+	{
+		com_ptr<IFileNode> file;
+		auto hr = MakeFileNode(&file); RETURN_IF_FAILED(hr);
+		com_ptr<IFileNodeProperties> fileProps;
+		hr = file->QueryInterface(&fileProps); RETURN_IF_FAILED(hr);
+		hr = fileProps->put_Path(wil::make_bstr_nothrow(path).get()); RETURN_IF_FAILED(hr);
+		auto buildTool = _wcsicmp(PathFindExtension(path), L".asm") ? BuildToolKind::None : BuildToolKind::Assembler;
+		hr = fileProps->put_BuildTool(buildTool); RETURN_IF_FAILED(hr);
+		*ppFile = file.detach();
+		return S_OK;
+	}
+
 	HRESULT AddExistingFile (IParentNode* location, LPCTSTR pszFullPathSource, IChildNode** ppNewFile, BOOL fSilent = FALSE, BOOL fLoad = FALSE)
 	{
 		HRESULT hr;
 
-		// This is the value we assign to the Path property, which is what's stored in the XML and also what's passed to the assembler.
-		enum class PathType { RelativeIn, RelativeOut, Absolute };
-		wil::unique_bstr path;
-		PathType pathType;
+		hr = QueryEditProjectFile(this); RETURN_IF_FAILED_EXPECTED(hr);
+
+		// TODO: there's a lot that needs to be called in IVsTrackProjectDocumentsEvents2
+
+		com_ptr<IFileNode> file;
 		if (PathIsSameRoot(pszFullPathSource, _location.get()))
 		{
 			// File is on same drive as the project. We'll keep its path in a form relative to the project dir.
@@ -1848,58 +1908,40 @@ public:
 				const wchar_t* relative = relativeUgly;
 				while (relative[0] == '.' && relative[1] == '\\')
 					relative += 2;
-				path = wil::make_bstr_nothrow(relative); RETURN_IF_NULL_ALLOC(path);
-				pathType = PathType::RelativeIn;
+
+				// Find or create path of directories where we need to add our file node.
+				IParentNode* parent = this;
+				auto ptrComponent = relative;
+				while (auto nextComp = wcschr(ptrComponent, L'\\'))
+				{
+					std::wstring_view dir = { ptrComponent, nextComp };
+					ptrComponent = nextComp + 1;
+					com_ptr<IFolderNode> ch;
+					hr = GetOrCreateChildFolder(parent, dir, &ch); RETURN_IF_FAILED(hr);
+					parent = ch->AsParentNode(); 
+				}
+				if (FindChildFileByName(parent, ptrComponent))
+					return SetErrorInfo0(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), IDS_FILE_ALREADY_IN_PROJECT);
+
+				hr = MakeFileNodeForExistingFile (ptrComponent, &file); RETURN_IF_FAILED(hr);
+				hr = AddFileToParent(file, parent); RETURN_IF_FAILED(hr);
 			}
 			else
 			{
 				// File is outside the project dir, but on the same drive.
-				path = wil::make_bstr_nothrow(relativeUgly); RETURN_IF_NULL_ALLOC(path);
-				pathType = PathType::RelativeOut;
+				// Add as link to the folder selected by the user when starting the UI command.
+				hr = EnsureFilePathUniqueInProject(relativeUgly); RETURN_IF_FAILED_EXPECTED(hr);
+				hr = MakeFileNodeForExistingFile (relativeUgly, &file); RETURN_IF_FAILED(hr);
+				hr = AddFileToParent(file, location); RETURN_IF_FAILED(hr);
 			}
 		}
 		else
 		{
 			// File is on different drive, not on the project's drive. We keep it absolute.
-			path = wil::make_bstr_nothrow(pszFullPathSource); RETURN_IF_NULL_ALLOC(path);
-			pathType = PathType::Absolute;
-		}
-
-		// Check if the item exists in the project already.
-		com_ptr<IChildNode> existing;
-		hr = FindDescendantIf([path=path.get()](IChildNode* c)
-			{
-				if (auto sf = wil::try_com_query_nothrow<IFileNodeProperties>(c))
-				{
-					wil::unique_bstr rel;
-					auto hr = sf->get_Path(&rel); RETURN_IF_FAILED(hr);
-					if (!_wcsicmp(path, rel.get()))
-						return S_OK;
-					else
-						return S_FALSE;
-				}
-
-				return S_FALSE;
-			}, &existing); RETURN_IF_FAILED(hr);
-		if (hr == S_OK)
-			return SetErrorInfo(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), L"File already in project:\r\n\r\n%s", pszFullPathSource);
-
-		com_ptr<IFileNode> file;
-		hr = MakeFileNode(&file); RETURN_IF_FAILED(hr);
-		com_ptr<IFileNodeProperties> fileProps;
-		hr = file->QueryInterface(&fileProps); RETURN_IF_FAILED(hr);
-		hr = fileProps->put_Path(path.get()); RETURN_IF_FAILED(hr);
-		auto buildTool = _wcsicmp(PathFindExtension(path.get()), L".asm") ? BuildToolKind::None : BuildToolKind::Assembler;
-		hr = fileProps->put_BuildTool(buildTool); RETURN_IF_FAILED(hr);
-
-		if (pathType == PathType::RelativeIn)
-		{
-			hr = AddFileAndFolders(file); RETURN_IF_FAILED(hr);
-		}
-		else
-		{
 			// Add as link to the folder selected by the user when starting the UI command.
-			hr = AddFileToParent(file, location, true); RETURN_IF_FAILED(hr);
+			hr = EnsureFilePathUniqueInProject(pszFullPathSource); RETURN_IF_FAILED_EXPECTED(hr);
+			hr = MakeFileNodeForExistingFile (pszFullPathSource, &file); RETURN_IF_FAILED(hr);
+			hr = AddFileToParent(file, location); RETURN_IF_FAILED(hr);
 		}
 
 		_isDirty = true;
@@ -2837,10 +2879,7 @@ public:
 		}
 
 		com_ptr<IFolderNode> newFolder;
-		hr = MakeFolderNode (&newFolder); RETURN_IF_FAILED(hr);
-		hr = newFolder.try_query<IFolderNodeProperties>()->put_Name(dirName); RETURN_IF_FAILED(hr);
-
-		hr = AddFolderToParent (newFolder, parent, true); RETURN_IF_FAILED(hr);
+		hr = GetOrCreateChildFolder (parent, dirName, &newFolder); RETURN_IF_FAILED(hr);
 
 		_isDirty = true;
 
@@ -2865,81 +2904,6 @@ public:
 		// We return the item ID just for testing purposes.
 		if (pvaOut)
 			InitVariantFromVSITEMID(newFolder->GetItemId(), pvaOut);
-
-		return S_OK;
-	}
-
-	HRESULT AddFileAndFolders (IFileNode* file)
-	{
-		HRESULT hr;
-
-		com_ptr<IFileNodeProperties> fileProps;
-		hr = file->QueryInterface(&fileProps); RETURN_IF_FAILED(hr);
-		wil::unique_bstr path;
-		hr = fileProps->get_Path(&path); RETURN_IF_FAILED(hr);
-		if (!PathIsRelative(path.get()) || ((SysStringLen(path.get()) >= 2) && path.get()[0] == '.' && path.get()[1] == '.'))
-		{
-			// Path is outside of project dir. 
-			RETURN_HR(E_NOTIMPL);
-		}
-		else
-		{
-			// Path is inside of project dir.
-			// Find the corresponding folder item, or create it including any intermediate ones;
-			// then add the file item to it. We assume the path returned by get_Path has gone through
-			// PathCanonicalize and is well-formed.
-			auto pathPtr = path.get();
-			com_ptr<IParentNode> currentParent = this;
-			while(true)
-			{
-				auto nextPathPtr = wcspbrk(pathPtr, L"/\\");
-				if (!nextPathPtr)
-					break;
-				nextPathPtr++;
-
-				std::wstring_view dirName (pathPtr, nextPathPtr - 1);
-				com_ptr<IFolderNode> insertIn;
-
-				// Do we have a folder item for this directory?
-				for (IChildNode* c = currentParent->FirstChild(); c != nullptr; c = c->Next())
-				{
-					com_ptr<IFolderNode> folder;
-					hr = c->QueryInterface(&folder);
-					if (hr == E_NOINTERFACE)
-						break;
-					RETURN_IF_FAILED(hr);
-					com_ptr<IFolderNodeProperties> folderProps;
-					hr = folder->IChildNode::QueryInterface(&folderProps); RETURN_IF_FAILED(hr);
-					wil::unique_bstr fn;
-					hr = folderProps->get_Name(&fn); RETURN_IF_FAILED(hr);
-					std::wstring_view nodeName (fn.get(), (size_t)SysStringLen(fn.get()));
-					auto cmp = dirName.compare(nodeName);
-					if (cmp < 0)
-						// insert before this
-						break;
-					else if (cmp == 0)
-					{
-						// found it
-						insertIn = std::move(folder);
-						break;
-					}
-				}
-
-				if (!insertIn)
-				{
-					hr = MakeFolderNode (&insertIn); RETURN_IF_FAILED(hr);
-					wil::unique_bstr name (SysAllocStringLen(dirName.data(), (UINT)dirName.size())); RETURN_IF_NULL_ALLOC(name);
-					hr = insertIn.try_query<IFolderNodeProperties>()->put_Name(name.get()); RETURN_IF_FAILED(hr);
-					hr = AddFolderToParent(insertIn, currentParent, true); RETURN_IF_FAILED(hr);
-				}
-
-				hr = insertIn->QueryInterface(&currentParent); RETURN_IF_FAILED(hr);
-				pathPtr = nextPathPtr;
-			}
-
-			// finally add the file item
-			hr = AddFileToParent(file, currentParent, true); RETURN_IF_FAILED(hr);
-		}
 
 		return S_OK;
 	}

@@ -24,9 +24,7 @@ struct FileNode
 	wil::com_ptr_nothrow<IChildNode> _next;
 	com_ptr<IWeakRef> _parent;
 	VSCOOKIE _docCookie = VSDOCCOOKIE_NIL;
-	// While not in hier (_itemId==VSITEMID_NIL), contains the path relative to project node.
-	// While in hier (_itemId!=VSITEMID_NIL), contains the file name.
-	wil::unique_process_heap_string _pathOrName;
+	wil::unique_process_heap_string _path;
 	BuildToolKind _buildTool = BuildToolKind::None;
 	com_ptr<ICustomBuildToolProperties> _customBuildToolProps;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
@@ -134,19 +132,6 @@ public:
 		com_ptr<IWeakRef> p;
 		auto hr = parent->QueryInterface(IID_PPV_ARGS(p.addressof())); RETURN_IF_FAILED(hr);
 
-		// If the file is inside the project dir, we change _pathOrName. Otherwise we keep it.
-		if (_pathOrName && PathIsRelative(_pathOrName.get()) && _wcsnicmp(_pathOrName.get(), L"..\\", 3))
-		{
-			// The caller is expected to create folder nodes out of any directory name
-			// contained in _pathOrName, and to add us to the corresponding directory.
-			// We should refactor this. For now let's just retain the file name.
-			if (_pathOrName && _pathOrName.get()[0])
-			{
-				auto name = wil::make_process_heap_string_nothrow(PathFindFileName(_pathOrName.get())); RETURN_IF_NULL_ALLOC(name);
-				_pathOrName = std::move(name);
-			}
-		}
-
 		_parent = std::move(p);
 		_itemId = id;
 		return S_OK;
@@ -157,12 +142,8 @@ public:
 		RETURN_HR_IF(E_UNEXPECTED, _itemId == VSITEMID_NIL);
 		RETURN_HR_IF(E_UNEXPECTED, !_parent);
 		
-		wil::unique_process_heap_string pathRelativeToProjectDir;
-		auto hr = GetPathOf (this, pathRelativeToProjectDir, true); RETURN_IF_FAILED(hr);
-		
 		_itemId = VSITEMID_NIL;
 		_parent = nullptr;
-		_pathOrName = std::move(pathRelativeToProjectDir);
 		return S_OK;
 	}
 
@@ -211,9 +192,9 @@ public:
 			case VSHPROPID_Caption: // -2003
 			case VSHPROPID_Name: // -2012
 			case VSHPROPID_EditLabel: // -2026
-				if (!_pathOrName || !_pathOrName.get()[0])
+				if (!_path || !_path.get()[0])
 					return E_NOT_SET;
-				return InitVariantFromString (PathFindFileName(_pathOrName.get()), pvar);
+				return InitVariantFromString (PathFindFileName(_path.get()), pvar);
 
 			case VSHPROPID_Expandable: // -2006
 				return InitVariantFromBoolean (FALSE, pvar);
@@ -261,7 +242,7 @@ public:
 
 			case VSHPROPID_IconMonikerId: // -2161
 			{
-				auto ext = PathFindExtension(_pathOrName.get());
+				auto ext = PathFindExtension(_path.get());
 				
 				if (!_wcsicmp(ext, L".asm"))
 					return InitVariantFromInt32(KnownImageIds::ASMFile, pvar);
@@ -275,7 +256,7 @@ public:
 			case VSHPROPID_OverlayIconIndex: // -2048
 				// Since this code executes only while this file node in a hierarchy, a filename means the file
 				// is under the project dir. Any directory component means the file is a link outside the project dir.
-				return InitVariantFromUInt32(PathIsFileSpec(_pathOrName.get()) ? OVERLAYICON_NONE : OVERLAYICON_SHORTCUT, pvar);
+				return InitVariantFromUInt32(PathIsFileSpec(_path.get()) ? OVERLAYICON_NONE : OVERLAYICON_SHORTCUT, pvar);
 
 			case VSHPROPID_IconIndex: // -2005
 			case VSHPROPID_IconHandle: // -2013
@@ -693,56 +674,53 @@ public:
 	#pragma region IFileNodeProperties
 	virtual HRESULT STDMETHODCALLTYPE get_Path (BSTR *pbstrPath) override
 	{
-		if (_itemId == VSITEMID_NIL)
-		{
-			// Not in a hierarchy; we already have the path relative to the project dir.
-			auto str = SysAllocString(_pathOrName.get()); RETURN_IF_NULL_ALLOC(str);
-			*pbstrPath = str;
-		}
-		else
-		{
-			// In a hierarchy.
-			if (PathIsFileSpec(_pathOrName.get()))
-			{
-				// File is inside the project dir.
-				wil::unique_process_heap_string path;
-				auto hr = GetPathOf(this, path, true); RETURN_IF_FAILED(hr);
-				auto str = SysAllocString(path.get()); RETURN_IF_NULL_ALLOC(str);
-				*pbstrPath = str;
-			}
-			else
-			{
-				// File is outside the project dir.
-				auto str = SysAllocString(_pathOrName.get()); RETURN_IF_NULL_ALLOC(str);
-				*pbstrPath = str;
-			}
-		}
-
+		auto str = SysAllocString(_path.get()); RETURN_IF_NULL_ALLOC(str);
+		*pbstrPath = str;
 		return S_OK;
 	}
 
-	// The value of the Path property can have one of these three formats:
+	// The value of the Path property can have one of these formats:
 	// 
 	//  (1) If the file is located somewhere under the project dir, Path contains the file name and extension.
-	//      In this case PathIsRelative returns TRUE, and the path does not start with "..\".
+	//      Condition for this case: PathIsFileSpec returns TRUE.
 	// 
 	//  (2) If the file is located on the same drive as the project dir, but outside the project dir,
-	//      Path begins with "..\", followed by zero or more directories, followed by filename and extension,
-	//      In this case PathIsRelative returns TRUE, and the path starts with "..\".
+	//      Path begins with "..\", followed by zero or more directories, followed by file name and extension,
+	//      Condition for this case: PathIsFileSpec returns FALSE, and the path begins with "..\".
 	// 
 	//  (3) If the file is located on a different drive than the project dir, Path contains a rooted path,
 	//      starting for example with a drive number or a server share location.
-	//      In this case PathIsRelative returns FALSE.
+	//      Condition for this case: PathIsFileSpec returns FALSE, and PathIsRelative returns FALSE.
+	//
+	// If none of the above conditions is satisfied, the path is incorrect.
 	virtual HRESULT STDMETHODCALLTYPE put_Path (BSTR value) override
 	{
-		RETURN_HR_IF(E_UNEXPECTED, _itemId != VSITEMID_NIL);
+		RETURN_HR_IF(E_UNEXPECTED, _itemId != VSITEMID_NIL); // This function may not be called while in a hierarchy.
+
+		RETURN_HR_IF(E_INVALIDARG, value == nullptr);
+
+		// Verification
+		if (PathIsFileSpec(value))
+		{
+			// Case (1)
+		}
+		else if (wcsncmp(value, L"..\\", 3) == 0)
+		{
+			// Case (2)
+		}
+		else if (!PathIsRelative(value))
+		{
+			// Case (3)
+		}
+		else
+			RETURN_HR(E_INVALIDARG);
 
 		size_t len = wcslen(value);
 		auto newValue = wil::make_process_heap_string_nothrow(value, len); RETURN_IF_NULL_ALLOC(newValue);
 		for(size_t i = 0; i < len; i++)
 			if (newValue.get()[i] == '/')
 				newValue.get()[i] = '\\';
-		_pathOrName = std::move(newValue);
+		_path = std::move(newValue);
 		// No need for notification since this is called only when loading from XML.
 		// (Property is read-only in the Properties window - see IsPropertyReadOnly().)
 		return S_OK;
@@ -751,7 +729,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE get___id (BSTR *value) override
 	{
 		// Shown by VS at the top of the Properties Window.
-		auto name = PathFindFileName(_pathOrName.get());
+		auto name = PathFindFileName(_path.get());
 		*value = SysAllocString(name); RETURN_IF_NULL_ALLOC(*value);
 		return S_OK;
 	}
@@ -876,7 +854,7 @@ public:
 
 		RETURN_HR_IF(E_UNEXPECTED, _itemId == VSITEMID_NIL);
 		
-		WI_ASSERT(PathFindFileName(_pathOrName.get()) == _pathOrName.get());
+		RETURN_HR_IF(E_NOTIMPL, !PathIsFileSpec(_path.get()));
 
 		com_ptr<IVsHierarchy> hier;
 		hr = FindHier(this, IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
@@ -887,7 +865,7 @@ public:
 		hr = GetPathTo (this, pathToThis); RETURN_IF_FAILED(hr);
 
 		wil::unique_process_heap_string oldFullPath;
-		hr = wil::str_concat_nothrow(oldFullPath, pathToThis, L"\\", _pathOrName); RETURN_IF_FAILED(hr);
+		hr = wil::str_concat_nothrow(oldFullPath, pathToThis, L"\\", _path); RETURN_IF_FAILED(hr);
 
 		hr = QueryEditProjectFile(hier); RETURN_IF_FAILED_EXPECTED(hr);
 
@@ -931,10 +909,10 @@ public:
 
 		if (!::MoveFile (oldFullPath.get(), newFullPath.get()))
 			return HRESULT_FROM_WIN32(GetLastError());
-		std::swap(_pathOrName, otherName);
+		std::swap(_path, otherName);
 		auto undoRename = wil::scope_exit([this, &otherName, &newFullPath, &oldFullPath]
 			{
-				std::swap (_pathOrName, otherName);
+				std::swap (_path, otherName);
 				::MoveFile (newFullPath.get(), oldFullPath.get());
 			});
 

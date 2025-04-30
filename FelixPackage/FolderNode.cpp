@@ -399,6 +399,10 @@ public:
 	}
 	#pragma endregion
 
+	#pragma region IFolderNode
+	virtual IParentNode* AsParentNode() override { return this; }
+	#pragma endregion
+
 	HRESULT SortAfterRename (IVsHierarchy* hier, IParentNode* parent)
 	{
 		auto first = wil::try_com_query_nothrow<IFolderNode>(parent->FirstChild());

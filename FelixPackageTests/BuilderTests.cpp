@@ -81,15 +81,16 @@ namespace FelixTests
 			com_ptr<IVsHierarchy> hier;
 			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto sourceFile = MakeFileNode(L"test.asm");
-			hr = sourceFile.try_query<IFileNodeProperties>()->put_BuildTool(BuildToolKind::Assembler);
-			Assert::IsTrue(SUCCEEDED(hr));
+
 			if (asmFileContent)
 				WriteFileOnDisk(tempPath, L"test.asm", asmFileContent);
 			else
 				DeleteFileOnDisk(tempPath, L"test.asm");
-			hr = AddFileToParent(sourceFile, hier.try_query<IParentNode>(), true);
+			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"\\test.asm");
+			LPCOLESTR filesToOpen[] = { filePath.get() };
+			hier.try_query<IVsProject>()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, filesToOpen, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
+
 			auto config = AddDebugProjectConfig(hier);
 			auto pane = MakeMockOutputWindowPane(nullptr);
 			com_ptr<IProjectConfigBuilder> builder;
@@ -184,17 +185,21 @@ namespace FelixTests
 			com_ptr<IVsHierarchy> hier;
 			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto sourceFile = MakeFileNode(sourceFileName);
+
 			if (sourceFileContent)
 				WriteFileOnDisk(tempPath, sourceFileName, sourceFileContent);
 			else
 				DeleteFileOnDisk(tempPath, sourceFileName);
-			AddFileToParent(sourceFile, hier.try_query<IParentNode>(), true);
+			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"\\", sourceFileName);
+			LPCOLESTR filesToOpen[] = { filePath.get() };
+			hr = hier.try_query<IVsProject>()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, filesToOpen, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto sourceFile = wil::try_com_query_nothrow<IFileNodeProperties>(hier.try_query<IParentNode>()->FirstChild());
 
-			hr = sourceFile.try_query<IFileNodeProperties>()->put_BuildTool(BuildToolKind::CustomBuildTool);
+			hr = sourceFile->put_BuildTool(BuildToolKind::CustomBuildTool);
 			Assert::IsTrue(SUCCEEDED(hr));
 			com_ptr<ICustomBuildToolProperties> cbtProps;
-			hr = sourceFile.try_query<IFileNodeProperties>()->get_CustomBuildToolProperties(&cbtProps);
+			hr = sourceFile->get_CustomBuildToolProperties(&cbtProps);
 			Assert::IsTrue(SUCCEEDED(hr));
 			hr = cbtProps->put_Description(wil::make_bstr_nothrow(cbtDescription).get());
 			Assert::IsTrue(SUCCEEDED(hr));

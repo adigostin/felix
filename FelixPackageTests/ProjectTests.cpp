@@ -553,17 +553,16 @@ namespace FelixTests
 
 		TEST_METHOD(AddItemNewToExistingFolder)
 		{
-			com_ptr<IVsHierarchy> hier;
-			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"\\AddItemNewToExistingFolder");
+
+			com_ptr<IVsUIHierarchy> hier;
+			auto hr = MakeProjectNode (nullptr, testPath.get(), nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			com_ptr<IFolderNode> folder;
-			hr = MakeFolderNode(&folder);
+			wil::unique_variant folder;
+			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &folder);
 			Assert::IsTrue(SUCCEEDED(hr));
-			hr = folder.try_query<IFolderNodeProperties>()->put_Name(wil::make_bstr_nothrow(L"folder").get());
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			hr = AddFolderToParent (folder, hier.try_query<IParentNode>(), true);
+			hr = hier->SetProperty (V_VSITEMID(&folder), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"folder"));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			{
@@ -572,28 +571,28 @@ namespace FelixTests
 				Assert::IsTrue(SUCCEEDED(hr));
 
 				wchar_t templateFullPath[MAX_PATH];
-				PathCombine(templateFullPath, tempPath, L"template.asm");
+				PathCombine(templateFullPath, testPath.get(), L"template.asm");
 				HANDLE h = CreateFile(templateFullPath, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
 				Assert::AreNotEqual(INVALID_HANDLE_VALUE, h);
 				CloseHandle(h);
 
 				const wchar_t* templateName = templateFullPath;
 				VSADDRESULT result;
-				hr = proj->AddItem (folder->GetItemId(), VSADDITEMOP_CLONEFILE, L"file.asm", 1, &templateName, nullptr, &result);
+				hr = proj->AddItem (V_VSITEMID(&folder), VSADDITEMOP_CLONEFILE, L"file.asm", 1, &templateName, nullptr, &result);
 				Assert::IsTrue(SUCCEEDED(hr));
 
-				IChildNode* folderFirstChild = folder.try_query<IParentNode>()->FirstChild();
-				Assert::IsNotNull(folderFirstChild);
-				com_ptr<IFileNode> file = wil::try_com_query_nothrow<IFileNode>(folderFirstChild);
-				Assert::IsNotNull(file.get());
-				Assert::AreEqual(L"file.asm", GetProperty_String(hier, file->GetItemId(), VSHPROPID_SaveName).get());
-				Assert::AreNotEqual(VSITEMID_NIL, file->GetItemId());
+				wil::unique_variant folderFirstChild;
+				hr = hier->GetProperty(V_VSITEMID(&folder), VSHPROPID_FirstChild, &folderFirstChild);
+				Assert::IsTrue(SUCCEEDED(hr));
+				Assert::AreEqual<VARTYPE>(VT_VSITEMID, folderFirstChild.vt);
+				
+				wil::unique_variant fileName;
+				hr = hier->GetProperty(V_VSITEMID(&folderFirstChild), VSHPROPID_SaveName, &fileName);
+				Assert::IsTrue(SUCCEEDED(hr));
+				Assert::AreEqual(L"file.asm", fileName.bstrVal);
 			}
 
 			ULONG refCount = hier.detach()->Release();
-			Assert::AreEqual<ULONG>(0, refCount);
-
-			refCount = folder.detach()->Release();
 			Assert::AreEqual<ULONG>(0, refCount);
 		}
 
@@ -657,19 +656,20 @@ namespace FelixTests
 
 		TEST_METHOD(GetItemsPutItems_WithFolders)
 		{
-			com_ptr<IVsHierarchy> hier1;
-			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier1));
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"\\GetItemsPutItems_WithFolders");
+			com_ptr<IVsUIHierarchy> hier1;
+			auto hr = MakeProjectNode (nullptr, testPath.get(), nullptr, 0, IID_PPV_ARGS(&hier1));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			com_ptr<IFolderNode> folder1;
-			hr = MakeFolderNode(&folder1);
-			hr = folder1.try_query<IFolderNodeProperties>()->put_Name(wil::make_bstr_nothrow(L"folder").get());
+			wil::unique_variant folder1;
+			hr = hier1->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &folder1);
 			Assert::IsTrue(SUCCEEDED(hr));
-			hr = AddFolderToParent(folder1, hier1.try_query<IParentNode>(), true);
+			hr = hier1->SetProperty (V_VSITEMID(&folder1), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"folder"));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto file1 = MakeFileNode(L"folder/test.asm");
-			hr = AddFileToParent(file1, folder1.try_query<IParentNode>(), true);
+			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
+			hr = hier1.try_query<IVsProject>()->AddItem(V_VSITEMID(&folder1), VSADDITEMOP_CLONEFILE, L"test.asm", 1, templateasm, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
 
 			// ------------------------------------------------
 
@@ -678,7 +678,7 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			com_ptr<IVsHierarchy> hier2;
-			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier2));
+			hr = MakeProjectNode (nullptr, testPath.get(), nullptr, 0, IID_PPV_ARGS(&hier2));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			hr = stream->Seek({ 0 }, STREAM_SEEK_SET, nullptr);
@@ -701,51 +701,14 @@ namespace FelixTests
 			wil::unique_bstr file2Path;
 			hr = wil::try_com_query_nothrow<IFileNodeProperties>(file2)->get_Path(&file2Path);
 			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::AreEqual(L"folder\\test.asm", file2Path.get());
+			Assert::AreEqual(L"test.asm", file2Path.get());
 		}
 
 		TEST_METHOD(AddItemSort)
 		{
-			/*
-			static const char xml[] = ""
-				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-				"<Z80Project Guid=\"{2839FDD7-4C8F-4772-90E6-222C702D045E}\">"
-					"<Configurations>"
-						"<Configuration ConfigName=\"Debug\" PlatformName=\"ZX Spectrum 48K\">"
-							"<AssemblerProperties SaveListingFilename=\"output.lst\" />"
-						"</Configuration>"
-					"</Configurations>"
-					"<Items>"
-						"<File Path=\"start.asm\" BuildTool=\"Assembler\" />"
-						"<File Path=\"lib.asm\" BuildTool=\"Assembler\" />"
-						"<Folder FolderName=\"More\">"
-							"<Items>"
-								"<Folder FolderName=\"EvenMore\">"
-									"<Items>"
-										"<File Path=\"file.inc\" BuildTool=\"None\" />"
-									"</Items>"
-								"</Folder>"
-							"</Items>"
-						"</Folder>"
-						"<Folder FolderName=\"GeneratedFiles\">"
-							"<Items>"
-								"<File Path=\"preinclude.inc\" BuildTool=\"None\" />"
-								"<File Path=\"postinclude.inc\" BuildTool=\"None\" />"
-							"</Items>"
-						"</Folder>"
-					"</Items>"
-				"</Z80Project>";
-
-			auto s = SHCreateMemStream((BYTE*)xml, sizeof(xml) - 1);
-			com_ptr<IStream> stream;
-			stream.attach(s);
-			*/
 			com_ptr<IVsUIHierarchy> hier;
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
-
-			//hr = LoadFromXml(hier.try_query<IProjectNodeProperties>(), ProjectElementName, stream);
-			//Assert::IsTrue(SUCCEEDED(hr));
 
 			auto proj = hier.try_query<IVsProject>();
 			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
@@ -753,26 +716,31 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 			hr = proj->AddItem(VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"lib.asm", 1, templateasm, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
-			com_ptr<IFolderNode> more;
-			hr = MakeFolderNode(&more);
-			hr = more.try_query<IFolderNodeProperties>()->put_Name(wil::make_bstr_nothrow(L"More").get());
-			hr = AddFolderToParent (more, wil::try_com_query_nothrow<IParentNode>(hier), true);
+
+			wil::unique_variant more;
+			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &more);
 			Assert::IsTrue(SUCCEEDED(hr));
-			com_ptr<IFolderNode> evenMore;
-			hr = MakeFolderNode(&evenMore);
-			hr = evenMore.try_query<IFolderNodeProperties>()->put_Name(wil::make_bstr_nothrow(L"EvenMore").get());
-			hr = AddFolderToParent (evenMore, wil::try_com_query_nothrow<IParentNode>(more), true);
+			hr = hier->SetProperty (V_VSITEMID(&more), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"More"));
 			Assert::IsTrue(SUCCEEDED(hr));
-			hr = proj->AddItem(evenMore->GetItemId(), VSADDITEMOP_CLONEFILE, L"file.inc", 1, templateasm, nullptr, nullptr);
+
+			wil::unique_variant evenMore;
+			hr = hier->ExecCommand (V_VSITEMID(&more), &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &evenMore);
 			Assert::IsTrue(SUCCEEDED(hr));
-			com_ptr<IFolderNode> generatedFiles;
-			hr = MakeFolderNode(&generatedFiles);
-			hr = generatedFiles.try_query<IFolderNodeProperties>()->put_Name(wil::make_bstr_nothrow(L"GeneratedFiles").get());
-			hr = AddFolderToParent (generatedFiles, wil::try_com_query_nothrow<IParentNode>(hier), true);
+			hr = hier->SetProperty (V_VSITEMID(&evenMore), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"EvenMore"));
 			Assert::IsTrue(SUCCEEDED(hr));
-			hr = proj->AddItem(generatedFiles->GetItemId(), VSADDITEMOP_CLONEFILE, L"preinclude.inc", 1, templateasm, nullptr, nullptr);
+
+			hr = proj->AddItem(V_VSITEMID(&evenMore), VSADDITEMOP_CLONEFILE, L"file.inc", 1, templateasm, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
-			hr = proj->AddItem(generatedFiles->GetItemId(), VSADDITEMOP_CLONEFILE, L"postinclude.inc", 1, templateasm, nullptr, nullptr);
+
+			wil::unique_variant generatedFiles;
+			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &generatedFiles);
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = hier->SetProperty (V_VSITEMID(&generatedFiles), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"GeneratedFiles"));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = proj->AddItem(V_VSITEMID(&generatedFiles), VSADDITEMOP_CLONEFILE, L"preinclude.inc", 1, templateasm, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = proj->AddItem(V_VSITEMID(&generatedFiles), VSADDITEMOP_CLONEFILE, L"postinclude.inc", 1, templateasm, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 

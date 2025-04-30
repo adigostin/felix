@@ -8,28 +8,6 @@ namespace FelixTests
 {
 	TEST_CLASS(SourceFileTests)
 	{
-		TEST_METHOD(SourceFileUnnamedTest)
-		{
-			HRESULT hr;
-
-			com_ptr<IVsHierarchy> hier;
-			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto pane = MakeMockOutputWindowPane(nullptr);
-
-			com_ptr<IFileNode> file;
-			hr = MakeFileNode(&file);
-			Assert::IsTrue(SUCCEEDED(hr));
-			hr = AddFileToParent(file, hier.try_query<IParentNode>(), true);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			wil::unique_variant value;
-			hr = hier->GetProperty(1000, VSHPROPID_SaveName, &value);
-			Assert::IsTrue(FAILED(hr));
-			hr = hier->GetProperty(1000, VSHPROPID_Caption, &value);
-			Assert::IsTrue(FAILED(hr));
-		}
-
 		TEST_METHOD(put_Items_EmptyProject)
 		{
 		}
@@ -44,13 +22,11 @@ namespace FelixTests
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			com_ptr<IFileNode> file;
-			hr = MakeFileNode(&file);
+			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
+			hr = hier.try_query<IVsProject>()->AddItem(VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"file.asm", 1, templateasm, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
-			hr = file.try_query<IFileNodeProperties>()->put_Path(wil::make_bstr_nothrow(L"file.asm").get());
-			Assert::IsTrue(SUCCEEDED(hr));
-			WriteFileOnDisk(tempPath, L"file.asm");
-			hr = AddFileToParent(file, hier.try_query<IParentNode>(), true);
+			wil::unique_variant id;
+			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &id);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			wchar_t newFullPath[MAX_PATH];
@@ -58,7 +34,7 @@ namespace FelixTests
 			BOOL bres = DeleteFile(newFullPath);
 			Assert::IsTrue(bres || GetLastError() == ERROR_FILE_NOT_FOUND);
 
-			hr = hier->SetProperty(file->GetItemId(), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"new.asm"));
+			hr = hier->SetProperty(V_VSITEMID(&id), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"new.asm"));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			Assert::IsTrue(PathFileExists(newFullPath));

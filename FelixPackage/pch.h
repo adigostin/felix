@@ -12,6 +12,7 @@
 #undef __EXCEPTIONS // WIL and Intellisense look at this
 
 // Visual C++ headers
+#include <string_view>
 
 // Windows Platform headers
 #include <Windows.h>

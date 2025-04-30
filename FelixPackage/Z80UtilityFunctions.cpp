@@ -379,15 +379,22 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 	}
 
 	// input files
-	for (uint32_t i = 0; i < asmFiles.size(); i++)
+	for (auto& asmFile : asmFiles)
 	{
-		IFileNodeProperties* file = asmFiles[i];
-		wil::unique_bstr fileRelativePath;
-		hr = file->get_Path(&fileRelativePath);
-		if (SUCCEEDED(hr))
+		wil::unique_bstr path;
+		hr = asmFile->get_Path(&path); RETURN_IF_FAILED(hr);
+		hr = Write(cmdLine, L" "); RETURN_IF_FAILED(hr);
+		if (!PathIsFileSpec(path.get()))
 		{
-			hr = Write(cmdLine, L" "); RETURN_IF_FAILED(hr);
-			hr = Write(cmdLine, fileRelativePath.get()); RETURN_IF_FAILED(hr);
+			hr = Write(cmdLine, path.get()); RETURN_IF_FAILED(hr);
+		}
+		else
+		{
+			com_ptr<IFileNode> fn;
+			hr = asmFile->QueryInterface(IID_PPV_ARGS(&fn)); RETURN_IF_FAILED(hr);
+			wil::unique_process_heap_string relative;
+			hr = GetPathOf (fn, relative, true); RETURN_IF_FAILED(hr);
+			hr = Write(cmdLine, relative.get()); RETURN_IF_FAILED(hr);
 		}
 	}
 
@@ -594,7 +601,7 @@ static HRESULT SetItemIdsTree (IChildNode* child, IChildNode* childPrevSibling, 
 	return enumNodeAndChildren(child, childPrevSibling, addTo);
 }
 
-FELIX_API HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo, bool sort)
+HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo)
 {
 	HRESULT hr;
 	RETURN_HR_IF(E_UNEXPECTED, child->GetItemId() != VSITEMID_NIL);
@@ -602,15 +609,6 @@ FELIX_API HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo, bool so
 	IChildNode* prevChild = nullptr;
 	if (!addTo->FirstChild())
 		addTo->SetFirstChild(child);
-	else if (!sort)
-	{
-		IChildNode* insertAfter = addTo->FirstChild();
-		while (insertAfter->Next())
-			insertAfter = insertAfter->Next();
-		child->SetNext(insertAfter->Next());
-		insertAfter->SetNext(child);
-		prevChild = insertAfter;
-	}
 	else
 	{
 		com_ptr<IFileNodeProperties> childProps;
@@ -664,75 +662,48 @@ FELIX_API HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo, bool so
 	return S_OK;
 }
 
-FELIX_API HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo, bool sort)
+
+HRESULT GetOrCreateChildFolder (IParentNode* parent, std::wstring_view folderName, IFolderNode** ppFolder)
 {
 	HRESULT hr;
 
-	// The item we're adding is supposed to be outside of any hierarchy.
-	RETURN_HR_IF(E_UNEXPECTED, child->GetItemId() != VSITEMID_NIL);
+	com_ptr<IChildNode> insertAfter;
+	com_ptr<IChildNode> insertBefore = parent->FirstChild();
+	while (insertBefore)
+	{
+		auto insertBeforeAsFolder = wil::try_com_query_nothrow<IFolderNode>(insertBefore);
+		if (!insertBeforeAsFolder)
+			break;
 
-	IChildNode* prevChild = nullptr;
-	if (!addTo->FirstChild())
-	{
-		addTo->SetFirstChild(child);
+		wil::unique_variant name;
+		if (SUCCEEDED(insertBeforeAsFolder->GetProperty(VSHPROPID_SaveName, &name)) && (V_VT(&name) == VT_BSTR))
+		{
+			int cmpRes = folderName.compare(V_BSTR(&name));
+			if (cmpRes == 0)
+			{
+				*ppFolder = insertBeforeAsFolder.detach();
+				return S_OK;
+			}
+			
+			if (cmpRes < 0)
+				break;
+		}
+
+		insertAfter = insertBefore;
+		insertBefore = insertBefore->Next();
 	}
-	else if (!sort)
-	{
-		IChildNode* insertAfter = addTo->FirstChild();
-		while (insertAfter->Next())
-			insertAfter = insertAfter->Next();
-		child->SetNext(insertAfter->Next());
-		insertAfter->SetNext(child);
-		prevChild = insertAfter;
-	}
+
+	com_ptr<IFolderNode> newFolder;
+	hr = MakeFolderNode (&newFolder); RETURN_IF_FAILED(hr);
+	auto name = wil::unique_bstr(SysAllocStringLen(folderName.data(), (UINT)folderName.size())); RETURN_IF_NULL_ALLOC(name);
+	hr = newFolder.try_query<IFolderNodeProperties>()->put_Name(name.get()); RETURN_IF_FAILED(hr);
+	newFolder->SetNext(insertBefore);
+	if (!insertAfter)
+		parent->SetFirstChild(newFolder);
 	else
-	{
-		if (!wil::try_com_query_nothrow<IFolderNode>(addTo->FirstChild()))
-		{
-			// Adding first folder; insert it before the files.
-			child->SetNext(addTo->FirstChild());
-			addTo->SetFirstChild(child);
-		}
-		else
-		{
-			// Add it sorted to existing folders and before files (if any).
-			wil::unique_bstr childName;
-			hr = wil::try_com_query_nothrow<IFolderNodeProperties>(child)->get_Name(&childName); RETURN_IF_FAILED(hr);
-
-			wil::unique_variant name;
-
-			// Insert in first position?
-			if (SUCCEEDED(addTo->FirstChild()->GetProperty(VSHPROPID_SaveName, &name))
-				&& VarBstrCmp(childName.get(), name.bstrVal, InvariantLCID, NORM_IGNORECASE) == VARCMP_LT)
-			{
-				// Yes
-				child->SetNext(addTo->FirstChild());
-				addTo->SetFirstChild(child);
-			}
-			else
-			{
-				IChildNode* insertAfter = addTo->FirstChild();
-				while (insertAfter->Next()
-					&& wil::try_com_query_nothrow<IFolderNode>(insertAfter->Next())
-					&& SUCCEEDED(insertAfter->Next()->GetProperty(VSHPROPID_SaveName, &name))
-					&& VarBstrCmp(childName.get(), name.bstrVal, InvariantLCID, NORM_IGNORECASE) == VARCMP_GT)
-				{
-					insertAfter = insertAfter->Next();
-				}
-
-				child->SetNext(insertAfter->Next());
-				insertAfter->SetNext(child);
-				prevChild = insertAfter;
-			}
-		}
-	}
-
-	if (addTo->GetItemId() != VSITEMID_NIL)
-	{
-		// Adding it to a hierarchy.
-		hr = SetItemIdsTree (child, prevChild, addTo); RETURN_IF_FAILED(hr);
-	}
-
+		insertAfter->SetNext(newFolder);
+	hr = SetItemIdsTree(newFolder, insertAfter, parent); RETURN_IF_FAILED(hr);
+	*ppFolder = newFolder.detach();
 	return S_OK;
 }
 
@@ -849,14 +820,14 @@ HRESULT CreatePathOfNode (IParentNode* node, wil::unique_process_heap_string& pa
 	return createDirRecursively(node);
 }
 
-HRESULT GetItems (IParentNode* itemsIn, SAFEARRAY** itemsOut)
+HRESULT GetItems (IParentNode* parent, SAFEARRAY** itemsOut)
 {
 	HRESULT hr;
 	*itemsOut = nullptr;
 
 	vector_nothrow<com_ptr<IDispatch>> nodes;
 
-	for (auto c = itemsIn->FirstChild(); c; c = c->Next())
+	for (auto c = parent->FirstChild(); c; c = c->Next())
 	{
 		if (auto file = wil::try_com_query_nothrow<IFileNodeProperties>(c))
 		{
@@ -883,7 +854,7 @@ HRESULT GetItems (IParentNode* itemsIn, SAFEARRAY** itemsOut)
 	return S_OK;
 }
 
-HRESULT PutItems (SAFEARRAY* sa, IParentNode* items)
+HRESULT PutItems (SAFEARRAY* sa, IParentNode* parent)
 {
 	HRESULT hr;
 
@@ -899,19 +870,29 @@ HRESULT PutItems (SAFEARRAY* sa, IParentNode* items)
 	hr = SafeArrayGetUBound(sa, 1, &ubound); RETURN_IF_FAILED(hr);
 
 	// We don't support replacing items with this function, we only support adding them once.
-	RETURN_HR_IF(E_UNEXPECTED, items->FirstChild() != nullptr);
+	RETURN_HR_IF(E_UNEXPECTED, parent->FirstChild() != nullptr);
 
 	for (LONG i = 0; i <= ubound; i++)
 	{
 		com_ptr<IDispatch> child;
 		hr = SafeArrayGetElement (sa, &i, child.addressof()); RETURN_IF_FAILED(hr);
-		if (auto file = child.try_query<IFileNode>())
+		if (auto node = child.try_query<IChildNode>())
 		{
-			hr = AddFileToParent(file, items, false); RETURN_IF_FAILED(hr);
-		}
-		else if (auto folder = child.try_query<IFolderNode>())
-		{
-			hr = AddFolderToParent(folder, items, false); RETURN_IF_FAILED(hr);
+			IChildNode* insertAfter = parent->FirstChild();
+			if (!insertAfter)
+			{
+				parent->SetFirstChild(node);
+			}
+			else
+			{
+				while (insertAfter->Next())
+					insertAfter = insertAfter->Next();
+				node->SetNext(insertAfter->Next());
+				insertAfter->SetNext(node);
+			}
+
+			if (parent->GetItemId() != VSITEMID_NIL)
+				hr = SetItemIdsTree(node, insertAfter, parent); RETURN_IF_FAILED(hr);
 		}
 		else
 			RETURN_HR(E_NOTIMPL);
