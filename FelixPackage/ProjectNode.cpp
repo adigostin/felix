@@ -1788,6 +1788,24 @@ public:
 		RETURN_HR_IF(E_INVALIDARG, !!wcspbrk(pszNewFileName, L":/\\"));
 		RETURN_HR_IF_NULL(E_POINTER, ppNewNode);
 
+		// Do we already have an item with the same name under the selected location? If yes, we give an
+		// error message and return. Let's not bother asking the user whether to replace the existing item;
+		// that existing item might be a folder, and our replacing code would have to be really complicated.
+		for (auto c = location->FirstChild(); c; c = c->Next())
+		{
+			wil::unique_variant saveName;
+			hr = c->GetProperty(VSHPROPID_SaveName, &saveName); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_UNEXPECTED, saveName.vt != VT_BSTR);
+			if (saveName.bstrVal && !_wcsicmp(saveName.bstrVal, pszNewFileName))
+			{
+				com_ptr<IVsShell> shell;
+				hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
+				wil::unique_bstr text;
+				hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_ITEM_ALREADY_EXISTS_IN_LOCATION, &text); RETURN_IF_FAILED(hr);
+
+				return SetErrorInfo(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), text.get());
+			}
+		}
+
 		// The user chose a hierarchy node as location, but that node may or may not have
 		// a corresponding directory in the file system. Let's make sure the directory exists.
 		wil::unique_process_heap_string locationDir;
@@ -1854,6 +1872,17 @@ public:
 		return S_OK;
 	}
 
+	/// <summary>
+	/// 
+	/// </summary>
+	/// <param name="itemidLoc"></param>
+	/// <param name="dwAddItemOperation">VSADDITEMOP_CLONEFILE / VSADDITEMOP_OPENFILE </param>
+	/// <param name="pszItemName">For VSADDITEMOP_CLONEFILE it's the name of the new item. For VSADDITEMOP_OPENFILE must be NULL.</param>
+	/// <param name="cFilesToOpen">For VSADDITEMOP_CLONEFILE must be 1. For VSADDITEMOP_OPENFILE it's the number of files to open.</param>
+	/// <param name="rgpszFilesToOpen">For VSADDITEMOP_CLONEFILE it's the full path of the template file. For VSADDITEMOP_OPENFILE it's an array of full paths to the files to open.</param>
+	/// <param name="hwndDlgOwner"></param>
+	/// <param name="pResult"></param>
+	/// <returns></returns>
 	virtual HRESULT STDMETHODCALLTYPE AddItem(VSITEMID itemidLoc, VSADDITEMOPERATION dwAddItemOperation,
 		LPCOLESTR pszItemName, ULONG cFilesToOpen, LPCOLESTR rgpszFilesToOpen[], HWND hwndDlgOwner,
 		VSADDRESULT* pResult) override

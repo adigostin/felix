@@ -603,6 +603,29 @@ namespace FelixTests
 			Assert::AreEqual<DWORD>(ADDRESULT_Success, result);
 		}
 
+		TEST_METHOD(AddItemNew_NameAlreadyExists)
+		{
+			com_ptr<IVsSolution> sol;
+			auto hr = sp->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			static const wchar_t ProjFileName[] = L"TestProject.flx";
+			com_ptr<IVsUIHierarchy> hier;
+			hr = sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), tempPath, ProjFileName, CPF_CLONEFILE, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			WriteFileOnDisk(tempPath, L"template.asm");
+			wil::unique_process_heap_string templateFileFullPath;
+			wil::str_concat_nothrow(templateFileFullPath, tempPath, L"\\template.asm");
+			auto proj = hier.try_query<IVsProject>();
+			VSADDRESULT addResult;
+			hr = proj->AddItem (VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"file.asm", 1, (LPCOLESTR*)templateFileFullPath.addressof(), nullptr, &addResult);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = proj->AddItem (VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"file.asm", 1, (LPCOLESTR*)templateFileFullPath.addressof(), nullptr, &addResult);
+			Assert::AreEqual<HRESULT>(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), hr);
+		}
+
 		TEST_METHOD(AddItemOpen)
 		{
 		}
