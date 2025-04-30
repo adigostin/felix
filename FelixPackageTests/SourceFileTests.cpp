@@ -20,7 +20,7 @@ namespace FelixTests
 			com_ptr<IFileNode> file;
 			hr = MakeFileNode(&file);
 			Assert::IsTrue(SUCCEEDED(hr));
-			hr = AddFileToParent(file, hier.try_query<IParentNode>());
+			hr = AddFileToParent(file, hier.try_query<IParentNode>(), true);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			wil::unique_variant value;
@@ -50,7 +50,7 @@ namespace FelixTests
 			hr = file.try_query<IFileNodeProperties>()->put_Path(wil::make_bstr_nothrow(L"file.asm").get());
 			Assert::IsTrue(SUCCEEDED(hr));
 			WriteFileOnDisk(tempPath, L"file.asm");
-			hr = AddFileToParent(file, hier.try_query<IParentNode>());
+			hr = AddFileToParent(file, hier.try_query<IParentNode>(), true);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			wchar_t newFullPath[MAX_PATH];

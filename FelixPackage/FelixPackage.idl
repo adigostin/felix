@@ -173,8 +173,11 @@ library ATLProject1Lib
 	{
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
 
-		[id(dispidFolderName), propget] HRESULT FolderName ([out, retval] BSTR* value);
-		[id(dispidFolderName), propput] HRESULT FolderName (LPCOLESTR value);
+		[id(dispidFolderName), propget] HRESULT Name ([out, retval] BSTR* value);
+		[id(dispidFolderName), propput] HRESULT Name (BSTR value);
+
+		[id(dispidItems), propget] HRESULT Items ([out, ref, retval] SAFEARRAY(IDispatch*)* items);
+		[id(dispidItems), propput] HRESULT Items (SAFEARRAY(IDispatch*) items);
 	};
 
 	[object, uuid(588F7F04-8B74-404D-A80B-F7CCE9FA3E27), dual, nonextensible, pointer_default(unique)]

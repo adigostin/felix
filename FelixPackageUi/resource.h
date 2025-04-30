@@ -18,6 +18,7 @@
 #define IDS_PRE_POST_BUILD_DESCRIPTION_DESCRIPTION 112
 #define IDS_NEW_FOLDER_NAME             113
 #define IDS_ITEM_ALREADY_EXISTS_IN_LOCATION 117
+#define IDS_NAME_ALREADY_EXISTS         118
 #define IDB_IMAGES                      300
 #define IDI_PACKAGE_ICON                400
 #define IDI_SPECTRUM                    401

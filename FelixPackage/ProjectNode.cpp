@@ -11,9 +11,6 @@
 #include "../FelixPackageUi/resource.h"
 #include <string_view>
 
-static constexpr wchar_t ConfigurationElementName[] = L"Configuration";
-static constexpr wchar_t FileElementName[] = L"File";
-
 // What MPF implements: https://docs.microsoft.com/en-us/visualstudio/extensibility/internals/project-model-core-components?view=vs-2022
 class ProjectNode
 	: IProjectNodeProperties    // includes IDispatch
@@ -35,7 +32,6 @@ class ProjectNode
 	, IPropertyNotifySink // this implementation only used to mark the project as dirty
 	, IVsPerPropertyBrowsing
 {
-	wil::com_ptr_nothrow<IServiceProvider> _sp = serviceProvider;
 	ULONG _refCount = 0;
 	GUID _projectInstanceGuid;
 	wil::unique_hlocal_string _location;
@@ -47,7 +43,7 @@ class ProjectNode
 	wil::com_ptr_nothrow<IVsUIHierarchy> _parentHierarchy;
 	VSITEMID _parentHierarchyItemId = VSITEMID_NIL; // item id of this project in the parent hierarchy
 	com_ptr<IChildNode> _firstChild;
-	static inline VSITEMID _nextItemId = 1000;
+	VSITEMID _nextItemId = 1000;
 	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsCfgProviderEvents>> _cfgProviderEventSinks;
 	VSCOOKIE _nextCfgProviderEventCookie = 1;
 	VSCOOKIE _itemDocCookie = VSDOCCOOKIE_NIL;
@@ -116,7 +112,9 @@ class ProjectNode
 		// ---------------------------------------
 		// Copy only the project file for now.
 
-		hr = pfo->CopyItem (projectTemplateFile.get(), destinationFolder.get(), filename, nullptr); RETURN_IF_FAILED(hr);
+		wil::unique_process_heap_string destinationProjFullPath;
+		hr = wil::str_concat_nothrow (destinationProjFullPath, location, L"\\", filename); RETURN_IF_FAILED(hr);
+		BOOL bres = CopyFileW (fromProjFilePath, destinationProjFullPath.get(), FALSE); RETURN_LAST_ERROR_IF(!bres);
 
 		// ---------------------------------------
 		// Make a list of all the other files to be copied.
@@ -153,11 +151,11 @@ class ProjectNode
 			hr = SHCreateShellItemArray (nullptr, projectTemplateDir.get(), (UINT)itemIDListCount, const_cast<LPCITEMIDLIST*>(itemIDList[0].addressof()), &sourceFiles); RETURN_IF_FAILED(hr);
 
 			hr = pfo->CopyItems (sourceFiles.get(), destinationFolder.get()); RETURN_IF_FAILED(hr);
+
+			hr = pfo->PerformOperations(); RETURN_IF_FAILED(hr);
 		}
 
 		// ----------------------------------------------------------------------
-
-		hr = pfo->PerformOperations(); RETURN_IF_FAILED(hr);
 
 		return S_OK;
 	}
@@ -456,8 +454,8 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetSite(IServiceProvider** ppSP) override
 	{
-		*ppSP = _sp.get();
-		_sp->AddRef();
+		*ppSP = serviceProvider.get();
+		(*ppSP)->AddRef();
 		return S_OK;
 	}
 
@@ -729,6 +727,7 @@ public:
 				|| propid == VSHPROPID_SupportsIconMonikers       // -2159
 				|| propid == VSHPROPID_IconMonikerImageList       // -2164
 				|| propid == VSHPROPID_ProjectCapabilitiesChecker // -2173
+				|| propid == -2176 // VSHPROPID_HasRunningOperation
 				|| propid == -2177 // VSHPROPID_PreserveExpandCollapseState
 				|| propid == -9089 // VSHPROPID_SlowEnumeration   // -9089
 			)
@@ -974,8 +973,7 @@ public:
 			if (hFile != INVALID_HANDLE_VALUE)
 			{
 				CloseHandle(hFile);
-				SetErrorInfo1 (HRESULT_FROM_WIN32(ERROR_FILE_EXISTS), IDS_RENAMEFILEALREADYEXISTS, newFullPath.get());
-				return HRESULT_FROM_WIN32(ERROR_FILE_EXISTS);
+				return SetErrorInfo1 (HRESULT_FROM_WIN32(ERROR_FILE_EXISTS), IDS_RENAMEFILEALREADYEXISTS, newFullPath.get());
 			}
 		}
 
@@ -1298,7 +1296,7 @@ public:
 	HRESULT ProcessCommandAddItem (VSITEMID location, BOOL fAddNewItem)
 	{
 		wil::com_ptr_nothrow<IVsAddProjectItemDlg> dlg;
-		auto hr = _sp->QueryService(SID_SVsAddProjectItemDlg, &dlg); RETURN_IF_FAILED(hr);
+		auto hr = serviceProvider->QueryService(SID_SVsAddProjectItemDlg, &dlg); RETURN_IF_FAILED(hr);
 		VSADDITEMFLAGS flags;
 		if (fAddNewItem)
 			flags = VSADDITEM_AddNewItems | VSADDITEM_SuggestTemplateName | VSADDITEM_NoOnlineTemplates; /* | VSADDITEM_ShowLocationField */
@@ -1378,7 +1376,7 @@ public:
 			return RefreshHierarchy();
 
 		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97 && nCmdID == cmdidNewFolder)
-			return ProcessCommandAddNewFolder(itemid);
+			return ProcessCommandAddNewFolder(itemid, pvaOut);
 
 		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97 && nCmdID == cmdidAddNewItem)
 			return ProcessCommandAddItem(itemid, TRUE);
@@ -1408,7 +1406,7 @@ public:
 		memcpy (&pts, &pvaIn->uintVal, 4);
 
 		com_ptr<IVsUIShell> shell;
-		auto hr = _sp->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
+		auto hr = serviceProvider->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
 
 		if (itemid == VSITEMID_ROOT)
 		{
@@ -1659,7 +1657,7 @@ public:
 		auto hr = GetPathOf(d, mkDocument); RETURN_IF_FAILED(hr);
 
 		wil::com_ptr_nothrow<IVsUIShellOpenDocument> uiShellOpenDocument;
-		hr = _sp->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED_EXPECTED(hr);
+		hr = serviceProvider->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED_EXPECTED(hr);
 
 		hr = uiShellOpenDocument->OpenStandardEditor(OSE_ChooseBestStdEditor, mkDocument.get(), rguidLogicalView,
 			L"%3", this, itemid, punkDocDataExisting, nullptr, ppWindowFrame);
@@ -1684,8 +1682,8 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetItemContext(VSITEMID itemid, IServiceProvider** ppSP) override
 	{
-		*ppSP = _sp.get();
-		_sp->AddRef();
+		*ppSP = serviceProvider.get();
+		(*ppSP)->AddRef();
 		return S_OK;
 	}
 
@@ -1828,25 +1826,54 @@ public:
 	{
 		HRESULT hr;
 
-		// Check if the item exists in the project already.
-		wchar_t relativeUgly[MAX_PATH];
-		BOOL bRes = PathRelativePathTo (relativeUgly, _location.get(), FILE_ATTRIBUTE_DIRECTORY, pszFullPathSource, 0);
-		if (!bRes)
-			return SetErrorInfo(E_INVALIDARG, L"Can't make a relative path from '%s' relative to '%s'.", pszFullPathSource, _location.get());
-		for (auto* p = relativeUgly; *p; p++)
-			if (*p == '/')
-				*p = '\\';
-		auto relative = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(relative);
-		PathCanonicalize (relative.get(), relativeUgly);
+		// This is the value we assign to the Path property, which is what's stored in the XML and also what's passed to the assembler.
+		enum class PathType { RelativeIn, RelativeOut, Absolute };
+		wil::unique_bstr path;
+		PathType pathType;
+		if (PathIsSameRoot(pszFullPathSource, _location.get()))
+		{
+			// File is on same drive as the project. We'll keep its path in a form relative to the project dir.
+			wchar_t relativeUgly[MAX_PATH];
+			BOOL bRes = PathRelativePathTo (relativeUgly, _location.get(), FILE_ATTRIBUTE_DIRECTORY, pszFullPathSource, 0);
+			if (!bRes)
+				return SetErrorInfo(E_INVALIDARG, L"Can't make a relative path from '%s' relative to '%s'.", pszFullPathSource, _location.get());
 
+			for (auto* p = relativeUgly; *p; p++)
+				if (*p == '/')
+					*p = '\\';
+
+			if (wcsncmp(relativeUgly, L"..\\", 3))
+			{
+				// File is under the project dir.
+				const wchar_t* relative = relativeUgly;
+				while (relative[0] == '.' && relative[1] == '\\')
+					relative += 2;
+				path = wil::make_bstr_nothrow(relative); RETURN_IF_NULL_ALLOC(path);
+				pathType = PathType::RelativeIn;
+			}
+			else
+			{
+				// File is outside the project dir, but on the same drive.
+				path = wil::make_bstr_nothrow(relativeUgly); RETURN_IF_NULL_ALLOC(path);
+				pathType = PathType::RelativeOut;
+			}
+		}
+		else
+		{
+			// File is on different drive, not on the project's drive. We keep it absolute.
+			path = wil::make_bstr_nothrow(pszFullPathSource); RETURN_IF_NULL_ALLOC(path);
+			pathType = PathType::Absolute;
+		}
+
+		// Check if the item exists in the project already.
 		com_ptr<IChildNode> existing;
-		hr = FindDescendantIf([relative=relative.get()](IChildNode* c)
+		hr = FindDescendantIf([path=path.get()](IChildNode* c)
 			{
 				if (auto sf = wil::try_com_query_nothrow<IFileNodeProperties>(c))
 				{
 					wil::unique_bstr rel;
 					auto hr = sf->get_Path(&rel); RETURN_IF_FAILED(hr);
-					if (!_wcsicmp(relative, rel.get()))
+					if (!_wcsicmp(path, rel.get()))
 						return S_OK;
 					else
 						return S_FALSE;
@@ -1861,10 +1888,19 @@ public:
 		hr = MakeFileNode(&file); RETURN_IF_FAILED(hr);
 		com_ptr<IFileNodeProperties> fileProps;
 		hr = file->QueryInterface(&fileProps); RETURN_IF_FAILED(hr);
-		hr = fileProps->put_Path(relative.get()); RETURN_IF_FAILED(hr);
-		auto buildTool = _wcsicmp(PathFindExtension(relative.get()), L".asm") ? BuildToolKind::None : BuildToolKind::Assembler;
+		hr = fileProps->put_Path(path.get()); RETURN_IF_FAILED(hr);
+		auto buildTool = _wcsicmp(PathFindExtension(path.get()), L".asm") ? BuildToolKind::None : BuildToolKind::Assembler;
 		hr = fileProps->put_BuildTool(buildTool); RETURN_IF_FAILED(hr);
-		hr = AddFileAndFolders(file); RETURN_IF_FAILED(hr);
+
+		if (pathType == PathType::RelativeIn)
+		{
+			hr = AddFileAndFolders(file); RETURN_IF_FAILED(hr);
+		}
+		else
+		{
+			// Add as link to the folder selected by the user when starting the UI command.
+			hr = AddFileToParent(file, location, true); RETURN_IF_FAILED(hr);
+		}
 
 		_isDirty = true;
 
@@ -1911,7 +1947,8 @@ public:
 				RETURN_HR_IF(E_INVALIDARG, cFilesToOpen != 1);
 				com_ptr<IChildNode> pNewNode;
 				hr = AddNewFile (location, rgpszFilesToOpen[0], pszItemName, &pNewNode); RETURN_IF_FAILED_EXPECTED(hr);
-				*pResult = ADDRESULT_Success;
+				if (pResult)
+					*pResult = ADDRESULT_Success;
 
 				com_ptr<IVsWindowFrame> frame;
 				hr = this->OpenItem (pNewNode->GetItemId(), LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &frame);
@@ -1935,7 +1972,8 @@ public:
 					hr = AddExistingFile(location, rgpszFilesToOpen[i], &pNewNode); RETURN_IF_FAILED_EXPECTED(hr);
 				}
 
-				*pResult = ADDRESULT_Success;
+				if (pResult)
+					*pResult = ADDRESULT_Success;
 				return hr;
 			}
 
@@ -1959,10 +1997,10 @@ public:
 		auto hr = GetPathOf(d, mkDocument); RETURN_IF_FAILED(hr);
 
 		com_ptr<IVsUIShellOpenDocument> uiShellOpenDocument;
-		hr = _sp->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED(hr);
+		hr = serviceProvider->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED(hr);
 
 		hr = uiShellOpenDocument->OpenSpecificEditor(0, mkDocument.get(), rguidEditorType, pszPhysicalView, rguidLogicalView,
-			L"%3", this, itemid, punkDocDataExisting, _sp.get(), ppWindowFrame); RETURN_IF_FAILED_EXPECTED(hr);
+			L"%3", this, itemid, punkDocDataExisting, serviceProvider, ppWindowFrame); RETURN_IF_FAILED_EXPECTED(hr);
 
 		wil::unique_variant var;
 		hr = (*ppWindowFrame)->GetProperty(VSFPROPID_DocCookie, &var); LOG_IF_FAILED(hr);
@@ -2339,10 +2377,10 @@ public:
 			RETURN_HR_IF(E_NOTIMPL, itemid[i] == VSITEMID_ROOT); // see example in PrjHier.cpp
 
 		com_ptr<IVsSolution> solution;
-		hr = _sp->QueryService(SID_SVsSolution, &solution); RETURN_IF_FAILED(hr);
+		hr = serviceProvider->QueryService(SID_SVsSolution, &solution); RETURN_IF_FAILED(hr);
 
 		com_ptr<IVsRunningDocumentTable> rdt;
-		hr = _sp->QueryService(SID_SVsRunningDocumentTable, &rdt); RETURN_IF_FAILED(hr);
+		hr = serviceProvider->QueryService(SID_SVsRunningDocumentTable, &rdt); RETURN_IF_FAILED(hr);
 
 		wil::com_ptr_nothrow<IFileOperation> pfo;
 		hr = CoCreateInstance(__uuidof(FileOperation), NULL, CLSCTX_ALL, IID_PPV_ARGS(&pfo)); RETURN_IF_FAILED(hr);
@@ -2354,7 +2392,7 @@ public:
 		else
 		{
 			com_ptr<IVsUIShell> shell;
-			auto hr = _sp->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
+			auto hr = serviceProvider->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
 			HWND ownerHwnd;
 			hr = shell->GetDialogOwnerHwnd(&ownerHwnd); RETURN_IF_FAILED(hr);
 			hr = pfo->SetOwnerWindow(ownerHwnd); RETURN_IF_FAILED(hr);
@@ -2447,7 +2485,7 @@ public:
 					return hr;
 
 				wil::com_ptr_nothrow<IVsUIShell> shell;
-				hr = _sp->QueryService(SID_SVsUIShell, &shell);
+				hr = serviceProvider->QueryService(SID_SVsUIShell, &shell);
 				if (FAILED(hr))
 					return hr;
 
@@ -2517,75 +2555,12 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE get_Items (SAFEARRAY** items) override
 	{
-		HRESULT hr;
-		*items = nullptr;
-
-		vector_nothrow<com_ptr<IFileNodeProperties>> files;
-
-		stdext::inplace_function<HRESULT(IParentNode*)> enumDescendants;
-
-		enumDescendants = [&enumDescendants, &files](IParentNode* parent) -> HRESULT
-			{
-				for (auto c = parent->FirstChild(); c; c = c->Next())
-				{
-					if (auto file = wil::try_com_query_nothrow<IFileNodeProperties>(c))
-					{
-						bool pushed = files.try_push_back(std::move(file)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-					}
-					else if (auto cAsParent = wil::try_com_query_nothrow<IParentNode>(c))
-					{
-						auto hr = enumDescendants(cAsParent); RETURN_IF_FAILED(hr);
-					}
-				}
-
-				return S_OK;
-			};
-		hr = enumDescendants(this); RETURN_IF_FAILED(hr);
-
-		SAFEARRAYBOUND bound;
-		bound.cElements = files.size();
-		bound.lLbound = 0;
-
-		auto sa = unique_safearray(SafeArrayCreate(VT_DISPATCH, 1, &bound)); RETURN_HR_IF(E_OUTOFMEMORY, !sa);
-		for (LONG i = 0; i < (LONG)files.size(); i++)
-		{
-			hr = SafeArrayPutElement(sa.get(), &i, static_cast<IDispatch*>(files[i].get())); RETURN_IF_FAILED(hr);
-		}
-		*items = sa.release();
-		return S_OK;
+		return GetItems(this, items);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_Items (SAFEARRAY* sa) override
 	{
-		HRESULT hr;
-
-		VARTYPE vt;
-		hr = SafeArrayGetVartype(sa, &vt); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(E_NOTIMPL, vt != VT_DISPATCH);
-		UINT dim = SafeArrayGetDim(sa);
-		RETURN_HR_IF(E_NOTIMPL, dim != 1);
-		LONG lbound;
-		hr = SafeArrayGetLBound(sa, 1, &lbound); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(E_NOTIMPL, lbound != 0);
-		LONG ubound;
-		hr = SafeArrayGetUBound(sa, 1, &ubound); RETURN_IF_FAILED(hr);
-
-		// We don't support replacing items with this function, we only support adding them once.
-		RETURN_HR_IF(E_UNEXPECTED, _firstChild);
-		
-		for (LONG i = 0; i <= ubound; i++)
-		{
-			com_ptr<IDispatch> child;
-			hr = SafeArrayGetElement (sa, &i, child.addressof()); RETURN_IF_FAILED(hr);
-			com_ptr<IFileNode> file;
-			hr = child->QueryInterface(&file); RETURN_IF_FAILED(hr);
-			RETURN_HR_IF(E_UNEXPECTED, file->GetItemId() != VSITEMID_NIL);
-			hr = AddFileAndFolders(file); RETURN_IF_FAILED(hr);
-		}
-
-		// This is meant to be called only from LoadXml, no need to set dirty flag or send notifications.
-
-		return S_OK;
+		return PutItems(sa, this);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_Guid (BSTR* value) override
@@ -2639,10 +2614,14 @@ public:
 
 		if (dispidProperty == dispidItems)
 		{
-			wil::com_ptr_nothrow<IFileNode> sourceFile;
-			if (SUCCEEDED(child->QueryInterface(&sourceFile)))
+			if (auto x = wil::try_com_query_nothrow<IFileNode>(child))
 			{
 				*xmlElementNameOut = SysAllocString(FileElementName); RETURN_IF_NULL_ALLOC(*xmlElementNameOut);
+				return S_OK;
+			}
+			else if (auto x = wil::try_com_query_nothrow<IFolderNode>(child))
+			{
+				*xmlElementNameOut = SysAllocString(FolderElementName); RETURN_IF_NULL_ALLOC(*xmlElementNameOut);
 				return S_OK;
 			}
 
@@ -2654,10 +2633,12 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE CreateChild (DISPID dispidProperty, PCWSTR xmlElementName, IDispatch** childOut) override
 	{
+		HRESULT hr;
+
 		if (dispidProperty == dispidConfigurations)
 		{
 			com_ptr<IProjectConfig> config;
-			auto hr = MakeProjectConfig(&config); RETURN_IF_FAILED(hr);
+			hr = MakeProjectConfig(&config); RETURN_IF_FAILED(hr);
 			*childOut = config.detach();
 			return S_OK;
 		}
@@ -2666,18 +2647,24 @@ public:
 		{
 			// Files saved by newer versions use "File" for the name of the XML element.
 			// For backward compatibility, we also recognize the name "AsmFile".
-			// When we'll have directories, they'll use a different XML element name.
-
 			if (!wcscmp(xmlElementName, FileElementName) || !wcscmp(xmlElementName, L"AsmFile"))
 			{
 				wil::com_ptr_nothrow<IFileNode> file;
-				VSITEMID itemId = _nextItemId++;
-				auto hr = MakeFileNode(&file); RETURN_IF_FAILED(hr);
+				hr = MakeFileNode(&file); RETURN_IF_FAILED(hr);
 				com_ptr<IFileNodeProperties> fileProps;
 				hr = file->QueryInterface(&fileProps); RETURN_IF_FAILED(hr);
 				if (!wcscmp(xmlElementName, L"AsmFile"))
 					fileProps->put_BuildTool(BuildToolKind::Assembler);
 				*childOut = fileProps.detach();
+				return S_OK;
+			}
+			else if (!wcscmp(xmlElementName, FolderElementName))
+			{
+				com_ptr<IFolderNode> folder;
+				hr = MakeFolderNode(&folder); RETURN_IF_FAILED(hr);
+				com_ptr<IFolderNodeProperties> folderProps;
+				hr = folder->QueryInterface(IID_PPV_ARGS(&folderProps)); RETURN_IF_FAILED(hr);
+				*childOut = folderProps.detach();
 				return S_OK;
 			}
 
@@ -2785,14 +2772,14 @@ public:
 	HRESULT RefreshHierarchy()
 	{
 		com_ptr<IVsUIShell> shell;
-		auto hr = _sp->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
+		auto hr = serviceProvider->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
 		LONG result;
 		hr = shell->ShowMessageBox (0, GUID_NULL, L"title", L"Refresh not yet implemented", 0, 0,
 			OLEMSGBUTTON_OK, OLEMSGDEFBUTTON_FIRST, OLEMSGICON_INFO, FALSE, &result);
 		return S_OK;
 	}
 
-	HRESULT ProcessCommandAddNewFolder (VSITEMID parentItemId)
+	HRESULT ProcessCommandAddNewFolder (VSITEMID parentItemId, VARIANT* pvaOut)
 	{
 		HRESULT hr;
 
@@ -2851,9 +2838,9 @@ public:
 
 		com_ptr<IFolderNode> newFolder;
 		hr = MakeFolderNode (&newFolder); RETURN_IF_FAILED(hr);
-		hr = newFolder.try_query<IFolderNodeProperties>()->put_FolderName(dirName); RETURN_IF_FAILED(hr);
+		hr = newFolder.try_query<IFolderNodeProperties>()->put_Name(dirName); RETURN_IF_FAILED(hr);
 
-		hr = AddFolderToParent (newFolder, parent); RETURN_IF_FAILED(hr);
+		hr = AddFolderToParent (newFolder, parent, true); RETURN_IF_FAILED(hr);
 
 		_isDirty = true;
 
@@ -2874,6 +2861,10 @@ public:
 				}
 			}
 		}
+
+		// We return the item ID just for testing purposes.
+		if (pvaOut)
+			InitVariantFromVSITEMID(newFolder->GetItemId(), pvaOut);
 
 		return S_OK;
 	}
@@ -2920,7 +2911,7 @@ public:
 					com_ptr<IFolderNodeProperties> folderProps;
 					hr = folder->IChildNode::QueryInterface(&folderProps); RETURN_IF_FAILED(hr);
 					wil::unique_bstr fn;
-					hr = folderProps->get_FolderName(&fn); RETURN_IF_FAILED(hr);
+					hr = folderProps->get_Name(&fn); RETURN_IF_FAILED(hr);
 					std::wstring_view nodeName (fn.get(), (size_t)SysStringLen(fn.get()));
 					auto cmp = dirName.compare(nodeName);
 					if (cmp < 0)
@@ -2938,8 +2929,8 @@ public:
 				{
 					hr = MakeFolderNode (&insertIn); RETURN_IF_FAILED(hr);
 					wil::unique_bstr name (SysAllocStringLen(dirName.data(), (UINT)dirName.size())); RETURN_IF_NULL_ALLOC(name);
-					hr = insertIn.try_query<IFolderNodeProperties>()->put_FolderName(name.get()); RETURN_IF_FAILED(hr);
-					hr = AddFolderToParent(insertIn, currentParent); RETURN_IF_FAILED(hr);
+					hr = insertIn.try_query<IFolderNodeProperties>()->put_Name(name.get()); RETURN_IF_FAILED(hr);
+					hr = AddFolderToParent(insertIn, currentParent, true); RETURN_IF_FAILED(hr);
 				}
 
 				hr = insertIn->QueryInterface(&currentParent); RETURN_IF_FAILED(hr);
@@ -2947,7 +2938,7 @@ public:
 			}
 
 			// finally add the file item
-			hr = AddFileToParent(file, currentParent); RETURN_IF_FAILED(hr);
+			hr = AddFileToParent(file, currentParent, true); RETURN_IF_FAILED(hr);
 		}
 
 		return S_OK;

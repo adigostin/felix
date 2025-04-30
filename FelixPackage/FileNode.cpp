@@ -134,16 +134,19 @@ public:
 		com_ptr<IWeakRef> p;
 		auto hr = parent->QueryInterface(IID_PPV_ARGS(p.addressof())); RETURN_IF_FAILED(hr);
 
-		// The caller is expected to create folder nodes out of any directory name
-		// contained in _pathOrName, and to add us to the corresponding directory.
-		// We should refactor this. For now let's just retain the file name.
-		wil::unique_process_heap_string name;
-		if (_pathOrName && _pathOrName.get()[0])
+		// If the file is inside the project dir, we change _pathOrName. Otherwise we keep it.
+		if (_pathOrName && PathIsRelative(_pathOrName.get()) && _wcsnicmp(_pathOrName.get(), L"..\\", 3))
 		{
-			name = wil::make_process_heap_string_nothrow(PathFindFileName(_pathOrName.get())); RETURN_IF_NULL_ALLOC(name);
+			// The caller is expected to create folder nodes out of any directory name
+			// contained in _pathOrName, and to add us to the corresponding directory.
+			// We should refactor this. For now let's just retain the file name.
+			if (_pathOrName && _pathOrName.get()[0])
+			{
+				auto name = wil::make_process_heap_string_nothrow(PathFindFileName(_pathOrName.get())); RETURN_IF_NULL_ALLOC(name);
+				_pathOrName = std::move(name);
+			}
 		}
-		
-		_pathOrName = std::move(name);
+
 		_parent = std::move(p);
 		_itemId = id;
 		return S_OK;
@@ -269,6 +272,11 @@ public:
 				return E_NOTIMPL;
 			}
 
+			case VSHPROPID_OverlayIconIndex: // -2048
+				// Since this code executes only while this file node in a hierarchy, a filename means the file
+				// is under the project dir. Any directory component means the file is a link outside the project dir.
+				return InitVariantFromUInt32(PathIsFileSpec(_pathOrName.get()) ? OVERLAYICON_NONE : OVERLAYICON_SHORTCUT, pvar);
+
 			case VSHPROPID_IconIndex: // -2005
 			case VSHPROPID_IconHandle: // -2013
 			case VSHPROPID_OpenFolderIconHandle: // -2014
@@ -276,7 +284,6 @@ public:
 			case VSHPROPID_AltHierarchy: // -2019
 			case VSHPROPID_UserContext: // -2023
 			case VSHPROPID_StateIconIndex: // -2029
-			case VSHPROPID_OverlayIconIndex: // -2048
 			case VSHPROPID_IsNewUnsavedItem: // -2057,
 			case VSHPROPID_ShowOnlyItemCaption: // -2058
 			case VSHPROPID_KeepAliveDocument: // -2075
@@ -695,16 +702,37 @@ public:
 		else
 		{
 			// In a hierarchy.
-			WI_ASSERT(PathFindFileName(_pathOrName.get()) == _pathOrName.get());
-			wil::unique_process_heap_string path;
-			auto hr = GetPathOf(this, path, true); RETURN_IF_FAILED(hr);
-			auto str = SysAllocString(path.get()); RETURN_IF_NULL_ALLOC(str);
-			*pbstrPath = str;
+			if (PathIsFileSpec(_pathOrName.get()))
+			{
+				// File is inside the project dir.
+				wil::unique_process_heap_string path;
+				auto hr = GetPathOf(this, path, true); RETURN_IF_FAILED(hr);
+				auto str = SysAllocString(path.get()); RETURN_IF_NULL_ALLOC(str);
+				*pbstrPath = str;
+			}
+			else
+			{
+				// File is outside the project dir.
+				auto str = SysAllocString(_pathOrName.get()); RETURN_IF_NULL_ALLOC(str);
+				*pbstrPath = str;
+			}
 		}
 
 		return S_OK;
 	}
 
+	// The value of the Path property can have one of these three formats:
+	// 
+	//  (1) If the file is located somewhere under the project dir, Path contains the file name and extension.
+	//      In this case PathIsRelative returns TRUE, and the path does not start with "..\".
+	// 
+	//  (2) If the file is located on the same drive as the project dir, but outside the project dir,
+	//      Path begins with "..\", followed by zero or more directories, followed by filename and extension,
+	//      In this case PathIsRelative returns TRUE, and the path starts with "..\".
+	// 
+	//  (3) If the file is located on a different drive than the project dir, Path contains a rooted path,
+	//      starting for example with a drive number or a server share location.
+	//      In this case PathIsRelative returns FALSE.
 	virtual HRESULT STDMETHODCALLTYPE put_Path (BSTR value) override
 	{
 		RETURN_HR_IF(E_UNEXPECTED, _itemId != VSITEMID_NIL);

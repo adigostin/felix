@@ -2,11 +2,15 @@
 #include "pch.h"
 #include "FelixPackage.h"
 #include "shared/com.h"
+#include "shared/inplace_function.h"
+#include "Z80Xml.h"
+#include "dispids.h"
+#include "../FelixPackageUi/resource.h"
 #include <KnownMonikers.h>
 
 using namespace Microsoft::VisualStudio::Imaging;
 
-struct FolderNode : IFolderNode, IParentNode, IFolderNodeProperties
+struct FolderNode : IFolderNode, IParentNode, IFolderNodeProperties, IXmlParent
 {
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _parent;
@@ -40,7 +44,8 @@ public:
 			|| TryQI<IChildNode>(this, riid, ppvObject)
 			|| TryQI<IParentNode>(this, riid, ppvObject)
 			|| TryQI<INode>(this, riid, ppvObject)
-			)
+			|| TryQI<IXmlParent>(this, riid, ppvObject)
+		)
 			return S_OK;
 
 		if (riid == __uuidof(IWeakRef))
@@ -66,7 +71,7 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_FolderName (BSTR *value) override
+	virtual HRESULT STDMETHODCALLTYPE get_Name (BSTR *value) override
 	{
 		if (!_name || !_name.get()[0])
 			return (*value = nullptr), S_OK;			
@@ -74,13 +79,24 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_FolderName (LPCOLESTR value) override
+	virtual HRESULT STDMETHODCALLTYPE put_Name (BSTR value) override
 	{
+		RETURN_HR_IF(E_UNEXPECTED, _itemId != VSITEMID_NIL);
 		RETURN_HR_IF(E_INVALIDARG, !value || !value[0]);
 
 		_name = wil::make_bstr_nothrow(value); RETURN_IF_NULL_ALLOC(_name);
 		// TODO: property change notifications
 		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_Items (SAFEARRAY** items) override
+	{
+		return GetItems(this, items);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_Items (SAFEARRAY* sa) override
+	{
+		return PutItems(sa, this);
 	}
 	#pragma endregion
 
@@ -213,9 +229,16 @@ public:
 		if (propid == VSHPROPID_EditLabel)
 		{
 			RETURN_HR_IF(E_INVALIDARG, var.vt != VT_BSTR);
-			wil::unique_bstr newName;
-			hr = RenameDirOnFileSystem(var.bstrVal, &newName); RETURN_IF_FAILED_EXPECTED(hr);
-			hr = RenameNode(newName.get()); RETURN_IF_FAILED(hr);
+			hr = RenameNode(var.bstrVal); RETURN_IF_FAILED_EXPECTED(hr);
+			// If the above call reordered nodes, we need to select ourselves again.
+			com_ptr<IVsUIHierarchyWindow> uiWindow;
+			if (SUCCEEDED(GetHierarchyWindow(uiWindow.addressof())))
+			{
+				com_ptr<IVsUIHierarchy> hier;
+				if (SUCCEEDED(FindHier(static_cast<IParentNode*>(this), IID_PPV_ARGS(&hier))))
+					uiWindow->ExpandItem (hier, _itemId, EXPF_SelectItem);
+			}
+
 			return S_OK;
 		}
 
@@ -322,17 +345,184 @@ public:
 	}
 	#pragma endregion
 
-	HRESULT RenameDirOnFileSystem (const wchar_t* proposedName, BSTR* pbstrNewName)
+	#pragma region IXmlParent : IUnknown
+	virtual HRESULT STDMETHODCALLTYPE GetChildXmlElementName (DISPID dispidProperty, IDispatch* child, BSTR* xmlElementNameOut) override
+	{
+		if (dispidProperty == dispidItems)
+		{
+			if (auto x = wil::try_com_query_nothrow<IFileNode>(child))
+			{
+				*xmlElementNameOut = SysAllocString(FileElementName); RETURN_IF_NULL_ALLOC(*xmlElementNameOut);
+				return S_OK;
+			}
+			else if (auto x = wil::try_com_query_nothrow<IFolderNode>(child))
+			{
+				*xmlElementNameOut = SysAllocString(FolderElementName); RETURN_IF_NULL_ALLOC(*xmlElementNameOut);
+				return S_OK;
+			}
+
+			RETURN_HR(E_NOTIMPL);
+		}
+
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE CreateChild (DISPID dispidProperty, PCWSTR xmlElementName, IDispatch** childOut) override
 	{
 		HRESULT hr;
+
+		if (dispidProperty == dispidItems)
+		{
+			if (!wcscmp(xmlElementName, FileElementName))
+			{
+				wil::com_ptr_nothrow<IFileNode> file;
+				hr = MakeFileNode(&file); RETURN_IF_FAILED(hr);
+				com_ptr<IFileNodeProperties> fileProps;
+				hr = file->QueryInterface(&fileProps); RETURN_IF_FAILED(hr);
+				*childOut = fileProps.detach();
+				return S_OK;
+			}
+			else if (!wcscmp(xmlElementName, FolderElementName))
+			{
+				com_ptr<IFolderNode> folder;
+				hr = MakeFolderNode(&folder); RETURN_IF_FAILED(hr);
+				com_ptr<IFolderNodeProperties> folderProps;
+				hr = folder->QueryInterface(IID_PPV_ARGS(&folderProps)); RETURN_IF_FAILED(hr);
+				*childOut = folderProps.detach();
+				return S_OK;
+			}
+
+			RETURN_HR(E_NOTIMPL);
+		}
+
+		RETURN_HR(E_NOTIMPL);
+	}
+	#pragma endregion
+
+	HRESULT SortAfterRename (IVsHierarchy* hier, IParentNode* parent)
+	{
+		auto first = wil::try_com_query_nothrow<IFolderNode>(parent->FirstChild());
+		if (first->Next() && wil::try_com_query_nothrow<IFolderNode>(first->Next()))
+		{
+			// We're not the only folder. Need to attempt reordering.
+			wil::unique_variant n;
+
+			auto invalidateParentItems = [hier, parent]
+				{
+					com_ptr<IEnumHierarchyEvents> enu;
+					if (SUCCEEDED(wil::try_com_query_nothrow<IProjectNode>(hier)->EnumHierarchyEventSinks(&enu)))
+					{
+						com_ptr<IVsHierarchyEvents> sink;
+						ULONG fetched;
+						while (SUCCEEDED(enu->Next(1, &sink, &fetched)) && fetched)
+							sink->OnInvalidateItems(parent->GetItemId());
+					}
+				};
+
+			// Special cases at the beginning of the list: Are we the first folder? 
+			if (this == first)
+			{
+				// Yes. Do we need to be moved somewhere after the next one?
+				if (SUCCEEDED(_next->GetProperty(VSHPROPID_SaveName, &n))
+					&& V_VT(&n) == VT_BSTR
+					&& VarBstrCmp(_name.get(), V_BSTR(&n), 0, 0) == VARCMP_GT)
+				{
+					// Yes
+					auto moveAfter = _next.get();
+					com_ptr<IFolderNode> nf;
+					while (moveAfter->Next()
+						&& (nf = wil::try_com_query_nothrow<IFolderNode>(moveAfter->Next()))
+						&& SUCCEEDED(nf->GetProperty(VSHPROPID_SaveName, &n))
+						&& V_VT(&n) == VT_BSTR
+						&& VarBstrCmp(_name.get(), V_BSTR(&n), 0, 0) == VARCMP_GT)
+					{
+						moveAfter = nf.get();
+					}
+
+					parent->SetFirstChild(_next);
+					_next = moveAfter->Next();
+					moveAfter->SetNext(this);
+
+					invalidateParentItems();
+				}
+			}
+			// If we're not the first folder, do we need to become the first?
+			else if (SUCCEEDED(first->GetProperty(VSHPROPID_SaveName, &n))
+				&& V_VT(&n) == VT_BSTR
+				&& VarBstrCmp(_name.get(), V_BSTR(&n), 0, 0) == VARCMP_LT)
+			{
+				// Yes
+				auto prev = parent->FirstChild();
+				while(prev->Next() != this)
+					prev = prev->Next();
+
+				prev->SetNext(_next);
+				_next = parent->FirstChild();
+				parent->SetFirstChild(this);
+
+				invalidateParentItems();
+			}
+			else
+			{
+				auto moveAfter = parent->FirstChild();
+				com_ptr<IFolderNode> nf;
+				while (moveAfter->Next()
+					&& (nf = wil::try_com_query_nothrow<IFolderNode>(moveAfter->Next()))
+					&& SUCCEEDED(nf->GetProperty(VSHPROPID_SaveName, &n))
+					&& V_VT(&n) == VT_BSTR
+					&& VarBstrCmp(_name.get(), V_BSTR(&n), 0, 0) != VARCMP_LT)
+				{
+					moveAfter = moveAfter->Next();
+				}
+
+				if (moveAfter != this)
+				{
+					auto prev = parent->FirstChild();
+					while(prev->Next() != this)
+						prev = prev->Next();
+
+					prev->SetNext(_next);
+					_next = moveAfter->Next();
+					moveAfter->SetNext(this);
+
+					invalidateParentItems();
+				}
+			}
+		}
+		else
+			WI_ASSERT(first == this);
+
+		return S_OK;
+	}
+
+	HRESULT RenameNode (const wchar_t* proposedName)
+	{
+		HRESULT hr;
+
+		com_ptr<IParentNode> parent;
+		_parent->QueryInterface(&parent);
+
+		auto newName = wil::make_bstr_nothrow(proposedName); RETURN_IF_NULL_ALLOC(newName);
+		LUtilFixFilename(newName.get());
+
+		// Do we have a sibling with the new name?
+		for (auto c = parent->FirstChild(); c; c = c->Next())
+		{
+			wil::unique_variant n;
+			if (SUCCEEDED(c->GetProperty(VSHPROPID_SaveName, &n))
+				&& V_VT(&n) == VT_BSTR
+				&& VarBstrCmp(newName.get(), V_BSTR(&n), 0, 0) == VARCMP_EQ)
+			{
+				return SetErrorInfo0(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), IDS_NAME_ALREADY_EXISTS);
+			}
+		}
 
 		com_ptr<IVsHierarchy> hier;
 		hr = FindHier(static_cast<IChildNode*>(this), IID_PPV_ARGS(&hier)); RETURN_IF_FAILED(hr);
 
 		hr = QueryEditProjectFile(hier); RETURN_IF_FAILED_EXPECTED(hr);
 
-		auto newName = wil::make_bstr_nothrow(proposedName); RETURN_IF_NULL_ALLOC(newName);
-		LUtilFixFilename(newName.get());
+		// TODO: there's a lot that needs to be called in IVsTrackProjectDocumentsEvents2
 
 		wil::unique_process_heap_string oldFullPath;
 		hr = GetPathOf(this, oldFullPath); RETURN_IF_FAILED(hr);
@@ -341,40 +531,83 @@ public:
 		hr = GetPathTo(this, newFullPath); RETURN_IF_FAILED(hr);
 		hr = wil::str_concat_nothrow (newFullPath, L"\\", newName); RETURN_IF_FAILED(hr);
 
+		// Make a list of all open documents that are our descendants, and their paths, before folder renaming.
+		vector_nothrow<std::pair<com_ptr<IFileNode>, wil::unique_process_heap_string>> openDocs;
+		com_ptr<IVsRunningDocumentTable> rdt;
+		if (SUCCEEDED(serviceProvider->QueryService(SID_SVsRunningDocumentTable, IID_PPV_ARGS(rdt.addressof()))))
+		{
+			stdext::inplace_function<HRESULT(IParentNode*)> enumDescendants;
+			enumDescendants = [&enumDescendants, &openDocs, rdt=rdt.get()](IParentNode* parent) -> HRESULT
+				{
+					for (auto c = parent->FirstChild(); c; c = c->Next())
+					{
+						if (auto file = wil::try_com_query_nothrow<IFileNode>(c))
+						{
+							// TODO: call IVsTrackProjectDocuments2::OnQueryRenameFile here, call OnAfterRenameFile after renaming.
+
+							wil::unique_variant docCookie;
+							if (SUCCEEDED(file->GetProperty (VSHPROPID_ItemDocCookie, &docCookie))
+								&& (docCookie.vt == VT_VSCOOKIE)
+								&& (V_VSCOOKIE(&docCookie) != VSDOCCOOKIE_NIL))
+							{
+								wil::unique_process_heap_string path;
+								if (SUCCEEDED(GetPathOf(file, path)))
+									openDocs.try_push_back({ std::move(file), std::move(path) });
+							}
+						}
+						else if (auto cAsParent = wil::try_com_query_nothrow<IParentNode>(c))
+						{
+							auto hr = enumDescendants(cAsParent); RETURN_IF_FAILED(hr);
+						}
+					}
+
+					return S_OK;
+				};
+			hr = enumDescendants(this); RETURN_IF_FAILED(hr);
+		}
+
 		BOOL bres = MoveFile(oldFullPath.get(), newFullPath.get());
 		if (!bres)
 			return HRESULT_FROM_WIN32(GetLastError());
+		auto oldName = std::move(_name);
+		_name = std::move(newName);
 
-		*pbstrNewName = newName.release();
-		return S_OK;
-	}
+		// We finished the renaming; now try to reorder the nodes and to send notifications.
+		// we don't fail the renaming if these operations fail.
 
-	HRESULT RenameNode (const wchar_t* newName)
-	{
-		HRESULT hr;
-
-		_name = wil::make_bstr_nothrow(newName); RETURN_IF_NULL_ALLOC(_name);
-		
-		com_ptr<IProjectNode> hier;
-		hr = FindHier(static_cast<IChildNode*>(this), IID_PPV_ARGS(&hier)); RETURN_IF_FAILED(hr);
-		com_ptr<IEnumHierarchyEvents> enu;
-		hr = hier->EnumHierarchyEventSinks(&enu); RETURN_IF_FAILED(hr);
-		com_ptr<IVsHierarchyEvents> sink;
-		ULONG fetched;
-		while (SUCCEEDED(enu->Next(1, &sink, &fetched)) && fetched)
+		// For every open file under the renamed folder, send notification about changed moniker.
+		for (auto& od : openDocs)
 		{
-			sink->OnPropertyChanged (_itemId, VSHPROPID_SaveName, 0);
-			sink->OnPropertyChanged (_itemId, VSHPROPID_Caption, 0);
-			sink->OnPropertyChanged (_itemId, VSHPROPID_Name, 0);
-			sink->OnPropertyChanged (_itemId, VSHPROPID_EditLabel, 0);
-			sink->OnPropertyChanged (_itemId, VSHPROPID_DescriptiveName, 0);
+			wil::unique_process_heap_string newPath;
+			if (SUCCEEDED(GetPathOf(od.first, newPath)))
+				rdt->RenameDocument(od.second.get(), newPath.get(), HIERARCHY_DONTCHANGE, VSITEMID_NIL);
+		}
+
+		SortAfterRename(hier, parent);
+
+		com_ptr<IEnumHierarchyEvents> enu;
+		hr = hier.try_query<IProjectNode>()->EnumHierarchyEventSinks(&enu);
+		if (SUCCEEDED(hr))
+		{
+			com_ptr<IVsHierarchyEvents> sink;
+			ULONG fetched;
+			while (SUCCEEDED(enu->Next(1, &sink, &fetched)) && fetched)
+			{
+				sink->OnPropertyChanged (_itemId, VSHPROPID_SaveName, 0);
+				sink->OnPropertyChanged (_itemId, VSHPROPID_Caption, 0);
+				sink->OnPropertyChanged (_itemId, VSHPROPID_Name, 0);
+				sink->OnPropertyChanged (_itemId, VSHPROPID_EditLabel, 0);
+				sink->OnPropertyChanged (_itemId, VSHPROPID_DescriptiveName, 0);
+			}
 		}
 
 		// Make sure the property browser is updated.
 		com_ptr<IVsUIShell> uiShell;
-		hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell); LOG_IF_FAILED(hr);
+		hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell);
 		if (SUCCEEDED(hr))
 			uiShell->RefreshPropertyBrowser(DISPID_UNKNOWN); // refresh all properties
+
+		hier.try_query<IPropertyNotifySink>()->OnChanged(dispidItems);
 
 		return S_OK;
 	}

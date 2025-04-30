@@ -6,18 +6,25 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
+extern wil::unique_process_heap_string templateFullPath;
+extern wil::unique_process_heap_string TemplatePath_EmptyProject;
+extern wil::unique_process_heap_string TemplatePath_EmptyFile;
 extern wchar_t tempPath[MAX_PATH + 1];
 
-extern com_ptr<IProjectConfig> AddDebugProjectConfig (IVsHierarchy* hier);
-extern com_ptr<IVsOutputWindowPane2> MakeMockOutputWindowPane (IStream* outputStreamUTF16);
-extern com_ptr<IServiceProvider> MakeMockServiceProvider();
+namespace FelixTests
+{
+	com_ptr<IFileNode> MakeFileNode (const wchar_t* pathRelativeToProjectDir);
+	VSITEMID AddFolderNode (IVsUIHierarchy* hier, VSITEMID addTo, const wchar_t* name);
+	void WriteFileOnDisk(const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir, const char* fileContent = nullptr);
+	void DeleteFileOnDisk(const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir);
+
+	com_ptr<IProjectConfig> AddDebugProjectConfig (IVsHierarchy* hier);
+	com_ptr<IVsOutputWindowPane2> MakeMockOutputWindowPane (IStream* outputStreamUTF16);
+	com_ptr<IServiceProvider> MakeMockServiceProvider();
+}
 
 using PropChangedCallback = stdext::inplace_function<void(VSITEMID itemid, VSHPROPID propid, DWORD flags)>;
 com_ptr<IVsHierarchyEvents> MakeMockHierarchyEventSink (PropChangedCallback propChanged);
-
-com_ptr<IFileNode> MakeFileNode (const wchar_t* pathRelativeToProjectDir);
-void WriteFileOnDisk(const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir, const char* fileContent = nullptr);
-void DeleteFileOnDisk(const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir);
 
 inline VSITEMID GetProperty_VSITEMID (IVsHierarchy* hier, VSITEMID itemid, VSHPROPID propid)
 {

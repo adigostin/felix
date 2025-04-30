@@ -219,6 +219,9 @@ static HRESULT SaveToXmlInternal (IDispatch* obj, PCWSTR elementName, DWORD flag
 
 					case VT_SAFEARRAY:
 					{
+						// An object that contains a property of type SAFEARRAY must implement IXmlParent.
+						RETURN_HR_IF(E_UNEXPECTED, !wil::try_com_query_nothrow<IXmlParent>(obj));
+
 						SAFEARRAY* sa = V_ARRAY(&result);
 						VARTYPE vt;
 						hr = SafeArrayGetVartype(sa, &vt); RETURN_IF_FAILED(hr);

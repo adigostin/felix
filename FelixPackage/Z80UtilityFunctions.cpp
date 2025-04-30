@@ -271,9 +271,17 @@ static HRESULT Write (ISequentialStream* stream, const wchar_t* from, const wcha
 	return stream->Write(from, (ULONG)(to - from) * sizeof(wchar_t), nullptr);
 }
 
-HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmProps, BSTR* ppCmdLine)
+FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOrNull, BSTR* ppCmdLine)
 {
 	HRESULT hr;
+
+	com_ptr<IProjectConfigAssemblerProperties> asmProps;
+	if (asmPropsOrNull)
+		asmProps = asmPropsOrNull;
+	else
+	{
+		hr = config->get_AssemblerProperties(&asmProps); RETURN_IF_FAILED(hr);
+	}
 
 	wil::unique_variant projectDir;
 	hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, projectDir.addressof()); RETURN_IF_FAILED(hr);
@@ -428,7 +436,7 @@ HRESULT QueryEditProjectFile (IVsHierarchy* hier)
 
 	VSQueryEditResult fEditVerdict;
 	com_ptr<IVsQueryEditQuerySave2> queryEdit;
-	hr = serviceProvider->QueryService (SID_SVsQueryEditQuerySave, &queryEdit); LOG_IF_FAILED(hr);
+	hr = serviceProvider->QueryService (SID_SVsQueryEditQuerySave, &queryEdit);
 	if (SUCCEEDED(hr))
 	{
 		wil::unique_cotaskmem_string fullPathName;
@@ -586,7 +594,7 @@ static HRESULT SetItemIdsTree (IChildNode* child, IChildNode* childPrevSibling, 
 	return enumNodeAndChildren(child, childPrevSibling, addTo);
 }
 
-FELIX_API HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo)
+FELIX_API HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo, bool sort)
 {
 	HRESULT hr;
 	RETURN_HR_IF(E_UNEXPECTED, child->GetItemId() != VSITEMID_NIL);
@@ -594,6 +602,15 @@ FELIX_API HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo)
 	IChildNode* prevChild = nullptr;
 	if (!addTo->FirstChild())
 		addTo->SetFirstChild(child);
+	else if (!sort)
+	{
+		IChildNode* insertAfter = addTo->FirstChild();
+		while (insertAfter->Next())
+			insertAfter = insertAfter->Next();
+		child->SetNext(insertAfter->Next());
+		insertAfter->SetNext(child);
+		prevChild = insertAfter;
+	}
 	else
 	{
 		com_ptr<IFileNodeProperties> childProps;
@@ -647,7 +664,7 @@ FELIX_API HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo)
 	return S_OK;
 }
 
-FELIX_API HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo)
+FELIX_API HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo, bool sort)
 {
 	HRESULT hr;
 
@@ -658,6 +675,15 @@ FELIX_API HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo)
 	if (!addTo->FirstChild())
 	{
 		addTo->SetFirstChild(child);
+	}
+	else if (!sort)
+	{
+		IChildNode* insertAfter = addTo->FirstChild();
+		while (insertAfter->Next())
+			insertAfter = insertAfter->Next();
+		child->SetNext(insertAfter->Next());
+		insertAfter->SetNext(child);
+		prevChild = insertAfter;
 	}
 	else
 	{
@@ -671,7 +697,7 @@ FELIX_API HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo)
 		{
 			// Add it sorted to existing folders and before files (if any).
 			wil::unique_bstr childName;
-			hr = wil::try_com_query_nothrow<IFolderNodeProperties>(child)->get_FolderName(&childName); RETURN_IF_FAILED(hr);
+			hr = wil::try_com_query_nothrow<IFolderNodeProperties>(child)->get_Name(&childName); RETURN_IF_FAILED(hr);
 
 			wil::unique_variant name;
 
@@ -821,4 +847,77 @@ HRESULT CreatePathOfNode (IParentNode* node, wil::unique_process_heap_string& pa
 		};
 
 	return createDirRecursively(node);
+}
+
+HRESULT GetItems (IParentNode* itemsIn, SAFEARRAY** itemsOut)
+{
+	HRESULT hr;
+	*itemsOut = nullptr;
+
+	vector_nothrow<com_ptr<IDispatch>> nodes;
+
+	for (auto c = itemsIn->FirstChild(); c; c = c->Next())
+	{
+		if (auto file = wil::try_com_query_nothrow<IFileNodeProperties>(c))
+		{
+			bool pushed = nodes.try_push_back(std::move(file)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		}
+		else if (auto folder = wil::try_com_query_nothrow<IFolderNodeProperties>(c))
+		{
+			bool pushed = nodes.try_push_back(std::move(folder)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		}
+		else
+			RETURN_HR(E_NOTIMPL);
+	}
+
+	SAFEARRAYBOUND bound;
+	bound.cElements = nodes.size();
+	bound.lLbound = 0;
+	auto sa = unique_safearray(SafeArrayCreate(VT_DISPATCH, 1, &bound)); RETURN_HR_IF(E_OUTOFMEMORY, !sa);
+	for (LONG i = 0; i < (LONG)nodes.size(); i++)
+	{
+		hr = SafeArrayPutElement(sa.get(), &i, nodes[i].get()); RETURN_IF_FAILED(hr);
+	}
+
+	*itemsOut = sa.release();
+	return S_OK;
+}
+
+HRESULT PutItems (SAFEARRAY* sa, IParentNode* items)
+{
+	HRESULT hr;
+
+	VARTYPE vt;
+	hr = SafeArrayGetVartype(sa, &vt); RETURN_IF_FAILED(hr);
+	RETURN_HR_IF(E_NOTIMPL, vt != VT_DISPATCH);
+	UINT dim = SafeArrayGetDim(sa);
+	RETURN_HR_IF(E_NOTIMPL, dim != 1);
+	LONG lbound;
+	hr = SafeArrayGetLBound(sa, 1, &lbound); RETURN_IF_FAILED(hr);
+	RETURN_HR_IF(E_NOTIMPL, lbound != 0);
+	LONG ubound;
+	hr = SafeArrayGetUBound(sa, 1, &ubound); RETURN_IF_FAILED(hr);
+
+	// We don't support replacing items with this function, we only support adding them once.
+	RETURN_HR_IF(E_UNEXPECTED, items->FirstChild() != nullptr);
+
+	for (LONG i = 0; i <= ubound; i++)
+	{
+		com_ptr<IDispatch> child;
+		hr = SafeArrayGetElement (sa, &i, child.addressof()); RETURN_IF_FAILED(hr);
+		if (auto file = child.try_query<IFileNode>())
+		{
+			hr = AddFileToParent(file, items, false); RETURN_IF_FAILED(hr);
+		}
+		else if (auto folder = child.try_query<IFolderNode>())
+		{
+			hr = AddFolderToParent(folder, items, false); RETURN_IF_FAILED(hr);
+		}
+		else
+			RETURN_HR(E_NOTIMPL);
+	}
+
+	// This is meant to be called only from LoadXml, no need to set dirty flag or send notifications.
+
+	return S_OK;
 }

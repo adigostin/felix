@@ -88,7 +88,7 @@ namespace FelixTests
 				WriteFileOnDisk(tempPath, L"test.asm", asmFileContent);
 			else
 				DeleteFileOnDisk(tempPath, L"test.asm");
-			hr = AddFileToParent(sourceFile, hier.try_query<IParentNode>());
+			hr = AddFileToParent(sourceFile, hier.try_query<IParentNode>(), true);
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto config = AddDebugProjectConfig(hier);
 			auto pane = MakeMockOutputWindowPane(nullptr);
@@ -189,7 +189,7 @@ namespace FelixTests
 				WriteFileOnDisk(tempPath, sourceFileName, sourceFileContent);
 			else
 				DeleteFileOnDisk(tempPath, sourceFileName);
-			AddFileToParent(sourceFile, hier.try_query<IParentNode>());
+			AddFileToParent(sourceFile, hier.try_query<IParentNode>(), true);
 
 			hr = sourceFile.try_query<IFileNodeProperties>()->put_BuildTool(BuildToolKind::CustomBuildTool);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -485,6 +485,45 @@ namespace FelixTests
 			auto builder = MakeProjectWithCustomBuildTool (L"test.asm", { }, L"CBT Description", nullptr, nullptr);
 			auto hr = builder->StartBuild(nullptr);
 			Assert::AreEqual(S_OK, hr);
+		}
+
+		TEST_METHOD(BuildFilesInFoldersAndSubfolders)
+		{
+			com_ptr<IVsUIHierarchy> hier;
+			auto hr = MakeProjectNode (TemplatePath_EmptyProject.get(), tempPath, L"BuildFilesInFoldersAndSubfolders.flx",
+				CPF_CLONEFILE | CPF_OVERWRITE | CPF_SILENT, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			auto config = FelixTests::AddDebugProjectConfig(hier);
+
+			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
+
+			wil::unique_variant folder;
+			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &folder);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<VARTYPE>(VT_VSITEMID, folder.vt);
+			hr = hier->SetProperty (V_VSITEMID(&folder), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"folder"));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = hier.try_query<IVsProject>()->AddItem (V_VSITEMID(&folder), VSADDITEMOP_CLONEFILE, L"file1.asm", 1, templateasm, NULL, NULL);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_variant subfolder;
+			hr = hier->ExecCommand (V_VSITEMID(&folder), &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &subfolder);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<VARTYPE>(VT_VSITEMID, subfolder.vt);
+			hr = hier->SetProperty (V_VSITEMID(&subfolder), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"subfolder"));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = hier.try_query<IVsProject>()->AddItem (V_VSITEMID(&subfolder), VSADDITEMOP_CLONEFILE, L"file2.asm", 1, templateasm, NULL, NULL);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_bstr cmdLine;
+			hr = MakeSjasmCommandLine (hier, config, nullptr, &cmdLine);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			Assert::IsNotNull(wcsstr(cmdLine.get(), L" folder\\file1.asm"));
+			Assert::IsNotNull(wcsstr(cmdLine.get(), L" folder\\subfolder\\file2.asm"));
 		}
 	};
 }

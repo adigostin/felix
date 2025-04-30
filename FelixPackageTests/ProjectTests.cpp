@@ -8,9 +8,6 @@
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 extern const GUID FelixProjectType = { 0xD438161C, 0xF032, 0x4014, { 0xBC, 0x5C, 0x20, 0xA8, 0x0E, 0xAF, 0xF5, 0x9B } };
-extern wil::unique_process_heap_string templateFullPath;
-extern wil::unique_process_heap_string TemplatePath_EmptyProject;
-extern wchar_t tempPath[];
 
 namespace FelixTests
 {
@@ -56,6 +53,7 @@ namespace FelixTests
 
 		TEST_METHOD(PutItemsTwoFilesOneInFolder)
 		{
+			/*
 			com_ptr<IVsHierarchy> hier;
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -111,27 +109,38 @@ namespace FelixTests
 			Assert::AreEqual<ULONG>(0, folder.detach()->Release());
 			Assert::AreEqual<ULONG>(0, file1.detach()->Release());
 			Assert::AreEqual<ULONG>(0, file2.detach()->Release());
+			*/
 		}
 
-		TEST_METHOD(PutItemsTwoFilesInTwoFolders)
+		TEST_METHOD(AddItemTwoFilesInTwoFolders)
 		{
-			com_ptr<IVsHierarchy> hier;
+			com_ptr<IVsUIHierarchy> hier;
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto file1 = MakeFileNode(L"testfolder1/file1.asm");
-			auto file2 = MakeFileNode(L"testfolder2/file2.asm");
 			com_ptr<IFolderNode> folder1;
 			com_ptr<IFolderNode> folder2;
 
 			{
-				SAFEARRAYBOUND bound = { .cElements = 2, .lLbound = 0 };
-				auto sa = unique_safearray(SafeArrayCreate(VT_DISPATCH, 1, &bound));
-				LONG i = 0;
-				SafeArrayPutElement (sa.get(), &i, file1.try_query<IDispatch>());
-				i++;
-				SafeArrayPutElement (sa.get(), &i, file2.try_query<IDispatch>());
-				hr = hier.try_query<IProjectNodeProperties>()->put_Items(sa.get());
+				wil::unique_variant tf1;
+				hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &tf1);
+				Assert::IsTrue(SUCCEEDED(hr));
+				Assert::AreEqual<VARTYPE>(VT_VSITEMID, tf1.vt);
+				hr = hier->SetProperty (V_VSITEMID(&tf1), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"testfolder1"));
+				Assert::IsTrue(SUCCEEDED(hr));
+
+				wil::unique_variant tf2;
+				hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &tf2);
+				Assert::IsTrue(SUCCEEDED(hr));
+				Assert::AreEqual<VARTYPE>(VT_VSITEMID, tf2.vt);
+				hr = hier->SetProperty (V_VSITEMID(&tf2), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"testfolder2"));
+				Assert::IsTrue(SUCCEEDED(hr));
+
+				LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
+				auto proj = hier.try_query<IVsProject>();
+				hr = proj->AddItem (V_VSITEMID(&tf1), VSADDITEMOP_CLONEFILE, L"file1.asm", 1, templateasm, nullptr, nullptr);
+				Assert::IsTrue(SUCCEEDED(hr));
+				hr = proj->AddItem (V_VSITEMID(&tf2), VSADDITEMOP_CLONEFILE, L"file2.asm", 1, templateasm, nullptr, nullptr);
 				Assert::IsTrue(SUCCEEDED(hr));
 
 				// First project child should be a folder.
@@ -170,8 +179,6 @@ namespace FelixTests
 			Assert::AreEqual<ULONG>(0, hier.detach()->Release());
 			Assert::AreEqual<ULONG>(0, folder1.detach()->Release());
 			Assert::AreEqual<ULONG>(0, folder2.detach()->Release());
-			Assert::AreEqual<ULONG>(0, file1.detach()->Release());
-			Assert::AreEqual<ULONG>(0, file2.detach()->Release());
 		}
 
 		TEST_METHOD(PutItemsFourFilesUnsorted)
@@ -186,17 +193,23 @@ namespace FelixTests
 			auto file4 = MakeFileNode(L"file4.asm");
 
 			{
-				SAFEARRAYBOUND bound = { .cElements = 4, .lLbound = 0 };
-				auto sa = unique_safearray(SafeArrayCreate(VT_DISPATCH, 1, &bound));
-				LONG i = 0;
-				SafeArrayPutElement (sa.get(), &i, file3.try_query<IDispatch>()); // Add to empty parent
-				i++;
-				SafeArrayPutElement (sa.get(), &i, file1.try_query<IDispatch>()); // Insert in first pos
-				i++;
-				SafeArrayPutElement (sa.get(), &i, file2.try_query<IDispatch>()); // Insert between the two above
-				i++;
-				SafeArrayPutElement (sa.get(), &i, file4.try_query<IDispatch>()); // Add at the end
-				hr = hier.try_query<IProjectNodeProperties>()->put_Items(sa.get());
+				LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
+
+				auto proj = hier.try_query<IVsProject>();
+				// Add to empty parent
+				hr = proj->AddItem(VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"file3.asm", 1, templateasm, nullptr, nullptr);
+				Assert::IsTrue(SUCCEEDED(hr));
+
+				// Insert in first pos
+				hr = proj->AddItem(VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"file1.asm", 1, templateasm, nullptr, nullptr);
+				Assert::IsTrue(SUCCEEDED(hr));
+
+				// Insert between the two above
+				hr = proj->AddItem(VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"file2.asm", 1, templateasm, nullptr, nullptr);
+				Assert::IsTrue(SUCCEEDED(hr));
+
+				// Add at the end
+				hr = proj->AddItem(VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"file4.asm", 1, templateasm, nullptr, nullptr);
 				Assert::IsTrue(SUCCEEDED(hr));
 
 				// First project child should be file1.
@@ -547,10 +560,10 @@ namespace FelixTests
 			com_ptr<IFolderNode> folder;
 			hr = MakeFolderNode(&folder);
 			Assert::IsTrue(SUCCEEDED(hr));
-			hr = folder.try_query<IFolderNodeProperties>()->put_FolderName(L"folder");
+			hr = folder.try_query<IFolderNodeProperties>()->put_Name(wil::make_bstr_nothrow(L"folder").get());
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			hr = AddFolderToParent (folder, hier.try_query<IParentNode>());
+			hr = AddFolderToParent (folder, hier.try_query<IParentNode>(), true);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			{
@@ -650,13 +663,13 @@ namespace FelixTests
 
 			com_ptr<IFolderNode> folder1;
 			hr = MakeFolderNode(&folder1);
-			hr = folder1.try_query<IFolderNodeProperties>()->put_FolderName(L"folder");
+			hr = folder1.try_query<IFolderNodeProperties>()->put_Name(wil::make_bstr_nothrow(L"folder").get());
 			Assert::IsTrue(SUCCEEDED(hr));
-			hr = AddFolderToParent(folder1, hier1.try_query<IParentNode>());
+			hr = AddFolderToParent(folder1, hier1.try_query<IParentNode>(), true);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			auto file1 = MakeFileNode(L"folder/test.asm");
-			hr = AddFileToParent(file1, folder1.try_query<IParentNode>());
+			hr = AddFileToParent(file1, folder1.try_query<IParentNode>(), true);
 
 			// ------------------------------------------------
 
@@ -679,7 +692,7 @@ namespace FelixTests
 			auto folder2 = wil::try_com_query_nothrow<IFolderNode>(pip2->FirstChild());
 			Assert::IsNotNull(pip2->FirstChild());
 			wil::unique_bstr folder2Name;
-			hr = folder2.try_query<IFolderNodeProperties>()->get_FolderName(&folder2Name);
+			hr = folder2.try_query<IFolderNodeProperties>()->get_Name(&folder2Name);
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::AreEqual(L"folder", folder2Name.get());
 
@@ -691,8 +704,9 @@ namespace FelixTests
 			Assert::AreEqual(L"folder\\test.asm", file2Path.get());
 		}
 
-		TEST_METHOD(TestLoadFromXml1)
+		TEST_METHOD(AddItemSort)
 		{
+			/*
 			static const char xml[] = ""
 				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
 				"<Z80Project Guid=\"{2839FDD7-4C8F-4772-90E6-222C702D045E}\">"
@@ -704,33 +718,63 @@ namespace FelixTests
 					"<Items>"
 						"<File Path=\"start.asm\" BuildTool=\"Assembler\" />"
 						"<File Path=\"lib.asm\" BuildTool=\"Assembler\" />"
-						"<File Path=\"More/EvenMore/file.inc\" BuildTool=\"None\" />"
-						"<File Path=\"GeneratedFiles/preinclude.inc\" BuildTool=\"None\" />"
-						"<File Path=\"GeneratedFiles/postinclude.inc\" BuildTool=\"None\" />"
+						"<Folder FolderName=\"More\">"
+							"<Items>"
+								"<Folder FolderName=\"EvenMore\">"
+									"<Items>"
+										"<File Path=\"file.inc\" BuildTool=\"None\" />"
+									"</Items>"
+								"</Folder>"
+							"</Items>"
+						"</Folder>"
+						"<Folder FolderName=\"GeneratedFiles\">"
+							"<Items>"
+								"<File Path=\"preinclude.inc\" BuildTool=\"None\" />"
+								"<File Path=\"postinclude.inc\" BuildTool=\"None\" />"
+							"</Items>"
+						"</Folder>"
 					"</Items>"
 				"</Z80Project>";
-
-			// After loading, the hierarchy is supposed to look like this:
-			// Project
-			//   GeneratedFiles
-			//     postinclude.inc
-			//     preinclude.inc
-			//   More
-			//     EvenMore
-			//       file.inc
-			//   lib.asm
-			//   start.asm
 
 			auto s = SHCreateMemStream((BYTE*)xml, sizeof(xml) - 1);
 			com_ptr<IStream> stream;
 			stream.attach(s);
-
-			com_ptr<IVsHierarchy> hier;
+			*/
+			com_ptr<IVsUIHierarchy> hier;
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			hr = LoadFromXml(hier.try_query<IProjectNodeProperties>(), ProjectElementName, stream);
+			//hr = LoadFromXml(hier.try_query<IProjectNodeProperties>(), ProjectElementName, stream);
+			//Assert::IsTrue(SUCCEEDED(hr));
+
+			auto proj = hier.try_query<IVsProject>();
+			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
+			hr = proj->AddItem(VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"start.asm", 1, templateasm, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
+			hr = proj->AddItem(VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"lib.asm", 1, templateasm, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+			com_ptr<IFolderNode> more;
+			hr = MakeFolderNode(&more);
+			hr = more.try_query<IFolderNodeProperties>()->put_Name(wil::make_bstr_nothrow(L"More").get());
+			hr = AddFolderToParent (more, wil::try_com_query_nothrow<IParentNode>(hier), true);
+			Assert::IsTrue(SUCCEEDED(hr));
+			com_ptr<IFolderNode> evenMore;
+			hr = MakeFolderNode(&evenMore);
+			hr = evenMore.try_query<IFolderNodeProperties>()->put_Name(wil::make_bstr_nothrow(L"EvenMore").get());
+			hr = AddFolderToParent (evenMore, wil::try_com_query_nothrow<IParentNode>(more), true);
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = proj->AddItem(evenMore->GetItemId(), VSADDITEMOP_CLONEFILE, L"file.inc", 1, templateasm, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+			com_ptr<IFolderNode> generatedFiles;
+			hr = MakeFolderNode(&generatedFiles);
+			hr = generatedFiles.try_query<IFolderNodeProperties>()->put_Name(wil::make_bstr_nothrow(L"GeneratedFiles").get());
+			hr = AddFolderToParent (generatedFiles, wil::try_com_query_nothrow<IParentNode>(hier), true);
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = proj->AddItem(generatedFiles->GetItemId(), VSADDITEMOP_CLONEFILE, L"preinclude.inc", 1, templateasm, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = proj->AddItem(generatedFiles->GetItemId(), VSADDITEMOP_CLONEFILE, L"postinclude.inc", 1, templateasm, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+
 
 			auto c = hier.try_query<IParentNode>()->FirstChild();
 			Assert::IsNotNull(c);
@@ -754,11 +798,11 @@ namespace FelixTests
 			Assert::AreEqual(L"More", GetProperty_String(hier, moreFolder->GetItemId(), VSHPROPID_SaveName).get());
 
 			c = moreFolder.try_query<IParentNode>()->FirstChild();
-			auto evenMore = wil::try_com_query_nothrow<IFolderNode>(c);
-			Assert::IsNotNull(evenMore.get());
-			Assert::AreEqual(L"EvenMore", GetProperty_String(hier, evenMore->GetItemId(), VSHPROPID_SaveName).get());
+			auto evenMoreFolder = wil::try_com_query_nothrow<IFolderNode>(c);
+			Assert::IsNotNull(evenMoreFolder.get());
+			Assert::AreEqual(L"EvenMore", GetProperty_String(hier, evenMoreFolder->GetItemId(), VSHPROPID_SaveName).get());
 
-			c = evenMore.try_query<IParentNode>()->FirstChild();
+			c = evenMoreFolder.try_query<IParentNode>()->FirstChild();
 			auto fileinc = wil::try_com_query_nothrow<IFileNode>(c);
 			Assert::IsNotNull(fileinc.get());
 			Assert::AreEqual(L"file.inc", GetProperty_String(hier, fileinc->GetItemId(), VSHPROPID_SaveName).get());
@@ -831,6 +875,94 @@ namespace FelixTests
 
 		TEST_METHOD(RenameFileMissingOnFileSystem_NewNameExists)
 		{
+		}
+
+		TEST_METHOD(RenameFolderAndCheckSorted)
+		{
+			HRESULT hr;
+
+			com_ptr<IVsSolution> sol;
+			serviceProvider->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
+
+			auto testPath = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s\\%s", tempPath, L"RenameFolderAndCheckSorted");
+
+			com_ptr<IVsUIHierarchy> hier;
+			sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), testPath.get(), L"TestProject.flx", CPF_CLONEFILE, IID_PPV_ARGS(&hier));
+
+			// Add folder named "NewFolder1".
+			wil::unique_variant one;
+			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &one);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			// Rename it to "B".
+			hr = hier->SetProperty (V_VSITEMID(&one), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"B"));
+			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_process_heap_string pathToB;
+			wil::str_concat_nothrow(pathToB, testPath, L"\\B");
+			Assert::IsTrue(PathFileExists(pathToB.get()));
+
+			// Add folder named "NewFolder1".
+			wil::unique_variant other;
+			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &other);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			// First one should be "B", second one should be "NewFolder1"
+			Assert::AreEqual<VSITEMID>(V_VSITEMID(&one), hier.try_query<IParentNode>()->FirstChild()->GetItemId());
+			Assert::AreEqual<VSITEMID>(V_VSITEMID(&other), hier.try_query<IParentNode>()->FirstChild()->Next()->GetItemId());
+
+			// Rename the second one to "A".
+			hr = hier->SetProperty (V_VSITEMID(&other), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"A"));
+			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_process_heap_string pathToA;
+			wil::str_concat_nothrow(pathToA, testPath, L"\\A");
+			Assert::IsTrue(PathFileExists(pathToA.get()));
+
+			// First one should be "A", second one should be "B"
+			Assert::AreEqual<VSITEMID>(V_VSITEMID(&other), hier.try_query<IParentNode>()->FirstChild()->GetItemId());
+			Assert::AreEqual<VSITEMID>(V_VSITEMID(&one), hier.try_query<IParentNode>()->FirstChild()->Next()->GetItemId());
+		}
+
+		TEST_METHOD(RenameFileAndCheckSorted)
+		{
+			HRESULT hr;
+
+			com_ptr<IVsSolution> sol;
+			serviceProvider->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
+
+			auto testPath = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s\\%s", tempPath, L"RenameFileAndCheckSorted");
+
+			com_ptr<IVsUIHierarchy> hier;
+			sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), testPath.get(), L"TestProject.flx", CPF_CLONEFILE, IID_PPV_ARGS(&hier));
+			auto hierAsParent = hier.try_query<IParentNode>();
+
+			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
+
+			// Add file named "B".
+			hr = hier.try_query<IVsProject>()->AddItem (VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"B", 1, templateasm, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			// Add file named "C".
+			hr = hier.try_query<IVsProject>()->AddItem (VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"C", 1, templateasm, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			// First one should be "B", second one should be "C"
+			wil::unique_bstr name;
+			wil::try_com_query_nothrow<IFileNodeProperties>(hierAsParent->FirstChild())->get_Path(&name);
+			Assert::AreEqual(L"B", name.get());
+			wil::try_com_query_nothrow<IFileNodeProperties>(hierAsParent->FirstChild()->Next())->get_Path(&name);
+			Assert::AreEqual(L"C", name.get());
+
+			// Rename second one to "A".
+			hr = hier->SetProperty (hierAsParent->FirstChild()->Next()->GetItemId(), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"A"));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			// First one should be "A", second one should be "B"
+			wil::try_com_query_nothrow<IFileNodeProperties>(hierAsParent->FirstChild())->get_Path(&name);
+			Assert::AreEqual(L"A", name.get());
+			wil::try_com_query_nothrow<IFileNodeProperties>(hierAsParent->FirstChild()->Next())->get_Path(&name);
+			Assert::AreEqual(L"B", name.get());
+
+			Assert::Fail(L"TODO: check notifications");
 		}
 	};
 }

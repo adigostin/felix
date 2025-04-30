@@ -114,6 +114,9 @@ extern const wchar_t SettingsCollection[];
 extern const wchar_t SettingLoadSavePath[];
 extern const LCID InvariantLCID;
 FELIX_API extern const wchar_t ProjectElementName[];
+extern const wchar_t ConfigurationElementName[];
+extern const wchar_t FileElementName[];
+extern const wchar_t FolderElementName[];
 
 const char* PropIDToString (VSHPROPID propid);
 void PrintProperty (const char* prefix, VSHPROPID propid, const VARIANT* pvar);
@@ -142,6 +145,7 @@ HRESULT MakeDebugPortSupplier (IDebugPortSupplier2** to);
 HRESULT MakeDebugEngine (IDebugEngine2** to);
 HRESULT MakeLaunchOptions (IFelixLaunchOptions** ppOptions);
 HRESULT GetDefaultProjectFileExtension (BSTR* ppExt);
+HRESULT SetErrorInfo0 (HRESULT errorHR, ULONG packageStringResId);
 HRESULT SetErrorInfo1 (HRESULT errorHR, ULONG packageStringResId, LPCWSTR arg1);
 FELIX_API HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigAssemblerProperties** to);
 FELIX_API HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to);
@@ -150,7 +154,7 @@ FELIX_API HRESULT MakeProjectConfigBuilder (IVsHierarchy* hier, IProjectConfig* 
 	IVsOutputWindowPane2* outputWindowPane, IProjectConfigBuilder** to);
 FELIX_API HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to);
 HRESULT ShowCommandLinePropertyBuilder (HWND hwndParent, BSTR valueBefore, BSTR* valueAfter);
-HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmProps, BSTR* ppCmdLine);
+FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOrNull, BSTR* ppCmdLine);
 FELIX_API HRESULT MakeFolderNode (IFolderNode** ppFolder);
 BOOL LUtilFixFilename (wchar_t* strName);
 HRESULT QueryEditProjectFile (IVsHierarchy* hier);
@@ -159,7 +163,9 @@ HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir, bool 
 FELIX_API HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path, bool relativeToProjectDir = false);
 HRESULT FindHier (IChildNode* from, REFIID riid, void** ppvHier);
 HRESULT FindHier (IParentNode* from, REFIID riid, void** ppvHier);
-FELIX_API HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo);
-FELIX_API HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo);
+FELIX_API HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo, bool sort);
+FELIX_API HRESULT AddFolderToParent (IFolderNode* child, IParentNode* addTo, bool sort);
 HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* child);
 HRESULT CreatePathOfNode (IParentNode* node, wil::unique_process_heap_string& pathOut);
+HRESULT GetItems (IParentNode* itemsIn, SAFEARRAY** itemsOut);
+HRESULT PutItems (SAFEARRAY* sa, IParentNode* items);

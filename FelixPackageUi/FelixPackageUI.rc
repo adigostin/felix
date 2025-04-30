@@ -172,6 +172,7 @@ BEGIN
     IDS_NEW_FOLDER_NAME     "NewFolder%u"
     IDS_ITEM_ALREADY_EXISTS_IN_LOCATION 
                             "An item with the same name already exists in the selected location."
+    IDS_NAME_ALREADY_EXISTS "An item with this name already exists."
 END
 
 #endif    // English (United States) resources

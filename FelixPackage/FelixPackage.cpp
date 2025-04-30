@@ -22,6 +22,9 @@ const wchar_t SettingsCollection[] = L"FelixSettings";
 const wchar_t SettingLoadSavePath[] = L"LoadSavePath";
 const LCID InvariantLCID = LocaleNameToLCID(LOCALE_NAME_INVARIANT, 0);
 FELIX_API const wchar_t ProjectElementName[] = L"Z80Project";
+const wchar_t ConfigurationElementName[] = L"Configuration";
+const wchar_t FileElementName[] = L"File";
+const wchar_t FolderElementName[] = L"Folder";
 static const wchar_t AlwaysReportSettingsName[] = L"AlwaysReportErrors";
 static const wchar_t BinaryFilename[] = L"ROMs/Spectrum48K.rom";
 
@@ -803,27 +806,57 @@ HRESULT GetDefaultProjectFileExtension (BSTR* ppExt)
 	return (*ppExt = SysAllocString(cached.get())) ? S_OK : E_OUTOFMEMORY;
 }
 
+HRESULT SetErrorInfo0 (HRESULT errorHR, ULONG packageStringResId)
+{
+	com_ptr<IVsShell> shell;
+	auto hr = serviceProvider->QueryService(SID_SVsShell, &shell);
+	if (FAILED(hr))
+		return errorHR;
+
+	wil::unique_bstr message;
+	hr = shell->LoadPackageString(CLSID_FelixPackage, packageStringResId, &message);
+	if (FAILED(hr))
+		return errorHR;
+
+	com_ptr<IVsUIShell> uiShell;
+	hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell);
+	if (FAILED(hr))
+		return errorHR;
+
+	uiShell->SetErrorInfo (errorHR, message.get(), 0, nullptr, nullptr);
+
+	return errorHR;
+}
+
 HRESULT SetErrorInfo1 (HRESULT errorHR, ULONG packageStringResId, LPCWSTR arg1)
 {
 	wil::com_ptr_nothrow<IVsShell> shell;
-	auto hr = serviceProvider->QueryService(SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
+	auto hr = serviceProvider->QueryService(SID_SVsShell, &shell);
+	if (FAILED(hr))
+		return errorHR;
 
 	wil::unique_bstr message;
-	hr = shell->LoadPackageString(CLSID_FelixPackage, packageStringResId, &message); RETURN_IF_FAILED(hr);
+	hr = shell->LoadPackageString(CLSID_FelixPackage, packageStringResId, &message);
+	if (FAILED(hr))
+		return errorHR;
 
 	wil::unique_hlocal_string buffer;
 	for (size_t sz = 100; ; sz *= 2)
 	{
-		buffer = wil::make_hlocal_string_nothrow(nullptr, sz); RETURN_IF_NULL_ALLOC(buffer);
+		buffer = wil::make_hlocal_string_nothrow(nullptr, sz);
+		if (!buffer)
+			return errorHR;
 		int ires = _snwprintf_s (buffer.get(), sz, _TRUNCATE, message.get(), arg1);
 		if (ires != -1)
 			break;
 	}
 
 	com_ptr<IVsUIShell> uiShell;
-	hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell); RETURN_IF_FAILED(hr);
+	hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell);
+	if (FAILED(hr))
+		return errorHR;
 
-	hr = uiShell->SetErrorInfo (errorHR, buffer.get(), 0, nullptr, nullptr); RETURN_IF_FAILED(hr);
+	uiShell->SetErrorInfo (errorHR, buffer.get(), 0, nullptr, nullptr);
 
-	return S_OK;
+	return errorHR;
 }
