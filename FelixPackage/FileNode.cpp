@@ -229,9 +229,13 @@ public:
 			case VSHPROPID_DescriptiveName: // -2108
 			{
 				// Tooltip when hovering the document tab with the mouse, maybe other things too.
-				wil::unique_process_heap_string str;
-				hr = GetPathOf(this, str); RETURN_IF_FAILED(hr);
-				return InitVariantFromString(str.get(), pvar);
+				com_ptr<IVsHierarchy> hier;
+				auto hr = FindHier(this, IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
+				wil::unique_bstr path;
+				hr = GetMkDocument(hier, &path); RETURN_IF_FAILED(hr);
+				pvar->vt = VT_BSTR;
+				pvar->bstrVal = path.release();
+				return S_OK;
 			}
 
 			case VSHPROPID_ProvisionalViewingStatus: // -2112
@@ -671,6 +675,41 @@ public:
 	}
 	#pragma endregion
 
+	#pragma region IFileNode
+	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (IVsHierarchy* hier, BSTR* pbstrMkDocument) override
+	{
+		HRESULT hr;
+
+		if (PathIsFileSpec(_path.get()))
+		{
+			// (1)
+			wil::unique_process_heap_string mk;
+			hr = GetPathOf (this, mk, false); RETURN_IF_FAILED(hr);
+			auto bstr = SysAllocString(mk.get()); RETURN_IF_NULL_ALLOC(bstr);
+			*pbstrMkDocument = bstr;
+			return S_OK;
+		}
+		else if (!wcsncmp(_path.get(), L"..\\", 3))
+		{
+			// (2)
+			wil::unique_variant projectDir;
+			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_UNEXPECTED, projectDir.vt != VT_BSTR);
+			auto mk = wil::make_process_heap_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(mk);
+			auto res = PathCombine(mk.get(), projectDir.bstrVal, _path.get()); RETURN_HR_IF_NULL(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), res);
+			auto bstr = SysAllocString(mk.get()); RETURN_IF_NULL_ALLOC(bstr);
+			*pbstrMkDocument = bstr;
+			return S_OK;
+		}
+		else
+		{
+			// (3)
+			auto bstr = SysAllocString(_path.get()); RETURN_IF_NULL_ALLOC(bstr);
+			*pbstrMkDocument = bstr;
+			return S_OK;
+		}
+	}
+	#pragma endregion
+
 	#pragma region IFileNodeProperties
 	virtual HRESULT STDMETHODCALLTYPE get_Path (BSTR *pbstrPath) override
 	{
@@ -717,9 +756,8 @@ public:
 
 		size_t len = wcslen(value);
 		auto newValue = wil::make_process_heap_string_nothrow(value, len); RETURN_IF_NULL_ALLOC(newValue);
-		for(size_t i = 0; i < len; i++)
-			if (newValue.get()[i] == '/')
-				newValue.get()[i] = '\\';
+		for (auto p = wcschr(newValue.get(), '/'); p; p = wcschr(p, '/'))
+			*p = '\\';
 		_path = std::move(newValue);
 		// No need for notification since this is called only when loading from XML.
 		// (Property is read-only in the Properties window - see IsPropertyReadOnly().)

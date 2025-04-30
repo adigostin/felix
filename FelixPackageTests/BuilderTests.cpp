@@ -166,10 +166,6 @@ namespace FelixTests
 			Assert::IsFalse(callback->_success);
 		}
 
-		TEST_METHOD(Test_SjasmFilesInFolders)
-		{
-		}
-
 		TEST_METHOD(Test_CustomBuildToolFilesInFolders)
 		{
 		}
@@ -529,6 +525,42 @@ namespace FelixTests
 
 			Assert::IsNotNull(wcsstr(cmdLine.get(), L" folder\\file1.asm"));
 			Assert::IsNotNull(wcsstr(cmdLine.get(), L" folder\\subfolder\\file2.asm"));
+		}
+
+		TEST_METHOD(BuildFilesNotInProjectDir)
+		{
+			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"\\BuildFilesNotInProjectDir");
+			auto projDir = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\projdir");
+
+			com_ptr<IVsHierarchy> hier;
+			auto hr = MakeProjectNode (nullptr, projDir.get(), nullptr, 0, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto project = hier.try_query<IVsProject>();
+
+			auto config = FelixTests::AddDebugProjectConfig(hier);
+
+			// file 1 in project dir
+			auto file1FullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(projDir, L"\\file1.asm");
+			// file 2 in project sub dir
+			auto file2FullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(projDir, L"\\subdir\\file2.asm");
+			// file 3 outside project dir but on same drive
+			auto file3FullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\file3.asm");
+			// file 4 on different drive
+			auto file4FullPath = wil::make_process_heap_string_failfast(L"D:\\FelixTest\\BuildFilesNotInProjectDir\\file4.asm");
+			
+			LPCOLESTR files[] = { file1FullPath.get(), file2FullPath.get(), file3FullPath.get(), file4FullPath.get() };
+			
+			hr = project->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, (ULONG)_countof(files), files, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_bstr cmdLine;
+			hr = MakeSjasmCommandLine (hier, config, nullptr, &cmdLine);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			Assert::IsNotNull(wcsstr(cmdLine.get(), L" file1.asm"));
+			Assert::IsNotNull(wcsstr(cmdLine.get(), L" subdir\\file2.asm"));
+			Assert::IsNotNull(wcsstr(cmdLine.get(), L" ..\\file3.asm"));
+			Assert::IsNotNull(wcsstr(cmdLine.get(), file4FullPath.get()));
 		}
 	};
 }

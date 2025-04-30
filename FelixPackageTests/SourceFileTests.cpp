@@ -6,7 +6,7 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace FelixTests
 {
-	TEST_CLASS(SourceFileTests)
+	TEST_CLASS(FileTests)
 	{
 		TEST_METHOD(put_Items_EmptyProject)
 		{
@@ -110,6 +110,79 @@ namespace FelixTests
 			Assert::AreEqual(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), hr);
 
 			DeleteFile(fileFullPath.get());
+		}
+
+		TEST_METHOD(GetMkDocument_FileInProjectDir)
+		{
+			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"\\GetMkDocument_FileInProjectDir");
+
+			com_ptr<IVsHierarchy> hier;
+			auto hr = MakeProjectNode (nullptr, testDir.get(), nullptr, 0, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto project = hier.try_query<IVsProject>();
+
+			auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\file.asm");
+			hr = project->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, (LPCOLESTR*)fileFullPath.addressof(), nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_variant child;
+			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &child);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<VARTYPE>(VT_VSITEMID, child.vt);
+			wil::unique_bstr mk;
+			hr = project->GetMkDocument(V_VSITEMID(&child), &mk);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			Assert::AreEqual((PCWSTR)fileFullPath.get(), (PCWSTR)mk.get());
+		}
+
+		TEST_METHOD(GetMkDocument_FileNotInProjectDir_SameDrive)
+		{
+			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"\\GetMkDocument_FileNotInProjectDir_SameDrive");
+			auto projDir = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\subdir");
+
+			com_ptr<IVsHierarchy> hier;
+			auto hr = MakeProjectNode (nullptr, projDir.get(), nullptr, 0, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto project = hier.try_query<IVsProject>();
+
+			auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\file.asm");
+			hr = project->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, (LPCOLESTR*)fileFullPath.addressof(), nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_variant child;
+			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &child);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<VARTYPE>(VT_VSITEMID, child.vt);
+			wil::unique_bstr mk;
+			hr = project->GetMkDocument(V_VSITEMID(&child), &mk);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			Assert::AreEqual((PCWSTR)fileFullPath.get(), (PCWSTR)mk.get());
+		}
+
+		TEST_METHOD(GetMkDocument_FileNotInProjectDir_OtherDrive)
+		{
+			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"\\GetMkDocument_FileNotInProjectDir_OtherDrive");
+			
+			com_ptr<IVsHierarchy> hier;
+			auto hr = MakeProjectNode (nullptr, testDir.get(), nullptr, 0, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto project = hier.try_query<IVsProject>();
+
+			const wchar_t* fileFullPath = L"D:\\FelixTest\\GetMkDocument_FileNotInProjectDir_OtherDrive\\file.asm";
+			hr = project->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, &fileFullPath, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_variant child;
+			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &child);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<VARTYPE>(VT_VSITEMID, child.vt);
+			wil::unique_bstr mk;
+			hr = project->GetMkDocument(V_VSITEMID(&child), &mk);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			Assert::AreEqual((PCWSTR)fileFullPath, (PCWSTR)mk.get());
 		}
 	};
 }

@@ -384,17 +384,19 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 		wil::unique_bstr path;
 		hr = asmFile->get_Path(&path); RETURN_IF_FAILED(hr);
 		hr = Write(cmdLine, L" "); RETURN_IF_FAILED(hr);
-		if (!PathIsFileSpec(path.get()))
+		if (PathIsFileSpec(path.get()))
 		{
-			hr = Write(cmdLine, path.get()); RETURN_IF_FAILED(hr);
-		}
-		else
-		{
+			// (1)
 			com_ptr<IFileNode> fn;
 			hr = asmFile->QueryInterface(IID_PPV_ARGS(&fn)); RETURN_IF_FAILED(hr);
 			wil::unique_process_heap_string relative;
 			hr = GetPathOf (fn, relative, true); RETURN_IF_FAILED(hr);
 			hr = Write(cmdLine, relative.get()); RETURN_IF_FAILED(hr);
+		}
+		else
+		{
+			// (2) or (3)
+			hr = Write(cmdLine, path.get()); RETURN_IF_FAILED(hr);
 		}
 	}
 
@@ -517,7 +519,7 @@ HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir, bool 
 	return S_OK;
 }
 
-FELIX_API HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path, bool relativeToProjectDir)
+HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path, bool relativeToProjectDir)
 {
 	com_ptr<IVsHierarchy> hier;
 	auto hr = FindHier(node, IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);

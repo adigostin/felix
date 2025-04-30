@@ -1642,10 +1642,10 @@ public:
 		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
 		{
-			wil::unique_process_heap_string path;
-			auto hr = GetPathOf(d, path); RETURN_IF_FAILED(hr);
-			*pbstrMkDocument = SysAllocString (path.get()); RETURN_IF_NULL_ALLOC(*pbstrMkDocument);
-			return S_OK;
+			if (auto file = d.try_query<IFileNode>())
+				return file->GetMkDocument(this, pbstrMkDocument);
+
+			return E_INVALIDARG;
 		}
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
@@ -1653,14 +1653,18 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE OpenItem(VSITEMID itemid, REFGUID rguidLogicalView, IUnknown* punkDocDataExisting, IVsWindowFrame** ppWindowFrame) override
 	{
+		HRESULT hr;
+
 		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) != S_OK)
 			return E_INVALIDARG;
 
-		wil::unique_process_heap_string mkDocument;
-		auto hr = GetPathOf(d, mkDocument); RETURN_IF_FAILED(hr);
+		com_ptr<IFileNode> file;
+		hr = d->QueryInterface(IID_PPV_ARGS(&file)); RETURN_IF_FAILED(hr);
+		wil::unique_bstr mkDocument;
+		hr = file->GetMkDocument(this, &mkDocument); RETURN_IF_FAILED(hr);
 
-		wil::com_ptr_nothrow<IVsUIShellOpenDocument> uiShellOpenDocument;
+		com_ptr<IVsUIShellOpenDocument> uiShellOpenDocument;
 		hr = serviceProvider->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED_EXPECTED(hr);
 
 		hr = uiShellOpenDocument->OpenStandardEditor(OSE_ChooseBestStdEditor, mkDocument.get(), rguidLogicalView,
@@ -1898,9 +1902,8 @@ public:
 			if (!bRes)
 				return SetErrorInfo(E_INVALIDARG, L"Can't make a relative path from '%s' relative to '%s'.", pszFullPathSource, _location.get());
 
-			for (auto* p = relativeUgly; *p; p++)
-				if (*p == '/')
-					*p = '\\';
+			for (auto* p = wcschr(relativeUgly, '/'); p; p = wcschr(p, '/'))
+				*p = '\\';
 
 			if (wcsncmp(relativeUgly, L"..\\", 3))
 			{
@@ -2031,12 +2034,16 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE ReopenItem(VSITEMID itemid, REFGUID rguidEditorType, LPCOLESTR pszPhysicalView, REFGUID rguidLogicalView, IUnknown* punkDocDataExisting, IVsWindowFrame** ppWindowFrame) override
 	{
+		HRESULT hr;
+
 		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) != S_OK)
 			return E_INVALIDARG;
 
-		wil::unique_process_heap_string mkDocument;
-		auto hr = GetPathOf(d, mkDocument); RETURN_IF_FAILED(hr);
+		com_ptr<IFileNode> file;
+		hr = d->QueryInterface(IID_PPV_ARGS(&file)); RETURN_IF_FAILED_EXPECTED(hr);
+		wil::unique_bstr mkDocument;
+		hr = file->GetMkDocument(this, &mkDocument); RETURN_IF_FAILED_EXPECTED(hr);
 
 		com_ptr<IVsUIShellOpenDocument> uiShellOpenDocument;
 		hr = serviceProvider->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED(hr);

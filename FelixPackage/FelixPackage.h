@@ -97,6 +97,7 @@ IChildNode : INode
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("5F6EA158-4DA8-469A-8FD8-E8C04F31244E")
 IFileNode : IChildNode
 {
+	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (IVsHierarchy* hier, BSTR* pbstrMkDocument) = 0;
 };
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("E5498B79-7C01-4F49-B5EC-8D1C98FF935D")
@@ -161,7 +162,7 @@ BOOL LUtilFixFilename (wchar_t* strName);
 HRESULT QueryEditProjectFile (IVsHierarchy* hier);
 HRESULT GetHierarchyWindow (IVsUIHierarchyWindow** ppHierWindow);
 HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir, bool relativeToProjectDir = false);
-FELIX_API HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path, bool relativeToProjectDir = false);
+HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path, bool relativeToProjectDir = false);
 HRESULT FindHier (IChildNode* from, REFIID riid, void** ppvHier);
 HRESULT FindHier (IParentNode* from, REFIID riid, void** ppvHier);
 HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo);
