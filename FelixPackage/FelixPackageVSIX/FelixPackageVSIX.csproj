@@ -70,7 +70,7 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Spectrum.ico">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Templates\Items\include.inc">
@@ -109,9 +109,6 @@
       <IncludeOutputGroupsInVSIX>
         BuiltProjectOutputGroup;
       </IncludeOutputGroupsInVSIX>
-      <IncludeOutputGroupsInVSIXLocalOnly>
-        DebugSymbolsProjectOutputGroup;
-      </IncludeOutputGroupsInVSIXLocalOnly>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
   </ItemGroup>
