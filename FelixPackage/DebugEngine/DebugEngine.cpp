@@ -45,34 +45,36 @@ public:
 			return S_OK;
 
 		#ifdef _DEBUG
-		if (riid == IID_IDebugEngine110)
-			return E_NOTIMPL;
-		if (riid == IID_IDebugEngine150)
-			return E_NOTIMPL;
-		if (riid == IID_IDebugSymbolSettings100)
-			return E_NOTIMPL;
+		// Stuff which we'll never implement.
+		if (   riid == IID_IMarshal
+			|| riid == IID_INoMarshal
+			|| riid == IID_IStdMarshalInfo
+			|| riid == IID_IdentityUnmarshal
+			|| riid == IID_IAgileObject
+			|| riid == IID_IFastRundown
+			|| riid == IID_IExternalConnection
+			|| riid == IID_INoIdea6_DebugEngine
+			|| riid == IID_INoIdea7
+			|| riid == IID_INotARealInterface
+			|| riid == IID_INoIdea9
+			|| riid == IID_INoIdea10
+			|| riid == IID_INoIdea11
+			|| riid == IID_INoIdea14
+			|| riid == IID_INoIdea15
+		)
+			return E_NOINTERFACE;
 
-		if (     riid == IID_IDebugEngine3
-			||   riid == IID_IDebugEngineLaunch100
-			||   riid == IID_INoIdea6_DebugEngine
-			||   riid == IID_IDebugProgramProvider2
-			||   riid == IID_INoIdea7
-			||   riid == IID_INotARealInterface
-			||   riid == IID_INoIdea9
-			||   riid == IID_INoIdea10
-			||   riid == IID_INoIdea11
-			||   riid == IID_INoIdea14
-			||   riid == IID_INoIdea15
-			||   riid == IID_IMarshal
-			||   riid == IID_INoMarshal
-			||   riid == IID_IStdMarshalInfo
-			||   riid == IID_IdentityUnmarshal
-			||   riid == IID_IAgileObject
-			||   riid == IID_IFastRundown
-			||   riid == IID_IExternalConnection
-			||   riid == IID_IDebugBreakpointFileUpdateNotification110
-			||   riid == IID_IDebugEngineStepFilterManager90
-			||   riid == IID_IDebugSymbolSettings170
+		// Stuff which we may implement
+		if (   riid == IID_IDebugEngine110
+			|| riid == IID_IDebugEngine150
+			|| riid == IID_IDebugEngine3
+			|| riid == IID_IDebugEngineLaunch100
+			|| riid == IID_IDebugProgramProvider2
+			|| riid == IID_IDebugBreakpointFileUpdateNotification110
+			|| riid == IID_IDebugEngineStepFilterManager90
+			|| riid == IID_IDebugSymbolSettings100
+			|| riid == IID_IDebugSymbolSettings170
+			|| riid == IID_IDebugVisualizerExtensionReceiver178
 		)
 			return E_NOINTERFACE;
 

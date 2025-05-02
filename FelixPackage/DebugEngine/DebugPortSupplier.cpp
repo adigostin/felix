@@ -5,10 +5,9 @@
 #include "../guids.h"
 #include "../FelixPackage.h"
 
-class Z80DebugPortSupplier : public IDebugPortSupplier2, /*public IDebugPortSupplierEx2, */public IDebugPortSupplierDescription2
+class Z80DebugPortSupplier : public IDebugPortSupplier2
 {
 	ULONG _refCount = 0;
-	wil::com_ptr_nothrow<IDebugCoreServer2> _server;
 	wil::com_ptr_nothrow<IDebugPort2> _z80Port;
 
 public:
@@ -28,14 +27,16 @@ public:
 
 		if (   TryQI<IUnknown>(static_cast<IDebugPortSupplier2*>(this), riid, ppvObject)
 			|| TryQI<IDebugPortSupplier2>(this, riid, ppvObject)
-			|| TryQI<IDebugPortSupplierDescription2>(this, riid, ppvObject))
+		)
 			return S_OK;
 
 		if (   riid == IID_IDebugPortSupplierLocale2
 			|| riid == IID_IClientSecurity
 			|| riid == IID_IDebugPortSupplierEx2
 			|| riid == IID_IDebugPortSupplier3
-			|| riid == IID_IDebugPortSupplier169)
+			|| riid == IID_IDebugPortSupplier169
+			|| riid == IID_IDebugPortSupplierDescription2
+		)
 			return E_NOINTERFACE;
 
 		return E_NOINTERFACE;
@@ -104,24 +105,6 @@ public:
 	virtual HRESULT __stdcall RemovePort(IDebugPort2* pPort) override
 	{
 		RETURN_HR(E_NOTIMPL);
-	}
-	#pragma endregion
-
-///	#pragma region IDebugPortSupplierEx2
-///	virtual HRESULT STDMETHODCALLTYPE SetServer (IDebugCoreServer2 *pServer) override
-///	{
-///		_server = pServer;
-///		return S_OK;
-///	}
-///	#pragma endregion
-
-	#pragma region IDebugPortSupplierDescription2
-	virtual HRESULT STDMETHODCALLTYPE GetDescription (PORT_SUPPLIER_DESCRIPTION_FLAGS* pdwFlags, BSTR *pbstrText) override
-	{
-		if (*pbstrText = SysAllocString(L"18738910731327867312"))
-			return S_OK;
-
-		return E_OUTOFMEMORY;
 	}
 	#pragma endregion
 };
