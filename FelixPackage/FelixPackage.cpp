@@ -6,7 +6,6 @@
 #include "../FelixPackageUi/Resource.h"
 #include "shared/com.h"
 #include "shared/OtherGuids.h"
-#include "Simulator.h"
 #include "DebugEngine/DebugEngine.h"
 #include "sentry.h"
 
@@ -32,10 +31,10 @@ static const wchar_t BinaryFilename[] = L"ROMs/Spectrum48K.rom";
 //static const wchar_t InstalledProductRegPath[] = L"InstalledProducts\\FelixPackage";
 static const char SentryReleaseName[] = "0.9.8";
 
-// {8F0D9E89-4C6C-4B63-83CF-1AA6B6E59BCB}
-GUID SID_Simulator = { 0x8f0d9e89, 0x4c6c, 0x4b63, { 0x83, 0xcf, 0x1a, 0xa6, 0xb6, 0xe5, 0x9b, 0xcb } };
-
 FELIX_API wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
+
+com_ptr<ISimulator> simulator;
+com_ptr<ISimulator> _simulator;
 
 class FelixPackageImpl : public IVsPackage, IVsSolutionEvents, IOleCommandTarget, IDebugEventCallback2, IServiceProvider
 {
@@ -47,7 +46,6 @@ class FelixPackageImpl : public IVsPackage, IVsSolutionEvents, IOleCommandTarget
 	VSCOOKIE _profferLanguageServiceCookie = VSCOOKIE_NIL;
 	VSCOOKIE _profferZXSimulatorServiceCookie = VSCOOKIE_NIL;
 	wil::com_ptr_nothrow<IVsWindowFrame> _simulatorWindowFrame;
-	com_ptr<ISimulator> _simulator;
 	wil::ThreadFailureCache _threadFailureCache;
 	sentry_options_t *_sentryOptions = nullptr;
 
@@ -122,8 +120,7 @@ public:
 		auto hr = serviceProvider->QueryService (SID_SProfferService, &srpProffer); RETURN_IF_FAILED(hr);
 		
 		hr = MakeSimulator(_packageDir.get(), BinaryFilename, &_simulator); RETURN_IF_FAILED(hr);
-		hr = srpProffer->ProfferService (SID_Simulator, this, &_profferZXSimulatorServiceCookie); RETURN_IF_FAILED(hr);
-
+		simulator = _simulator;
 		_simulator->Resume(false);
 
 		return S_OK;
@@ -131,6 +128,9 @@ public:
 
 	void ReleaseZxSpectrumSimulator()
 	{
+		_simulator = nullptr;
+		simulator = nullptr;
+
 		if (_profferZXSimulatorServiceCookie)
 		{
 			wil::com_ptr_nothrow<IProfferService> srpProffer;
@@ -141,8 +141,6 @@ public:
 				_profferZXSimulatorServiceCookie = VSCOOKIE_NIL;
 			}
 		}
-
-		_simulator = nullptr;
 	}
 
 	// From https://stackoverflow.com/a/34691914/451036
@@ -755,9 +753,6 @@ public:
 	{
 		if (guidService == Z80AsmLanguageGuid)
 			return _z80AsmLanguageInfo->QueryInterface(riid, ppvObject);
-
-		if (guidService == SID_Simulator)
-			return _simulator->QueryInterface(riid, ppvObject);
 
 		RETURN_HR(E_NOINTERFACE);
 	}

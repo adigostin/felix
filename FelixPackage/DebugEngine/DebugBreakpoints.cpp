@@ -14,17 +14,15 @@ class BreakpointManagerImpl : public IBreakpointManager, ISimulatorEventHandler
 	com_ptr<IDebugEventCallback2> _callback;
 	com_ptr<IDebugEngine2> _engine;
 	com_ptr<IDebugProgram2> _program;
-	com_ptr<ISimulator> _simulator;
 	unordered_map_nothrow<SIM_BP_COOKIE, com_ptr<IDebugBoundBreakpoint2>> _bps;
 
 public:
-	static HRESULT CreateInstance (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program, ISimulator* simulator, IBreakpointManager** ppManager)
+	static HRESULT CreateInstance (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program, IBreakpointManager** ppManager)
 	{
 		auto p = com_ptr(new (std::nothrow) BreakpointManagerImpl()); RETURN_IF_NULL_ALLOC(p);
 		p->_callback = callback;
 		p->_engine = engine;
 		p->_program = program;
-		p->_simulator = simulator;
 		*ppManager = p.detach();
 		return S_OK;
 	}
@@ -163,9 +161,9 @@ public:
 	#pragma endregion
 };
 
-HRESULT MakeBreakpointManager (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program, ISimulator* simulator, IBreakpointManager** ppManager)
+HRESULT MakeBreakpointManager (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program, IBreakpointManager** ppManager)
 {
-	return BreakpointManagerImpl::CreateInstance(callback, engine, program, simulator, ppManager);
+	return BreakpointManagerImpl::CreateInstance(callback, engine, program, ppManager);
 };
 
 // ============================================================================

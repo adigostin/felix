@@ -19,12 +19,11 @@ class DebugProgramImpl : public IDebugProgram2, IDebugModuleCollection, ISimulat
 	com_ptr<IDebugEngine2> _engine;
 	com_ptr<IDebugEventCallback2> _callback;
 	com_ptr<IDebugThread2> _thread;
-	com_ptr<ISimulator> _simulator;
 	bool _advisingSimulatorEvents = false;
 	SIM_BP_COOKIE _stepOverOrOutBreakpoint = 0;
 
 public:
-	HRESULT InitInstance (IDebugProcess2* process, IDebugEngine2* engine, ISimulator* simulator, IDebugEventCallback2* callback)
+	HRESULT InitInstance (IDebugProcess2* process, IDebugEngine2* engine, IDebugEventCallback2* callback)
 	{
 		HRESULT hr;
 
@@ -41,7 +40,6 @@ public:
 
 		_engine = engine;
 		_callback = callback;
-		_simulator = simulator;
 
 		return S_OK;
 	}
@@ -136,7 +134,6 @@ public:
 
 		_engine = nullptr;
 		_callback = nullptr;
-		_simulator = nullptr;
 		_thread = nullptr;
 		_modules.clear();
 		_process = nullptr;
@@ -450,10 +447,10 @@ public:
 	#pragma endregion
 };
 
-HRESULT MakeDebugProgram (IDebugProcess2* process, IDebugEngine2* engine, ISimulator* simulator, IDebugEventCallback2* callback, IDebugProgram2** ppProgram)
+HRESULT MakeDebugProgram (IDebugProcess2* process, IDebugEngine2* engine, IDebugEventCallback2* callback, IDebugProgram2** ppProgram)
 {
 	auto p = com_ptr(new (std::nothrow) DebugProgramImpl()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance (process, engine, simulator, callback); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance (process, engine, callback); RETURN_IF_FAILED(hr);
 	*ppProgram = p.detach();
 	return S_OK;
 }

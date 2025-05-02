@@ -14,7 +14,6 @@ class Z80DebugEngine : public IDebugEngine2, IDebugEngineLaunch2, ISimulatorEven
 	wil::unique_bstr _registryRoot;
 	WORD langId = 0;
 	com_ptr<IDebugEventCallback2> _callback;
-	com_ptr<ISimulator> _simulator;
 	com_ptr<IDebugPort2> _port;
 	com_ptr<IDebugProgram2> _program;
 	com_ptr<IFelixLaunchOptions> _launchOptions;
@@ -261,7 +260,6 @@ public:
 			}
 
 			_callback = nullptr;
-			_simulator = nullptr;
 			_program = nullptr;
 			_launchOptions = nullptr;
 			_bpman = nullptr;
@@ -350,7 +348,6 @@ public:
 		HRESULT hr;
 
 		WI_ASSERT(!_callback);
-		WI_ASSERT(!_simulator);
 		WI_ASSERT(!_program);
 		WI_ASSERT(!_launchOptions);
 
@@ -363,13 +360,11 @@ public:
 		//_callback = pCallback;
 		//auto reset_callback_ptr = wil::scope_exit([this] { _callback = nullptr; });
 
-		com_ptr<ISimulator> simulator;
-		hr = serviceProvider->QueryService(SID_Simulator, &simulator); RETURN_IF_FAILED(hr);
 		hr = simulator->Break(); RETURN_IF_FAILED(hr);
 		hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
 
 		com_ptr<IDebugProcess2> process;
-		hr = MakeDebugProcess (pPort, pszExe, this, simulator.get(), pCallback, &process); RETURN_IF_FAILED(hr);
+		hr = MakeDebugProcess (pPort, pszExe, this, pCallback, &process); RETURN_IF_FAILED(hr);
 
 		struct EngineCreateEvent : public EventBase<IDebugEngineCreateEvent2, EVENT_ASYNCHRONOUS>
 		{
@@ -388,7 +383,6 @@ public:
 		hr = ece->Send(pCallback, this, nullptr, nullptr); RETURN_IF_FAILED(hr);
 
 		_callback = pCallback;
-		_simulator = std::move(simulator);
 		_port = pPort;
 
 		*ppProcess = process.detach();
@@ -406,7 +400,7 @@ public:
 		hr = programs->Next(1, &_program, nullptr); RETURN_IF_FAILED(hr);
 		auto resetProgram = wil::scope_exit([this] { _program = nullptr; });
 
-		hr = MakeBreakpointManager(_callback, this, _program, _simulator, &_bpman); RETURN_IF_FAILED(hr);
+		hr = MakeBreakpointManager(_callback, this, _program, &_bpman); RETURN_IF_FAILED(hr);
 
 		wil::com_ptr_nothrow<IDebugPort2> port;
 		hr = pProcess->GetPort(&port); RETURN_IF_FAILED(hr);

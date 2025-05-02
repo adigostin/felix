@@ -52,8 +52,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE EvaluateSync (EVALFLAGS dwFlags, DWORD dwTimeout, IDebugEventCallback2 *pExprCallback, IDebugProperty2 **ppResult) override
 	{
-		com_ptr<ISimulator> simulator;
-		auto hr = serviceProvider->QueryService(SID_Simulator, &simulator); RETURN_IF_FAILED(hr);
+		HRESULT hr;
 		com_ptr<IDebugProgram2> program;
 		hr = _thread->GetProgram(&program); RETURN_IF_FAILED(hr);
 		z80_register_set regs;

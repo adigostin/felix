@@ -181,7 +181,6 @@ class Z80Disassembly : public IDebugDisassemblyStream2
 	ULONG _refCount = 0;
 	DISASSEMBLY_STREAM_SCOPE _dwScope;
 	com_ptr<IDebugProgram2> _program;
-	com_ptr<ISimulator> _simulator;
 	//wil::com_ptr_nothrow<IZ80BlockInstruction> _blockInstruction;
 	uint16_t _address;
 
@@ -191,7 +190,6 @@ public:
 		com_ptr<IFelixCodeContext> fcc;
 		auto hr = pCodeContext->QueryInterface(&fcc); RETURN_IF_FAILED(hr);
 
-		hr = serviceProvider->QueryService(SID_Simulator, &_simulator); RETURN_IF_FAILED(hr);
 		_dwScope = dwScope;
 		_program = program;
 		_address = (uint16_t)fcc->Address();
