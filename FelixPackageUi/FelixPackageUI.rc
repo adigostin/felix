@@ -167,14 +167,24 @@ BEGIN
                             "Optional command line to be executed before the files are compiled/built."
     IDS_POST_BUILD_CMD_LINE_DESCRIPTION 
                             "Optional command line to be executed after the files are compiled/built."
+END
+
+STRINGTABLE
+BEGIN
     IDS_PRE_POST_BUILD_DESCRIPTION_DESCRIPTION 
                             "Message to be printed to the Output Window (and to the build log) when this command is executed."
     IDS_NEW_FOLDER_NAME     "NewFolder%u"
     IDS_ITEM_ALREADY_EXISTS_IN_LOCATION 
                             "An item with the same name already exists in the selected location."
     IDS_NAME_ALREADY_EXISTS "An item with this name already exists."
-    IDS_FILE_ALREADY_IN_PROJECT
+    IDS_FILE_ALREADY_IN_PROJECT 
                             "The file is already added to this project.\r\n\r\n%s"
+    IDS_GENERATED_FILES     "GeneratedFiles"
+    IDS_PREINCLUDE          "PreInclude.asm"
+    IDS_POSTINCLUDE         "PostInclude.asm"
+    IDS_GEN_PRE_POST_MESSAGE "Generate pre/post-include files..."
+    IDS_GEN_PRE_POST_MESSAGE_DONE " done.\r\n"
+    IDS_GEN_PRE_POST_MESSAGE_FAIL " failed.\r\n"
 END
 
 #endif    // English (United States) resources

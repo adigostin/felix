@@ -79,6 +79,12 @@
     <Content Include="Templates\Items\source.asm">
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="Templates\postinclude.asm">
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Templates\preinclude.asm">
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Templates\Projects\FelixProject\lib.asm">
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>

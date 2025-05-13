@@ -56,7 +56,7 @@ library ATLProject1Lib
 	{
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
 
-		[id(dispidOutputFileType), bindable, propget, helpstring("This property is deprecated and will be removed in a future release. The output file type is always binary (--raw in sjasmplus).")]
+		[id(dispidOutputFileType), bindable, propget]
 		HRESULT OutputFileType ([out, retval] enum OutputFileType* value);
 		[id(dispidOutputFileType), bindable, propput]
 		HRESULT OutputFileType (enum OutputFileType value);
@@ -85,10 +85,10 @@ library ATLProject1Lib
 		[id(dispidLoadAddress), bindable, propput]
 		HRESULT LoadAddress (unsigned long value);
 
-		[id(dispidEntryPointAddress), bindable, propget, helpstring("This is where the debugger starts execution. For now only numbers are supported, not symbol names.")]
-		HRESULT EntryPointAddress ([out, retval] unsigned short* value);
+		[id(dispidEntryPointAddress), bindable, propget, helpstring("This is where the debugger starts execution. You can use a number or a symbol name.")]
+		HRESULT EntryPointAddress ([out, retval] BSTR* pbstrAddress);
 		[id(dispidEntryPointAddress), bindable, propput]
-		HRESULT EntryPointAddress (unsigned short value);
+		HRESULT EntryPointAddress (BSTR bstrAddress);
 
 		// "Selects the launch method: PRINT USR from Basic, RANDOMIZE USR from Basic, or jump right after reset."
 		[id(dispidLaunchType), bindable, propget, helpstring("This setting is currently not implemented; the launch type is always PRINT USR. It will be implemented in a future release.")]
@@ -166,7 +166,7 @@ library ATLProject1Lib
 
 		[id(dispidCustomBuildToolProps), propget]
 		HRESULT CustomBuildToolProperties ([out, retval] ICustomBuildToolProperties** ppProps);
-	};
+	}
 
 	[object, uuid(9BBC87D3-F9EA-46E4-804F-2E7C0C1D365F), dual, nonextensible, pointer_default(unique)]
 	interface IFolderNodeProperties : IDispatch
@@ -178,7 +178,7 @@ library ATLProject1Lib
 
 		[id(dispidItems), propget] HRESULT Items ([out, ref, retval] SAFEARRAY(IDispatch*)* items);
 		[id(dispidItems), propput] HRESULT Items (SAFEARRAY(IDispatch*) items);
-	};
+	}
 
 	[object, uuid(588F7F04-8B74-404D-A80B-F7CCE9FA3E27), dual, nonextensible, pointer_default(unique)]
 	interface IFelixLaunchOptions : IDispatch
@@ -186,7 +186,10 @@ library ATLProject1Lib
 		[id(dispidProjectDir), propget] HRESULT ProjectDir ([out, retval] BSTR* pbstr);
 		[id(dispidProjectDir), propput] HRESULT ProjectDir (BSTR pbstr);
 
-		[id(dispidDebuggingProperties), propget] HRESULT DebuggingProperties ([out, retval] IProjectConfigDebugProperties** ppDispatch);
-		[id(dispidDebuggingProperties), propput] HRESULT DebuggingProperties (IProjectConfigDebugProperties* pDispatch);
+		[/*id(dispidLoadAddress), */propget] HRESULT LoadAddress ([out, retval] DWORD* pdwAddress);
+		[/*id(dispidLoadAddress), */propput] HRESULT LoadAddress (DWORD dwAddress);
+
+		[/*id(dispidEntryPointAddress), */propget] HRESULT EntryPointAddress ([out, retval] DWORD* pdwAddress);
+		[/*id(dispidEntryPointAddress), */propput] HRESULT EntryPointAddress (DWORD dwAddress);
 	}
 };

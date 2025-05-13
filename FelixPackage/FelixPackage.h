@@ -1,6 +1,7 @@
 
 #pragma once
 #include "FelixPackage_h.h"
+#include "shared/inplace_function.h"
 
 // We use DLL exports only to be able to call various functions from unit test projects.
 #ifdef FELIX_EXPORTS
@@ -72,7 +73,10 @@ IProjectNode : INode
 {
 	virtual VSITEMID MakeItemId() = 0;
 	virtual HRESULT EnumHierarchyEventSinks (IEnumHierarchyEvents** ppSinks) = 0;
-	virtual HRESULT GetAutoOpenFiles (BSTR* pbstrFilenames) = 0;
+	virtual HRESULT GetAutoOpenFiles (BSTR* pbstrFilenames) = 0; // TODO: AsProjectNodeProperties()->get_AutoOpenFile
+	virtual IParentNode* AsParentNode() = 0;
+	virtual IVsUIHierarchy* AsHierarchy() = 0;
+	virtual IVsProject* AsVsProject() = 0;
 };
 
 // This is the base interface for every node except IProjectNode.
@@ -171,3 +175,11 @@ HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* child);
 HRESULT CreatePathOfNode (IParentNode* node, wil::unique_process_heap_string& pathOut);
 HRESULT GetItems (IParentNode* itemsIn, SAFEARRAY** itemsOut);
 HRESULT PutItems (SAFEARRAY* sa, IParentNode* items);
+struct DECLSPEC_NOVTABLE IProjectMacroResolver
+{
+	virtual HRESULT STDMETHODCALLTYPE ResolveMacro (const char* macroFrom, const char* macroTo, char** ppszValueCoTaskMem) = 0;
+};
+HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectMacroResolver* macroResolver);
+IFileNode* FindChildFileByName (IParentNode* parent, std::wstring_view fileName);
+HRESULT MakeFileNodeForExistingFile (LPCWSTR path, IFileNode** ppFile);
+

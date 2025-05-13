@@ -1847,44 +1847,6 @@ public:
 		return S_OK;
 	}
 
-	static IFileNode* FindChildFileByName (IParentNode* parent, std::wstring_view fileName)
-	{
-		// Skip all folders.
-		auto child = parent->FirstChild();
-		while (child && !wil::try_com_query_nothrow<IFileNode>(child))
-			child = child->Next();
-		if (!child)
-			return nullptr;
-
-		while(child)
-		{
-			auto fn = wil::try_com_query_nothrow<IFileNode>(child);
-			if (!fn)
-				return nullptr;
-
-			wil::unique_variant n;
-			if (SUCCEEDED(fn->GetProperty(VSHPROPID_SaveName, &n)) && V_VT(&n) == VT_BSTR && fileName == V_BSTR(&n))
-				return fn;
-
-			child = child->Next();
-		}
-
-		return nullptr;
-	}
-
-	static HRESULT MakeFileNodeForExistingFile (LPCWSTR path, IFileNode** ppFile)
-	{
-		com_ptr<IFileNode> file;
-		auto hr = MakeFileNode(&file); RETURN_IF_FAILED(hr);
-		com_ptr<IFileNodeProperties> fileProps;
-		hr = file->QueryInterface(&fileProps); RETURN_IF_FAILED(hr);
-		hr = fileProps->put_Path(wil::make_bstr_nothrow(path).get()); RETURN_IF_FAILED(hr);
-		auto buildTool = _wcsicmp(PathFindExtension(path), L".asm") ? BuildToolKind::None : BuildToolKind::Assembler;
-		hr = fileProps->put_BuildTool(buildTool); RETURN_IF_FAILED(hr);
-		*ppFile = file.detach();
-		return S_OK;
-	}
-
 	HRESULT AddExistingFile (IParentNode* location, LPCTSTR pszFullPathSource, IChildNode** ppNewFile, BOOL fSilent = FALSE, BOOL fLoad = FALSE)
 	{
 		HRESULT hr;
@@ -2758,6 +2720,12 @@ public:
 		*pbstrFilenames = f;
 		return S_OK;
 	}
+
+	virtual IParentNode* AsParentNode() override { return this; }
+
+	virtual IVsUIHierarchy* AsHierarchy() override { return this; }
+
+	virtual IVsProject* AsVsProject() override { return this; }
 	#pragma endregion
 
 	#pragma region IPropertyNotifySink

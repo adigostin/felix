@@ -590,12 +590,10 @@ public:
 		if (!exePath)
 			RETURN_HR(E_NO_EXE_FILENAME);
 
-		com_ptr<IProjectConfigDebugProperties> debugProps;
-		hr = _launchOptions->get_DebuggingProperties(&debugProps); RETURN_IF_FAILED(hr);
 		DWORD loadAddress;
-		hr = debugProps->get_LoadAddress(&loadAddress); RETURN_IF_FAILED(hr);
-		WORD launchAddress;
-		hr = debugProps->get_EntryPointAddress(&launchAddress); RETURN_IF_FAILED(hr);
+		hr = _launchOptions->get_LoadAddress(&loadAddress); RETURN_IF_FAILED(hr);
+		DWORD launchAddress;
+		hr = _launchOptions->get_EntryPointAddress(&launchAddress); RETURN_IF_FAILED(hr);
 
 		// Load the binary file.
 		wil::com_ptr_nothrow<IStream> stream;

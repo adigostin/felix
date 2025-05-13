@@ -12,6 +12,8 @@ class LaunchOptionsImpl
 	ULONG _refCount = 0;
 	wil::unique_process_heap_string _projectDir;
 	com_ptr<IProjectConfigDebugProperties> _debuggingProperties;
+	DWORD _loadAddress;
+	DWORD _entryPointAddress;
 
 public:
 	HRESULT InitInstance()
@@ -56,19 +58,30 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_DebuggingProperties (IProjectConfigDebugProperties** ppDispatch) override
+	virtual HRESULT STDMETHODCALLTYPE get_LoadAddress (DWORD *pdwAddress) override
 	{
-		*ppDispatch = _debuggingProperties;
-		if (_debuggingProperties)
-			_debuggingProperties->AddRef();
+		*pdwAddress = _loadAddress;
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_DebuggingProperties (IProjectConfigDebugProperties* pDispatch) override
+	virtual HRESULT STDMETHODCALLTYPE put_LoadAddress (DWORD dwAddress) override
 	{
-		_debuggingProperties = pDispatch;
+		_loadAddress = dwAddress;
 		return S_OK;
 	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_EntryPointAddress (DWORD *pdwAddress) override
+	{
+		*pdwAddress = _entryPointAddress;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_EntryPointAddress (DWORD dwAddress) override
+	{
+		_entryPointAddress = dwAddress;
+		return S_OK;
+	}
+
 	#pragma endregion
 
 	#pragma region IXmlParent

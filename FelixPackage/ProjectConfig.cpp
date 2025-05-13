@@ -27,6 +27,7 @@ struct ProjectConfig
 	, IPropertyNotifySink
 	//, public IVsProjectCfgDebugTargetSelection
 	//, public IVsProjectCfgDebugTypeSelection
+	, IProjectMacroResolver
 {
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _hier;
@@ -383,6 +384,95 @@ public:
 	}
 	#pragma endregion
 
+	// IProjectMacroResolver
+	virtual HRESULT STDMETHODCALLTYPE ResolveMacro (const char* macroFrom, const char* macroTo, char** valueCoTaskMem) override
+	{
+		auto sv = std::string_view{ macroFrom, macroTo };
+
+		if (sv == "LOAD_ADDR")
+		{
+			unsigned long loadAddress;
+			auto hr = _debugProps->get_LoadAddress(&loadAddress); RETURN_IF_FAILED(hr);
+			char buffer[16];
+			int ires = sprintf_s(buffer, "%u", loadAddress);
+			auto value = wil::make_unique_ansistring_nothrow<wil::unique_cotaskmem_ansistring> (buffer, (size_t)ires); RETURN_IF_NULL_ALLOC(value);
+			*valueCoTaskMem = value.release();
+			return S_OK;
+		}
+		else if (sv == "DEVICE")
+		{
+			static const char name[] = "ZXSPECTRUM48";
+			char* value = (char*)CoTaskMemAlloc(_countof(name)); RETURN_IF_NULL_ALLOC(value);
+			strcpy(value, name);
+			*valueCoTaskMem = value;
+			return S_OK;
+		}
+		//else if (sv == "ENTRY_POINT_ADDR")
+		//{
+		//	unsigned short addr;
+		//	auto hr = _debugProps->get_EntryPointAddress(&addr); RETURN_IF_FAILED(hr);
+		//	char buffer[16];
+		//	int ires = sprintf_s(buffer, "%u", addr);
+		//	auto value = wil::make_unique_ansistring_nothrow<wil::unique_cotaskmem_ansistring> (buffer, (size_t)ires); RETURN_IF_NULL_ALLOC(value);
+		//	*valueCoTaskMem = value.release();
+		//	//int len = WideCharToMultiByte (CP_UTF8, 0, addr.get(), 1 + (int)SysStringLen(addr.get()), nullptr, 0, nullptr, nullptr); RETURN_LAST_ERROR_IF(len==0);
+		//	//auto s = wil::make_unique_ansistring_nothrow<wil::unique_cotaskmem_ansistring>(nullptr, len - 1); RETURN_IF_NULL_ALLOC(s);
+		//	//WideCharToMultiByte (CP_UTF8, 0, addr.get(), 1 + SysStringLen(addr.get()), s.get(), len, nullptr, nullptr);
+		//	//*valueCoTaskMem = s.release();
+		//	return S_OK;
+		//}
+
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	HRESULT GeneratePrePostIncludeFiles (IProjectNode* project)
+	{
+		com_ptr<IVsShell> shell;
+		auto hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
+
+		wil::unique_hlocal_string packageDir;
+		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, packageDir); RETURN_IF_FAILED(hr);
+		auto fnres = PathFindFileName(packageDir.get()); RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), fnres == packageDir.get());
+		*fnres = 0;
+		
+		wil::unique_bstr genFilesStr;
+		hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERATED_FILES, &genFilesStr); RETURN_IF_FAILED(hr);
+		com_ptr<IFolderNode> folder;
+		hr = GetOrCreateChildFolder(project->AsParentNode(), genFilesStr.get(), &folder); RETURN_IF_FAILED(hr);
+
+		for (ULONG resID : { IDS_PREINCLUDE, IDS_POSTINCLUDE })
+		{
+			wil::unique_bstr fileName;
+			hr = shell->LoadPackageString(CLSID_FelixPackage, resID, &fileName); RETURN_IF_FAILED(hr);
+
+			com_ptr<IFileNode> file = FindChildFileByName(folder->AsParentNode(), fileName.get());
+			if (!file)
+			{
+				hr = MakeFileNodeForExistingFile (fileName.get(), &file); RETURN_IF_FAILED(hr);
+				hr = AddFileToParent(file, folder->AsParentNode()); RETURN_IF_FAILED(hr);
+			}
+
+			wil::unique_process_heap_string templatePath;
+			hr = wil::str_concat_nothrow(templatePath, packageDir, L"\\Templates\\", fileName); RETURN_IF_FAILED(hr);
+
+			wil::unique_process_heap_string includePath;
+			hr = GetPathOf(file, includePath); RETURN_IF_FAILED(hr);
+			hr = CreateFileFromTemplate(templatePath.get(), includePath.get(), this); RETURN_IF_FAILED(hr);
+		}
+
+		wil::unique_bstr projectMk;
+		hr = project->AsVsProject()->GetMkDocument(VSITEMID_ROOT, &projectMk); RETURN_IF_FAILED(hr);
+		com_ptr<IVsFileChangeEx> fileChange;
+		hr = serviceProvider->QueryService(SID_SVsFileChangeEx, IID_PPV_ARGS(&fileChange)); RETURN_IF_FAILED(hr);
+		hr = fileChange->IgnoreFile(VSCOOKIE_NIL, projectMk.get(), TRUE); RETURN_IF_FAILED(hr);
+		auto unignore = wil::scope_exit([&fileChange, &projectMk] { fileChange->IgnoreFile(0, projectMk.get(), FALSE); });
+		hr = wil::try_com_query_nothrow<IPersistFileFormat>(project)->Save(nullptr, 0, 0); RETURN_IF_FAILED(hr);
+		hr = fileChange->SyncFile(projectMk.get()); (void)hr;
+		unignore.reset();
+		
+		return S_OK;
+	}
+
 	#pragma region IVsBuildableProjectCfg2
 	virtual HRESULT STDMETHODCALLTYPE GetBuildCfgProperty(VSBLDCFGPROPID propid, VARIANT * pvar) override
 	{
@@ -394,18 +484,43 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE StartBuildEx(DWORD dwBuildId, IVsOutputWindowPane* pIVsOutputWindowPane, DWORD dwOptions) override
 	{
+		HRESULT hr;
+
 		// In VS2022, the "pIVsOutputWindowPane" passed to this function is a wrapper over
 		// the real Output pane. This wrapper spams a CR/LR in every invocation of OutputTaskItemString/OutputTaskItemString/etc.
 		com_ptr<IVsOutputWindow> ow;
-		auto hr = serviceProvider->QueryService (SID_SVsOutputWindow, &ow); RETURN_IF_FAILED(hr);
+		hr = serviceProvider->QueryService (SID_SVsOutputWindow, &ow); RETURN_IF_FAILED(hr);
 		com_ptr<IVsOutputWindowPane> op;
 		hr = ow->GetPane(GUID_BuildOutputWindowPane, &op); RETURN_IF_FAILED(hr);
 		com_ptr<IVsOutputWindowPane2> op2;
 		hr = op->QueryInterface(&op2); RETURN_IF_FAILED(hr);
-		
-		com_ptr<IVsHierarchy> hier;
-		hr = _hier->QueryInterface(IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
-		hr = MakeProjectConfigBuilder (hier, this, op2, &_pendingBuild); RETURN_IF_FAILED(hr);
+
+		com_ptr<IProjectNode> project;
+		hr = _hier->QueryInterface(IID_PPV_ARGS(project.addressof())); RETURN_IF_FAILED(hr);
+		com_ptr<IVsShell> shell;
+		hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
+
+		#pragma region GeneratePrePostIncludeFiles
+		wil::unique_variant projectName;
+		hr = project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_Name, &projectName); RETURN_IF_FAILED(hr);
+		wil::unique_bstr message;
+		if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_GEN_PRE_POST_MESSAGE, &message)))
+			op2->OutputTaskItemStringEx2(message.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
+				nullptr, 0, nullptr, 0, 0, projectName.bstrVal, nullptr, nullptr);
+		hr = GeneratePrePostIncludeFiles(project);
+		if (FAILED(hr))
+		{
+			if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_GEN_PRE_POST_MESSAGE_FAIL, &message)))
+				op2->OutputTaskItemStringEx2(message.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
+					nullptr, 0, nullptr, 0, 0, projectName.bstrVal, nullptr, nullptr);
+			return hr;
+		}
+		if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_GEN_PRE_POST_MESSAGE_DONE, &message)))
+			op2->OutputTaskItemStringEx2(message.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
+				nullptr, 0, nullptr, 0, 0, projectName.bstrVal, nullptr, nullptr);
+		#pragma endregion
+
+		hr = MakeProjectConfigBuilder (project->AsHierarchy(), this, op2, &_pendingBuild); RETURN_IF_FAILED(hr);
 
 		for (auto& cb : _buildStatusCallbacks)
 		{
@@ -615,6 +730,7 @@ struct AssemblerPageProperties
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _config;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
+	OutputFileType _outputFileType = OutputFileType::Binary;
 	bool _saveListing = false;
 	wil::unique_bstr _listingFilename;
 
@@ -697,7 +813,7 @@ struct AssemblerPageProperties
 	{
 		if (dispid == dispidOutputFileType)
 		{
-			*fDefault = TRUE;
+			*fDefault = (_outputFileType == OutputFileType::Binary);
 			return S_OK;
 		}
 
@@ -736,6 +852,9 @@ struct AssemblerPageProperties
 
 	virtual HRESULT STDMETHODCALLTYPE ResetPropertyValue (DISPID dispid) override
 	{
+		if (dispid == dispidOutputFileType)
+			return put_OutputFileType(OutputFileType::Binary);
+
 		if (dispid == dispidSaveListing)
 			return put_SaveListing(VARIANT_FALSE);
 
@@ -772,12 +891,18 @@ struct AssemblerPageProperties
 
 	virtual HRESULT STDMETHODCALLTYPE get_OutputFileType (OutputFileType* value) override
 	{
-		*value = OutputFileType::Binary;
+		*value = _outputFileType;
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_OutputFileType (OutputFileType value) override
 	{
+		if (_outputFileType != value)
+		{
+			_outputFileType = value;
+			_propNotifyCP->NotifyPropertyChanged(dispidOutputFileType);
+		}
+
 		return S_OK;
 	}
 

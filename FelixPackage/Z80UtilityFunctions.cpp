@@ -3,6 +3,8 @@
 #include "FelixPackage.h"
 #include "shared/com.h"
 #include "shared/inplace_function.h"
+#include "../FelixPackageUi/resource.h"
+#include "guids.h"
 
 #define __dte_h__
 #include <VSShell174.h>
@@ -275,6 +277,13 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 {
 	HRESULT hr;
 
+	com_ptr<IVsShell> shell;
+	hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
+	wil::unique_bstr generatedFilesName, preincludeName, postincludeName;
+	shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERATED_FILES, &generatedFilesName); RETURN_IF_FAILED(hr);
+	shell->LoadPackageString(CLSID_FelixPackage, IDS_PREINCLUDE, &preincludeName); RETURN_IF_FAILED(hr);
+	shell->LoadPackageString(CLSID_FelixPackage, IDS_POSTINCLUDE, &postincludeName); RETURN_IF_FAILED(hr);
+
 	com_ptr<IProjectConfigAssemblerProperties> asmProps;
 	if (asmPropsOrNull)
 		asmProps = asmPropsOrNull;
@@ -294,10 +303,21 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 
 	stdext::inplace_function<HRESULT(IParentNode*)> enumDescendants;
 
-	enumDescendants = [&enumDescendants, &asmFiles](IParentNode* parent) -> HRESULT
+	enumDescendants = [&enumDescendants, &asmFiles, genFiles=generatedFilesName.get()](IParentNode* parent) -> HRESULT
 		{
 			for (auto c = parent->FirstChild(); c; c = c->Next())
 			{
+				com_ptr<IFolderNode> folder;
+				wil::unique_variant folderName;
+				if (parent->GetItemId() == VSITEMID_ROOT
+					&& SUCCEEDED(c->QueryInterface(IID_PPV_ARGS(&folder)))
+					&& SUCCEEDED(folder->GetProperty(VSHPROPID_SaveName, &folderName))
+					&& folderName.vt == VT_BSTR && folderName.bstrVal
+					&& !wcscmp(folderName.bstrVal, genFiles))
+				{
+					continue;
+				}
+
 				if (auto file = wil::try_com_query_nothrow<IFileNodeProperties>(c))
 				{
 					BuildToolKind tool;
@@ -352,10 +372,15 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 			return S_OK;
 		};
 
-	// --raw=...
-	wil::unique_bstr output_filename;
-	hr = asmProps->GetOutputFileName(&output_filename); RETURN_IF_FAILED(hr);
-	hr = addOutputPathParam (L" --raw=", output_filename.get()); RETURN_IF_FAILED(hr);
+	OutputFileType outputFileType;
+	hr = asmProps->get_OutputFileType(&outputFileType); RETURN_IF_FAILED(hr);
+	if (outputFileType == OutputFileType::Binary)
+	{
+		// --raw=...
+		wil::unique_bstr output_filename;
+		hr = asmProps->GetOutputFileName(&output_filename); RETURN_IF_FAILED(hr);
+		hr = addOutputPathParam (L" --raw=", output_filename.get()); RETURN_IF_FAILED(hr);
+	}
 
 	// --sld=...
 	wil::unique_bstr sld_filename;
@@ -379,6 +404,9 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 	}
 
 	// input files
+	wil::unique_cotaskmem_string str;
+	hr = wil::str_printf_nothrow(str, L" %s\\%s", generatedFilesName.get(), preincludeName.get()); RETURN_IF_FAILED(hr);
+	hr = Write(cmdLine, str.get());
 	for (auto& asmFile : asmFiles)
 	{
 		wil::unique_bstr path;
@@ -399,6 +427,8 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 			hr = Write(cmdLine, path.get()); RETURN_IF_FAILED(hr);
 		}
 	}
+	hr = wil::str_printf_nothrow(str, L" %s\\%s", generatedFilesName.get(), postincludeName.get()); RETURN_IF_FAILED(hr);
+	hr = Write(cmdLine, str.get());
 
 	return MakeBstrFromStreamOnHGlobal (cmdLine, ppCmdLine);
 }
@@ -904,3 +934,94 @@ HRESULT PutItems (SAFEARRAY* sa, IParentNode* parent)
 
 	return S_OK;
 }
+
+HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectMacroResolver* macroResolver)
+{
+	HRESULT hr;
+
+	com_ptr<IStream> fromStream;
+	hr = SHCreateStreamOnFileEx (fromPath, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &fromStream); RETURN_IF_FAILED(hr);
+
+	com_ptr<IStream> toStream;
+	hr = SHCreateStreamOnFileEx (toPath, STGM_CREATE | STGM_WRITE | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &toStream); RETURN_IF_FAILED(hr);
+
+	char ch;
+	ULONG cbRead;
+	while(true)
+	{
+		hr = fromStream->Read(&ch, 1, &cbRead); RETURN_IF_FAILED(hr);
+		if (!cbRead)
+			break;
+
+		if (ch == '%')
+		{
+			char macro[32];
+			uint32_t i = 0;
+			while(true)
+			{
+				hr = fromStream->Read(&ch, 1, &cbRead); RETURN_IF_FAILED(hr);
+				RETURN_HR_IF(E_UNEXPECTED, cbRead == 0);
+				if (ch != '%')
+				{
+					RETURN_HR_IF(E_UNEXPECTED, i == _countof(macro) - 1);
+					macro[i++] = ch;
+				}
+				else
+				{
+					macro[i] = 0;
+					break;
+				}
+			}
+
+			wil::unique_cotaskmem_ansistring value;
+			hr = macroResolver->ResolveMacro(macro, macro + i, &value); RETURN_IF_FAILED(hr);
+			hr = toStream->Write (value.get(), strlen(value.get()), &cbRead); RETURN_IF_FAILED(hr);
+		}
+		else
+		{
+			ULONG cbWritten;
+			hr = toStream->Write(&ch, 1, &cbWritten); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_UNEXPECTED, cbWritten != 1);
+		}
+	}
+
+	return S_OK;
+}
+
+IFileNode* FindChildFileByName (IParentNode* parent, std::wstring_view fileName)
+{
+	// Skip all folders.
+	auto child = parent->FirstChild();
+	while (child && !wil::try_com_query_nothrow<IFileNode>(child))
+		child = child->Next();
+	if (!child)
+		return nullptr;
+
+	while(child)
+	{
+		auto fn = wil::try_com_query_nothrow<IFileNode>(child);
+		if (!fn)
+			return nullptr;
+
+		wil::unique_variant n;
+		if (SUCCEEDED(fn->GetProperty(VSHPROPID_SaveName, &n)) && V_VT(&n) == VT_BSTR && fileName == V_BSTR(&n))
+			return fn;
+
+		child = child->Next();
+	}
+
+	return nullptr;
+}
+
+HRESULT MakeFileNodeForExistingFile (LPCWSTR path, IFileNode** ppFile)
+{
+	com_ptr<IFileNode> file;
+	auto hr = MakeFileNode(&file); RETURN_IF_FAILED(hr);
+	com_ptr<IFileNodeProperties> fileProps;
+	hr = file->QueryInterface(&fileProps); RETURN_IF_FAILED(hr);
+	hr = fileProps->put_Path(wil::make_bstr_nothrow(path).get()); RETURN_IF_FAILED(hr);
+	auto buildTool = _wcsicmp(PathFindExtension(path), L".asm") ? BuildToolKind::None : BuildToolKind::Assembler;
+	hr = fileProps->put_BuildTool(buildTool); RETURN_IF_FAILED(hr);
+	*ppFile = file.detach();
+	return S_OK;
+}
+
