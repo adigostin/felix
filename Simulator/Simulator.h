@@ -61,7 +61,7 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{56344845-3DDA-4BC0-9645-7EBA3FE94A93}")
 	virtual HRESULT STDMETHODCALLTYPE RemoveBreakpoint (SIM_BP_COOKIE cookie) = 0;
 	virtual HRESULT STDMETHODCALLTYPE HasBreakpoints_HR() = 0;
 	virtual HRESULT STDMETHODCALLTYPE LoadFile (LPCWSTR pFileName) = 0;
-	virtual HRESULT STDMETHODCALLTYPE LoadBinary (IStream* stream, DWORD address) = 0;
+	virtual HRESULT STDMETHODCALLTYPE LoadBinary (LPCWSTR pFileName, DWORD address, DWORD* loadedSize) = 0;
 	virtual HRESULT STDMETHODCALLTYPE GetPC (uint16_t* pc) = 0;
 	virtual HRESULT STDMETHODCALLTYPE SetPC (uint16_t pc) = 0;
 	virtual HRESULT STDMETHODCALLTYPE GetStackStartAddress (UINT16* stackStartAddress) = 0;

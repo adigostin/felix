@@ -1186,18 +1186,23 @@ public:
 		return SetErrorInfo (E_FAIL, L"The file extension %s is not recognized.", ext);
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE LoadBinary (IStream* stream, DWORD address) override
+	virtual HRESULT STDMETHODCALLTYPE LoadBinary (LPCWSTR pFileName, DWORD address, DWORD* loadedSize) override
 	{
+		HRESULT hr;
+
 		RETURN_HR_IF(E_UNEXPECTED, _running);
 
-		auto hr = stream->Seek ( { .QuadPart = 0 }, STREAM_SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
+		wil::com_ptr_nothrow<IStream> stream;
+		hr = SHCreateStreamOnFileEx (pFileName, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream);
+		if (FAILED(hr))
+			return SetErrorInfo (hr, L"Cannot access file.\r\n\r\n%s", pFileName);
 
 		STATSTG stat;
 		hr = stream->Stat (&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
 		if (stat.cbSize.HighPart)
 			RETURN_HR(E_BOUNDS);
 		if (!stat.cbSize.LowPart)
-			RETURN_HR(E_BOUNDS);
+			return SetErrorInfo(E_BOUNDS, L"Can't load a binary with zero length.\r\n\r\n%s", pFileName);
 		if (address + (uint16_t)stat.cbSize.LowPart <= address)
 			RETURN_HR(E_BOUNDS);
 		DWORD from, to;
@@ -1235,6 +1240,7 @@ public:
 			}
 		}
 
+		*loadedSize = stat.cbSize.LowPart;
 		return S_OK;
 	}
 	/*

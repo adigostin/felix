@@ -594,26 +594,8 @@ public:
 		hr = debugProps->get_EntryPointAddress(&launchAddress); RETURN_IF_FAILED(hr);
 
 		// Load the binary file.
-		wil::com_ptr_nothrow<IStream> stream;
-		hr = SHCreateStreamOnFileEx (exePath.get(), STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream);
-		if (FAILED(hr))
-		{
-			SetErrorInfo(hr, L"Cannot access file for debugging.\r\n\r\n%s", exePath.get());
-			uiShell->ReportErrorInfo(hr);
-			TerminateInternal();
-			return hr;
-		}
-
-		STATSTG stat;
-		hr = stream->Stat (&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
-		if (!stat.cbSize.LowPart)
-		{
-			SetErrorInfo(E_BOUNDS, L"Can't debug a binary with zero length.\r\n\r\n%s", exePath.get());
-			uiShell->ReportErrorInfo(E_BOUNDS);
-			TerminateInternal();
-			return hr;
-		}
-		hr = _simulator->LoadBinary(stream.get(), loadAddress);
+		DWORD loadedSize;
+		hr = _simulator->LoadBinary(exePath.get(), loadAddress, &loadedSize);
 		if (FAILED(hr))
 		{
 			uiShell->ReportErrorInfo(hr);
@@ -625,7 +607,7 @@ public:
 		com_ptr<IDebugModuleCollection> moduleColl;
 		hr = _program->QueryInterface(&moduleColl); RETURN_IF_FAILED(hr);
 		wil::com_ptr_nothrow<IDebugModule2> exe_module;
-		hr = MakeModule (loadAddress, stat.cbSize.LowPart, exePath.get(), debug_info_path.get(), true,
+		hr = MakeModule (loadAddress, loadedSize, exePath.get(), debug_info_path.get(), true,
 			this, _program.get(), _callback.get(), &exe_module); RETURN_IF_FAILED(hr);
 		hr = moduleColl->AddModule(exe_module.get()); RETURN_IF_FAILED(hr);
 
