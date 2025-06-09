@@ -237,13 +237,12 @@ class Z80EnumDebugFrameInfo : public IEnumDebugFrameInfo2
 public:
 	HRESULT InitInstance (FRAMEINFO_FLAGS dwFieldSpec, UINT nRadix, IDebugThread2* thread)
 	{
+		HRESULT hr;
+
 		// Let's create a simple call stack in which every stack location is a frame.
 		// A lot of Z80 code does tricks with the SP register, so it's nearly impossible to build a proper call stack.
 		
 		vector_nothrow<Entry> entries;
-
-		com_ptr<ISimulator> simulator;
-		auto hr = serviceProvider->QueryService(SID_Simulator, &simulator); RETURN_IF_FAILED(hr);
 
 		com_ptr<IDebugProgram2> program;
 		hr = thread->GetProgram(&program); RETURN_IF_FAILED(hr);

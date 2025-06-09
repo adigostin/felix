@@ -2,6 +2,7 @@
 #pragma once
 #include "FelixPackage_h.h"
 #include "shared/inplace_function.h"
+#include "Simulator.h"
 
 // We use DLL exports only to be able to call various functions from unit test projects.
 #ifdef FELIX_EXPORTS
@@ -111,8 +112,9 @@ IFolderNode : IChildNode
 };
 
 FELIX_API extern wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
+extern wil::com_ptr_nothrow<ISimulator> simulator;
+extern wil::com_ptr_nothrow<ISimulator> _simulator;
 
-extern GUID SID_Simulator;
 extern const wchar_t Z80AsmLanguageName[];
 extern const wchar_t SingleDebugPortName[];
 extern const GUID Z80AsmLanguageGuid;

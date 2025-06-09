@@ -23,6 +23,7 @@
 #include <propvarutil.h>
 #include <xmllite.h>
 #include <OCIdl.h>
+#include <OleCtl.h>
 #include <Psapi.h>
 #include <shellapi.h>
 #undef EnumProcesses
@@ -54,9 +55,10 @@
 #include <msdbg169.h>
 #include <msdbg170.h>
 #include <msdbg171.h>
+#include <msdbg172.h>
 #include <msdbg174.h>
+#include <msdbg178.h>
 #include <portpriv.h>
-#include <vsdebugguids.h>
 #include <venuscmddef.h>
 #include <sccmnid.h>
 #include <vsshlids.h>

@@ -14,7 +14,6 @@ class Z80DebugEngine : public IDebugEngine2, IDebugEngineLaunch2, ISimulatorEven
 	wil::unique_bstr _registryRoot;
 	WORD langId = 0;
 	com_ptr<IDebugEventCallback2> _callback;
-	com_ptr<ISimulator> _simulator;
 	com_ptr<IDebugPort2> _port;
 	com_ptr<IDebugProgram2> _program;
 	com_ptr<IFelixLaunchOptions> _launchOptions;
@@ -46,34 +45,36 @@ public:
 			return S_OK;
 
 		#ifdef _DEBUG
-		if (riid == IID_IDebugEngine110)
-			return E_NOTIMPL;
-		if (riid == IID_IDebugEngine150)
-			return E_NOTIMPL;
-		if (riid == IID_IDebugSymbolSettings100)
-			return E_NOTIMPL;
+		// Stuff which we'll never implement.
+		if (   riid == IID_IMarshal
+			|| riid == IID_INoMarshal
+			|| riid == IID_IStdMarshalInfo
+			|| riid == IID_IdentityUnmarshal
+			|| riid == IID_IAgileObject
+			|| riid == IID_IFastRundown
+			|| riid == IID_IExternalConnection
+			|| riid == IID_INoIdea6_DebugEngine
+			|| riid == IID_INoIdea7
+			|| riid == IID_INotARealInterface
+			|| riid == IID_INoIdea9
+			|| riid == IID_INoIdea10
+			|| riid == IID_INoIdea11
+			|| riid == IID_INoIdea14
+			|| riid == IID_INoIdea15
+		)
+			return E_NOINTERFACE;
 
-		if (     riid == IID_IDebugEngine3
-			||   riid == IID_IDebugEngineLaunch100
-			||   riid == IID_INoIdea6_DebugEngine
-			||   riid == IID_IDebugProgramProvider2
-			||   riid == IID_INoIdea7
-			||   riid == IID_INotARealInterface
-			||   riid == IID_INoIdea9
-			||   riid == IID_INoIdea10
-			||   riid == IID_INoIdea11
-			||   riid == IID_INoIdea14
-			||   riid == IID_INoIdea15
-			||   riid == IID_IMarshal
-			||   riid == IID_INoMarshal
-			||   riid == IID_IStdMarshalInfo
-			||   riid == IID_IdentityUnmarshal
-			||   riid == IID_IAgileObject
-			||   riid == IID_IFastRundown
-			||   riid == IID_IExternalConnection
-			||   riid == IID_IDebugBreakpointFileUpdateNotification110
-			||   riid == IID_IDebugEngineStepFilterManager90
-			||   riid == IID_IDebugSymbolSettings170
+		// Stuff which we may implement
+		if (   riid == IID_IDebugEngine110
+			|| riid == IID_IDebugEngine150
+			|| riid == IID_IDebugEngine3
+			|| riid == IID_IDebugEngineLaunch100
+			|| riid == IID_IDebugProgramProvider2
+			|| riid == IID_IDebugBreakpointFileUpdateNotification110
+			|| riid == IID_IDebugEngineStepFilterManager90
+			|| riid == IID_IDebugSymbolSettings100
+			|| riid == IID_IDebugSymbolSettings170
+			|| riid == IID_IDebugVisualizerExtensionReceiver178
 		)
 			return E_NOINTERFACE;
 
@@ -261,7 +262,6 @@ public:
 			}
 
 			_callback = nullptr;
-			_simulator = nullptr;
 			_program = nullptr;
 			_launchOptions = nullptr;
 			_bpman = nullptr;
@@ -350,7 +350,6 @@ public:
 		HRESULT hr;
 
 		WI_ASSERT(!_callback);
-		WI_ASSERT(!_simulator);
 		WI_ASSERT(!_program);
 		WI_ASSERT(!_launchOptions);
 
@@ -363,13 +362,11 @@ public:
 		//_callback = pCallback;
 		//auto reset_callback_ptr = wil::scope_exit([this] { _callback = nullptr; });
 
-		com_ptr<ISimulator> simulator;
-		hr = serviceProvider->QueryService(SID_Simulator, &simulator); RETURN_IF_FAILED(hr);
 		hr = simulator->Break(); RETURN_IF_FAILED(hr);
 		hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
 
 		com_ptr<IDebugProcess2> process;
-		hr = MakeDebugProcess (pPort, pszExe, this, simulator.get(), pCallback, &process); RETURN_IF_FAILED(hr);
+		hr = MakeDebugProcess (pPort, pszExe, this, pCallback, &process); RETURN_IF_FAILED(hr);
 
 		struct EngineCreateEvent : public EventBase<IDebugEngineCreateEvent2, EVENT_ASYNCHRONOUS>
 		{
@@ -388,7 +385,6 @@ public:
 		hr = ece->Send(pCallback, this, nullptr, nullptr); RETURN_IF_FAILED(hr);
 
 		_callback = pCallback;
-		_simulator = std::move(simulator);
 		_port = pPort;
 
 		*ppProcess = process.detach();
@@ -406,7 +402,7 @@ public:
 		hr = programs->Next(1, &_program, nullptr); RETURN_IF_FAILED(hr);
 		auto resetProgram = wil::scope_exit([this] { _program = nullptr; });
 
-		hr = MakeBreakpointManager(_callback, this, _program, _simulator, &_bpman); RETURN_IF_FAILED(hr);
+		hr = MakeBreakpointManager(_callback, this, _program, &_bpman); RETURN_IF_FAILED(hr);
 
 		wil::com_ptr_nothrow<IDebugPort2> port;
 		hr = pProcess->GetPort(&port); RETURN_IF_FAILED(hr);
@@ -596,26 +592,8 @@ public:
 		hr = _launchOptions->get_EntryPointAddress(&launchAddress); RETURN_IF_FAILED(hr);
 
 		// Load the binary file.
-		wil::com_ptr_nothrow<IStream> stream;
-		hr = SHCreateStreamOnFileEx (exePath.get(), STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream);
-		if (FAILED(hr))
-		{
-			SetErrorInfo(hr, L"Cannot access file for debugging.\r\n\r\n%s", exePath.get());
-			uiShell->ReportErrorInfo(hr);
-			TerminateInternal();
-			return hr;
-		}
-
-		STATSTG stat;
-		hr = stream->Stat (&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
-		if (!stat.cbSize.LowPart)
-		{
-			SetErrorInfo(E_BOUNDS, L"Can't debug a binary with zero length.\r\n\r\n%s", exePath.get());
-			uiShell->ReportErrorInfo(E_BOUNDS);
-			TerminateInternal();
-			return hr;
-		}
-		hr = _simulator->LoadBinary(stream.get(), loadAddress);
+		DWORD loadedSize;
+		hr = _simulator->LoadBinary(exePath.get(), loadAddress, &loadedSize);
 		if (FAILED(hr))
 		{
 			uiShell->ReportErrorInfo(hr);
@@ -627,7 +605,7 @@ public:
 		com_ptr<IDebugModuleCollection> moduleColl;
 		hr = _program->QueryInterface(&moduleColl); RETURN_IF_FAILED(hr);
 		wil::com_ptr_nothrow<IDebugModule2> exe_module;
-		hr = MakeModule (loadAddress, stat.cbSize.LowPart, exePath.get(), debug_info_path.get(), true,
+		hr = MakeModule (loadAddress, loadedSize, exePath.get(), debug_info_path.get(), true,
 			this, _program.get(), _callback.get(), &exe_module); RETURN_IF_FAILED(hr);
 		hr = moduleColl->AddModule(exe_module.get()); RETURN_IF_FAILED(hr);
 

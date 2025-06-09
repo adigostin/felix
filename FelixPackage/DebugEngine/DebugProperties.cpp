@@ -149,10 +149,10 @@ public:
 	#pragma region IDebugProperty2
 	virtual HRESULT STDMETHODCALLTYPE GetPropertyInfo(DEBUGPROP_INFO_FLAGS dwFields, DWORD dwRadix, DWORD dwTimeout, IDebugReference2** rgpArgs, DWORD dwArgCount, DEBUG_PROPERTY_INFO* pPropertyInfo) override
 	{
+		HRESULT hr;
+
 		memset (pPropertyInfo, 0, sizeof(DEBUG_PROPERTY_INFO));
 
-		com_ptr<ISimulator> simulator;
-		auto hr = serviceProvider->QueryService(SID_Simulator, &simulator); RETURN_IF_FAILED(hr);
 		z80_register_set regs;
 		hr = simulator->GetRegisters(&regs, sizeof(regs)); RETURN_IF_FAILED(hr);
 
@@ -188,8 +188,6 @@ public:
 		uint16_t value;
 		auto hr = string_to_u16 (pszValue, value); RETURN_IF_FAILED(hr);
 
-		com_ptr<ISimulator> simulator;
-		hr = serviceProvider->QueryService(SID_Simulator, &simulator); RETURN_IF_FAILED(hr);
 		z80_register_set regs;
 		hr = simulator->GetRegisters(&regs, sizeof(regs)); RETURN_IF_FAILED(hr);
 
@@ -571,11 +569,10 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE EnumChildren(DEBUGPROP_INFO_FLAGS dwFields, DWORD dwRadix, REFGUID guidFilter, DBG_ATTRIB_FLAGS dwAttribFilter, LPCOLESTR pszNameFilter, DWORD dwTimeout, IEnumDebugPropertyInfo2** ppEnum) override
 	{
+		HRESULT hr;
+
 		if (guidFilter != GUID_NULL)
 			RETURN_HR(E_NOTIMPL);
-
-		com_ptr<ISimulator> simulator;
-		auto hr = serviceProvider->QueryService(SID_Simulator, &simulator); RETURN_IF_FAILED(hr);
 
 		if constexpr (std::is_same_v<register_set_t, z80_register_set>)
 		{

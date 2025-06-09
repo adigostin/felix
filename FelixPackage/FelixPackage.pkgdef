@@ -111,10 +111,8 @@
 "Disassembly"=dword:00000001
 "Name"="Z80 Simulator Debug Engine"
 "SetNextStatement"=dword:1
-"Exceptions"=dword:1
-"Memory"=dword:1
-;"PortSupplier"="{AFD42502-0F35-43DA-98A3-7CA143B51E62}"
-;"ProgramProvider"="{1CE085CD-85AB-49A5-921C-5B80113425D7}"
+"Exceptions"=dword:0
+"PortSupplier"="{AFD42502-0F35-43DA-98A3-7CA143B51E62}"
 ; Plenty other options can be found in dbgmetric.h
 [$RootKey$\CLSID\{0C9A3710-B822-45A1-859B-C5A8B33CF34B}]
 "InprocServer32"="$PackageFolder$\FelixPackage.dll"
@@ -124,6 +122,3 @@
 "guidCOMPlusOnlyEng"="{449EC4CC-30D2-4032-9256-EE18EB41B62B}"
 "guidNativeOnlyEng"="{449EC4CC-30D2-4032-9256-EE18EB41B62B}"
 "guidScriptEng"="{F200A7E7-DEA5-11D0-B854-00A0244A1DE2}"
-
-;[$RootKey$\CLSID\{1CE085CD-85AB-49A5-921C-5B80113425D7}]
-;"InprocServer32"="$PackageFolder$\FelixPackage.dll"

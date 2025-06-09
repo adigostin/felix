@@ -98,16 +98,16 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{FCC163D3-2F23-457E-BDDD-EE5A94D9EC83}")
 	virtual HRESULT ContainsBreakpoint (IDebugBoundBreakpoint2* bp) = 0;
 };
 
-HRESULT MakeBreakpointManager (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program, ISimulator* simulator, IBreakpointManager** ppManager);
+HRESULT MakeBreakpointManager (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program, IBreakpointManager** ppManager);
 HRESULT MakeSimplePendingBreakpoint (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program,
 	IBreakpointManager* bpman, bool physicalMemorySpace, UINT64 address, IDebugPendingBreakpoint2** to);
 HRESULT MakeSourceLinePendingBreakpoint (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program,
 	IBreakpointManager* bpman,
 	IDebugBreakpointRequest2* bp_request, const wchar_t* file, uint32_t line_index, IDebugPendingBreakpoint2** to);
 HRESULT MakeDebugPort (const wchar_t* portName, const GUID& portId, IDebugPort2** port);
-HRESULT MakeDebugProgram (IDebugProcess2* process, IDebugEngine2* engine, ISimulator* simulator, IDebugEventCallback2* callback, IDebugProgram2** ppProgram);
+HRESULT MakeDebugProgram (IDebugProcess2* process, IDebugEngine2* engine, IDebugEventCallback2* callback, IDebugProgram2** ppProgram);
 HRESULT MakeDebugProcess (IDebugPort2* pPort, LPCOLESTR pszExe, IDebugEngine2* engine,
-	ISimulator* simulator, IDebugEventCallback2* callback, IDebugProcess2** ppProcess);
+	IDebugEventCallback2* callback, IDebugProcess2** ppProcess);
 
 // If "symbolsFilePath" is non-NULL, it is the full path to the file with symbols; the module implementation
 // will not attempt to load symbols from other places.

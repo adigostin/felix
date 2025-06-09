@@ -5,7 +5,6 @@
 #include "shared/com.h"
 #include "shared/unordered_map_nothrow.h"
 #include "shared/OtherGuids.h"
-#include <OleCtl.h>
 
 class Z80DebugPort : public IZ80DebugPort, IConnectionPoint, IConnectionPointContainer
 {

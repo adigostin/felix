@@ -7,12 +7,10 @@
 class MemoryBytes : public IDebugMemoryBytes2
 {
 	ULONG _refCount = 0;
-	com_ptr<ISimulator> _simulator;
 
 public:
 	HRESULT InitInstance()
 	{
-		auto hr = serviceProvider->QueryService(SID_Simulator, &_simulator); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 

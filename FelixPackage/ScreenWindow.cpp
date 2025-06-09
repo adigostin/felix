@@ -28,7 +28,6 @@ class ScreenWindowImpl
 	HWND _hwnd = nullptr;
 	VS_RGBA _windowColor;
 	VSCOOKIE _broadcastCookie = VSCOOKIE_NIL;
-	com_ptr<ISimulator> _simulator;
 	wil::unique_event_nothrow _design_mode_event;
 	com_ptr<IServiceProvider> _sp;
 	com_ptr<IVsSettingsManager> _sm;
@@ -440,8 +439,6 @@ public:
 		RECT cr;
 		GetClientRect(_hwnd, &cr);
 
-		hr = _sp->QueryService (SID_Simulator, &_simulator); RETURN_IF_FAILED(hr);
-
 		hr = _simulator->AdviseScreenComplete(this); RETURN_IF_FAILED(hr);
 		_advisingScreenCompleteEvents = true;
 
@@ -530,7 +527,6 @@ public:
 			_advisingScreenCompleteEvents = false;
 		}
 
-		_simulator = nullptr;
 		if (_hwnd)
 		{
 			WI_ASSERT(reinterpret_cast<ScreenWindowImpl*>(GetWindowLongPtr(_hwnd, GWLP_USERDATA)) == this);

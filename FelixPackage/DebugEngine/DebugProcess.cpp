@@ -17,7 +17,7 @@ class DebugProcessImpl : public IDebugProcess2
 	com_ptr<IDebugProgram2> _program;
 
 public:
-	HRESULT InitInstance (IDebugPort2* pPort, LPCOLESTR pszExe, IDebugEngine2* engine, ISimulator* simulator, IDebugEventCallback2* callback)
+	HRESULT InitInstance (IDebugPort2* pPort, LPCOLESTR pszExe, IDebugEngine2* engine, IDebugEventCallback2* callback)
 	{
 		_pid.ProcessIdType = AD_PROCESS_ID_GUID;
 		if (pszExe)
@@ -30,7 +30,7 @@ public:
 		_parentPort = pPort;
 		::GetSystemTimeAsFileTime (&_creationTime);
 
-		hr = MakeDebugProgram (this, engine, simulator, callback, &_program); RETURN_IF_FAILED(hr);
+		hr = MakeDebugProgram (this, engine, callback, &_program); RETURN_IF_FAILED(hr);
 
 		return S_OK;
 	}
@@ -209,6 +209,7 @@ public:
 	HRESULT STDMETHODCALLTYPE GetPhysicalProcessId(AD_PROCESS_ID* pProcessId) override
 	{
 		// https://blogs.msdn.microsoft.com/jacdavis/2008/05/01/what-to-do-if-your-debug-engine-doesnt-create-real-processes/
+		// Later edit: VS2022 doesn't show GUID processes in the Debug -> Attach dialog.
 		*pProcessId = _pid;
 		return S_OK;
 	}
@@ -243,10 +244,10 @@ public:
 };
 
 HRESULT MakeDebugProcess (IDebugPort2* pPort, LPCOLESTR pszExe, IDebugEngine2* engine,
-	ISimulator* simulator, IDebugEventCallback2* callback, IDebugProcess2** ppProcess)
+	IDebugEventCallback2* callback, IDebugProcess2** ppProcess)
 {
 	auto p = com_ptr(new (std::nothrow) DebugProcessImpl()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance(pPort, pszExe, engine, simulator, callback); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance(pPort, pszExe, engine, callback); RETURN_IF_FAILED(hr);
 	*ppProcess = p.detach();
 	return S_OK;
 }
