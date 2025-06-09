@@ -218,9 +218,7 @@ public:
 		RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
 		hr = opts->put_ProjectDir(projectDir.bstrVal); RETURN_IF_FAILED(hr);
 		
-		com_ptr<IProjectConfigDebugProperties> dbgProps;
-		hr = this->get_DebuggingProperties(&dbgProps); RETURN_IF_FAILED(hr);
-		hr = opts->put_DebuggingProperties(dbgProps); RETURN_IF_FAILED(hr);
+		hr = opts->put_DebuggingProperties(_debugProps); RETURN_IF_FAILED(hr);
 
 		com_ptr<IStream> stream;
 		hr = CreateStreamOnHGlobal (nullptr, TRUE, &stream); RETURN_IF_FAILED(hr);

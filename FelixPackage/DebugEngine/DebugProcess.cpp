@@ -209,6 +209,7 @@ public:
 	HRESULT STDMETHODCALLTYPE GetPhysicalProcessId(AD_PROCESS_ID* pProcessId) override
 	{
 		// https://blogs.msdn.microsoft.com/jacdavis/2008/05/01/what-to-do-if-your-debug-engine-doesnt-create-real-processes/
+		// Later edit: VS2022 doesn't show GUID processes in the Debug -> Attach dialog.
 		*pProcessId = _pid;
 		return S_OK;
 	}

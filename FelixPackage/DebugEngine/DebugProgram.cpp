@@ -157,6 +157,7 @@ public:
 
 	HRESULT STDMETHODCALLTYPE GetProgramId(GUID* pguidProgramId) override
 	{
+		// TODO: A debug engine (DE) must return the program identifier originally passed to the OnAttach or Attach methods. This allows identification of the program across debugger components.
 		*pguidProgramId = _programId;
 		return S_OK;
 	}
