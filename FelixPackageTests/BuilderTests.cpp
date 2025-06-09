@@ -66,11 +66,11 @@ namespace FelixTests
 			auto config = AddDebugProjectConfig(hier);
 
 			com_ptr<IProjectConfigPrePostBuildProperties> props;
-			hr = config->get_PreBuildProperties(&props);
+			hr = config->AsProjectConfigProperties()->get_PreBuildProperties(&props);
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::IsNotNull(props.get());
 
-			hr = config->get_PostBuildProperties(&props);
+			hr = config->AsProjectConfigProperties()->get_PostBuildProperties(&props);
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::IsNotNull(props.get());
 		}
@@ -447,14 +447,14 @@ namespace FelixTests
 			auto config = AddDebugProjectConfig(hier);
 
 			com_ptr<IProjectConfigPrePostBuildProperties> preBuildProps;
-			hr = config->get_PreBuildProperties(&preBuildProps);
+			hr = config->AsProjectConfigProperties()->get_PreBuildProperties(&preBuildProps);
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto preCmdLine = wil::make_bstr_nothrow(L"cmd /c echo XXX");
 			hr = preBuildProps->put_CommandLine(preCmdLine.get());
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			com_ptr<IProjectConfigPrePostBuildProperties> postBuildProps;
-			hr = config->get_PostBuildProperties(&postBuildProps);
+			hr = config->AsProjectConfigProperties()->get_PostBuildProperties(&postBuildProps);
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto postCmdLine = wil::make_bstr_nothrow(L"cmd /c echo YYY");
 			hr = postBuildProps->put_CommandLine(postCmdLine.get());

@@ -18,6 +18,7 @@ static constexpr LaunchType LaunchTypeDefaultValue = LaunchType::PrintUsr;
 
 struct ProjectConfig
 	: IProjectConfig
+	, IProjectConfigProperties
 	, IVsDebuggableProjectCfg
 	, IVsBuildableProjectCfg
 	, IVsBuildableProjectCfg2
@@ -49,13 +50,15 @@ struct ProjectConfig
 	WeakRefToThis _weakRefToThis;
 
 public:
-	HRESULT InitInstance()
+	HRESULT InitInstance (IProjectNode* project)
 	{
 		HRESULT hr;
 		_threadId = GetCurrentThreadId();
 		_platformName = wil::make_bstr_nothrow(L"ZX Spectrum 48K"); RETURN_IF_NULL_ALLOC(_platformName);
 		
 		hr = _weakRefToThis.InitInstance(static_cast<IProjectConfig*>(this)); RETURN_IF_FAILED(hr);
+
+		hr = project->QueryInterface(IID_PPV_ARGS(_hier.addressof())); RETURN_IF_FAILED(hr);
 
 		hr = AssemblerPageProperties_CreateInstance(this, &_assemblerProps); RETURN_IF_FAILED(hr);
 		hr = AdviseSink<IPropertyNotifySink>(_assemblerProps, _weakRefToThis, &_assemblerPropsAdviseToken); RETURN_IF_FAILED(hr);
@@ -85,8 +88,9 @@ public:
 		*ppvObject = nullptr;
 
 		if (   TryQI<IUnknown>(static_cast<IVsDebuggableProjectCfg*>(this), riid, ppvObject)
-			|| TryQI<IDispatch>(this, riid, ppvObject)
 			|| TryQI<IProjectConfig>(this, riid, ppvObject)
+			|| TryQI<IDispatch>(this, riid, ppvObject)
+			|| TryQI<IProjectConfigProperties>(this, riid, ppvObject)
 			|| TryQI<IXmlParent>(this, riid, ppvObject)
 			|| TryQI<IVsCfg>(this, riid, ppvObject)
 			|| TryQI<IVsProjectCfg>(this, riid, ppvObject)
@@ -143,7 +147,7 @@ public:
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IProjectConfig);
+	IMPLEMENT_IDISPATCH(IID_IProjectConfigProperties);
 
 	#pragma region IVsCfg
 	virtual HRESULT STDMETHODCALLTYPE get_DisplayName(BSTR * pbstrDisplayName) override
@@ -573,23 +577,40 @@ public:
 	#pragma endregion
 
 	#pragma region IProjectConfig
+	virtual HRESULT GetSite (REFIID riid, void** ppvObject) override
+	{
+		return _hier->QueryInterface(riid, ppvObject);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetOutputDirectory (BSTR* pbstr) override
+	{
+		com_ptr<IVsHierarchy> hier;
+		auto hr = _hier->QueryInterface(IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
+		wil::unique_variant project_dir;
+		hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &project_dir); RETURN_IF_FAILED(hr);
+		if (project_dir.vt != VT_BSTR)
+			return E_FAIL;
+
+		size_t output_dir_cap = wcslen(project_dir.bstrVal) + 10 + wcslen(_configName.get() + 1);
+		auto output_dir = wil::make_process_heap_string_nothrow(nullptr, output_dir_cap); RETURN_IF_NULL_ALLOC(output_dir);
+		wcscpy_s (output_dir.get(), output_dir_cap, project_dir.bstrVal);
+		wcscat_s (output_dir.get(), output_dir_cap, L"\\bin\\");
+		wcscat_s (output_dir.get(), output_dir_cap, _configName.get());
+		wcscat_s (output_dir.get(), output_dir_cap, L"\\");
+
+		*pbstr = SysAllocString(output_dir.get()); RETURN_IF_NULL_ALLOC(*pbstr);
+		return S_OK;
+	}
+
+	virtual IProjectConfigProperties* AsProjectConfigProperties() override { return this; }
+	#pragma endregion
+
+	#pragma region IProjectConfigProperties
 	virtual HRESULT STDMETHODCALLTYPE get___id(BSTR *value) override
 	{
 		// For configurations, VS seems to request this and then ignore it.
 		*value = nullptr;
 		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE SetSite (IProjectNodeProperties* pHier) override
-	{
-		RETURN_HR_IF(E_UNEXPECTED, _hier != nullptr);
-		auto hr = pHier->QueryInterface(IID_PPV_ARGS(_hier.addressof())); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetSite (REFIID riid, void** ppvObject) override
-	{
-		return _hier->QueryInterface(riid, ppvObject);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_AssemblerProperties (IProjectConfigAssemblerProperties** ppProps) override
@@ -643,26 +664,6 @@ public:
 		_platformName = std::move(newName);
 		return S_OK;
 	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetOutputDirectory (BSTR* pbstr) override
-	{
-		com_ptr<IVsHierarchy> hier;
-		auto hr = _hier->QueryInterface(IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
-		wil::unique_variant project_dir;
-		hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &project_dir); RETURN_IF_FAILED(hr);
-		if (project_dir.vt != VT_BSTR)
-			return E_FAIL;
-
-		size_t output_dir_cap = wcslen(project_dir.bstrVal) + 10 + wcslen(_configName.get() + 1);
-		auto output_dir = wil::make_process_heap_string_nothrow(nullptr, output_dir_cap); RETURN_IF_NULL_ALLOC(output_dir);
-		wcscpy_s (output_dir.get(), output_dir_cap, project_dir.bstrVal);
-		wcscat_s (output_dir.get(), output_dir_cap, L"\\bin\\");
-		wcscat_s (output_dir.get(), output_dir_cap, _configName.get());
-		wcscat_s (output_dir.get(), output_dir_cap, L"\\");
-
-		*pbstr = SysAllocString(output_dir.get()); RETURN_IF_NULL_ALLOC(*pbstr);
-		return S_OK;
-	}
 	#pragma endregion
 
 	#pragma region IXmlParent
@@ -703,13 +704,9 @@ public:
 	#pragma region IPropertyNotifySink
 	virtual HRESULT STDMETHODCALLTYPE OnChanged (DISPID dispID) override
 	{
-		if (_hier)
-		{
-			com_ptr<IPropertyNotifySink> pns;
-			auto hr = _hier->QueryInterface(&pns); RETURN_IF_FAILED(hr);
-			pns->OnChanged(dispidConfigurations);
-		}
-
+		com_ptr<IPropertyNotifySink> pns;
+		auto hr = _hier->QueryInterface(&pns); RETURN_IF_FAILED(hr);
+		pns->OnChanged(dispidConfigurations);
 		return S_OK;
 	}
 
@@ -720,10 +717,10 @@ public:
 	#pragma endregion
 };
 
-FELIX_API HRESULT MakeProjectConfig (IProjectConfig** to)
+FELIX_API HRESULT MakeProjectConfig (IProjectNode* project, IProjectConfig** to)
 {
 	auto p = com_ptr(new (std::nothrow) ProjectConfig()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance(); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance(project); RETURN_IF_FAILED(hr);
 	*to = p.detach();
 	return S_OK;
 }

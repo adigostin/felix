@@ -2089,7 +2089,7 @@ public:
 		for (auto& c : _configs)
 		{
 			wil::unique_bstr n;
-			auto hr = c->get_ConfigName(&n); RETURN_IF_FAILED(hr);
+			auto hr = c->AsProjectConfigProperties()->get_ConfigName(&n); RETURN_IF_FAILED(hr);
 			auto it = names.find_if([n=n.get()](auto& en) { return !wcscmp(en.get(), n); });
 			if (it == names.end())
 			{
@@ -2116,7 +2116,7 @@ public:
 		for (auto& c : _configs)
 		{
 			wil::unique_bstr n;
-			auto hr = c->get_PlatformName(&n); RETURN_IF_FAILED(hr);
+			auto hr = c->AsProjectConfigProperties()->get_PlatformName(&n); RETURN_IF_FAILED(hr);
 			auto it = names.find_if([n=n.get()](auto& en) { return !wcscmp(en.get(), n); });
 			if (it == names.end())
 			{
@@ -2141,8 +2141,8 @@ public:
 		for (auto& cfg : _configs)
 		{
 			wil::unique_bstr cn, pn;
-			auto hr = cfg->get_ConfigName(&cn); RETURN_IF_FAILED(hr);
-			hr = cfg->get_PlatformName(&pn); RETURN_IF_FAILED(hr);
+			auto hr = cfg->AsProjectConfigProperties()->get_ConfigName(&cn); RETURN_IF_FAILED(hr);
+			hr = cfg->AsProjectConfigProperties()->get_PlatformName(&pn); RETURN_IF_FAILED(hr);
 			if (!wcscmp(pszCfgName, cn.get()) && !wcscmp(pszPlatformName, pn.get()))
 			{
 				auto hr = cfg->QueryInterface(ppCfg); RETURN_IF_FAILED(hr);
@@ -2156,18 +2156,18 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE AddCfgsOfCfgName(LPCOLESTR pszCfgName, LPCOLESTR pszCloneCfgName, BOOL fPrivate) override
 	{
 		com_ptr<IProjectConfig> newConfig;
-		auto hr = MakeProjectConfig (&newConfig); RETURN_IF_FAILED_EXPECTED(hr);
+		auto hr = MakeProjectConfig (this, &newConfig); RETURN_IF_FAILED_EXPECTED(hr);
 
 		if (pszCloneCfgName)
 		{
-			com_ptr<IProjectConfig> existing;
+			com_ptr<IProjectConfigProperties> existing;
 			for (auto& c : _configs)
 			{
 				wil::unique_bstr name;
-				hr = c->get_ConfigName(&name); RETURN_IF_FAILED(hr);
+				hr = c->AsProjectConfigProperties()->get_ConfigName(&name); RETURN_IF_FAILED(hr);
 				if (wcscmp(name ? name.get() : L"", pszCloneCfgName) == 0)
 				{
-					existing = c;
+					existing = c->AsProjectConfigProperties();
 					break;
 				}
 			}
@@ -2180,16 +2180,14 @@ public:
 
 			hr = stream->Seek({ 0 }, STREAM_SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
 
-			hr = LoadFromXml(newConfig, L"Temp", stream); RETURN_IF_FAILED_EXPECTED(hr);
+			hr = LoadFromXml(newConfig->AsProjectConfigProperties(), L"Temp", stream); RETURN_IF_FAILED_EXPECTED(hr);
 		}
 
 		auto newConfigNameBstr = wil::make_bstr_nothrow(pszCfgName); RETURN_IF_NULL_ALLOC(newConfigNameBstr);
-		hr = newConfig->put_ConfigName(newConfigNameBstr.get()); RETURN_IF_FAILED(hr);
+		hr = newConfig->AsProjectConfigProperties()->put_ConfigName(newConfigNameBstr.get()); RETURN_IF_FAILED(hr);
 
 		bool pushed = _configs.try_push_back(std::move(newConfig)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 		auto removeBack = wil::scope_exit([this] { _configs.remove_back(); });
-
-		hr = _configs.back()->SetSite(this); RETURN_IF_FAILED(hr);
 
 		_isDirty = true;
 
@@ -2208,7 +2206,7 @@ public:
 		while (it != _configs.end())
 		{
 			wil::unique_bstr name;
-			hr = it->get()->get_ConfigName(&name); RETURN_IF_FAILED(hr);
+			hr = it->get()->AsProjectConfigProperties()->get_ConfigName(&name); RETURN_IF_FAILED(hr);
 			if (wcscmp(name ? name.get() : L"", pszCfgName) == 0)
 				break;
 			it++;
@@ -2556,7 +2554,6 @@ public:
 			com_ptr<IProjectConfig> config;
 			hr = child->QueryInterface(&config); RETURN_IF_FAILED(hr);
 			bool pushed = _configs.try_push_back(std::move(config)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-			_configs.back()->SetSite(this);
 		}
 
 		// This is meant to be called only from LoadXml, no need to set dirty flag or send notifications.
@@ -2649,8 +2646,10 @@ public:
 		if (dispidProperty == dispidConfigurations)
 		{
 			com_ptr<IProjectConfig> config;
-			hr = MakeProjectConfig(&config); RETURN_IF_FAILED(hr);
-			*childOut = config.detach();
+			hr = MakeProjectConfig(this, &config); RETURN_IF_FAILED(hr);
+			com_ptr<IProjectConfigProperties> props;
+			hr = config->QueryInterface(&props);
+			*childOut = props.detach();
 			return S_OK;
 		}
 

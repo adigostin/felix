@@ -615,7 +615,7 @@ public:
 
 		// Pre-Build Event
 		com_ptr<IProjectConfigPrePostBuildProperties> preBuildProps;
-		hr = _config->get_PreBuildProperties(&preBuildProps); RETURN_IF_FAILED(hr);
+		hr = _config->AsProjectConfigProperties()->get_PreBuildProperties(&preBuildProps); RETURN_IF_FAILED(hr);
 		hr = ParseCommandLines (preBuildProps, projectDir.bstrVal, steps);RETURN_IF_FAILED(hr);
 		
 		// First build the files with a custom build tool. This is similar to what VS does.
@@ -644,7 +644,7 @@ public:
 
 		// Second launch sjasm to build all asm files.
 		com_ptr<IProjectConfigAssemblerProperties> asmProps;
-		hr = _config->get_AssemblerProperties(&asmProps); RETURN_IF_FAILED(hr);
+		hr = _config->AsProjectConfigProperties()->get_AssemblerProperties(&asmProps); RETURN_IF_FAILED(hr);
 		wil::unique_bstr cmdLine;
 		hr = MakeSjasmCommandLine (_hier, _config, asmProps, &cmdLine); RETURN_IF_FAILED(hr);
 		if (SysStringLen(cmdLine.get()) > 0)
@@ -656,7 +656,7 @@ public:
 
 		// Post-Build Event
 		com_ptr<IProjectConfigPrePostBuildProperties> postBuildProps;
-		hr = _config->get_PostBuildProperties(&postBuildProps); RETURN_IF_FAILED(hr);
+		hr = _config->AsProjectConfigProperties()->get_PostBuildProperties(&postBuildProps); RETURN_IF_FAILED(hr);
 		hr = ParseCommandLines (postBuildProps, projectDir.bstrVal, steps);RETURN_IF_FAILED(hr);
 
 		if (steps.empty())

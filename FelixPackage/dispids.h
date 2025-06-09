@@ -30,5 +30,7 @@
 #define dispidPostBuildProperties  22
 #define dispidFolderName           23
 #define dispidAutoOpenFiles        24
+#define dispidConfigName           25
+#define dispidPlatformName         26
 
 #endif

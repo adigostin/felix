@@ -289,7 +289,7 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 		asmProps = asmPropsOrNull;
 	else
 	{
-		hr = config->get_AssemblerProperties(&asmProps); RETURN_IF_FAILED(hr);
+		hr = config->AsProjectConfigProperties()->get_AssemblerProperties(&asmProps); RETURN_IF_FAILED(hr);
 	}
 
 	wil::unique_variant projectDir;

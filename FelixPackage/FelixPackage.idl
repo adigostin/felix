@@ -22,12 +22,9 @@ library ATLProject1Lib
 	enum OutputFileType { Binary, Sna };
 
 	[object, uuid(A6F7B8F9-7FD3-4819-963A-5238B32F4123), dual, nonextensible, pointer_default(unique)]
-	interface IProjectConfig : IDispatch
+	interface IProjectConfigProperties : IDispatch
 	{
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
-
-		HRESULT SetSite (IProjectNodeProperties* pHier);
-		HRESULT GetSite (REFIID riid, void** ppvObject);
 
 		[id(dispidAssemblerProperties), propget] HRESULT AssemblerProperties ([out, retval] IProjectConfigAssemblerProperties** ppProps);
 
@@ -42,13 +39,11 @@ library ATLProject1Lib
 		[id(dispidPostBuildProperties), propget, helpstring("The implementation allocates this object during creation; it is always non-NULL.")]
 		HRESULT PostBuildProperties ([out, retval] IProjectConfigPrePostBuildProperties** ppProps);
 
-		[propget] HRESULT ConfigName ([out, retval] BSTR* pbstr);
-		[propput] HRESULT ConfigName (BSTR pbstr);
+		[id(dispidConfigName), propget] HRESULT ConfigName ([out, retval] BSTR* pbstr);
+		[id(dispidConfigName), propput] HRESULT ConfigName (BSTR pbstr);
 
-		[propget] HRESULT PlatformName ([out, retval] BSTR* pbstr);
-		[propput] HRESULT PlatformName (BSTR pbstr);
-
-		HRESULT GetOutputDirectory ([out, retval] BSTR* pbstr);
+		[id(dispidPlatformName), propget] HRESULT PlatformName ([out, retval] BSTR* pbstr);
+		[id(dispidPlatformName), propput] HRESULT PlatformName (BSTR pbstr);
 	};
 
 	[object, uuid(6109C4FD-C067-4120-9853-6A2D6682BCB0), dual, nonextensible, pointer_default(unique)]
