@@ -1,7 +1,6 @@
 
 #pragma once
 #include "FelixPackage_h.h"
-#include "shared/inplace_function.h"
 #include "Simulator.h"
 
 // We use DLL exports only to be able to call various functions from unit test projects.

@@ -13,7 +13,7 @@
 // Useful doc: https://learn.microsoft.com/en-us/visualstudio/extensibility/internals/managing-configuration-options?view=vs-2022
 
 static constexpr DWORD LoadAddressDefaultValue = 0x8000;
-static constexpr WORD EntryPointAddressDefaultValue = 0x8000;
+static constexpr wchar_t EntryPointAddressDefaultValue[] = L"32768";
 static constexpr LaunchType LaunchTypeDefaultValue = LaunchType::PrintUsr;
 
 struct ProjectConfig
@@ -219,7 +219,15 @@ public:
 		RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
 		hr = opts->put_ProjectDir(projectDir.bstrVal); RETURN_IF_FAILED(hr);
 		
-		hr = opts->put_DebuggingProperties(_debugProps); RETURN_IF_FAILED(hr);
+		DWORD loadAddress;
+		hr = _debugProps->get_LoadAddress(&loadAddress); RETURN_IF_FAILED(hr);
+		wil::unique_bstr epAddressStr;
+		hr = _debugProps->get_EntryPointAddress(&epAddressStr); RETURN_IF_FAILED(hr);
+		RETURN_HR_IF(E_NOTIMPL, !epAddressStr);
+		wchar_t* endPtr;
+		DWORD epAddress = std::wcstoul(epAddressStr.get(), &endPtr, 10); RETURN_HR_IF(E_NOTIMPL, endPtr != epAddressStr.get() + SysStringLen(epAddressStr.get()));
+		opts->put_LoadAddress(loadAddress);
+		opts->put_EntryPointAddress(epAddress);
 
 		com_ptr<IStream> stream;
 		hr = CreateStreamOnHGlobal (nullptr, TRUE, &stream); RETURN_IF_FAILED(hr);
@@ -967,7 +975,7 @@ struct DebuggingPageProperties
 	ULONG _refCount = 0;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
 	DWORD _loadAddress = LoadAddressDefaultValue;
-	WORD _entryPointAddress = EntryPointAddressDefaultValue;
+	wil::unique_bstr _entryPointAddress;
 	LaunchType _launchType = LaunchTypeDefaultValue;
 
 	static HRESULT CreateInstance (IProjectConfigDebugProperties** to)
@@ -976,6 +984,7 @@ struct DebuggingPageProperties
 
 		com_ptr<DebuggingPageProperties> p = new (std::nothrow) DebuggingPageProperties(); RETURN_IF_NULL_ALLOC(p);
 		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(p, &p->_propNotifyCP); RETURN_IF_FAILED(hr);
+		p->_entryPointAddress = wil::make_bstr_nothrow(EntryPointAddressDefaultValue); RETURN_IF_NULL_ALLOC(p->_entryPointAddress);
 		*to = p.detach();
 		return S_OK;
 	}
@@ -1054,7 +1063,7 @@ struct DebuggingPageProperties
 
 		if (dispid == dispidEntryPointAddress)
 		{
-			*fDefault = (_entryPointAddress == EntryPointAddressDefaultValue);
+			*fDefault = _entryPointAddress && !wcscmp(_entryPointAddress.get(), EntryPointAddressDefaultValue);
 			return S_OK;
 		}
 
@@ -1095,7 +1104,7 @@ struct DebuggingPageProperties
 	}
 	#pragma endregion
 
-	#pragma region IZ80ProjectConfigDebugProperties
+	#pragma region IProjectConfigDebugProperties
 	virtual HRESULT STDMETHODCALLTYPE get___id(BSTR *value) override
 	{
 		// For configurations, this seems to be requested and then ignored.
@@ -1120,17 +1129,26 @@ struct DebuggingPageProperties
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_EntryPointAddress (WORD* value) override
+	virtual HRESULT STDMETHODCALLTYPE get_EntryPointAddress (BSTR *pbstrAddress) override
 	{
-		*value = _entryPointAddress;
-		return S_OK;
+		if (!_entryPointAddress || !_entryPointAddress.get()[0])
+			return (*pbstrAddress = nullptr), S_OK;
+		
+		auto res = SysAllocString(_entryPointAddress.get()); RETURN_IF_NULL_ALLOC(res);
+		return (*pbstrAddress = res), S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_EntryPointAddress (WORD value) override
+	virtual HRESULT STDMETHODCALLTYPE put_EntryPointAddress (BSTR bstrAddress) override
 	{
-		if (_entryPointAddress != value)
+		if (VarBstrCmp(_entryPointAddress.get(), bstrAddress, InvariantLCID, 0) != VARCMP_EQ)
 		{
-			_entryPointAddress = value;
+			BSTR newStr = nullptr;
+			if (bstrAddress && bstrAddress[0])
+			{
+				newStr = SysAllocString(bstrAddress); RETURN_IF_NULL_ALLOC(newStr);
+			}
+
+			_entryPointAddress.reset(newStr);
 			_propNotifyCP->NotifyPropertyChanged(dispidEntryPointAddress);
 		}
 

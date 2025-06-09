@@ -182,6 +182,10 @@ static HRESULT SaveToXmlInternal (IDispatch* obj, PCWSTR elementName, DWORD flag
 						{
 							value = wil::make_bstr_nothrow(V_BSTR(&result)); RETURN_IF_NULL_ALLOC(value);
 						}
+						else
+						{
+							value = wil::make_bstr_nothrow(L""); RETURN_IF_NULL_ALLOC(value);
+						}
 						bool pushed = attributes.try_push_back(ValueProperty{ fd->memid, std::move(name), std::move(value) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 						break;
 					}
