@@ -213,6 +213,9 @@ public:
 			hr = EnsureDirHasBackslash (pszLocation, _projectDir); RETURN_IF_FAILED(hr);
 		}
 
+		for (auto& c : _configs)
+			c->SetSite(this);
+
 		_isDirty = false;
 		return S_OK;
 	}
@@ -2178,7 +2181,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE AddCfgsOfCfgName(LPCOLESTR pszCfgName, LPCOLESTR pszCloneCfgName, BOOL fPrivate) override
 	{
 		com_ptr<IProjectConfig> newConfig;
-		auto hr = MakeProjectConfig (this, &newConfig); RETURN_IF_FAILED_EXPECTED(hr);
+		auto hr = MakeProjectConfig (&newConfig); RETURN_IF_FAILED_EXPECTED(hr);
 
 		if (pszCloneCfgName)
 		{
@@ -2209,14 +2212,18 @@ public:
 		hr = newConfig->AsProjectConfigProperties()->put_ConfigName(newConfigNameBstr.get()); RETURN_IF_FAILED(hr);
 
 		bool pushed = _configs.try_push_back(std::move(newConfig)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-		auto removeBack = wil::scope_exit([this] { _configs.remove_back(); });
+		hr = _configs.back()->SetSite(this);
+		if (FAILED(hr))
+		{
+			_configs.remove_back();
+			RETURN_HR(hr);
+		}
 
 		_isDirty = true;
 
 		for (auto& sink : _cfgProviderEventSinks)
 			sink.second->OnCfgNameAdded(pszCfgName);
 
-		removeBack.release();
 		return S_OK;
 	}
 
@@ -2668,7 +2675,7 @@ public:
 		if (dispidProperty == dispidConfigurations)
 		{
 			com_ptr<IProjectConfig> config;
-			hr = MakeProjectConfig(this, &config); RETURN_IF_FAILED(hr);
+			hr = MakeProjectConfig(&config); RETURN_IF_FAILED(hr);
 			com_ptr<IProjectConfigProperties> props;
 			hr = config->QueryInterface(&props);
 			*childOut = props.detach();

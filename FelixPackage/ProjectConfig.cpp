@@ -50,15 +50,13 @@ struct ProjectConfig
 	WeakRefToThis _weakRefToThis;
 
 public:
-	HRESULT InitInstance (IProjectNode* project)
+	HRESULT InitInstance()
 	{
 		HRESULT hr;
 		_threadId = GetCurrentThreadId();
 		_platformName = wil::make_bstr_nothrow(L"ZX Spectrum 48K"); RETURN_IF_NULL_ALLOC(_platformName);
 		
 		hr = _weakRefToThis.InitInstance(static_cast<IProjectConfig*>(this)); RETURN_IF_FAILED(hr);
-
-		hr = project->QueryInterface(IID_PPV_ARGS(_hier.addressof())); RETURN_IF_FAILED(hr);
 
 		hr = AssemblerPageProperties_CreateInstance(this, &_assemblerProps); RETURN_IF_FAILED(hr);
 		hr = AdviseSink<IPropertyNotifySink>(_assemblerProps, _weakRefToThis, &_assemblerPropsAdviseToken); RETURN_IF_FAILED(hr);
@@ -577,6 +575,11 @@ public:
 	#pragma endregion
 
 	#pragma region IProjectConfig
+	virtual HRESULT SetSite (IProjectNode* proj) override
+	{
+		return proj->QueryInterface(IID_PPV_ARGS(&_hier));
+	}
+
 	virtual HRESULT GetSite (REFIID riid, void** ppvObject) override
 	{
 		return _hier->QueryInterface(riid, ppvObject);
@@ -704,9 +707,15 @@ public:
 	#pragma region IPropertyNotifySink
 	virtual HRESULT STDMETHODCALLTYPE OnChanged (DISPID dispID) override
 	{
-		com_ptr<IPropertyNotifySink> pns;
-		auto hr = _hier->QueryInterface(&pns); RETURN_IF_FAILED(hr);
-		pns->OnChanged(dispidConfigurations);
+		HRESULT hr;
+
+		if (_hier)
+		{
+			com_ptr<IPropertyNotifySink> pns;
+			hr = _hier->QueryInterface(&pns); RETURN_IF_FAILED(hr);
+			pns->OnChanged(dispidConfigurations);
+		}
+
 		return S_OK;
 	}
 
@@ -717,10 +726,10 @@ public:
 	#pragma endregion
 };
 
-FELIX_API HRESULT MakeProjectConfig (IProjectNode* project, IProjectConfig** to)
+HRESULT MakeProjectConfig (IProjectConfig** to)
 {
 	auto p = com_ptr(new (std::nothrow) ProjectConfig()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance(project); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance(); RETURN_IF_FAILED(hr);
 	*to = p.detach();
 	return S_OK;
 }

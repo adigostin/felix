@@ -113,6 +113,7 @@ IFolderNode : IChildNode
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("56831DCD-0782-48BE-BF8A-57827FC0D6CA")
 IProjectConfig : IUnknown
 {
+	virtual HRESULT SetSite (IProjectNode* proj) = 0;
 	virtual HRESULT GetSite (REFIID riid, void** ppvObject) = 0;
 	virtual HRESULT STDMETHODCALLTYPE GetOutputDirectory (BSTR* pbstr) = 0;
 	virtual IProjectConfigProperties* AsProjectConfigProperties() = 0;
@@ -150,7 +151,7 @@ inline HRESULT InitVariantFromVSITEMID (VSITEMID itemid, VARIANT* pvar)
 
 FELIX_API HRESULT MakeProjectNode (LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject);
 FELIX_API HRESULT MakeFileNode (IFileNode** file);
-FELIX_API HRESULT MakeProjectConfig (IProjectNode* project, IProjectConfig** to);
+HRESULT MakeProjectConfig (IProjectConfig** to);
 HRESULT MakeProjectFactory (IVsProjectFactory** to);
 HRESULT MakePGPropertyPage (UINT titleStringResId, REFGUID pageGuid, DISPID dispidChildObj, IPropertyPage** to);
 HRESULT MakeAsmPropertyPage (IPropertyPage** to);
