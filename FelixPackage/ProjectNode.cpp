@@ -32,6 +32,7 @@ class ProjectNode
 	, IPropertyNotifySink // this implementation only used to mark the project as dirty
 	, IVsPerPropertyBrowsing
 	, IVsUpdateSolutionEvents
+	, IVsHierarchyEvents // this implementation forwards to sinks hierarchy events generated in descendants
 {
 	ULONG _refCount = 0;
 	GUID _projectInstanceGuid;
@@ -370,6 +371,7 @@ public:
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 			|| TryQI<IVsUpdateSolutionEvents>(this, riid, ppvObject)
+			|| TryQI<IVsHierarchyEvents>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -1768,64 +1770,6 @@ public:
 		RETURN_HR(E_FAIL);
 	}
 
-	struct EnumHierarchyEvents : IEnumHierarchyEvents
-	{
-		ULONG _refCount = 0;
-		vector_nothrow<com_ptr<IVsHierarchyEvents>> _sinks;
-		uint32_t _next = 0;
-
-		static HRESULT CreateInstance (ProjectNode* proj, IEnumHierarchyEvents** ppEnum)
-		{
-			auto p = com_ptr(new (std::nothrow) EnumHierarchyEvents()); RETURN_IF_NULL_ALLOC(p);
-			bool reserved = p->_sinks.try_reserve(proj->_hierarchyEventSinks.size()); RETURN_HR_IF(E_OUTOFMEMORY, !reserved);
-			// It's important to make a copy of the sink collection because VS might
-			// call AdviseHierarchyEvents / UnadviseHierarchyEvents even as we are invoking the sinks.
-			for (auto& sink : proj->_hierarchyEventSinks)
-				p->_sinks.try_push_back(sink.second);
-			*ppEnum = p.detach();
-			return S_OK;
-		}
-
-		#pragma region IUnknown
-		virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override { RETURN_HR(E_NOTIMPL); }
-
-		virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
-
-		virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
-		#pragma endregion
-
-		#pragma region IEnumHierarchyEvents
-		virtual HRESULT STDMETHODCALLTYPE Next (ULONG celt, IVsHierarchyEvents** rgelt, ULONG* pceltFetched) override
-		{
-			RETURN_HR_IF(E_NOTIMPL, celt != 1);
-			if (_next >= _sinks.size())
-			{
-				*rgelt = nullptr;
-				*pceltFetched = 0;
-				return S_FALSE;
-			}
-
-			*rgelt = _sinks[_next];
-			(*rgelt)->AddRef();
-			*pceltFetched = 1;
-			_next++;
-			return S_OK;
-		}
-
-		virtual HRESULT STDMETHODCALLTYPE Skip (ULONG celt) override { RETURN_HR(E_NOTIMPL); }
-
-		virtual HRESULT STDMETHODCALLTYPE Reset() override
-		{
-			_next = 0;
-			return S_OK;
-		}
-
-		virtual HRESULT STDMETHODCALLTYPE Clone(IEnumHierarchyEvents **ppEnum) override { RETURN_HR(E_NOTIMPL); }
-
-		virtual HRESULT STDMETHODCALLTYPE GetCount(ULONG *pcelt) override { RETURN_HR(E_NOTIMPL); }
-		#pragma endregion
-	};
-
 	HRESULT AddNewFile (IParentNode* location, LPCTSTR pszFullPathSource, LPCTSTR pszNewFileName, IChildNode** ppNewNode)
 	{
 		HRESULT hr;
@@ -2748,11 +2692,6 @@ public:
 		return _nextItemId++;
 	}
 
-	virtual HRESULT EnumHierarchyEventSinks(IEnumHierarchyEvents **ppSinks)
-	{
-		return EnumHierarchyEvents::CreateInstance(this, ppSinks);
-	}
-
 	virtual HRESULT GetAutoOpenFiles (BSTR* pbstrFilenames) override
 	{
 		if (!_autoOpenFiles || !_autoOpenFiles.get()[0])
@@ -2866,6 +2805,50 @@ public:
 			hr = GeneratePrePostIncludeFiles(this, name.get(), mr); RETURN_IF_FAILED(hr);
 		}
 
+		return S_OK;
+	}
+	#pragma endregion
+
+	#pragma region IVsHierarchyEvents
+	virtual HRESULT STDMETHODCALLTYPE OnItemAdded (VSITEMID itemidParent, VSITEMID itemidSiblingPrev, VSITEMID itemidAdded) override
+	{
+		for (auto& sink : _hierarchyEventSinks)
+			sink.second->OnItemAdded (itemidParent, itemidSiblingPrev, itemidAdded);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnItemsAppended (VSITEMID itemidParent) override
+	{
+		for (auto& sink : _hierarchyEventSinks)
+			sink.second->OnItemsAppended(itemidParent);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnItemDeleted (VSITEMID itemid) override
+	{
+		for (auto& sink : _hierarchyEventSinks)
+			sink.second->OnItemDeleted(itemid);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged (VSITEMID itemid, VSHPROPID propid, DWORD flags) override
+	{
+		for (auto& sink : _hierarchyEventSinks)
+			sink.second->OnPropertyChanged(itemid, propid, flags);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnInvalidateItems (VSITEMID itemidParent) override
+	{
+		for (auto& sink : _hierarchyEventSinks)
+			sink.second->OnInvalidateItems(itemidParent);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnInvalidateIcon (HICON hicon) override
+	{
+		for (auto& sink : _hierarchyEventSinks)
+			sink.second->OnInvalidateIcon(hicon);
 		return S_OK;
 	}
 	#pragma endregion

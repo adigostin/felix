@@ -448,23 +448,16 @@ public:
 
 	HRESULT SortAfterRename (IVsHierarchy* hier, IParentNode* parent)
 	{
+		HRESULT hr;
+
 		auto first = wil::try_com_query_nothrow<IFolderNode>(parent->FirstChild());
 		if (first->Next() && wil::try_com_query_nothrow<IFolderNode>(first->Next()))
 		{
 			// We're not the only folder. Need to attempt reordering.
-			wil::unique_variant n;
+			com_ptr<IVsHierarchyEvents> hierEvents;
+			hr = hier->QueryInterface(IID_PPV_ARGS(&hierEvents)); RETURN_IF_FAILED(hr);
 
-			auto invalidateParentItems = [hier, parent]
-				{
-					com_ptr<IEnumHierarchyEvents> enu;
-					if (SUCCEEDED(wil::try_com_query_nothrow<IProjectNode>(hier)->EnumHierarchyEventSinks(&enu)))
-					{
-						com_ptr<IVsHierarchyEvents> sink;
-						ULONG fetched;
-						while (SUCCEEDED(enu->Next(1, &sink, &fetched)) && fetched)
-							sink->OnInvalidateItems(parent->GetItemId());
-					}
-				};
+			wil::unique_variant n;
 
 			// Special cases at the beginning of the list: Are we the first folder? 
 			if (this == first)
@@ -490,7 +483,7 @@ public:
 					_next = moveAfter->Next();
 					moveAfter->SetNext(this);
 
-					invalidateParentItems();
+					hierEvents->OnInvalidateItems(parent->GetItemId());
 				}
 			}
 			// If we're not the first folder, do we need to become the first?
@@ -507,7 +500,7 @@ public:
 				_next = parent->FirstChild();
 				parent->SetFirstChild(this);
 
-				invalidateParentItems();
+				hierEvents->OnInvalidateItems(parent->GetItemId());
 			}
 			else
 			{
@@ -532,7 +525,7 @@ public:
 					_next = moveAfter->Next();
 					moveAfter->SetNext(this);
 
-					invalidateParentItems();
+					hierEvents->OnInvalidateItems(parent->GetItemId());
 				}
 			}
 		}
@@ -632,21 +625,13 @@ public:
 
 		SortAfterRename(hier, parent);
 
-		com_ptr<IEnumHierarchyEvents> enu;
-		hr = hier.try_query<IProjectNode>()->EnumHierarchyEventSinks(&enu);
-		if (SUCCEEDED(hr))
-		{
-			com_ptr<IVsHierarchyEvents> sink;
-			ULONG fetched;
-			while (SUCCEEDED(enu->Next(1, &sink, &fetched)) && fetched)
-			{
-				sink->OnPropertyChanged (_itemId, VSHPROPID_SaveName, 0);
-				sink->OnPropertyChanged (_itemId, VSHPROPID_Caption, 0);
-				sink->OnPropertyChanged (_itemId, VSHPROPID_Name, 0);
-				sink->OnPropertyChanged (_itemId, VSHPROPID_EditLabel, 0);
-				sink->OnPropertyChanged (_itemId, VSHPROPID_DescriptiveName, 0);
-			}
-		}
+		com_ptr<IVsHierarchyEvents> sink;
+		hr = hier->QueryInterface(IID_PPV_ARGS(&sink)); RETURN_IF_FAILED(hr);
+		sink->OnPropertyChanged (_itemId, VSHPROPID_SaveName, 0);
+		sink->OnPropertyChanged (_itemId, VSHPROPID_Caption, 0);
+		sink->OnPropertyChanged (_itemId, VSHPROPID_Name, 0);
+		sink->OnPropertyChanged (_itemId, VSHPROPID_EditLabel, 0);
+		sink->OnPropertyChanged (_itemId, VSHPROPID_DescriptiveName, 0);
 
 		// Make sure the property browser is updated.
 		com_ptr<IVsUIShell> uiShell;

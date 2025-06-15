@@ -1005,19 +1005,14 @@ public:
 		// (build tool remains unchanged when renaming for example from .cpp to .h)
 		//_buildTool = _wcsicmp(PathFindExtension(_pathRelativeToProjectDir.get()), L".asm") ? BuildToolKind::None : BuildToolKind::Assembler;
 
-		com_ptr<IEnumHierarchyEvents> enu;
-		hr = hier.try_query<IProjectNode>()->EnumHierarchyEventSinks(&enu); RETURN_IF_FAILED(hr);
 		com_ptr<IVsHierarchyEvents> sink;
-		ULONG fetched;
-		while (SUCCEEDED(enu->Next(1, &sink, &fetched)) && fetched)
-		{
-			sink->OnPropertyChanged(_itemId, VSHPROPID_Caption, 0);
-			sink->OnPropertyChanged(_itemId, VSHPROPID_Name, 0);
-			sink->OnPropertyChanged(_itemId, VSHPROPID_SaveName, 0);
-			sink->OnPropertyChanged(_itemId, VSHPROPID_DescriptiveName, 0);
-			sink->OnPropertyChanged(_itemId, VSHPROPID_StateIconIndex, 0);
-			sink->OnPropertyChanged(_itemId, VSHPROPID_IconMonikerId, 0);
-		}
+		hr = hier->QueryInterface(IID_PPV_ARGS(&sink)); RETURN_IF_FAILED(hr);
+		sink->OnPropertyChanged(_itemId, VSHPROPID_Caption, 0);
+		sink->OnPropertyChanged(_itemId, VSHPROPID_Name, 0);
+		sink->OnPropertyChanged(_itemId, VSHPROPID_SaveName, 0);
+		sink->OnPropertyChanged(_itemId, VSHPROPID_DescriptiveName, 0);
+		sink->OnPropertyChanged(_itemId, VSHPROPID_StateIconIndex, 0);
+		sink->OnPropertyChanged(_itemId, VSHPROPID_IconMonikerId, 0);
 
 		// Make sure the property browser is updated.
 		com_ptr<IVsUIShell> uiShell;

@@ -690,10 +690,12 @@ static HRESULT SetItemIdsTree (IChildNode* child, IChildNode* childPrevSibling, 
 {
 	com_ptr<IProjectNode> root;
 	auto hr = FindHier(addTo, IID_PPV_ARGS(&root)); RETURN_IF_FAILED(hr);
+	com_ptr<IVsHierarchyEvents> rootEvents;
+	hr = root->QueryInterface(IID_PPV_ARGS(&rootEvents)); RETURN_IF_FAILED(hr);
 
 	stdext::inplace_function<HRESULT(IChildNode*, IChildNode*, IParentNode*)> enumNodeAndChildren;
 
-	enumNodeAndChildren = [root, &enumNodeAndChildren](IChildNode* node, IChildNode* nodePrevSibling, IParentNode* nodeParent) -> HRESULT
+	enumNodeAndChildren = [root=root.get(), rootEvents=rootEvents.get(), &enumNodeAndChildren](IChildNode* node, IChildNode* nodePrevSibling, IParentNode* nodeParent) -> HRESULT
 		{
 			auto hr = node->SetItemId(nodeParent, root->MakeItemId()); RETURN_IF_FAILED(hr);
 
@@ -708,20 +710,11 @@ static HRESULT SetItemIdsTree (IChildNode* child, IChildNode* childPrevSibling, 
 				}
 			}
 
-			com_ptr<IEnumHierarchyEvents> eventSinks;
-			if (SUCCEEDED(root->EnumHierarchyEventSinks(&eventSinks)) && eventSinks)
-			{
-				com_ptr<IVsHierarchyEvents> sink;
-				ULONG fetched;
-				while (SUCCEEDED(eventSinks->Next(1, &sink, &fetched)) && fetched)
-				{
-					VSITEMID itemidSiblingPrev = nodePrevSibling ? nodePrevSibling->GetItemId() : VSITEMID_NIL;
-					sink->OnItemAdded (nodeParent->GetItemId(), itemidSiblingPrev, node->GetItemId());
+			VSITEMID itemidSiblingPrev = nodePrevSibling ? nodePrevSibling->GetItemId() : VSITEMID_NIL;
+			rootEvents->OnItemAdded (nodeParent->GetItemId(), itemidSiblingPrev, node->GetItemId());
 
-					// Since our expandable status may have changed, we need to refresh it in the UI.
-					sink->OnPropertyChanged (nodeParent->GetItemId(), VSHPROPID_Expandable, 0);
-				}
-			}
+			// Since our expandable status may have changed, we need to refresh it in the UI.
+			rootEvents->OnPropertyChanged (nodeParent->GetItemId(), VSHPROPID_Expandable, 0);
 
 			return S_OK;
 		};
@@ -859,9 +852,12 @@ HRESULT GetOrCreateChildFolder (IParentNode* parent, std::wstring_view folderNam
 // Enum depth-first (just because it's simpler) post-order mode (so that children clear their ItemId before parent).
 static HRESULT ClearItemIdsTree (IProjectNode* root, IChildNode* child)
 {
+	com_ptr<IVsHierarchyEvents> rootEvents;
+	auto hr = root->QueryInterface(IID_PPV_ARGS(&rootEvents)); RETURN_IF_FAILED(hr);
+
 	stdext::inplace_function<HRESULT(IChildNode*)> enumNodeAndChildren;
 
-	enumNodeAndChildren = [root, &enumNodeAndChildren](IChildNode* node) -> HRESULT
+	enumNodeAndChildren = [root, rootEvents=rootEvents.get(), &enumNodeAndChildren](IChildNode* node) -> HRESULT
 		{
 			HRESULT hr;
 
@@ -877,14 +873,7 @@ static HRESULT ClearItemIdsTree (IProjectNode* root, IChildNode* child)
 			VSITEMID itemId = node->GetItemId();
 			hr = node->ClearItemId(); RETURN_IF_FAILED(hr);
 
-			com_ptr<IEnumHierarchyEvents> eventSinks;
-			if (SUCCEEDED(root->EnumHierarchyEventSinks(&eventSinks)) && eventSinks)
-			{
-				com_ptr<IVsHierarchyEvents> sink;
-				ULONG fetched;
-				while (SUCCEEDED(eventSinks->Next(1, &sink, &fetched)) && fetched)
-					sink->OnItemDeleted(itemId);
-			}
+			rootEvents->OnItemDeleted(itemId);
 
 			return S_OK;
 		};

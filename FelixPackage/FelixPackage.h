@@ -42,16 +42,6 @@ __interface IProjectConfigBuilder : IUnknown
 	HRESULT STDMETHODCALLTYPE CancelBuild();
 };
 
-struct DECLSPEC_NOVTABLE DECLSPEC_UUID("525B565F-9554-4F51-BECF-CA214A2780E2")
-IEnumHierarchyEvents : IUnknown
-{
-	virtual HRESULT Next (ULONG celt, IVsHierarchyEvents** rgelt, ULONG* pceltFetched) = 0;
-	virtual HRESULT Skip(ULONG celt) = 0;
-	virtual HRESULT Reset() = 0;
-	virtual HRESULT Clone(IEnumHierarchyEvents** ppEnum) = 0;
-	virtual HRESULT GetCount(ULONG* pcelt) = 0;
-};
-
 struct IChildNode;
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("29DDAB6E-5A2E-4BD8-A617-E1EAA90E30DA")
@@ -72,7 +62,6 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("F36A3A6C-01AF-423B-86FD-DB071AA47E97")
 IProjectNode : INode
 {
 	virtual VSITEMID MakeItemId() = 0;
-	virtual HRESULT EnumHierarchyEventSinks (IEnumHierarchyEvents** ppSinks) = 0;
 	virtual HRESULT GetAutoOpenFiles (BSTR* pbstrFilenames) = 0; // TODO: AsProjectNodeProperties()->get_AutoOpenFile
 	virtual IParentNode* AsParentNode() = 0;
 	virtual IVsUIHierarchy* AsHierarchy() = 0;
