@@ -10,9 +10,15 @@ extern wil::unique_process_heap_string templateFullPath;
 extern wil::unique_process_heap_string TemplatePath_EmptyProject;
 extern wil::unique_process_heap_string TemplatePath_EmptyFile;
 extern wchar_t tempPath[MAX_PATH + 1];
+extern const GUID FelixProjectType;
 
 namespace FelixTests
 {
+	struct DECLSPEC_NOVTABLE DECLSPEC_UUID("B82AFB90-FF61-4B05-AD2F-760CD09443E2") IMockPropertyNotifySink : IUnknown
+	{
+		virtual bool IsChanged (DISPID dispid) const = 0;
+	};
+
 	com_ptr<IFileNode> MakeFileNode (const wchar_t* pathRelativeToProjectDir);
 	VSITEMID AddFolderNode (IVsUIHierarchy* hier, VSITEMID addTo, const wchar_t* name);
 	void WriteFileOnDisk(const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir, const char* fileContent = nullptr);
@@ -21,6 +27,7 @@ namespace FelixTests
 	com_ptr<IProjectConfig> AddDebugProjectConfig (IVsHierarchy* hier);
 	com_ptr<IVsOutputWindowPane2> MakeMockOutputWindowPane (IStream* outputStreamUTF16);
 	com_ptr<IServiceProvider> MakeMockServiceProvider();
+	com_ptr<IMockPropertyNotifySink> MakeMockPropertyNotifySink();
 }
 
 using PropChangedCallback = stdext::inplace_function<void(VSITEMID itemid, VSHPROPID propid, DWORD flags)>;

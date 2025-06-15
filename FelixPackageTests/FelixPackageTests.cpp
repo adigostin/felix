@@ -51,7 +51,8 @@ namespace FelixTests
 		Assert::IsTrue (end < tempPath + _countof(tempPath) - 1);
 		end[1] = 0;
 		SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = tempPath, .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
-		SHFileOperation(&file_op);
+		int ires = SHFileOperation(&file_op);
+		Assert::AreEqual(0, ires);
 		BOOL bres = CreateDirectory(tempPath, 0);
 		Assert::IsTrue(bres);
 

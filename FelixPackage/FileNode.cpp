@@ -801,9 +801,10 @@ public:
 				com_ptr<IPropertyNotifySink> sink;
 				auto hr = FindHier(this, IID_PPV_ARGS(sink.addressof())); RETURN_IF_FAILED(hr);
 				sink->OnChanged(DISPID_UNKNOWN);
-				_propNotifyCP->NotifyPropertyChanged(dispidBuildToolKind);
-				_propNotifyCP->NotifyPropertyChanged(dispidCustomBuildToolProps);
 			}
+
+			_propNotifyCP->NotifyPropertyChanged(dispidBuildToolKind);
+			_propNotifyCP->NotifyPropertyChanged(dispidCustomBuildToolProps);
 		}
 
 		return S_OK;

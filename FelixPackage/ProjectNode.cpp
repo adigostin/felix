@@ -1526,6 +1526,8 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE IsDirty(BOOL* pfIsDirty) override
 	{
+		// VS calls this one to find out whether the project file is dirty.
+		// (See related IsItemDirty in this class.)
 		*pfIsDirty = _isDirty ? TRUE : FALSE;
 		return S_OK;
 	}
@@ -2497,13 +2499,9 @@ public:
 	#pragma region IVsPersistHierarchyItem
 	virtual HRESULT STDMETHODCALLTYPE IsItemDirty (VSITEMID itemid, IUnknown *punkDocData, BOOL *pfDirty) override
 	{
-		if (itemid == VSITEMID_ROOT)
-		{
-			wil::com_ptr_nothrow<IVsPersistDocData> docData;
-			auto hr = punkDocData->QueryInterface(&docData); RETURN_IF_FAILED(hr);
-			hr = docData->IsDocDataDirty(pfDirty); RETURN_IF_FAILED(hr);
-			return S_OK;
-		}
+		// VS calls this to find out if files open in the editor are dirty.
+		// It doesn't seem to ever call this for VSITEMID_ROOT.
+		RETURN_HR_IF(E_NOTIMPL, itemid == VSITEMID_ROOT);
 
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_SELECTION);
 		RETURN_HR_IF_EXPECTED(E_NOTIMPL, itemid == VSITEMID_NIL);

@@ -107,6 +107,7 @@ COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Conf
     <ClCompile Include="Mocks\MockRDT.cpp" />
     <ClCompile Include="Mocks\MockServiceProvider.cpp" />
     <ClCompile Include="Mocks\MockShell.cpp" />
+    <ClCompile Include="Mocks\MockSinks.cpp" />
     <ClCompile Include="Mocks\MockSolution.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>

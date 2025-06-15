@@ -319,8 +319,12 @@ public:
 template<typename ISink>
 inline HRESULT AdviseSink (IUnknown* source, IUnknown* sink, AdviseSinkToken* pToken)
 {
+	// Early test that the sink actually implements ISink.
+	com_ptr<ISink> unused;
+	auto hr = sink->QueryInterface(IID_PPV_ARGS(&unused)); RETURN_IF_FAILED(hr);
+
 	com_ptr<IConnectionPointContainer> cpc;
-	auto hr = source->QueryInterface(&cpc); RETURN_IF_FAILED(hr);
+	hr = source->QueryInterface(&cpc); RETURN_IF_FAILED(hr);
 	com_ptr<IConnectionPoint> cp;
 	hr = cpc->FindConnectionPoint(__uuidof(ISink), &cp); RETURN_IF_FAILED(hr);
 	DWORD dwCookie;

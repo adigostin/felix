@@ -658,7 +658,7 @@ HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path, bool
 	else
 		WI_ASSERT(path && path.get()[0] != L'\\');
 	wil::unique_variant name;
-	hr = hier->GetProperty(node->GetItemId(), VSHPROPID_SaveName, &name); RETURN_IF_FAILED(hr);
+	hr = node->GetProperty(VSHPROPID_SaveName, &name); RETURN_IF_FAILED(hr);
 	RETURN_HR_IF(E_UNEXPECTED, name.vt != VT_BSTR);
 	hr = wil::str_concat_nothrow(path, name.bstrVal); RETURN_IF_FAILED(hr);
 	return S_OK;

@@ -1,6 +1,7 @@
 
 #include "pch.h"
 #include "Mocks.h"
+#include "dispids.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -256,6 +257,57 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			Assert::AreEqual((PCWSTR)fileFullPath, (PCWSTR)mk.get());
+		}
+
+		TEST_METHOD(NotifyPropertyChanged_BuildToolKind)
+		{
+			com_ptr<IFileNode> file;
+			auto hr = MakeFileNode(&file);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			auto sink = MakeMockPropertyNotifySink();
+			AdviseSinkToken token;
+			hr = AdviseSink<IPropertyNotifySink>(file, sink, &token);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = file.try_query<IFileNodeProperties>()->put_BuildTool(BuildToolKind::Assembler);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			Assert::IsTrue(sink->IsChanged(dispidBuildToolKind));
+		}
+
+		TEST_METHOD(ProjectDirtyOnFilePropertyChange)
+		{
+			HRESULT hr;
+
+			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"ProjectDirtyOnFilePropertyChange\\");
+			CreateDirectory (testDir.get(), nullptr);
+
+			com_ptr<IVsSolution> sol;
+			serviceProvider->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
+			com_ptr<IVsUIHierarchy> hier;
+			sol->CreateProject (FelixProjectType, TemplatePath_EmptyProject.get(), testDir.get(), L"proj.flx", CPF_CLONEFILE, IID_PPV_ARGS(&hier));
+
+			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"a.asm");
+			hr = hier.try_query<IVsProject>()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, (LPCOLESTR*)filePath.addressof(), nullptr, nullptr); Assert::IsTrue(SUCCEEDED(hr));
+
+			auto pff = hier.try_query<IPersistFileFormat>();
+
+			BOOL dirty;
+			hr = pff->IsDirty(&dirty); Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsTrue(dirty);
+
+			hr = pff->Save(nullptr, TRUE, 0);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = pff->IsDirty(&dirty); Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsFalse(dirty);
+
+			auto fileProps = wil::try_com_query_failfast<IFileNodeProperties>(hier.try_query<IParentNode>()->FirstChild());
+			fileProps->put_BuildTool(BuildToolKind::None);
+
+			hr = pff->IsDirty(&dirty); Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsTrue(dirty);
 		}
 	};
 }

@@ -7,8 +7,6 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-extern const GUID FelixProjectType = { 0xD438161C, 0xF032, 0x4014, { 0xBC, 0x5C, 0x20, 0xA8, 0x0E, 0xAF, 0xF5, 0x9B } };
-
 namespace FelixTests
 {
 	TEST_CLASS(ProjectTests)

@@ -23,6 +23,7 @@
 #include <ShObjIdl.h>
 #undef EnumProcesses
 
+#include <fpstfmt.h>
 #include <ivstrackprojectdocuments2.h>
 #include <ivsqueryeditquerysave2.h>
 #include <msdbg.h>
