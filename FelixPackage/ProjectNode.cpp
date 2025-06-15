@@ -9,7 +9,6 @@
 #include "dispids.h"
 #include "guids.h"
 #include "../FelixPackageUi/resource.h"
-#include <string_view>
 
 // What MPF implements: https://docs.microsoft.com/en-us/visualstudio/extensibility/internals/project-model-core-components?view=vs-2022
 class ProjectNode

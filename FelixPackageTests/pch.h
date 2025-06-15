@@ -12,8 +12,6 @@
 #define _HAS_EXCEPTIONS 0 // Visual C++ headers look at this
 #undef __EXCEPTIONS // WIL and Intellisense look at this
 
-#include <string_view>
-
 #include <Windows.h>
 #undef GetClassName
 #undef GetClassInfo

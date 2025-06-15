@@ -228,7 +228,7 @@ public:
 		hr = _assemblerProps->get_EntryPointAddress(&epAddressStr); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_NOTIMPL, !epAddressStr);
 		wchar_t* endPtr;
-		DWORD epAddress = std::wcstoul(epAddressStr.get(), &endPtr, 10); RETURN_HR_IF(E_NOTIMPL, endPtr != epAddressStr.get() + SysStringLen(epAddressStr.get()));
+		DWORD epAddress = wcstoul(epAddressStr.get(), &endPtr, 10); RETURN_HR_IF(E_NOTIMPL, endPtr != epAddressStr.get() + SysStringLen(epAddressStr.get()));
 		opts->put_LoadAddress(loadAddress);
 		opts->put_EntryPointAddress(epAddress);
 
@@ -396,9 +396,7 @@ public:
 	// IProjectMacroResolver
 	virtual HRESULT STDMETHODCALLTYPE ResolveMacro (const char* macroFrom, const char* macroTo, char** valueCoTaskMem) override
 	{
-		auto sv = std::string_view{ macroFrom, macroTo };
-
-		if (sv == "LOAD_ADDR")
+		if (!strncmp(macroFrom, "LOAD_ADDR", 9))
 		{
 			unsigned long loadAddress;
 			auto hr = _debugProps->get_LoadAddress(&loadAddress); RETURN_IF_FAILED(hr);
@@ -408,7 +406,7 @@ public:
 			*valueCoTaskMem = value.release();
 			return S_OK;
 		}
-		else if (sv == "DEVICE")
+		else if (!strncmp(macroFrom, "DEVICE", 6))
 		{
 			static const char name[] = "ZXSPECTRUM48";
 			char* value = (char*)CoTaskMemAlloc(_countof(name)); RETURN_IF_NULL_ALLOC(value);
@@ -416,7 +414,7 @@ public:
 			*valueCoTaskMem = value;
 			return S_OK;
 		}
-		else if (sv == "ENTRY_POINT_ADDR")
+		else if (!strncmp(macroFrom, "ENTRY_POINT_ADDR", 16))
 		{
 			wil::unique_bstr addr;
 			auto hr = _assemblerProps->get_EntryPointAddress(&addr); RETURN_IF_FAILED(hr);
