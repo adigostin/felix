@@ -1014,7 +1014,7 @@ HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectMacroR
 	return S_OK;
 }
 
-IFileNode* FindChildFileByName (IParentNode* parent, std::wstring_view fileName)
+IFileNode* FindChildFileByName (IParentNode* parent, const wchar_t* fileName)
 {
 	// Skip all folders.
 	auto child = parent->FirstChild();
@@ -1030,7 +1030,7 @@ IFileNode* FindChildFileByName (IParentNode* parent, std::wstring_view fileName)
 			return nullptr;
 
 		wil::unique_variant n;
-		if (SUCCEEDED(fn->GetProperty(VSHPROPID_SaveName, &n)) && V_VT(&n) == VT_BSTR && fileName == V_BSTR(&n))
+		if (SUCCEEDED(fn->GetProperty(VSHPROPID_SaveName, &n)) && V_VT(&n) == VT_BSTR && !_wcsicmp(fileName, V_BSTR(&n)))
 			return fn;
 
 		child = child->Next();

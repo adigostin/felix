@@ -190,6 +190,6 @@ struct DECLSPEC_NOVTABLE IProjectMacroResolver
 	virtual HRESULT STDMETHODCALLTYPE ResolveMacro (const char* macroFrom, const char* macroTo, char** ppszValueCoTaskMem) = 0;
 };
 HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectMacroResolver* macroResolver);
-IFileNode* FindChildFileByName (IParentNode* parent, std::wstring_view fileName);
+IFileNode* FindChildFileByName (IParentNode* parent, const wchar_t* fileName);
 HRESULT MakeFileNodeForExistingFile (LPCWSTR path, IFileNode** ppFile);
 
