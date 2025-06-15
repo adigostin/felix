@@ -448,7 +448,7 @@ public:
 		wil::unique_bstr genFilesStr;
 		hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERATED_FILES, &genFilesStr); RETURN_IF_FAILED(hr);
 		com_ptr<IFolderNode> folder;
-		hr = GetOrCreateChildFolder(project->AsParentNode(), genFilesStr.get(), &folder); RETURN_IF_FAILED(hr);
+		hr = GetOrCreateChildFolder(project->AsParentNode(), genFilesStr.get(), true, &folder); RETURN_IF_FAILED(hr);
 
 		for (ULONG resID : { IDS_PREINCLUDE, IDS_POSTINCLUDE })
 		{

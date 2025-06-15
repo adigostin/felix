@@ -273,24 +273,12 @@ static HRESULT Write (ISequentialStream* stream, const wchar_t* from, const wcha
 	return stream->Write(from, (ULONG)(to - from) * sizeof(wchar_t), nullptr);
 }
 
-FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOrNull, BSTR* ppCmdLine)
+FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine)
 {
 	HRESULT hr;
 
 	com_ptr<IVsShell> shell;
 	hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
-	wil::unique_bstr generatedFilesName, preincludeName, postincludeName;
-	shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERATED_FILES, &generatedFilesName); RETURN_IF_FAILED(hr);
-	shell->LoadPackageString(CLSID_FelixPackage, IDS_PREINCLUDE, &preincludeName); RETURN_IF_FAILED(hr);
-	shell->LoadPackageString(CLSID_FelixPackage, IDS_POSTINCLUDE, &postincludeName); RETURN_IF_FAILED(hr);
-
-	com_ptr<IProjectConfigAssemblerProperties> asmProps;
-	if (asmPropsOrNull)
-		asmProps = asmPropsOrNull;
-	else
-	{
-		hr = config->AsProjectConfigProperties()->get_AssemblerProperties(&asmProps); RETURN_IF_FAILED(hr);
-	}
 
 	wil::unique_variant projectDir;
 	hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, projectDir.addressof()); RETURN_IF_FAILED(hr);
@@ -301,22 +289,42 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 
 	vector_nothrow<com_ptr<IFileNodeProperties>> asmFiles;
 
+	wil::unique_bstr generatedFilesName;
+	hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERATED_FILES, &generatedFilesName); RETURN_IF_FAILED(hr);
+	com_ptr<IFolderNode> genFilesFolder;
+	com_ptr<IFileNodeProperties> preIncludeFile, postIncludeFile;
+	for (auto c = wil::try_com_query_nothrow<IParentNode>(hier)->FirstChild(); c; c = c->Next())
+	{
+		com_ptr<IFolderNode> folder;
+		wil::unique_variant folderName;
+		if (SUCCEEDED(c->QueryInterface(IID_PPV_ARGS(&folder)))
+			&& SUCCEEDED(folder->GetProperty(VSHPROPID_SaveName, &folderName))
+			&& folderName.vt == VT_BSTR && folderName.bstrVal
+			&& !wcscmp(folderName.bstrVal, generatedFilesName.get()))
+		{
+			wil::unique_bstr preincludeName, postincludeName;
+			hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_PREINCLUDE, &preincludeName); RETURN_IF_FAILED(hr);
+			hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_POSTINCLUDE, &postincludeName); RETURN_IF_FAILED(hr);
+
+			if (auto file = FindChildFileByName(folder->AsParentNode(), preincludeName.get()))
+				preIncludeFile = wil::try_com_query_nothrow<IFileNodeProperties>(file);
+
+			if (auto file = FindChildFileByName(folder->AsParentNode(), postincludeName.get()))
+				postIncludeFile = wil::try_com_query_nothrow<IFileNodeProperties>(file);
+
+			genFilesFolder = std::move(folder);
+			break;
+		}
+	}
+
 	stdext::inplace_function<HRESULT(IParentNode*)> enumDescendants;
 
-	enumDescendants = [&enumDescendants, &asmFiles, genFiles=generatedFilesName.get()](IParentNode* parent) -> HRESULT
+	enumDescendants = [&enumDescendants, &asmFiles, &genFilesFolder](IParentNode* parent) -> HRESULT
 		{
 			for (auto c = parent->FirstChild(); c; c = c->Next())
 			{
-				com_ptr<IFolderNode> folder;
-				wil::unique_variant folderName;
-				if (parent->GetItemId() == VSITEMID_ROOT
-					&& SUCCEEDED(c->QueryInterface(IID_PPV_ARGS(&folder)))
-					&& SUCCEEDED(folder->GetProperty(VSHPROPID_SaveName, &folderName))
-					&& folderName.vt == VT_BSTR && folderName.bstrVal
-					&& !wcscmp(folderName.bstrVal, genFiles))
-				{
+				if (c == genFilesFolder)
 					continue;
-				}
 
 				if (auto file = wil::try_com_query_nothrow<IFileNodeProperties>(c))
 				{
@@ -335,7 +343,11 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 
 			return S_OK;
 		};
+	if (preIncludeFile)
+		asmFiles.try_push_back(std::move(preIncludeFile));
 	hr = enumDescendants(wil::try_com_query_nothrow<IParentNode>(hier)); RETURN_IF_FAILED(hr);
+	if (postIncludeFile)
+		asmFiles.try_push_back(std::move(postIncludeFile));
 
 	if (asmFiles.empty())
 		return (*ppCmdLine = nullptr), S_OK;
@@ -372,6 +384,14 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 			return S_OK;
 		};
 
+	com_ptr<IProjectConfigAssemblerProperties> asmProps;
+	if (asmPropsOverride)
+		asmProps = asmPropsOverride;
+	else
+	{
+		hr = config->AsProjectConfigProperties()->get_AssemblerProperties(&asmProps); RETURN_IF_FAILED(hr);
+	}
+
 	OutputFileType outputFileType;
 	hr = asmProps->get_OutputFileType(&outputFileType); RETURN_IF_FAILED(hr);
 	if (outputFileType == OutputFileType::Binary)
@@ -404,9 +424,6 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 	}
 
 	// input files
-	wil::unique_cotaskmem_string str;
-	hr = wil::str_printf_nothrow(str, L" %s\\%s", generatedFilesName.get(), preincludeName.get()); RETURN_IF_FAILED(hr);
-	hr = Write(cmdLine, str.get());
 	for (auto& asmFile : asmFiles)
 	{
 		wil::unique_bstr path;
@@ -427,8 +444,6 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 			hr = Write(cmdLine, path.get()); RETURN_IF_FAILED(hr);
 		}
 	}
-	hr = wil::str_printf_nothrow(str, L" %s\\%s", generatedFilesName.get(), postincludeName.get()); RETURN_IF_FAILED(hr);
-	hr = Write(cmdLine, str.get());
 
 	return MakeBstrFromStreamOnHGlobal (cmdLine, ppCmdLine);
 }
@@ -519,12 +534,15 @@ HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir, bool 
 	hr = node->GetParent(&parent); RETURN_IF_FAILED(hr);
 	if (auto hier = parent.try_query<IVsHierarchy>())
 	{
-		dir.reset();
 		if (!relativeToProjectDir)
 		{
 			wil::unique_variant projDir;
 			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projDir); RETURN_IF_FAILED(hr);
 			dir = wil::make_process_heap_string_nothrow(projDir.bstrVal); RETURN_IF_NULL_ALLOC(dir);
+		}
+		else
+		{
+			dir = wil::make_process_heap_string_nothrow(L""); RETURN_IF_NULL_ALLOC(dir);
 		}
 	}
 	else
@@ -532,18 +550,9 @@ HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir, bool 
 		com_ptr<IChildNode> parentAsChild;
 		hr = parent->QueryInterface(IID_PPV_ARGS(&parentAsChild)); RETURN_IF_FAILED(hr);
 		hr = GetPathTo (parentAsChild, dir, relativeToProjectDir);
-
 		wil::unique_variant parentName;
 		hr = parentAsChild->GetProperty(VSHPROPID_SaveName, &parentName); RETURN_IF_FAILED(hr);
-
-		if (dir && dir.get()[0])
-		{
-			hr = wil::str_concat_nothrow(dir, L"\\", parentName.bstrVal); RETURN_IF_FAILED(hr);
-		}
-		else
-		{
-			dir = wil::make_process_heap_string_nothrow(parentName.bstrVal); RETURN_IF_NULL_ALLOC(dir);
-		}
+		hr = wil::str_concat_nothrow(dir, parentName.bstrVal, L"\\"); RETURN_IF_FAILED(hr);
 	}
 		
 	return S_OK;
@@ -554,17 +563,14 @@ HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path, bool
 	com_ptr<IVsHierarchy> hier;
 	auto hr = FindHier(node, IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
 	hr = GetPathTo (node, path, relativeToProjectDir); RETURN_IF_FAILED(hr);
+	if (!relativeToProjectDir)
+		WI_ASSERT(path && path.get()[0] && wcschr(path.get(), 0)[-1] == L'\\');
+	else
+		WI_ASSERT(path && path.get()[0] != L'\\');
 	wil::unique_variant name;
 	hr = hier->GetProperty(node->GetItemId(), VSHPROPID_SaveName, &name); RETURN_IF_FAILED(hr);
 	RETURN_HR_IF(E_UNEXPECTED, name.vt != VT_BSTR);
-	if (path && path.get()[0])
-	{
-		hr = wil::str_concat_nothrow(path, L"\\", name.bstrVal); RETURN_IF_FAILED(hr);
-	}
-	else
-	{
-		path = wil::make_process_heap_string_nothrow(name.bstrVal); RETURN_IF_NULL_ALLOC(path);
-	}
+	hr = wil::str_concat_nothrow(path, name.bstrVal); RETURN_IF_FAILED(hr);
 	return S_OK;
 }
 
@@ -694,10 +700,22 @@ HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo)
 	return S_OK;
 }
 
-
-HRESULT GetOrCreateChildFolder (IParentNode* parent, std::wstring_view folderName, IFolderNode** ppFolder)
+HRESULT GetOrCreateChildFolder (IParentNode* parent, std::wstring_view folderName, bool createDirectoryOnFileSystem, IFolderNode** ppFolder)
 {
 	HRESULT hr;
+
+	auto createDir = [](IFolderNode* f) -> HRESULT
+		{
+			wil::unique_process_heap_string path;
+			auto hr = GetPathOf (f, path); RETURN_IF_FAILED(hr);
+			BOOL bres = ::CreateDirectoryW (path.get(), nullptr);
+			if (bres)
+				return S_OK;
+			DWORD le = GetLastError();
+			if (le == ERROR_ALREADY_EXISTS)
+				return S_OK;
+			RETURN_WIN32(le);
+		};
 
 	com_ptr<IChildNode> insertAfter;
 	com_ptr<IChildNode> insertBefore = parent->FirstChild();
@@ -713,6 +731,11 @@ HRESULT GetOrCreateChildFolder (IParentNode* parent, std::wstring_view folderNam
 			int cmpRes = folderName.compare(V_BSTR(&name));
 			if (cmpRes == 0)
 			{
+				if (createDirectoryOnFileSystem)
+				{
+					hr = createDir(insertBeforeAsFolder); RETURN_IF_FAILED(hr);
+				}
+
 				*ppFolder = insertBeforeAsFolder.detach();
 				return S_OK;
 			}
@@ -735,6 +758,10 @@ HRESULT GetOrCreateChildFolder (IParentNode* parent, std::wstring_view folderNam
 	else
 		insertAfter->SetNext(newFolder);
 	hr = SetItemIdsTree(newFolder, insertAfter, parent); RETURN_IF_FAILED(hr);
+	if (createDirectoryOnFileSystem)
+	{
+		hr = createDir(newFolder); RETURN_IF_FAILED(hr);
+	}
 	*ppFolder = newFolder.detach();
 	return S_OK;
 }
@@ -827,7 +854,7 @@ HRESULT CreatePathOfNode (IParentNode* node, wil::unique_process_heap_string& pa
 					return hr;
 				wil::unique_variant saveName;
 				hr = cn->GetProperty(VSHPROPID_SaveName, &saveName); RETURN_IF_FAILED(hr);
-				hr = wil::str_concat_nothrow(path, L"\\", saveName.bstrVal); RETURN_IF_FAILED(hr);
+				hr = wil::str_concat_nothrow(path, saveName.bstrVal, L"\\"); RETURN_IF_FAILED(hr);
 				DWORD attrs = GetFileAttributes(path.get());
 				if (attrs == INVALID_FILE_ATTRIBUTES)
 				{

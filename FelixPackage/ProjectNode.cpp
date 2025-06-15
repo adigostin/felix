@@ -169,7 +169,8 @@ public:
 
 		if (grfCreateFlags & CPF_CLONEFILE)
 		{
-			_projectDir = wil::make_hlocal_string_nothrow(pszLocation); RETURN_IF_NULL_ALLOC(_projectDir);
+			hr = EnsureDirHasBackslash (pszLocation, _projectDir); RETURN_IF_FAILED(hr);
+
 			_filename = wil::make_hlocal_string_nothrow(pszName); RETURN_IF_NULL_ALLOC(_filename);
 			const wchar_t* ext = ::PathFindExtension(pszName);
 			_caption = wil::make_hlocal_string_nothrow(pszName, ext - pszName); RETURN_IF_NULL_ALLOC(_caption);
@@ -187,28 +188,21 @@ public:
 
 			hr = SHCreateStreamOnFileEx (projFilePath, STGM_CREATE | STGM_WRITE | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, 0, nullptr, &stream); RETURN_IF_FAILED(hr);
 			hr = SaveToXml(this, ProjectElementName, 0, stream.get()); RETURN_IF_FAILED(hr);
-
-			_isDirty = false;
-			return S_OK;
 		}
 		else if (grfCreateFlags & CPF_OPENFILE)
 		{
 			// pszFilename is the full path of the file to open, the others are NULL.
-			_projectDir = wil::make_hlocal_string_nothrow(pszFilename); RETURN_IF_NULL_ALLOC(_projectDir);
-			PathRemoveFileSpec(_projectDir.get());
-
 			const wchar_t* fn = PathFindFileName(pszFilename);
+			
+			_projectDir = wil::make_hlocal_string_nothrow(pszFilename, fn - pszFilename); RETURN_IF_NULL_ALLOC(_projectDir);
+			
 			_filename = wil::make_hlocal_string_nothrow(fn); RETURN_IF_NULL_ALLOC(_filename);
-
 			const wchar_t* ext = PathFindExtension(pszFilename);
 			_caption = wil::make_hlocal_string_nothrow(fn, ext - fn); RETURN_IF_NULL_ALLOC(_caption);
 
 			com_ptr<IStream> stream;
-			auto hr = SHCreateStreamOnFileEx(pszFilename, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, 0, nullptr, &stream); RETURN_IF_FAILED_EXPECTED(hr);
+			hr = SHCreateStreamOnFileEx(pszFilename, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, 0, nullptr, &stream); RETURN_IF_FAILED_EXPECTED(hr);
 			hr = LoadFromXml (this, ProjectElementName, stream.get()); RETURN_IF_FAILED(hr);
-
-			_isDirty = false;
-			return S_OK;
 		}
 		else
 		{
@@ -216,16 +210,42 @@ public:
 			// It's useful for tests, where we need a blank project.
 			RETURN_HR_IF(E_UNEXPECTED, !!pszFilename);
 			RETURN_HR_IF(E_UNEXPECTED, !pszLocation);
+			hr = EnsureDirHasBackslash (pszLocation, _projectDir); RETURN_IF_FAILED(hr);
+		}
 
-			_projectDir = wil::make_hlocal_string_nothrow(pszLocation); RETURN_IF_NULL_ALLOC(_projectDir);
-
-			return S_OK;
-		}	
+		_isDirty = false;
+		return S_OK;
 	}
 
 	~ProjectNode()
 	{
 		WI_ASSERT (_cfgProviderEventSinks.empty());
+	}
+
+	static HRESULT EnsureDirHasBackslash (LPCOLESTR pszLocation, wil::unique_hlocal_string& dir)
+	{
+		RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), !pszLocation);
+		RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), !pszLocation[0]);
+		RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), PathIsRelative(pszLocation));
+
+		size_t len = wcslen(pszLocation);
+		if (pszLocation[len - 1] == '\\')
+		{
+			dir = wil::make_hlocal_string_nothrow(pszLocation, len); RETURN_IF_NULL_ALLOC(dir);
+		}
+		else if (pszLocation[len - 1] == '/')
+		{
+			dir = wil::make_hlocal_string_nothrow(pszLocation, len); RETURN_IF_NULL_ALLOC(dir);
+			dir.get()[len - 1] = '\\';
+		}
+		else
+		{
+			dir = wil::make_hlocal_string_failfast(pszLocation, len + 1); RETURN_IF_NULL_ALLOC(dir);
+			dir.get()[len] = '\\';
+			dir.get()[len + 1] = 0;
+		}
+
+		return S_OK;
 	}
 
 	// If found, returns S_OK and ppItem is non-null.
@@ -1816,9 +1836,11 @@ public:
 		// a corresponding directory in the file system. Let's make sure the directory exists.
 		wil::unique_process_heap_string locationDir;
 		hr = CreatePathOfNode(location, locationDir); RETURN_IF_FAILED_EXPECTED(hr);
+		size_t locationDirLen = wcslen(locationDir.get());
+		WI_ASSERT(locationDirLen && locationDir.get()[locationDirLen - 1] == L'\\');
 
 		wil::unique_hlocal_string dest;
-		hr = wil::str_concat_nothrow (dest, locationDir, L"\\", pszNewFileName); RETURN_IF_FAILED(hr);
+		hr = wil::str_concat_nothrow (dest, locationDir, pszNewFileName); RETURN_IF_FAILED(hr);
 
 		BOOL bres = CopyFile(pszFullPathSource, dest.get(), TRUE);
 		if (!bres)
@@ -1882,7 +1904,7 @@ public:
 					std::wstring_view dir = { ptrComponent, nextComp };
 					ptrComponent = nextComp + 1;
 					com_ptr<IFolderNode> ch;
-					hr = GetOrCreateChildFolder(parent, dir, &ch); RETURN_IF_FAILED(hr);
+					hr = GetOrCreateChildFolder(parent, dir, false, &ch); RETURN_IF_FAILED(hr);
 					parent = ch->AsParentNode(); 
 				}
 				if (FindChildFileByName(parent, ptrComponent))
@@ -2853,7 +2875,7 @@ public:
 		}
 
 		com_ptr<IFolderNode> newFolder;
-		hr = GetOrCreateChildFolder (parent, dirName, &newFolder); RETURN_IF_FAILED(hr);
+		hr = GetOrCreateChildFolder (parent, dirName, false, &newFolder); RETURN_IF_FAILED(hr);
 
 		_isDirty = true;
 
