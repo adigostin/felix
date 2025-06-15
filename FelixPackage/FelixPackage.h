@@ -167,7 +167,7 @@ FELIX_API HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProject
 HRESULT ShowCommandLinePropertyBuilder (HWND hwndParent, BSTR valueBefore, BSTR* valueAfter);
 HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, const wchar_t* configName, IProjectMacroResolver* macroResolver);
 FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine);
-FELIX_API HRESULT MakeFolderNode (IFolderNode** ppFolder);
+HRESULT MakeFolderNode (IFolderNode** ppFolder);
 BOOL LUtilFixFilename (wchar_t* strName);
 HRESULT QueryEditProjectFile (IVsHierarchy* hier);
 HRESULT GetHierarchyWindow (IVsUIHierarchyWindow** ppHierWindow);
@@ -176,7 +176,7 @@ HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path, bool
 HRESULT FindHier (IChildNode* from, REFIID riid, void** ppvHier);
 HRESULT FindHier (IParentNode* from, REFIID riid, void** ppvHier);
 HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo);
-HRESULT GetOrCreateChildFolder (IParentNode* parent, std::wstring_view folderName, bool createDirectoryOnFileSystem, IFolderNode** ppFolder);
+FELIX_API HRESULT GetOrCreateChildFolder (IParentNode* parent, const wchar_t* folderName, bool createDirectoryOnFileSystem, IFolderNode** ppFolder);
 HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* child);
 HRESULT CreatePathOfNode (IParentNode* node, wil::unique_process_heap_string& pathOut);
 HRESULT GetItems (IParentNode* itemsIn, SAFEARRAY** itemsOut);

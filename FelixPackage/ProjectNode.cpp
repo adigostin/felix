@@ -1866,10 +1866,10 @@ public:
 				auto ptrComponent = relative;
 				while (auto nextComp = wcschr(ptrComponent, L'\\'))
 				{
-					std::wstring_view dir = { ptrComponent, nextComp };
+					auto dir = wil::make_process_heap_string_nothrow (ptrComponent, nextComp - ptrComponent); RETURN_IF_NULL_ALLOC(dir);
 					ptrComponent = nextComp + 1;
 					com_ptr<IFolderNode> ch;
-					hr = GetOrCreateChildFolder(parent, dir, false, &ch); RETURN_IF_FAILED(hr);
+					hr = GetOrCreateChildFolder(parent, dir.get(), false, &ch); RETURN_IF_FAILED(hr);
 					parent = ch->AsParentNode(); 
 				}
 				if (FindChildFileByName(parent, ptrComponent))

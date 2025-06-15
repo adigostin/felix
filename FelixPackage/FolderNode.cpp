@@ -645,7 +645,7 @@ public:
 	}
 };
 
-FELIX_API HRESULT MakeFolderNode (IFolderNode** ppFolder)
+HRESULT MakeFolderNode (IFolderNode** ppFolder)
 {
 	auto p = com_ptr(new (std::nothrow) FolderNode()); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance(); RETURN_IF_FAILED(hr);

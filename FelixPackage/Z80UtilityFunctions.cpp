@@ -783,7 +783,7 @@ HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo)
 	return S_OK;
 }
 
-HRESULT GetOrCreateChildFolder (IParentNode* parent, std::wstring_view folderName, bool createDirectoryOnFileSystem, IFolderNode** ppFolder)
+FELIX_API HRESULT GetOrCreateChildFolder (IParentNode* parent, const wchar_t* folderName, bool createDirectoryOnFileSystem, IFolderNode** ppFolder)
 {
 	HRESULT hr;
 
@@ -811,8 +811,7 @@ HRESULT GetOrCreateChildFolder (IParentNode* parent, std::wstring_view folderNam
 		wil::unique_variant name;
 		if (SUCCEEDED(insertBeforeAsFolder->GetProperty(VSHPROPID_SaveName, &name)) && (V_VT(&name) == VT_BSTR))
 		{
-			int cmpRes = folderName.compare(V_BSTR(&name));
-			if (cmpRes == 0)
+			if (!_wcsicmp(folderName, V_BSTR(&name)))
 			{
 				if (createDirectoryOnFileSystem)
 				{
@@ -823,6 +822,7 @@ HRESULT GetOrCreateChildFolder (IParentNode* parent, std::wstring_view folderNam
 				return S_OK;
 			}
 			
+			int cmpRes = wcscmp(folderName, V_BSTR(&name));
 			if (cmpRes < 0)
 				break;
 		}
@@ -833,7 +833,7 @@ HRESULT GetOrCreateChildFolder (IParentNode* parent, std::wstring_view folderNam
 
 	com_ptr<IFolderNode> newFolder;
 	hr = MakeFolderNode (&newFolder); RETURN_IF_FAILED(hr);
-	auto name = wil::unique_bstr(SysAllocStringLen(folderName.data(), (UINT)folderName.size())); RETURN_IF_NULL_ALLOC(name);
+	auto name = wil::make_bstr_nothrow(folderName); RETURN_IF_NULL_ALLOC(name);
 	hr = newFolder.try_query<IFolderNodeProperties>()->put_Name(name.get()); RETURN_IF_FAILED(hr);
 	newFolder->SetNext(insertBefore);
 	if (!insertAfter)
