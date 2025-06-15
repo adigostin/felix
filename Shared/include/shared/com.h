@@ -470,16 +470,25 @@ HRESULT inline SetErrorInfo (HRESULT errorHR, LPCWSTR messageFormat, ...)
 	//if (wil::g_fBreakOnFailure)
 	//	__debugbreak();
 
-	va_list argptr;
-	va_start (argptr, messageFormat);
-	wchar_t message[256];
-	vswprintf_s(message, messageFormat, argptr);
-	va_end(argptr);
+	wil::unique_process_heap_string buffer;
+	for (size_t sz = 100; ; sz *= 2)
+	{
+		buffer = wil::make_process_heap_string_nothrow(nullptr, sz);
+		if (!buffer)
+			return errorHR;
+
+		va_list argptr;
+		va_start (argptr, messageFormat);
+		int ires = _vsnwprintf_s(buffer.get(), sz, _TRUNCATE, messageFormat, argptr);
+		va_end(argptr);
+		if (ires != -1)
+			break;
+	}
 
 	com_ptr<ICreateErrorInfo> cei;
 	if (SUCCEEDED(::CreateErrorInfo(&cei)))
 	{
-		if (SUCCEEDED(cei->SetDescription((LPOLESTR)message)))
+		if (SUCCEEDED(cei->SetDescription(buffer.get())))
 		{
 			com_ptr<IErrorInfo> ei;
 			if (SUCCEEDED(cei->QueryInterface(&ei)))
