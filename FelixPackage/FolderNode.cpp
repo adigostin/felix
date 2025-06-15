@@ -10,7 +10,7 @@
 
 using namespace Microsoft::VisualStudio::Imaging;
 
-struct FolderNode : IFolderNode, IParentNode, IFolderNodeProperties, IXmlParent
+struct FolderNode : IFolderNode, IParentNode, IFolderNodeProperties, IXmlParent, IVsPerPropertyBrowsing
 {
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _parent;
@@ -45,6 +45,7 @@ public:
 			|| TryQI<IParentNode>(this, riid, ppvObject)
 			|| TryQI<INode>(this, riid, ppvObject)
 			|| TryQI<IXmlParent>(this, riid, ppvObject)
+			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -61,7 +62,7 @@ public:
 
 	IMPLEMENT_IDISPATCH(IID_IFolderNodeProperties);
 
-	#pragma region IFolderNode
+	#pragma region IFolderNodeProperties
 	virtual HRESULT STDMETHODCALLTYPE get___id (BSTR *value) override
 	{
 		// Shown by VS at the top of the Properties Window.
@@ -401,6 +402,48 @@ public:
 
 	#pragma region IFolderNode
 	virtual IParentNode* AsParentNode() override { return this; }
+	#pragma endregion
+
+	#pragma region IVsPerPropertyBrowsing
+	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL *pfHide) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE DisplayChildProperties (DISPID dispid, BOOL *pfDisplay) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE GetLocalizedPropertyInfo (DISPID dispid, LCID localeID, BSTR *pbstrLocalizedName, BSTR *pbstrLocalizeDescription) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE HasDefaultValue (DISPID dispid, BOOL *fDefault) override
+	{
+		if (dispid == dispidFolderName)
+		{
+			*fDefault = FALSE;
+			return S_OK;
+		}
+
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE IsPropertyReadOnly (DISPID dispid, BOOL *fReadOnly) override
+	{
+		if (dispid == dispidFolderName)
+		{
+			// Too complicated to allow the user to edit this in the Properties window.
+			*fReadOnly = TRUE;
+			return S_OK;
+		}
+
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetClassName (BSTR *pbstrClassName) override
+	{
+		// Shown by VS at the top of the Properties Window.
+		*pbstrClassName = SysAllocString(L"Folder");
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE CanResetPropertyValue (DISPID dispid, BOOL* pfCanReset) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE ResetPropertyValue (DISPID dispid) override { return E_NOTIMPL; }
 	#pragma endregion
 
 	HRESULT SortAfterRename (IVsHierarchy* hier, IParentNode* parent)
