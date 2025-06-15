@@ -86,7 +86,7 @@ namespace FelixTests
 				WriteFileOnDisk(tempPath, L"test.asm", asmFileContent);
 			else
 				DeleteFileOnDisk(tempPath, L"test.asm");
-			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"\\test.asm");
+			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"test.asm");
 			LPCOLESTR filesToOpen[] = { filePath.get() };
 			hier.try_query<IVsProject>()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, filesToOpen, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -186,9 +186,8 @@ namespace FelixTests
 				WriteFileOnDisk(tempPath, sourceFileName, sourceFileContent);
 			else
 				DeleteFileOnDisk(tempPath, sourceFileName);
-			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"\\", sourceFileName);
-			LPCOLESTR filesToOpen[] = { filePath.get() };
-			hr = hier.try_query<IVsProject>()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, filesToOpen, nullptr, nullptr);
+			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, sourceFileName);
+			hr = hier.try_query<IVsProject>()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, (LPCOLESTR*)filePath.addressof(), nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto sourceFile = wil::try_com_query_nothrow<IFileNodeProperties>(hier.try_query<IParentNode>()->FirstChild());
 

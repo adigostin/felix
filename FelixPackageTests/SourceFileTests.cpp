@@ -90,16 +90,16 @@ namespace FelixTests
 
 		TEST_METHOD(RenameFileOutsideProjectDirSameDrive)
 		{
-			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"\\RenameFileOutsideProjectDirSameDrive");
+			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"RenameFileOutsideProjectDirSameDrive\\");
 			CreateDirectory (testDir.get(), nullptr);
-			auto projDir = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\projdir");
+			auto projDir = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"projdir\\");
 			CreateDirectory (projDir.get(), nullptr);
 
 			com_ptr<IVsHierarchy> hier;
 			auto hr = MakeProjectNode (TemplatePath_EmptyProject.get(), projDir.get(), L"proj.flx", CPF_CLONEFILE, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\file.asm");
+			auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"file.asm");
 			hr = hier.try_query<IVsProject>()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, (LPCOLESTR*)fileFullPath.addressof(), nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto fileProps = wil::try_com_query_nothrow<IFileNodeProperties>(hier.try_query<IParentNode>()->FirstChild());

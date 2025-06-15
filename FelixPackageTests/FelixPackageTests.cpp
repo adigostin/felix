@@ -47,7 +47,7 @@ namespace FelixTests
 
 		GetTempPathW (MAX_PATH + 1, tempPath);
 		wchar_t* end;
-		StringCchCatExW (tempPath, _countof(tempPath), L"FelixTest", &end, NULL, 0);
+		StringCchCatExW (tempPath, _countof(tempPath), L"FelixTest\\", &end, NULL, 0);
 		Assert::IsTrue (end < tempPath + _countof(tempPath) - 1);
 		end[1] = 0;
 		SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = tempPath, .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
@@ -56,9 +56,9 @@ namespace FelixTests
 		BOOL bres = CreateDirectory(tempPath, 0);
 		Assert::IsTrue(bres);
 
-		wil::str_concat_nothrow(templateFullPath, tempPath, L"\\TemplateOneConfigOneFile");
+		wil::str_concat_nothrow(templateFullPath, tempPath, L"TemplateOneConfigOneFile\\");
 		CreateDirectory(templateFullPath.get(), nullptr);
-		wil::str_concat_nothrow(templateFullPath, L"\\proj.flx");
+		wil::str_concat_nothrow(templateFullPath, L"proj.flx");
 		wil::unique_hfile th (CreateFile(templateFullPath.get(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
 		Assert::IsTrue(th.is_valid());
 		DWORD bytesWritten;
@@ -66,16 +66,16 @@ namespace FelixTests
 		Assert::IsTrue(bres);
 		th.reset();
 
-		wil::str_concat_nothrow(TemplatePath_EmptyProject, tempPath, L"\\TemplateEmpty");
+		wil::str_concat_nothrow(TemplatePath_EmptyProject, tempPath, L"TemplateEmpty\\");
 		CreateDirectory(TemplatePath_EmptyProject.get(), nullptr);
-		wil::str_concat_nothrow(TemplatePath_EmptyProject, L"\\proj.flx");
+		wil::str_concat_nothrow(TemplatePath_EmptyProject, L"proj.flx");
 		th.reset(CreateFile(TemplatePath_EmptyProject.get(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
 		Assert::IsTrue(th.is_valid());
 		bres = WriteFile(th.get(), TemplateXML_EmptyProject, sizeof(TemplateXML_EmptyProject) - 1, &bytesWritten, nullptr);
 		Assert::IsTrue(bres);
 		th.reset();
 
-		wil::str_concat_nothrow(TemplatePath_EmptyFile, tempPath, L"\\template.asm");
+		wil::str_concat_nothrow(TemplatePath_EmptyFile, tempPath, L"template.asm");
 		WriteFileOnDisk(tempPath, L"template.asm");
 
 		dll = LoadLibrary(L"FelixPackage.dll");

@@ -293,10 +293,8 @@ namespace FelixTests
 			com_ptr<IVsProject> proj;
 			hr = hier->QueryInterface(IID_PPV_ARGS(&proj)); Assert::IsTrue(SUCCEEDED(hr));
 
-			wil::unique_process_heap_string path1;
-			wil::str_concat_nothrow(path1, tempPath, L"\\file1.asm");
-			wil::unique_process_heap_string path2;
-			wil::str_concat_nothrow(path2, tempPath, L"\\file2.asm");
+			auto path1 = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"file1.asm");
+			auto path2 = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"file2.asm");
 			const wchar_t* files[] = { path1.get(), path2.get() };
 			VSADDRESULT addResult;
 			hr = proj->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, _countof(files), files, nullptr, &addResult); Assert::IsTrue(SUCCEEDED(hr));
@@ -850,7 +848,7 @@ namespace FelixTests
 			com_ptr<IVsSolution> sol;
 			serviceProvider->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
 
-			auto testPath = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s\\%s", tempPath, L"RenameFolderAndCheckSorted");
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"RenameFolderAndCheckSorted");
 
 			com_ptr<IVsUIHierarchy> hier;
 			sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), testPath.get(), L"TestProject.flx", CPF_CLONEFILE, IID_PPV_ARGS(&hier));
@@ -895,7 +893,7 @@ namespace FelixTests
 			com_ptr<IVsSolution> sol;
 			serviceProvider->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
 
-			auto testPath = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s\\%s", tempPath, L"RenameFileAndCheckSorted");
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"RenameFileAndCheckSorted\\");
 
 			com_ptr<IVsUIHierarchy> hier;
 			sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), testPath.get(), L"TestProject.flx", CPF_CLONEFILE, IID_PPV_ARGS(&hier));
@@ -937,7 +935,7 @@ namespace FelixTests
 			com_ptr<IVsSolution> sol;
 			serviceProvider->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
 
-			auto testPath = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s\\%s", tempPath, L"DeleteItems_File");
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"DeleteItems_File");
 
 			com_ptr<IVsUIHierarchy> hier;
 			sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), testPath.get(), L"TestProject.flx", CPF_CLONEFILE, IID_PPV_ARGS(&hier));
@@ -968,7 +966,7 @@ namespace FelixTests
 			com_ptr<IVsSolution> sol;
 			serviceProvider->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
 
-			auto testPath = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s\\%s", tempPath, L"DeleteItems_Folder");
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"DeleteItems_Folder");
 
 			com_ptr<IVsUIHierarchy> hier;
 			sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), testPath.get(), L"TestProject.flx", CPF_CLONEFILE, IID_PPV_ARGS(&hier));
