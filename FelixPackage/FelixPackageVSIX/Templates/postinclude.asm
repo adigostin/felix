@@ -1,8 +1,12 @@
 
 ; This file is auto-generated.
-; Changes made to it will be lost next time the project is built.
+; Changes made to it will be lost next time project settings are changed.
 ;
 ; It contains project settings that need to be passed to the assembler,
-; which the assembler doesn't accept as command-line parameters.
+; which the assembler only supports as directives in source code, not
+; as command-line parameters.
 ;
-; If you override them further in your files, debugging may not work as expected.
+; In the list of files passed to the assembler, this file is the last one.
+
+	; This comes from the Project Options -> Assembler -> EntryPointAddress.
+	END %ENTRY_POINT_ADDR%

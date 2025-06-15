@@ -26,6 +26,7 @@ struct FileNode
 	VSCOOKIE _docCookie = VSDOCCOOKIE_NIL;
 	wil::unique_process_heap_string _path;
 	BuildToolKind _buildTool = BuildToolKind::None;
+	bool _isGenerated = false;
 	com_ptr<ICustomBuildToolProperties> _customBuildToolProps;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
 	AdviseSinkToken _cbtPropNotifyToken;
@@ -772,6 +773,18 @@ public:
 		return S_OK;
 	}
 
+	virtual HRESULT STDMETHODCALLTYPE get_IsGenerated (DWORD* is) override
+	{
+		*is = _isGenerated;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_IsGenerated (DWORD is) override
+	{
+		_isGenerated = !!is;
+		return S_OK;
+	}
+
 	virtual HRESULT STDMETHODCALLTYPE get_BuildTool (enum BuildToolKind *value) override
 	{
 		*value = _buildTool;
@@ -805,8 +818,23 @@ public:
 	#pragma region IVsPerPropertyBrowsing
 	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL *pfHide) override
 	{
+		if (dispid == dispidIsGenerated)
+		{
+			*pfHide = TRUE;
+			return S_OK;
+		}
+
 		if (dispid == dispidCustomBuildToolProps)
-			return *pfHide = (_buildTool != BuildToolKind::CustomBuildTool), S_OK;
+		{
+			*pfHide = _isGenerated || (_buildTool != BuildToolKind::CustomBuildTool);
+			return S_OK;
+		}
+
+		if (dispid == dispidBuildToolKind)
+		{
+			*pfHide = _isGenerated;
+			return S_OK;
+		}
 
 		return E_NOTIMPL;
 	}

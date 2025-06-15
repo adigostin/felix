@@ -97,6 +97,7 @@ public:
 			|| TryQI<IVsBuildableProjectCfg2>(this, riid, ppvObject)
 			|| TryQI<ISpecifyPropertyPages>(this, riid, ppvObject)
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
+			|| TryQI<IProjectMacroResolver>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -224,7 +225,7 @@ public:
 		DWORD loadAddress;
 		hr = _debugProps->get_LoadAddress(&loadAddress); RETURN_IF_FAILED(hr);
 		wil::unique_bstr epAddressStr;
-		hr = _debugProps->get_EntryPointAddress(&epAddressStr); RETURN_IF_FAILED(hr);
+		hr = _assemblerProps->get_EntryPointAddress(&epAddressStr); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_NOTIMPL, !epAddressStr);
 		wchar_t* endPtr;
 		DWORD epAddress = std::wcstoul(epAddressStr.get(), &endPtr, 10); RETURN_HR_IF(E_NOTIMPL, endPtr != epAddressStr.get() + SysStringLen(epAddressStr.get()));
@@ -415,70 +416,18 @@ public:
 			*valueCoTaskMem = value;
 			return S_OK;
 		}
-		//else if (sv == "ENTRY_POINT_ADDR")
-		//{
-		//	unsigned short addr;
-		//	auto hr = _debugProps->get_EntryPointAddress(&addr); RETURN_IF_FAILED(hr);
-		//	char buffer[16];
-		//	int ires = sprintf_s(buffer, "%u", addr);
-		//	auto value = wil::make_unique_ansistring_nothrow<wil::unique_cotaskmem_ansistring> (buffer, (size_t)ires); RETURN_IF_NULL_ALLOC(value);
-		//	*valueCoTaskMem = value.release();
-		//	//int len = WideCharToMultiByte (CP_UTF8, 0, addr.get(), 1 + (int)SysStringLen(addr.get()), nullptr, 0, nullptr, nullptr); RETURN_LAST_ERROR_IF(len==0);
-		//	//auto s = wil::make_unique_ansistring_nothrow<wil::unique_cotaskmem_ansistring>(nullptr, len - 1); RETURN_IF_NULL_ALLOC(s);
-		//	//WideCharToMultiByte (CP_UTF8, 0, addr.get(), 1 + SysStringLen(addr.get()), s.get(), len, nullptr, nullptr);
-		//	//*valueCoTaskMem = s.release();
-		//	return S_OK;
-		//}
-
-		RETURN_HR(E_NOTIMPL);
-	}
-
-	HRESULT GeneratePrePostIncludeFiles (IProjectNode* project)
-	{
-		com_ptr<IVsShell> shell;
-		auto hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
-
-		wil::unique_hlocal_string packageDir;
-		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, packageDir); RETURN_IF_FAILED(hr);
-		auto fnres = PathFindFileName(packageDir.get()); RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), fnres == packageDir.get());
-		*fnres = 0;
-		
-		wil::unique_bstr genFilesStr;
-		hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERATED_FILES, &genFilesStr); RETURN_IF_FAILED(hr);
-		com_ptr<IFolderNode> folder;
-		hr = GetOrCreateChildFolder(project->AsParentNode(), genFilesStr.get(), true, &folder); RETURN_IF_FAILED(hr);
-
-		for (ULONG resID : { IDS_PREINCLUDE, IDS_POSTINCLUDE })
+		else if (sv == "ENTRY_POINT_ADDR")
 		{
-			wil::unique_bstr fileName;
-			hr = shell->LoadPackageString(CLSID_FelixPackage, resID, &fileName); RETURN_IF_FAILED(hr);
-
-			com_ptr<IFileNode> file = FindChildFileByName(folder->AsParentNode(), fileName.get());
-			if (!file)
-			{
-				hr = MakeFileNodeForExistingFile (fileName.get(), &file); RETURN_IF_FAILED(hr);
-				hr = AddFileToParent(file, folder->AsParentNode()); RETURN_IF_FAILED(hr);
-			}
-
-			wil::unique_process_heap_string templatePath;
-			hr = wil::str_concat_nothrow(templatePath, packageDir, L"\\Templates\\", fileName); RETURN_IF_FAILED(hr);
-
-			wil::unique_process_heap_string includePath;
-			hr = GetPathOf(file, includePath); RETURN_IF_FAILED(hr);
-			hr = CreateFileFromTemplate(templatePath.get(), includePath.get(), this); RETURN_IF_FAILED(hr);
+			wil::unique_bstr addr;
+			auto hr = _assemblerProps->get_EntryPointAddress(&addr); RETURN_IF_FAILED(hr);
+			int len = WideCharToMultiByte (CP_UTF8, 0, addr.get(), 1 + (int)SysStringLen(addr.get()), nullptr, 0, nullptr, nullptr); RETURN_LAST_ERROR_IF(len==0);
+			auto s = wil::make_unique_ansistring_nothrow<wil::unique_cotaskmem_ansistring>(nullptr, len - 1); RETURN_IF_NULL_ALLOC(s);
+			WideCharToMultiByte (CP_UTF8, 0, addr.get(), 1 + (int)SysStringLen(addr.get()), s.get(), len, nullptr, nullptr);
+			*valueCoTaskMem = s.release();
+			return S_OK;
 		}
 
-		wil::unique_bstr projectMk;
-		hr = project->AsVsProject()->GetMkDocument(VSITEMID_ROOT, &projectMk); RETURN_IF_FAILED(hr);
-		com_ptr<IVsFileChangeEx> fileChange;
-		hr = serviceProvider->QueryService(SID_SVsFileChangeEx, IID_PPV_ARGS(&fileChange)); RETURN_IF_FAILED(hr);
-		hr = fileChange->IgnoreFile(VSCOOKIE_NIL, projectMk.get(), TRUE); RETURN_IF_FAILED(hr);
-		auto unignore = wil::scope_exit([&fileChange, &projectMk] { fileChange->IgnoreFile(0, projectMk.get(), FALSE); });
-		hr = wil::try_com_query_nothrow<IPersistFileFormat>(project)->Save(nullptr, 0, 0); RETURN_IF_FAILED(hr);
-		hr = fileChange->SyncFile(projectMk.get()); (void)hr;
-		unignore.reset();
-		
-		return S_OK;
+		RETURN_HR(E_NOTIMPL);
 	}
 
 	#pragma region IVsBuildableProjectCfg2
@@ -507,26 +456,6 @@ public:
 		hr = _hier->QueryInterface(IID_PPV_ARGS(project.addressof())); RETURN_IF_FAILED(hr);
 		com_ptr<IVsShell> shell;
 		hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
-
-		#pragma region GeneratePrePostIncludeFiles
-		wil::unique_variant projectName;
-		hr = project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_Name, &projectName); RETURN_IF_FAILED(hr);
-		wil::unique_bstr message;
-		if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_GEN_PRE_POST_MESSAGE, &message)))
-			op2->OutputTaskItemStringEx2(message.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
-				nullptr, 0, nullptr, 0, 0, projectName.bstrVal, nullptr, nullptr);
-		hr = GeneratePrePostIncludeFiles(project);
-		if (FAILED(hr))
-		{
-			if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_GEN_PRE_POST_MESSAGE_FAIL, &message)))
-				op2->OutputTaskItemStringEx2(message.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
-					nullptr, 0, nullptr, 0, 0, projectName.bstrVal, nullptr, nullptr);
-			return hr;
-		}
-		if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_GEN_PRE_POST_MESSAGE_DONE, &message)))
-			op2->OutputTaskItemStringEx2(message.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
-				nullptr, 0, nullptr, 0, 0, projectName.bstrVal, nullptr, nullptr);
-		#pragma endregion
 
 		hr = MakeProjectConfigBuilder (project->AsHierarchy(), this, op2, &_pendingBuild); RETURN_IF_FAILED(hr);
 
@@ -711,6 +640,19 @@ public:
 
 		if (_hier)
 		{
+			if (   dispID == dispidLoadAddress
+				|| dispID == dispidEntryPointAddress
+				|| dispID == dispidPlatformName)
+			{
+				com_ptr<IProjectNode> proj;
+				if (SUCCEEDED(_hier->QueryInterface(IID_PPV_ARGS(&proj))))
+				{
+					wil::unique_bstr name;
+					hr = get_DisplayName(&name); RETURN_IF_FAILED(hr);
+					GeneratePrePostIncludeFiles(proj, name.get(), this);
+				}
+			}
+		
 			com_ptr<IPropertyNotifySink> pns;
 			hr = _hier->QueryInterface(&pns); RETURN_IF_FAILED(hr);
 			pns->OnChanged(dispidConfigurations);
@@ -743,6 +685,7 @@ struct AssemblerPageProperties
 	com_ptr<IWeakRef> _config;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
 	OutputFileType _outputFileType = OutputFileType::Binary;
+	wil::unique_bstr _entryPointAddress;
 	bool _saveListing = false;
 	wil::unique_bstr _listingFilename;
 
@@ -751,6 +694,7 @@ struct AssemblerPageProperties
 		HRESULT hr;
 		hr = config->QueryInterface(IID_PPV_ARGS(_config.addressof())); RETURN_IF_FAILED(hr);
 		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
+		_entryPointAddress = wil::make_bstr_nothrow(EntryPointAddressDefaultValue); RETURN_IF_NULL_ALLOC(_entryPointAddress);
 		return S_OK;
 	}
 
@@ -826,6 +770,12 @@ struct AssemblerPageProperties
 		if (dispid == dispidOutputFileType)
 		{
 			*fDefault = (_outputFileType == OutputFileType::Binary);
+			return S_OK;
+		}
+
+		if (dispid == dispidEntryPointAddress)
+		{
+			*fDefault = _entryPointAddress && !wcscmp(_entryPointAddress.get(), EntryPointAddressDefaultValue);
 			return S_OK;
 		}
 
@@ -918,6 +868,32 @@ struct AssemblerPageProperties
 		return S_OK;
 	}
 
+	virtual HRESULT STDMETHODCALLTYPE get_EntryPointAddress (BSTR *pbstrAddress) override
+	{
+		if (!_entryPointAddress || !_entryPointAddress.get()[0])
+			return (*pbstrAddress = nullptr), S_OK;
+
+		auto res = SysAllocString(_entryPointAddress.get()); RETURN_IF_NULL_ALLOC(res);
+		return (*pbstrAddress = res), S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_EntryPointAddress (BSTR bstrAddress) override
+	{
+		if (VarBstrCmp(_entryPointAddress.get(), bstrAddress, InvariantLCID, 0) != VARCMP_EQ)
+		{
+			BSTR newStr = nullptr;
+			if (bstrAddress && bstrAddress[0])
+			{
+				newStr = SysAllocString(bstrAddress); RETURN_IF_NULL_ALLOC(newStr);
+			}
+
+			_entryPointAddress.reset(newStr);
+			_propNotifyCP->NotifyPropertyChanged(dispidEntryPointAddress);
+		}
+
+		return S_OK;
+	}
+
 	virtual HRESULT STDMETHODCALLTYPE get_SaveListing (VARIANT_BOOL* save) override
 	{
 		*save = _saveListing ? VARIANT_TRUE: VARIANT_FALSE;
@@ -981,7 +957,6 @@ struct DebuggingPageProperties
 	ULONG _refCount = 0;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
 	DWORD _loadAddress = LoadAddressDefaultValue;
-	wil::unique_bstr _entryPointAddress;
 	LaunchType _launchType = LaunchTypeDefaultValue;
 
 	static HRESULT CreateInstance (IProjectConfigDebugProperties** to)
@@ -990,7 +965,6 @@ struct DebuggingPageProperties
 
 		com_ptr<DebuggingPageProperties> p = new (std::nothrow) DebuggingPageProperties(); RETURN_IF_NULL_ALLOC(p);
 		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(p, &p->_propNotifyCP); RETURN_IF_FAILED(hr);
-		p->_entryPointAddress = wil::make_bstr_nothrow(EntryPointAddressDefaultValue); RETURN_IF_NULL_ALLOC(p->_entryPointAddress);
 		*to = p.detach();
 		return S_OK;
 	}
@@ -1067,12 +1041,6 @@ struct DebuggingPageProperties
 			return S_OK;
 		}
 
-		if (dispid == dispidEntryPointAddress)
-		{
-			*fDefault = _entryPointAddress && !wcscmp(_entryPointAddress.get(), EntryPointAddressDefaultValue);
-			return S_OK;
-		}
-
 		if (dispid == dispidLaunchType)
 		{
 			*fDefault = (_launchType == LaunchTypeDefaultValue);
@@ -1130,32 +1098,6 @@ struct DebuggingPageProperties
 		{
 			_loadAddress = value;
 			_propNotifyCP->NotifyPropertyChanged(dispidLoadAddress);
-		}
-
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE get_EntryPointAddress (BSTR *pbstrAddress) override
-	{
-		if (!_entryPointAddress || !_entryPointAddress.get()[0])
-			return (*pbstrAddress = nullptr), S_OK;
-		
-		auto res = SysAllocString(_entryPointAddress.get()); RETURN_IF_NULL_ALLOC(res);
-		return (*pbstrAddress = res), S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE put_EntryPointAddress (BSTR bstrAddress) override
-	{
-		if (VarBstrCmp(_entryPointAddress.get(), bstrAddress, InvariantLCID, 0) != VARCMP_EQ)
-		{
-			BSTR newStr = nullptr;
-			if (bstrAddress && bstrAddress[0])
-			{
-				newStr = SysAllocString(bstrAddress); RETURN_IF_NULL_ALLOC(newStr);
-			}
-
-			_entryPointAddress.reset(newStr);
-			_propNotifyCP->NotifyPropertyChanged(dispidEntryPointAddress);
 		}
 
 		return S_OK;

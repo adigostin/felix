@@ -178,9 +178,10 @@ BEGIN
     IDS_GENERATED_FILES     "GeneratedFiles"
     IDS_PREINCLUDE          "PreInclude.asm"
     IDS_POSTINCLUDE         "PostInclude.asm"
-    IDS_GEN_PRE_POST_MESSAGE "Generate pre/post-include files..."
     IDS_GEN_PRE_POST_MESSAGE_DONE " done.\r\n"
     IDS_GEN_PRE_POST_MESSAGE_FAIL " failed.\r\n"
+    IDS_GEN_PRE_POST_MESSAGE 
+                            "Generating pre/post-include files for configuration ""%s""..."
 END
 
 #endif    // English (United States) resources

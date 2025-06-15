@@ -23,9 +23,9 @@
 #define IDS_GENERATED_FILES             117
 #define IDS_PREINCLUDE                  118
 #define IDS_POSTINCLUDE                 119
-#define IDS_GEN_PRE_POST_MESSAGE        120
 #define IDS_GEN_PRE_POST_MESSAGE_DONE   121
 #define IDS_GEN_PRE_POST_MESSAGE_FAIL   122
+#define IDS_GEN_PRE_POST_MESSAGE        123
 #define IDB_IMAGES                      300
 #define IDI_PACKAGE_ICON                400
 #define IDI_SPECTRUM                    401

@@ -32,5 +32,6 @@
 #define dispidAutoOpenFiles        24
 #define dispidConfigName           25
 #define dispidPlatformName         26
+#define dispidIsGenerated          27
 
 #endif

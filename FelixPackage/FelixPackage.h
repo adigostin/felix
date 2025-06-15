@@ -119,6 +119,12 @@ IProjectConfig : IUnknown
 	virtual IProjectConfigProperties* AsProjectConfigProperties() = 0;
 };
 
+struct DECLSPEC_NOVTABLE DECLSPEC_UUID("7E69A7FA-5B25-41E1-99FC-F4F33E63F881")
+IProjectMacroResolver : IUnknown
+{
+	virtual HRESULT STDMETHODCALLTYPE ResolveMacro (const char* macroFrom, const char* macroTo, char** ppszValueCoTaskMem) = 0;
+};
+
 FELIX_API extern wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 extern wil::com_ptr_nothrow<ISimulator> simulator;
 extern wil::com_ptr_nothrow<ISimulator> _simulator;
@@ -170,6 +176,7 @@ FELIX_API HRESULT MakeProjectConfigBuilder (IVsHierarchy* hier, IProjectConfig* 
 	IVsOutputWindowPane2* outputWindowPane, IProjectConfigBuilder** to);
 FELIX_API HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to);
 HRESULT ShowCommandLinePropertyBuilder (HWND hwndParent, BSTR valueBefore, BSTR* valueAfter);
+HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, const wchar_t* configName, IProjectMacroResolver* macroResolver);
 FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine);
 FELIX_API HRESULT MakeFolderNode (IFolderNode** ppFolder);
 BOOL LUtilFixFilename (wchar_t* strName);
@@ -185,10 +192,6 @@ HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* child);
 HRESULT CreatePathOfNode (IParentNode* node, wil::unique_process_heap_string& pathOut);
 HRESULT GetItems (IParentNode* itemsIn, SAFEARRAY** itemsOut);
 HRESULT PutItems (SAFEARRAY* sa, IParentNode* items);
-struct DECLSPEC_NOVTABLE IProjectMacroResolver
-{
-	virtual HRESULT STDMETHODCALLTYPE ResolveMacro (const char* macroFrom, const char* macroTo, char** ppszValueCoTaskMem) = 0;
-};
 HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectMacroResolver* macroResolver);
 IFileNode* FindChildFileByName (IParentNode* parent, const wchar_t* fileName);
 HRESULT MakeFileNodeForExistingFile (LPCWSTR path, IFileNode** ppFile);

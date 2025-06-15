@@ -73,6 +73,9 @@ namespace FelixTests
 			if (guidService == SID_SProfferService)
 				return E_NOTIMPL;
 
+			if (guidService == SID_SVsSolutionBuildManager)
+				return E_NOTIMPL;
+
 			Assert::Fail();
 		}
 	};

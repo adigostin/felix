@@ -273,6 +273,96 @@ static HRESULT Write (ISequentialStream* stream, const wchar_t* from, const wcha
 	return stream->Write(from, (ULONG)(to - from) * sizeof(wchar_t), nullptr);
 }
 
+static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* project, IProjectMacroResolver* macroResolver)
+{
+	HRESULT hr;
+
+	com_ptr<IVsShell> shell;
+	hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
+
+	wil::unique_hlocal_string packageDir;
+	hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, packageDir); RETURN_IF_FAILED(hr);
+	auto fnres = PathFindFileName(packageDir.get()); RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), fnres == packageDir.get());
+	*fnres = 0;
+
+	wil::unique_bstr genFilesStr;
+	hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERATED_FILES, &genFilesStr); RETURN_IF_FAILED(hr);
+	com_ptr<IFolderNode> folder;
+	hr = GetOrCreateChildFolder(project->AsParentNode(), genFilesStr.get(), true, &folder); RETURN_IF_FAILED(hr);
+
+	for (ULONG resID : { IDS_PREINCLUDE, IDS_POSTINCLUDE })
+	{
+		wil::unique_bstr fileName;
+		hr = shell->LoadPackageString(CLSID_FelixPackage, resID, &fileName); RETURN_IF_FAILED(hr);
+
+		com_ptr<IFileNode> file = FindChildFileByName(folder->AsParentNode(), fileName.get());
+		if (!file)
+		{
+			hr = MakeFileNodeForExistingFile (fileName.get(), &file); RETURN_IF_FAILED(hr);
+			file.try_query<IFileNodeProperties>()->put_IsGenerated(TRUE);
+			hr = AddFileToParent(file, folder->AsParentNode()); RETURN_IF_FAILED(hr);
+		}
+
+		wil::unique_process_heap_string templatePath;
+		hr = wil::str_concat_nothrow(templatePath, packageDir, L"Templates\\", fileName); RETURN_IF_FAILED(hr);
+
+		wil::unique_process_heap_string includePath;
+		hr = GetPathOf(file, includePath); RETURN_IF_FAILED(hr);
+		hr = CreateFileFromTemplate(templatePath.get(), includePath.get(), macroResolver); RETURN_IF_FAILED(hr);
+	}
+
+	wil::unique_bstr projectMk;
+	hr = project->AsVsProject()->GetMkDocument(VSITEMID_ROOT, &projectMk); RETURN_IF_FAILED(hr);
+	com_ptr<IVsFileChangeEx> fileChange;
+	hr = serviceProvider->QueryService(SID_SVsFileChangeEx, IID_PPV_ARGS(&fileChange)); RETURN_IF_FAILED(hr);
+	hr = fileChange->IgnoreFile(VSCOOKIE_NIL, projectMk.get(), TRUE); RETURN_IF_FAILED(hr);
+	auto unignore = wil::scope_exit([&fileChange, &projectMk] { fileChange->IgnoreFile(0, projectMk.get(), FALSE); });
+	hr = wil::try_com_query_nothrow<IPersistFileFormat>(project)->Save(nullptr, 0, 0); RETURN_IF_FAILED(hr);
+	hr = fileChange->SyncFile(projectMk.get()); (void)hr;
+	unignore.reset();
+
+	return S_OK;
+}
+
+HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, const wchar_t* configName, IProjectMacroResolver* macroResolver)
+{
+	HRESULT hr;
+
+	com_ptr<IVsShell> shell;
+	hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
+
+	com_ptr<IVsOutputWindowPane> op;
+	hr = serviceProvider->QueryService(SID_SVsGeneralOutputWindowPane, IID_PPV_ARGS(&op)); RETURN_IF_FAILED(hr);
+	hr = op->Activate(); RETURN_IF_FAILED(hr);
+	com_ptr<IVsOutputWindowPane2> op2;
+	hr = op->QueryInterface(&op2); RETURN_IF_FAILED(hr);
+
+	wil::unique_variant projectName;
+	hr = project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_Name, &projectName); RETURN_IF_FAILED(hr);
+	wil::unique_bstr str;
+	if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_GEN_PRE_POST_MESSAGE, &str)))
+	{
+		wil::unique_process_heap_string message;
+		if (SUCCEEDED(wil::str_printf_nothrow(message, str.get(), configName)))
+			op2->OutputTaskItemStringEx2(message.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
+				nullptr, 0, nullptr, 0, 0, projectName.bstrVal, nullptr, nullptr);
+	}
+	
+	hr = GeneratePrePostIncludeFilesInner (project, macroResolver);
+	if (FAILED(hr))
+	{
+		if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_GEN_PRE_POST_MESSAGE_FAIL, &str)))
+			op2->OutputTaskItemStringEx2(str.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
+				nullptr, 0, nullptr, 0, 0, projectName.bstrVal, nullptr, nullptr);
+		return hr;
+	}
+
+	if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_GEN_PRE_POST_MESSAGE_DONE, &str)))
+		op2->OutputTaskItemStringEx2(str.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
+			nullptr, 0, nullptr, 0, 0, projectName.bstrVal, nullptr, nullptr);
+	return S_OK;
+};
+
 FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine)
 {
 	HRESULT hr;
