@@ -521,12 +521,8 @@ public:
 		if (project_dir.vt != VT_BSTR)
 			return E_FAIL;
 
-		size_t output_dir_cap = wcslen(project_dir.bstrVal) + 10 + wcslen(_configName.get() + 1);
-		auto output_dir = wil::make_process_heap_string_nothrow(nullptr, output_dir_cap); RETURN_IF_NULL_ALLOC(output_dir);
-		wcscpy_s (output_dir.get(), output_dir_cap, project_dir.bstrVal);
-		wcscat_s (output_dir.get(), output_dir_cap, L"\\bin\\");
-		wcscat_s (output_dir.get(), output_dir_cap, _configName.get());
-		wcscat_s (output_dir.get(), output_dir_cap, L"\\");
+		wil::unique_process_heap_string output_dir;
+		hr = wil::str_concat_nothrow (output_dir, project_dir.bstrVal, L"bin\\", _configName, L"\\");
 
 		*pbstr = SysAllocString(output_dir.get()); RETURN_IF_NULL_ALLOC(*pbstr);
 		return S_OK;
