@@ -153,7 +153,17 @@ public:
 
 		if (msg == WM_DESTROY)
 		{
-			WI_ASSERT_MSG(!GetWindowLongPtr(hWnd, GWLP_USERDATA), "This window is meant to be destroyed by releasing all references to it.");
+			if (GetWindowLongPtr(hWnd, GWLP_USERDATA))
+			{
+				// Sometimes VS sends this message without ever calling ClosePane. This happens, for example, when opening
+				// VS 2022 17.13.7, showing the Simulator window, closing VS, starting it again, then closing the Start Window
+				// right away (the one with "What would you like to do?")
+
+				::SetWindowLongPtr (_hwnd, GWLP_USERDATA, 0);
+				_hwnd = nullptr;
+				ClosePane();
+			}
+
 			return 0;
 		}
 
@@ -391,6 +401,8 @@ public:
 	#pragma region IVsWindowPane
 	virtual HRESULT STDMETHODCALLTYPE SetSite (IServiceProvider *pSP) override
 	{
+		// We have to store this, because it seems we can't use our global "serviceProvider"
+		// (the pointer received in IVsPackage::SetSite) for getting a SID_SVsWindowFrame.
 		_sp = pSP;
 		auto hr = _sp->QueryService(SID_SVsSettingsManager, &_sm); RETURN_IF_FAILED(hr);
 		return S_OK;
