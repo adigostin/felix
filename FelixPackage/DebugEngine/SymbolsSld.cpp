@@ -10,17 +10,14 @@ struct SldSymbols : IZ80Symbols
 	ULONG _refCount = 0;
 	wil::unique_hlocal_ansistring _text;
 
-	static HRESULT CreateInstance (IDebugModule2* module, IZ80Symbols** to) noexcept
+	static HRESULT CreateInstance (const wchar_t* symbolsFullPath, IZ80Symbols** to) noexcept
 	{
-		MODULE_INFO mi = { };
-		auto hr = module->GetInfo (MIF_URLSYMBOLLOCATION, &mi); RETURN_IF_FAILED(hr);
-		auto clear_mi = wil::scope_exit([&mi] {SysFreeString(mi.m_bstrUrlSymbolLocation); });
-
-		wil::unique_hfile h (CreateFileW (mi.m_bstrUrlSymbolLocation, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr)); RETURN_LAST_ERROR_IF_EXPECTED(!h);
-		DWORD file_size = GetFileSize (h.get(), nullptr);
+		HANDLE hraw = CreateFileW (symbolsFullPath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr); RETURN_LAST_ERROR_IF_EXPECTED(hraw == INVALID_HANDLE_VALUE);
+		wil::unique_hfile h (hraw);
+		DWORD file_size = GetFileSize (hraw, nullptr);
 		auto text = wil::make_hlocal_ansistring_nothrow(nullptr, file_size + 1); RETURN_IF_NULL_ALLOC(text);
 		DWORD bytes_read;
-		BOOL bres = ReadFile (h.get(), text.get(), file_size, &bytes_read, nullptr); RETURN_LAST_ERROR_IF(!bres);
+		BOOL bres = ReadFile (hraw, text.get(), file_size, &bytes_read, nullptr); RETURN_LAST_ERROR_IF(!bres);
 		text.get()[file_size] = 0;
 
 		if (strncmp (text.get(), header, sizeof(header) - 1))
@@ -132,7 +129,7 @@ struct SldSymbols : IZ80Symbols
 			while(true)
 			{
 				if (!*p)
-					return E_ADDRESS_NOT_IN_SYMBOL_FILE;
+					return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 
 				auto this_line = p;
 
@@ -147,7 +144,7 @@ struct SldSymbols : IZ80Symbols
 					if (line_addr > address)
 					{
 						if (!prev_code_line)
-							RETURN_HR(E_ADDRESS_NOT_IN_SYMBOL_FILE);
+							return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 						bres = try_parse_line(prev_code_line, entry); WI_ASSERT(bres);
 						break;
 					}
@@ -181,7 +178,7 @@ struct SldSymbols : IZ80Symbols
 			while(true)
 			{
 				if (!*p)
-					return E_ADDRESS_NOT_IN_SYMBOL_FILE;
+					return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 
 				bool bres = try_parse_line(p, entry); RETURN_HR_IF(E_INVALID_SLD_LINE, !bres);
 
@@ -213,7 +210,7 @@ struct SldSymbols : IZ80Symbols
 		while(true)
 		{
 			if (!*p)
-				return E_ADDRESS_NOT_IN_SYMBOL_FILE;
+				return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 
 			auto this_line = p;
 
@@ -229,9 +226,9 @@ struct SldSymbols : IZ80Symbols
 			if (line_addr > address)
 			{
 				if (!foundOffset)
-					return E_ADDRESS_NOT_IN_SYMBOL_FILE; // caller wants exact address matches only
+					return HRESULT_FROM_WIN32(ERROR_NOT_FOUND); // caller wants exact address matches only
 				if (!prev_symbol_line)
-					return E_ADDRESS_NOT_IN_SYMBOL_FILE;
+					return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 				bres = try_parse_line(prev_symbol_line, entry); WI_ASSERT(bres);
 				break;
 			}
@@ -255,7 +252,7 @@ struct SldSymbols : IZ80Symbols
 	#pragma endregion
 };
 
-HRESULT MakeSldSymbols (IDebugModule2* module, IZ80Symbols** to)
+HRESULT MakeSldSymbols (const wchar_t* symbolsFullPath, IZ80Symbols** to)
 {
-	return SldSymbols::CreateInstance (module, to);
+	return SldSymbols::CreateInstance (symbolsFullPath, to);
 }

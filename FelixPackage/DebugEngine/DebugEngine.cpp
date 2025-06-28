@@ -823,7 +823,7 @@ HRESULT GetAddressFromSourceLocation (IDebugProgram2* program, LPCWSTR projectDi
 			return S_OK;
 	}
 
-	return E_ADDRESS_NOT_IN_SYMBOL_FILE;
+	return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 }
 
 HRESULT GetAddressFromSourceLocation (IDebugModule2* module, LPCWSTR projectDirOrNull, LPCWSTR sourceLocationFilename, DWORD sourceLocationLineIndex, OUT UINT64* pAddress)
@@ -835,7 +835,7 @@ HRESULT GetAddressFromSourceLocation (IDebugModule2* module, LPCWSTR projectDirO
 	hr = z80m->GetSymbols(&symbols); RETURN_IF_FAILED_EXPECTED(hr);
 
 	if (symbols->HasSourceLocationInformation() != S_OK)
-		return E_SRC_LOCATION_NOT_IN_SYMBOLS;
+		return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 
 	wil::unique_hlocal_string filePathRelative;
 	if (projectDirOrNull)

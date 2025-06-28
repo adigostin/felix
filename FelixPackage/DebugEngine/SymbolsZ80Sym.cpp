@@ -9,17 +9,14 @@ struct Z80SymSymbols : IZ80Symbols
 	ULONG _refCount = 0;
 	wil::unique_hlocal_ansistring _text;
 
-	static HRESULT CreateInstance (IDebugModule2* module, IZ80Symbols** to) noexcept
+	static HRESULT CreateInstance (const wchar_t* symbolsFullPath, IZ80Symbols** to) noexcept
 	{
-		MODULE_INFO mi = { };
-		auto hr = module->GetInfo (MIF_URLSYMBOLLOCATION, &mi); RETURN_IF_FAILED(hr);
-		auto clear_mi = wil::scope_exit([&mi] {SysFreeString(mi.m_bstrUrlSymbolLocation); });
-
-		wil::unique_hfile h (CreateFileW (mi.m_bstrUrlSymbolLocation, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr)); RETURN_LAST_ERROR_IF_EXPECTED(!h);
-		DWORD file_size = GetFileSize (h.get(), nullptr);
+		HANDLE hraw = CreateFileW (symbolsFullPath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr); RETURN_LAST_ERROR_IF_EXPECTED(hraw == INVALID_HANDLE_VALUE);
+		wil::unique_hfile h (hraw); 
+		DWORD file_size = GetFileSize (hraw, nullptr);
 		auto text = wil::make_hlocal_ansistring_nothrow(nullptr, file_size + 1); RETURN_IF_NULL_ALLOC(text);
 		DWORD bytes_read;
-		BOOL bres = ReadFile (h.get(), text.get(), file_size, &bytes_read, nullptr); RETURN_LAST_ERROR_IF(!bres);
+		BOOL bres = ReadFile (hraw, text.get(), file_size, &bytes_read, nullptr); RETURN_LAST_ERROR_IF(!bres);
 		text.get()[file_size] = 0;
 
 		auto p = wil::com_ptr_nothrow<Z80SymSymbols>(new (std::nothrow) Z80SymSymbols()); RETURN_IF_NULL_ALLOC(p);
@@ -231,14 +228,14 @@ struct Z80SymSymbols : IZ80Symbols
 						return S_OK;
 					}
 
-					return E_ADDRESS_NOT_IN_SYMBOL_FILE;
+					return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 				}
 
 				if (entry.address > address)
 					break;
 			}
 
-			return E_ADDRESS_NOT_IN_SYMBOL_FILE;
+			return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 		}
 		else
 		{
@@ -264,7 +261,7 @@ struct Z80SymSymbols : IZ80Symbols
 				return S_OK;
 			}
 	
-			return E_ADDRESS_NOT_IN_SYMBOL_FILE;
+			return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 		}
 	}
 
@@ -297,7 +294,7 @@ struct Z80SymSymbols : IZ80Symbols
 	#pragma endregion
 };
 
-HRESULT MakeZ80SymSymbols (IDebugModule2* module, IZ80Symbols** to)
+HRESULT MakeZ80SymSymbols (const wchar_t* symbolsFullPath, IZ80Symbols** to)
 {
-	return Z80SymSymbols::CreateInstance (module, to);
+	return Z80SymSymbols::CreateInstance (symbolsFullPath, to);
 }

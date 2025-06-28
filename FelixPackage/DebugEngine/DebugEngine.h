@@ -8,9 +8,7 @@
 #define E_UNRECOGNIZED_DEBUG_FILE_EXTENSION  MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x203)
 #define E_UNRECOGNIZED_SLD_VERSION           MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x204)
 #define E_INVALID_SLD_LINE                   MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x205)
-#define E_ADDRESS_NOT_IN_SYMBOL_FILE         MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x206)
 #define E_NO_MODULE_AT_THIS_ADDRESS          MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x207)
-#define E_SRC_LOCATION_NOT_IN_SYMBOLS        MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x208)
 #define E_UNRECOGNIZED_Z80SYM_VERSION        MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x209)
 #define E_INVALID_Z80SYM_LINE                MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x20A)
 #define E_NO_EXE_FILENAME                    MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x20B)
@@ -118,8 +116,8 @@ HRESULT MakeDebugProcess (IDebugPort2* pPort, LPCOLESTR pszExe, IDebugEngine2* e
 HRESULT MakeModule (UINT64 address, DWORD size, const wchar_t* path, const wchar_t* symbolsFilePath, bool user_code,
 	IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback, IDebugModule2** to);
 
-HRESULT MakeSldSymbols (IDebugModule2* module, IZ80Symbols** to);
-HRESULT MakeZ80SymSymbols (IDebugModule2* module, IZ80Symbols** to);
+HRESULT MakeSldSymbols (const wchar_t* symbolsFullPath, IZ80Symbols** to);
+HRESULT MakeZ80SymSymbols (const wchar_t* symbolsFullPath, IZ80Symbols** to);
 HRESULT MakeThread (IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback, IDebugThread2** ppThread);
 HRESULT MakeEnumDebugFrameInfo (FRAMEINFO_FLAGS dwFieldSpec, UINT nRadix, IDebugThread2* thread, IEnumDebugFrameInfo2** to);
 HRESULT MakeDebugContext (bool physicalMemorySpace, UINT64 uCodeLocationId, IDebugProgram2* program, REFIID riid, void** ppContext);

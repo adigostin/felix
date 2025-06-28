@@ -310,11 +310,11 @@ public:
 		auto* ext = PathFindExtension(_symbolsPath.get());
 		if (!wcscmp(ext, L".sld"))
 		{
-			_symbolLoadResult = MakeSldSymbols (this, &_symbols);
+			_symbolLoadResult = MakeSldSymbols (_symbolsPath.get(), &_symbols);
 		}
 		else if (!wcscmp(ext, L".z80sym"))
 		{
-			_symbolLoadResult = MakeZ80SymSymbols (this, &_symbols);
+			_symbolLoadResult = MakeZ80SymSymbols (_symbolsPath.get(), &_symbols);
 		}
 		else
 			_symbolLoadResult = E_UNRECOGNIZED_DEBUG_FILE_EXTENSION;
