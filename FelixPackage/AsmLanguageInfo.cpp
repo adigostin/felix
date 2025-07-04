@@ -410,7 +410,7 @@ public:
 
 		void ParseUnknownIdentifier()
 		{
-			while (isalnum(p[i]) || (p[i] == '_'))
+			while (iswalnum(p[i]) || (p[i] == '_'))
 			{
 				if (attrs)
 					attrs[i] = COLITEM_TEXT;
@@ -436,7 +436,7 @@ public:
 				else if (TryParseString())
 				{
 				}
-				else if (isalpha(p[i]))
+				else if (iswalpha(p[i]))
 				{
 					if (!parsedInstruction && TryParseInstruction())
 					{
