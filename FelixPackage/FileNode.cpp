@@ -858,6 +858,12 @@ public:
 			return S_OK;
 		}
 
+		if (dispid == dispidIsGenerated)
+		{
+			*fDefault = (_isGenerated == false);
+			return S_OK;
+		}
+
 		return E_NOTIMPL;
 	}
 
