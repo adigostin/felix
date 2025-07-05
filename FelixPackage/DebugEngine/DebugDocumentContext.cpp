@@ -17,7 +17,7 @@ public:
 
 		wil::com_ptr_nothrow<IZ80Module> mz80;
 		hr = module->QueryInterface(&mz80); RETURN_IF_FAILED(hr);
-		wil::com_ptr_nothrow<IZ80Symbols> symbols;
+		wil::com_ptr_nothrow<IFelixSymbols> symbols;
 		hr = mz80->GetSymbols(&symbols); RETURN_IF_FAILED_EXPECTED(hr);
 		wil::unique_bstr doc_path;
 		uint32_t line_number;

@@ -1,15 +1,14 @@
 
 #include "pch.h"
-#include "DebugEngine.h"
-#include "../FelixPackage.h"
+#include "FelixPackage.h"
 #include "shared/com.h"
 
-struct Z80SymSymbols : IZ80Symbols
+struct Z80SymSymbols : IFelixSymbols
 {
 	ULONG _refCount = 0;
 	wil::unique_hlocal_ansistring _text;
 
-	static HRESULT CreateInstance (const wchar_t* symbolsFullPath, IZ80Symbols** to) noexcept
+	HRESULT InitInstance (const wchar_t* symbolsFullPath)
 	{
 		HANDLE hraw = CreateFileW (symbolsFullPath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr); RETURN_LAST_ERROR_IF_EXPECTED(hraw == INVALID_HANDLE_VALUE);
 		wil::unique_hfile h (hraw); 
@@ -19,35 +18,13 @@ struct Z80SymSymbols : IZ80Symbols
 		BOOL bres = ReadFile (hraw, text.get(), file_size, &bytes_read, nullptr); RETURN_LAST_ERROR_IF(!bres);
 		text.get()[file_size] = 0;
 
-		auto p = wil::com_ptr_nothrow<Z80SymSymbols>(new (std::nothrow) Z80SymSymbols()); RETURN_IF_NULL_ALLOC(p);
-		p->_text = std::move(text);
-		*to = p.detach();
+		_text = std::move(text);
+
 		return S_OK;
 	}
 
 	#pragma region IUnknown
-	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
-	{
-		if (!ppvObject)
-			return E_POINTER;
-
-		*ppvObject = NULL;
-
-		if (riid == __uuidof(IUnknown))
-		{
-			*ppvObject = static_cast<IUnknown*>(this);
-			AddRef();
-			return S_OK;
-		}
-		else if (riid == __uuidof(IZ80Symbols))
-		{
-			*ppvObject = static_cast<IZ80Symbols*>(this);
-			AddRef();
-			return S_OK;
-		}
-
-		return E_NOINTERFACE;
-	}
+	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override { RETURN_HR(E_NOTIMPL); }
 
 	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
@@ -294,7 +271,10 @@ struct Z80SymSymbols : IZ80Symbols
 	#pragma endregion
 };
 
-HRESULT MakeZ80SymSymbols (const wchar_t* symbolsFullPath, IZ80Symbols** to)
+HRESULT MakeZ80SymSymbols (const wchar_t* symbolsFullPath, IFelixSymbols** to)
 {
-	return Z80SymSymbols::CreateInstance (symbolsFullPath, to);
+	auto p = com_ptr(new (std::nothrow) Z80SymSymbols()); RETURN_IF_NULL_ALLOC(p);
+	auto hr = p->InitInstance(symbolsFullPath); RETURN_IF_FAILED(hr);
+	*to = p.detach();
+	return S_OK;
 }

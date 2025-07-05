@@ -1,16 +1,16 @@
 
 #include "pch.h"
-#include "DebugEngine.h"
+#include "FelixPackage.h"
 #include "shared/com.h"
 
 static const char header[] = "|SLD.data.version|1\r\n";
 
-struct SldSymbols : IZ80Symbols
+struct SldSymbols : IFelixSymbols
 {
 	ULONG _refCount = 0;
 	wil::unique_hlocal_ansistring _text;
 
-	static HRESULT CreateInstance (const wchar_t* symbolsFullPath, IZ80Symbols** to) noexcept
+	HRESULT InitInstance (const wchar_t* symbolsFullPath)
 	{
 		HANDLE hraw = CreateFileW (symbolsFullPath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr); RETURN_LAST_ERROR_IF_EXPECTED(hraw == INVALID_HANDLE_VALUE);
 		wil::unique_hfile h (hraw);
@@ -19,39 +19,16 @@ struct SldSymbols : IZ80Symbols
 		DWORD bytes_read;
 		BOOL bres = ReadFile (hraw, text.get(), file_size, &bytes_read, nullptr); RETURN_LAST_ERROR_IF(!bres);
 		text.get()[file_size] = 0;
-
 		if (strncmp (text.get(), header, sizeof(header) - 1))
 			RETURN_HR(E_UNRECOGNIZED_SLD_VERSION);
 
-		auto p = wil::com_ptr_nothrow<SldSymbols>(new (std::nothrow) SldSymbols()); RETURN_IF_NULL_ALLOC(p);
-		p->_text = std::move(text);
-		*to = p.detach();
+		_text = std::move(text);
+
 		return S_OK;
 	}
 
 	#pragma region IUnknown
-	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
-	{
-		if (!ppvObject)
-			return E_POINTER;
-
-		*ppvObject = NULL;
-
-		if (riid == __uuidof(IUnknown))
-		{
-			*ppvObject = static_cast<IUnknown*>(this);
-			AddRef();
-			return S_OK;
-		}
-		else if (riid == __uuidof(IZ80Symbols))
-		{
-			*ppvObject = static_cast<IZ80Symbols*>(this);
-			AddRef();
-			return S_OK;
-		}
-
-		return E_NOINTERFACE;
-	}
+	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override { RETURN_HR(E_NOTIMPL); }
 
 	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
@@ -112,7 +89,7 @@ struct SldSymbols : IZ80Symbols
 		}
 	}
 
-	#pragma region IZ80Symbols
+	#pragma region IFelixSymbols
 	virtual HRESULT STDMETHODCALLTYPE HasSourceLocationInformation() override { return S_OK; }
 
 	virtual HRESULT STDMETHODCALLTYPE GetSourceLocationFromAddress(
@@ -286,7 +263,10 @@ struct SldSymbols : IZ80Symbols
 	#pragma endregion
 };
 
-HRESULT MakeSldSymbols (const wchar_t* symbolsFullPath, IZ80Symbols** to)
+HRESULT MakeSldSymbols (const wchar_t* symbolsFullPath, IFelixSymbols** to)
 {
-	return SldSymbols::CreateInstance (symbolsFullPath, to);
+	auto p = com_ptr(new (std::nothrow) SldSymbols()); RETURN_IF_NULL_ALLOC(p);
+	auto hr = p->InitInstance(symbolsFullPath); RETURN_IF_FAILED(hr);
+	*to = p.detach();
+	return S_OK;
 }

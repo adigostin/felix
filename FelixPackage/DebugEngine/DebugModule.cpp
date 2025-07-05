@@ -20,7 +20,7 @@ class Z80Module : public IDebugModule3, IZ80Module
 	// _symbols==NULL and SUCCEEDED(_symbolLoadResult) - loading has not been attempted yet during this debug sessions
 	// _symbols==NULL and FAILED(_symbolLoadResult) - loading has been attempted and failed with the error code from _symbolLoadResult
 	// _symbols!=NULL - loading has been attempted and was successful.
-	com_ptr<IZ80Symbols> _symbols;
+	com_ptr<IFelixSymbols> _symbols;
 	HRESULT _symbolLoadResult = S_OK;
 
 public:
@@ -269,7 +269,7 @@ public:
 	};
 
 	#pragma region IZ80Module
-	virtual HRESULT STDMETHODCALLTYPE GetSymbols (IZ80Symbols** symbols) override
+	virtual HRESULT STDMETHODCALLTYPE GetSymbols (IFelixSymbols** symbols) override
 	{
 		if (_symbols)
 		{

@@ -1082,7 +1082,7 @@ WI_ASSERT(!_errorBP);
 			hr = mle->GetModule(&module, nullptr, &load); RETURN_IF_FAILED(hr);
 			if (auto z80m = module.try_query<IZ80Module>())
 			{
-				com_ptr<IZ80Symbols> symbols;
+				com_ptr<IFelixSymbols> symbols;
 				if (SUCCEEDED(z80m->GetSymbols(&symbols)) && (symbols->HasSourceLocationInformation() == S_OK))
 				{
 					if (load)

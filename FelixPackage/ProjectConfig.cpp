@@ -9,7 +9,6 @@
 #include "guids.h"
 #include "Z80Xml.h"
 #include "../FelixPackageUi/resource.h"
-#include "DebugEngine/DebugEngine.h"
 
 // Useful doc: https://learn.microsoft.com/en-us/visualstudio/extensibility/internals/managing-configuration-options?view=vs-2022
 
@@ -209,7 +208,7 @@ public:
 	}
 	#pragma endregion
 
-	HRESULT MakeLaunchOptionsString (IZ80Symbols* symbols, BSTR* pOptionsString)
+	HRESULT MakeLaunchOptionsString (IFelixSymbols* symbols, BSTR* pOptionsString)
 	{
 		com_ptr<IFelixLaunchOptions> opts;
 		auto hr = MakeLaunchOptions(&opts); RETURN_IF_FAILED(hr);
@@ -276,7 +275,7 @@ public:
 		PathRenameExtension(sldFilename.get(), L".sld");
 		wil::unique_process_heap_string sldPath;
 		hr = wil::str_concat_nothrow(sldPath, output_dir, sldFilename); RETURN_IF_FAILED(hr);
-		com_ptr<IZ80Symbols> symbols;
+		com_ptr<IFelixSymbols> symbols;
 		hr = MakeSldSymbols(sldPath.get(), &symbols); RETURN_IF_FAILED(hr);
 		
 		if (grfLaunch & DBGLAUNCH_NoDebug)

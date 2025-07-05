@@ -161,8 +161,8 @@
     <ClCompile Include="DebugEngine\DebugProgram.cpp" />
     <ClCompile Include="DebugEngine\DebugThread.cpp" />
     <ClCompile Include="DebugEngine\DebugProperties.cpp" />
-    <ClCompile Include="DebugEngine\SymbolsSld.cpp" />
-    <ClCompile Include="DebugEngine\SymbolsZ80Sym.cpp" />
+    <ClCompile Include="SymbolsSld.cpp" />
+    <ClCompile Include="SymbolsZ80Sym.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="Guids.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>

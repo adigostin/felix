@@ -452,7 +452,7 @@ public:
 			// TODO: use timeout
 			wil::com_ptr_nothrow<IZ80Module> rom;
 			hr = romModule->QueryInterface(&rom); RETURN_IF_FAILED(hr);
-			wil::com_ptr_nothrow<IZ80Symbols> romSymbols;
+			wil::com_ptr_nothrow<IFelixSymbols> romSymbols;
 			hr = rom->GetSymbols(&romSymbols); RETURN_IF_FAILED(hr);
 			UINT16 editorFunctionAddr;
 			hr = romSymbols->GetAddressFromSymbol(L"EDITOR", &editorFunctionAddr); RETURN_IF_FAILED(hr);
@@ -549,7 +549,7 @@ public:
 			hr = module->QueryInterface(&fm); LOG_IF_FAILED(hr);
 			if (SUCCEEDED(hr))
 			{
-				wil::com_ptr_nothrow<IZ80Symbols> romSymbols;
+				wil::com_ptr_nothrow<IFelixSymbols> romSymbols;
 				hr = fm->GetSymbols(&romSymbols); LOG_IF_FAILED(hr);
 				if (SUCCEEDED(hr))
 				{
@@ -838,7 +838,7 @@ HRESULT GetAddressFromSourceLocation (IDebugModule2* module, LPCWSTR projectDirO
 	wil::com_ptr_nothrow<IZ80Module> z80m;
 	auto hr = module->QueryInterface(&z80m); RETURN_IF_FAILED_EXPECTED(hr);
 
-	wil::com_ptr_nothrow<IZ80Symbols> symbols;
+	wil::com_ptr_nothrow<IFelixSymbols> symbols;
 	hr = z80m->GetSymbols(&symbols); RETURN_IF_FAILED_EXPECTED(hr);
 
 	if (symbols->HasSourceLocationInformation() != S_OK)
@@ -898,7 +898,7 @@ HRESULT GetSymbolFromAddress(
 	wil::com_ptr_nothrow<IZ80Module> z80m;
 	hr = m->QueryInterface(&z80m); RETURN_IF_FAILED(hr);
 
-	wil::com_ptr_nothrow<IZ80Symbols> syms;
+	wil::com_ptr_nothrow<IFelixSymbols> syms;
 	hr = z80m->GetSymbols(&syms); RETURN_IF_FAILED_EXPECTED(hr);
 
 	hr = syms->GetSymbolAtAddress(address, searchKind, foundKind, foundSymbol, foundOffset); RETURN_IF_FAILED_EXPECTED(hr);
