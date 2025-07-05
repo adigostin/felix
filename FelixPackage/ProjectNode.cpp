@@ -2221,7 +2221,33 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE RenameCfgsOfCfgName(LPCOLESTR pszOldName, LPCOLESTR pszNewName) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		HRESULT hr;
+
+		RETURN_HR_IF(E_INVALIDARG, !pszOldName);
+		RETURN_HR_IF(E_INVALIDARG, !pszNewName);
+		RETURN_HR_IF(E_INVALIDARG, !pszNewName[0]);
+
+		auto newNameBstr = wil::make_bstr_nothrow(pszNewName); RETURN_IF_NULL_ALLOC(newNameBstr);
+
+		bool any = false;
+		for (auto& c : _configs)
+		{
+			IProjectConfigProperties* props = c->AsProjectConfigProperties();
+			wil::unique_bstr n;
+			hr = props->get_ConfigName(&n); RETURN_IF_FAILED(hr);
+			if (!wcscmp(n.get(), pszOldName))
+			{
+				hr = props->put_ConfigName(newNameBstr.get()); RETURN_IF_FAILED(hr);
+				any = true;
+			}
+		}
+
+		RETURN_HR_IF(E_INVALIDARG, !any);
+
+		for (auto& sink : _cfgProviderEventSinks)
+			sink.second->OnCfgNameRenamed(pszOldName, pszNewName);
+
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE AddCfgsOfPlatformName(LPCOLESTR pszPlatformName, LPCOLESTR pszClonePlatformName) override
