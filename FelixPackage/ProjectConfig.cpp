@@ -9,6 +9,7 @@
 #include "guids.h"
 #include "Z80Xml.h"
 #include "../FelixPackageUi/resource.h"
+#include "DebugEngine/DebugEngine.h"
 
 // Useful doc: https://learn.microsoft.com/en-us/visualstudio/extensibility/internals/managing-configuration-options?view=vs-2022
 
@@ -208,7 +209,7 @@ public:
 	}
 	#pragma endregion
 
-	HRESULT MakeLaunchOptionsString (BSTR* pOptionsString)
+	HRESULT MakeLaunchOptionsString (IZ80Symbols* symbols, BSTR* pOptionsString)
 	{
 		com_ptr<IFelixLaunchOptions> opts;
 		auto hr = MakeLaunchOptions(&opts); RETURN_IF_FAILED(hr);
@@ -223,14 +224,28 @@ public:
 		hr = opts->put_ProjectDir(projectDir.bstrVal); RETURN_IF_FAILED(hr);
 		
 		DWORD loadAddress;
-		hr = _debugProps->get_LoadAddress(&loadAddress); RETURN_IF_FAILED(hr);
+		hr = _assemblerProps->get_LoadAddress(&loadAddress); RETURN_IF_FAILED(hr);
+		opts->put_LoadAddress(loadAddress);
+
 		wil::unique_bstr epAddressStr;
 		hr = _assemblerProps->get_EntryPointAddress(&epAddressStr); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(E_NOTIMPL, !epAddressStr);
-		wchar_t* endPtr;
-		DWORD epAddress = wcstoul(epAddressStr.get(), &endPtr, 10); RETURN_HR_IF(E_NOTIMPL, endPtr != epAddressStr.get() + SysStringLen(epAddressStr.get()));
-		opts->put_LoadAddress(loadAddress);
-		opts->put_EntryPointAddress(epAddress);
+		RETURN_HR_IF(E_NOTIMPL, !epAddressStr || !epAddressStr.get()[0]);
+		if (isdigit(epAddressStr.get()[0]))
+		{
+			DWORD epAddress;
+			hr = ParseNumber(epAddressStr.get(), &epAddress);
+			if (hr != S_OK)
+				return E_FAIL; // TODO: detailed error message
+			opts->put_EntryPointAddress(epAddress);
+		}
+		else
+		{
+			UINT16 epAddress;
+			hr = symbols->GetAddressFromSymbol(epAddressStr.get(), &epAddress);
+			if (hr != S_OK)
+				return E_FAIL;
+			opts->put_EntryPointAddress(epAddress);
+		}
 
 		com_ptr<IStream> stream;
 		hr = CreateStreamOnHGlobal (nullptr, TRUE, &stream); RETURN_IF_FAILED(hr);
@@ -253,10 +268,17 @@ public:
 		wil::unique_bstr output_filename;
 		hr = _assemblerProps->GetOutputFileName(&output_filename); RETURN_IF_FAILED(hr);
 
-		auto exe_path = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(exe_path);
-		PathCombine (exe_path.get(), output_dir.get(), output_filename.get());
-		auto exePathBstr = wil::make_bstr_nothrow(exe_path.get()); RETURN_IF_NULL_ALLOC(exePathBstr);
+		wil::unique_process_heap_string exePath;
+		hr = wil::str_concat_nothrow(exePath, output_dir, output_filename); RETURN_IF_FAILED(hr);
+		auto exePathBstr = wil::make_bstr_nothrow(exePath.get()); RETURN_IF_NULL_ALLOC(exePathBstr);
 
+		auto sldFilename = wil::make_process_heap_string_nothrow(output_filename.get(), wcslen(output_filename.get()) + 10); RETURN_IF_NULL_ALLOC(sldFilename);
+		PathRenameExtension(sldFilename.get(), L".sld");
+		wil::unique_process_heap_string sldPath;
+		hr = wil::str_concat_nothrow(sldPath, output_dir, sldFilename); RETURN_IF_FAILED(hr);
+		com_ptr<IZ80Symbols> symbols;
+		hr = MakeSldSymbols(sldPath.get(), &symbols); RETURN_IF_FAILED(hr);
+		
 		if (grfLaunch & DBGLAUNCH_NoDebug)
 		{
 			wil::com_ptr_nothrow<IVsUIShell> uiShell;
@@ -277,7 +299,7 @@ public:
 			WI_ASSERT(!grfLaunch); // TODO: read these flags and act on them
 
 			wil::unique_bstr options;
-			hr = MakeLaunchOptionsString(&options); RETURN_IF_FAILED(hr);
+			hr = MakeLaunchOptionsString(symbols, &options); RETURN_IF_FAILED(hr);
 
 			auto portNameBstr = wil::make_bstr_nothrow(SingleDebugPortName); RETURN_IF_NULL_ALLOC(portNameBstr);
 			VsDebugTargetInfo dti = { };
@@ -394,19 +416,21 @@ public:
 	#pragma endregion
 
 	// IProjectMacroResolver
-	virtual HRESULT STDMETHODCALLTYPE ResolveMacro (const char* macroFrom, const char* macroTo, char** valueCoTaskMem) override
+	virtual HRESULT STDMETHODCALLTYPE ResolveMacro (const char* macro, char** valueCoTaskMem) override
 	{
-		if (!strncmp(macroFrom, "LOAD_ADDR", 9))
+		HRESULT hr;
+
+		if (!strcmp(macro, "LOAD_ADDR"))
 		{
 			unsigned long loadAddress;
-			auto hr = _debugProps->get_LoadAddress(&loadAddress); RETURN_IF_FAILED(hr);
+			hr = _assemblerProps->get_LoadAddress(&loadAddress); RETURN_IF_FAILED(hr);
 			char buffer[16];
 			int ires = sprintf_s(buffer, "%u", loadAddress);
 			auto value = wil::make_unique_ansistring_nothrow<wil::unique_cotaskmem_ansistring> (buffer, (size_t)ires); RETURN_IF_NULL_ALLOC(value);
 			*valueCoTaskMem = value.release();
 			return S_OK;
 		}
-		else if (!strncmp(macroFrom, "DEVICE", 6))
+		else if (!strcmp(macro, "DEVICE"))
 		{
 			static const char name[] = "ZXSPECTRUM48";
 			char* value = (char*)CoTaskMemAlloc(_countof(name)); RETURN_IF_NULL_ALLOC(value);
@@ -414,14 +438,37 @@ public:
 			*valueCoTaskMem = value;
 			return S_OK;
 		}
-		else if (!strncmp(macroFrom, "ENTRY_POINT_ADDR", 16))
+		else if (!strcmp(macro, "ENTRY_POINT_ADDR"))
 		{
 			wil::unique_bstr addr;
-			auto hr = _assemblerProps->get_EntryPointAddress(&addr); RETURN_IF_FAILED(hr);
+			hr = _assemblerProps->get_EntryPointAddress(&addr); RETURN_IF_FAILED(hr);
 			int len = WideCharToMultiByte (CP_UTF8, 0, addr.get(), 1 + (int)SysStringLen(addr.get()), nullptr, 0, nullptr, nullptr); RETURN_LAST_ERROR_IF(len==0);
 			auto s = wil::make_unique_ansistring_nothrow<wil::unique_cotaskmem_ansistring>(nullptr, len - 1); RETURN_IF_NULL_ALLOC(s);
 			WideCharToMultiByte (CP_UTF8, 0, addr.get(), 1 + (int)SysStringLen(addr.get()), s.get(), len, nullptr, nullptr);
 			*valueCoTaskMem = s.release();
+			return S_OK;
+		}
+		else if (!strcmp(macro, "SAVESNA"))
+		{
+			OutputFileType ft;
+			hr = _assemblerProps->get_OutputFileType(&ft); RETURN_IF_FAILED(hr);
+			wil::unique_cotaskmem_ansistring line;
+			if (ft == OutputFileType::Binary)
+			{
+				static const char str[] = "; (Binary selected. Filename is passed as command-line parameter)";
+				line = wil::make_unique_ansistring_nothrow<wil::unique_cotaskmem_ansistring>(str, _countof(str) - 1); RETURN_IF_NULL_ALLOC(line);
+			}
+			else
+			{
+				wil::unique_bstr fn;
+				hr = _assemblerProps->GetOutputFileName(&fn); RETURN_IF_FAILED(hr);
+				wil::unique_process_heap_string lineutf16;
+				hr = wil::str_printf_nothrow (lineutf16, L"SAVESNA %s", fn.get()); RETURN_IF_FAILED(hr);
+				int len = WideCharToMultiByte (CP_UTF8, 0, lineutf16.get(), -1, nullptr, 0, nullptr, nullptr);
+				line = wil::make_unique_ansistring_nothrow<wil::unique_cotaskmem_ansistring>(nullptr, len); RETURN_IF_NULL_ALLOC(line);
+				WideCharToMultiByte (CP_UTF8, 0, lineutf16.get(), -1, line.get(), len, nullptr, nullptr);
+			}
+			*valueCoTaskMem = line.release();
 			return S_OK;
 		}
 
@@ -636,6 +683,7 @@ public:
 		{
 			if (   dispID == dispidLoadAddress
 				|| dispID == dispidEntryPointAddress
+				|| dispID == dispidOutputFileType
 				|| dispID == dispidPlatformName)
 			{
 				com_ptr<IProjectNode> proj;
@@ -680,6 +728,7 @@ struct AssemblerPageProperties
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
 	OutputFileType _outputFileType = OutputFileType::Binary;
 	wil::unique_bstr _entryPointAddress;
+	DWORD _loadAddress = LoadAddressDefaultValue;
 	bool _saveListing = false;
 	wil::unique_bstr _listingFilename;
 
@@ -751,7 +800,6 @@ struct AssemblerPageProperties
 
 	IMPLEMENT_IDISPATCH(IID_IProjectConfigAssemblerProperties);
 
-
 	#pragma region IVsPerPropertyBrowsing
 	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL* pfHide) override { return E_NOTIMPL; }
 
@@ -764,6 +812,12 @@ struct AssemblerPageProperties
 		if (dispid == dispidOutputFileType)
 		{
 			*fDefault = (_outputFileType == OutputFileType::Binary);
+			return S_OK;
+		}
+
+		if (dispid == dispidLoadAddress)
+		{
+			*fDefault = (_loadAddress == LoadAddressDefaultValue);
 			return S_OK;
 		}
 
@@ -862,6 +916,23 @@ struct AssemblerPageProperties
 		return S_OK;
 	}
 
+	virtual HRESULT STDMETHODCALLTYPE get_LoadAddress (DWORD* value) override
+	{
+		*value = _loadAddress;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_LoadAddress (DWORD value) override
+	{
+		if (_loadAddress != value)
+		{
+			_loadAddress = value;
+			_propNotifyCP->NotifyPropertyChanged(dispidLoadAddress);
+		}
+
+		return S_OK;
+	}
+
 	virtual HRESULT STDMETHODCALLTYPE get_EntryPointAddress (BSTR *pbstrAddress) override
 	{
 		if (!_entryPointAddress || !_entryPointAddress.get()[0])
@@ -931,7 +1002,15 @@ struct AssemblerPageProperties
 
 	virtual HRESULT STDMETHODCALLTYPE GetOutputFileName (BSTR* pbstr) override
 	{
-		*pbstr = SysAllocString(L"output.bin"); RETURN_IF_NULL_ALLOC(*pbstr);
+		const wchar_t* fn;
+		switch (_outputFileType)
+		{
+			case OutputFileType::Binary: fn = L"output.bin"; break;
+			case OutputFileType::Sna:    fn = L"output.sna"; break;
+			default: RETURN_HR(E_NOTIMPL);
+		}
+
+		*pbstr = SysAllocString(fn); RETURN_IF_NULL_ALLOC(fn);
 		return S_OK;
 	}
 
@@ -950,7 +1029,6 @@ struct DebuggingPageProperties
 {
 	ULONG _refCount = 0;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
-	DWORD _loadAddress = LoadAddressDefaultValue;
 	LaunchType _launchType = LaunchTypeDefaultValue;
 
 	static HRESULT CreateInstance (IProjectConfigDebugProperties** to)
@@ -1029,12 +1107,6 @@ struct DebuggingPageProperties
 
 	virtual HRESULT STDMETHODCALLTYPE HasDefaultValue (DISPID dispid, BOOL *fDefault) override
 	{
-		if (dispid == dispidLoadAddress)
-		{
-			*fDefault = (_loadAddress == LoadAddressDefaultValue);
-			return S_OK;
-		}
-
 		if (dispid == dispidLaunchType)
 		{
 			*fDefault = (_launchType == LaunchTypeDefaultValue);
@@ -1078,23 +1150,6 @@ struct DebuggingPageProperties
 		// For configurations, this seems to be requested and then ignored.
 		*value = nullptr;
 		return S_OK;;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE get_LoadAddress (DWORD* value) override
-	{
-		*value = _loadAddress;
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE put_LoadAddress (DWORD value) override
-	{
-		if (_loadAddress != value)
-		{
-			_loadAddress = value;
-			_propNotifyCP->NotifyPropertyChanged(dispidLoadAddress);
-		}
-
-		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_LaunchType (enum LaunchType *value) override

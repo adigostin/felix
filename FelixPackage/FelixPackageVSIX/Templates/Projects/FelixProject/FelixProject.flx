@@ -1,13 +1,12 @@
-<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="UTF-8"?>
 <Z80Project AutoOpenFiles="start.asm">
-	<Configurations>
-		<Configuration ConfigName="Debug" PlatformName="ZX Spectrum 48K">
-			<AssemblerProperties SaveListing="True" SaveListingFilename="output.lst" />
-		</Configuration>
-	</Configurations>
-	<Items>
-		<!-- When creating a new project, the package will try to open the first child of the project node. -->
-		<AsmFile Path="start.asm" />
-		<AsmFile Path="lib.asm" />
-	</Items>
+  <Configurations>
+    <Configuration ConfigName="Debug" PlatformName="ZX Spectrum 48K">
+      <AssemblerProperties OutputFileType="Sna" LoadAddress="32768" EntryPointAddress="start" SaveListing="True" SaveListingFilename="output.lst" />
+    </Configuration>
+  </Configurations>
+  <Items>
+    <File Path="lib.asm" BuildTool="Assembler" />
+    <File Path="start.asm" BuildTool="Assembler" />
+  </Items>
 </Z80Project>

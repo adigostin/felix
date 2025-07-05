@@ -499,6 +499,7 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 
 	// --outprefix
 	hr = addOutputPathParam (L" --outprefix=", L""); RETURN_IF_FAILED(hr);
+	hr = Write (cmdLine, L"\\"); RETURN_IF_FAILED(hr);
 
 	// --lst
 	VARIANT_BOOL saveListing;
@@ -1045,18 +1046,22 @@ HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectMacroR
 {
 	HRESULT hr;
 
-	com_ptr<IStream> fromStream;
-	hr = SHCreateStreamOnFileEx (fromPath, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &fromStream); RETURN_IF_FAILED(hr);
+	wil::unique_hfile fromFile (CreateFile (fromPath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr)); RETURN_LAST_ERROR_IF(!fromFile.is_valid());
+	DWORD fileSize = GetFileSize (fromFile.get(), nullptr); RETURN_LAST_ERROR_IF(fileSize == INVALID_FILE_SIZE);
+	auto fromBuffer = wil::make_hlocal_ansistring_nothrow(nullptr, fileSize + 1); RETURN_IF_NULL_ALLOC(fromBuffer);
+	DWORD bytesRead;
+	BOOL bres = ReadFile (fromFile.get(), fromBuffer.get(), fileSize, &bytesRead, nullptr); RETURN_IF_WIN32_BOOL_FALSE(bres);
+	fromBuffer.get()[fileSize] = 0;
+	fromFile.reset();
 
 	com_ptr<IStream> toStream;
 	hr = SHCreateStreamOnFileEx (toPath, STGM_CREATE | STGM_WRITE | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &toStream); RETURN_IF_FAILED(hr);
 
-	char ch;
-	ULONG cbRead;
+	const char* from = fromBuffer.get();
 	while(true)
 	{
-		hr = fromStream->Read(&ch, 1, &cbRead); RETURN_IF_FAILED(hr);
-		if (!cbRead)
+		char ch = *from++;
+		if (!ch)
 			break;
 
 		if (ch == '%')
@@ -1065,8 +1070,8 @@ HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectMacroR
 			uint32_t i = 0;
 			while(true)
 			{
-				hr = fromStream->Read(&ch, 1, &cbRead); RETURN_IF_FAILED(hr);
-				RETURN_HR_IF(E_UNEXPECTED, cbRead == 0);
+				ch = *from++;
+				RETURN_HR_IF(E_UNEXPECTED, !ch);
 				if (ch != '%')
 				{
 					RETURN_HR_IF(E_UNEXPECTED, i == _countof(macro) - 1);
@@ -1080,8 +1085,9 @@ HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectMacroR
 			}
 
 			wil::unique_cotaskmem_ansistring value;
-			hr = macroResolver->ResolveMacro(macro, macro + i, &value); RETURN_IF_FAILED(hr);
-			hr = toStream->Write (value.get(), strlen(value.get()), &cbRead); RETURN_IF_FAILED(hr);
+			hr = macroResolver->ResolveMacro(macro, &value); RETURN_IF_FAILED(hr);
+			ULONG cbWritten;
+			hr = toStream->Write (value.get(), strlen(value.get()), &cbWritten); RETURN_IF_FAILED(hr);
 		}
 		else
 		{
@@ -1131,3 +1137,39 @@ HRESULT MakeFileNodeForExistingFile (LPCWSTR path, IFileNode** ppFile)
 	return S_OK;
 }
 
+// returns S_OK or S_FALSE
+HRESULT ParseNumber (LPCWSTR str, DWORD* value)
+{
+	size_t len = wcslen(str);
+	if (!len)
+		return S_FALSE;
+	if (!isdigit(str[0]))
+		return S_FALSE;
+
+	uint32_t val;
+	wchar_t* endPtr;
+	if ((str[1] & 0xDF) == 'X')
+	{
+		// C-style hex
+		val = wcstoul(&str[2], &endPtr, 16);
+		if (endPtr != &str[len])
+			return S_FALSE;
+	}
+	else if ((str[len - 1] & 0xDF) == 'H')
+	{
+		// ASM-style hex
+		val = wcstoul(str, &endPtr, 16);
+		if (endPtr != &str[len - 1])
+			return S_FALSE;
+	}
+	else
+	{
+		// Decimal (we don't support octal)
+		val = wcstoul(str, &endPtr, 10);
+		if (endPtr != &str[len])
+			return S_FALSE;
+	}
+
+	*value = val;
+	return S_OK;
+}

@@ -465,7 +465,7 @@ public:
 				hr = _simulator->Resume(true); RETURN_IF_FAILED(hr);
 			}
 		}
-		else
+		else if (!_wcsicmp(PathFindExtension(exePath.get()), L".sna"))
 		{
 			hr = _simulator->LoadFile(exePath.get());
 			if (FAILED(hr))
@@ -487,7 +487,14 @@ public:
 
 			hr = SendLoadCompleteEvent (_callback, this, _program, thread); RETURN_IF_FAILED(hr);
 			hr = SendEntryPointEvent (_callback, this, _program, thread); RETURN_IF_FAILED(hr);
+
+			// Let's put a breakpoint at the exit point.
+			uint16_t addr;
+			hr = ResolveZxSpectrumSymbol (L"MAIN-4", &addr); RETURN_IF_FAILED(hr);
+			hr = _simulator->AddBreakpoint(BreakpointType::Code, false, addr, &_exitPointBreakpoint); RETURN_IF_FAILED(hr);
 		}
+		else
+			RETURN_HR(E_NOTIMPL);
 
 		// Note AGO: I tried showing the simulator window here, but at this point the VS GUI is still
 		// in the design mode layout. It will switch to the debug mode layout - with the simulator window

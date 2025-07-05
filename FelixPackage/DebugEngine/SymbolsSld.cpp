@@ -247,7 +247,41 @@ struct SldSymbols : IZ80Symbols
 
 	virtual HRESULT STDMETHODCALLTYPE GetAddressFromSymbol (LPCWSTR symbolName, UINT16* address) override
 	{
-		return E_NOTIMPL;
+		size_t symbolNameLen = wcslen(symbolName);
+		const char* p = _text.get() + sizeof(header) - 1;
+		sld_entry entry;
+		while(true)
+		{
+			if (!*p)
+				return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+
+			bool bres = try_parse_line(p, entry); RETURN_HR_IF(E_INVALID_SLD_LINE, !bres);
+
+			if (entry.type[0] != 'L')
+				continue;
+
+			auto from = entry.data;
+			while(from != entry.end_of_line && *from != ',')
+				from++;
+			if (from == entry.end_of_line)
+				continue;
+			from++;
+
+			auto sn = symbolName;
+			while(*sn)
+			{
+				if (*sn != *from)
+					break;
+				sn++;
+				from++;
+			}
+
+			if (*sn == 0 && *from == ',')
+				break;
+		}
+
+		*address = strtoul(entry.value, nullptr, 10);
+		return S_OK;
 	}
 	#pragma endregion
 };

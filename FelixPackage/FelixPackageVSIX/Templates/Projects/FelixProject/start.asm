@@ -1,16 +1,19 @@
 
 ; This is a sample application that prints some text using the ROM routines.
 ;
-; By default, building is done using SjASMPlus to a binary, and debugging
-; is via PRINT USR. You can change these settings in the project options.
-;
+; By default, building is done using SjASMPlus to a .sna file.
 ; The load address and launch address are specified in the project options,
-; under the Debugging page.
+; under the Debugging page. ; You can change these settings in the project options.
 ;
 ; If you close the Simulator window, you can open it again from
 ; View -> Other Windows -> Simulator.
 
 start:
+	ei ; reenable interrupts as sjasmplus disabled them in the generated .sna file
+
+	ld a, 2
+	call 1601h ; CHAN-OPEN
+
 	ld de, text
 e0:	ld a, (de)
 	and a

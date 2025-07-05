@@ -56,6 +56,11 @@ library ATLProject1Lib
 		[id(dispidOutputFileType), bindable, propput]
 		HRESULT OutputFileType (enum OutputFileType value);
 
+		[id(dispidLoadAddress), bindable, propget, helpstring("This is where the debugger loads the binary file. For now only numbers are supported, not symbol names.")]
+		HRESULT LoadAddress ([out, retval] unsigned long* value);
+		[id(dispidLoadAddress), bindable, propput]
+		HRESULT LoadAddress (unsigned long value);
+
 		[id(dispidEntryPointAddress), bindable, propget, helpstring("This is where execution starts. You can use a number or a symbol name.")]
 		HRESULT EntryPointAddress ([out, retval] BSTR* pbstrAddress);
 		[id(dispidEntryPointAddress), bindable, propput]
@@ -79,11 +84,6 @@ library ATLProject1Lib
 	interface IProjectConfigDebugProperties : IDispatch
 	{
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
-
-		[id(dispidLoadAddress), bindable, propget, helpstring("This is where the debugger loads the binary file. For now only numbers are supported, not symbol names.")]
-		HRESULT LoadAddress ([out, retval] unsigned long* value);
-		[id(dispidLoadAddress), bindable, propput]
-		HRESULT LoadAddress (unsigned long value);
 
 		// "Selects the launch method: PRINT USR from Basic, RANDOMIZE USR from Basic, or jump right after reset."
 		[id(dispidLaunchType), bindable, propget, helpstring("This setting is currently not implemented; the launch type is always PRINT USR. It will be implemented in a future release.")]

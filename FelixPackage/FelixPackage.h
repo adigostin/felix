@@ -111,7 +111,7 @@ IProjectConfig : IUnknown
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("7E69A7FA-5B25-41E1-99FC-F4F33E63F881")
 IProjectMacroResolver : IUnknown
 {
-	virtual HRESULT STDMETHODCALLTYPE ResolveMacro (const char* macroFrom, const char* macroTo, char** ppszValueCoTaskMem) = 0;
+	virtual HRESULT STDMETHODCALLTYPE ResolveMacro (const char* macro, char** ppszValueCoTaskMem) = 0;
 };
 
 FELIX_API extern wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
@@ -184,4 +184,4 @@ HRESULT PutItems (SAFEARRAY* sa, IParentNode* items);
 HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectMacroResolver* macroResolver);
 IFileNode* FindChildFileByName (IParentNode* parent, const wchar_t* fileName);
 HRESULT MakeFileNodeForExistingFile (LPCWSTR path, IFileNode** ppFile);
-
+HRESULT ParseNumber (LPCWSTR str, DWORD* value); // returns S_OK or S_FALSE
