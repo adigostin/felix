@@ -909,9 +909,13 @@ public:
 	#pragma region IPropertyNotifySink
 	virtual HRESULT STDMETHODCALLTYPE OnChanged (DISPID dispID) override
 	{
-		com_ptr<IPropertyNotifySink> sink;
-		auto hr = FindHier(this, IID_PPV_ARGS(sink.addressof())); RETURN_IF_FAILED(hr);
-		sink->OnChanged(DISPID_UNKNOWN);
+		if (_parent)
+		{
+			com_ptr<IPropertyNotifySink> sink;
+			auto hr = FindHier(this, IID_PPV_ARGS(sink.addressof())); RETURN_IF_FAILED(hr);
+			sink->OnChanged(DISPID_UNKNOWN);
+		}
+
 		return S_OK;
 	}
 
