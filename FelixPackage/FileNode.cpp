@@ -795,12 +795,20 @@ public:
 	{
 		if (_buildTool != value)
 		{
+			bool regeneratePrePostInclude = (_buildTool == Assembler || value == Assembler);
+
 			_buildTool = value;
+
 			if (_parent)
 			{
+				com_ptr<IProjectNode> project;
+				auto hr = FindHier(this, IID_PPV_ARGS(&project)); RETURN_IF_FAILED(hr);
+
 				com_ptr<IPropertyNotifySink> sink;
-				auto hr = FindHier(this, IID_PPV_ARGS(sink.addressof())); RETURN_IF_FAILED(hr);
+				hr = project->QueryInterface(IID_PPV_ARGS(&sink)); RETURN_IF_FAILED(hr);
 				sink->OnChanged(DISPID_UNKNOWN);
+
+				hr = GeneratePrePostIncludeFiles (project, nullptr); RETURN_IF_FAILED(hr);
 			}
 
 			_propNotifyCP->NotifyPropertyChanged(dispidBuildToolKind);

@@ -97,6 +97,7 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("E5498B79-7C01-4F49-B5EC-8D1C98FF935D")
 IFolderNode : IChildNode
 {
 	virtual IParentNode* AsParentNode() = 0;
+	virtual IFolderNodeProperties* AsFolderNodeProperties() = 0;
 };
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("56831DCD-0782-48BE-BF8A-57827FC0D6CA")
@@ -106,6 +107,7 @@ IProjectConfig : IUnknown
 	virtual HRESULT GetSite (REFIID riid, void** ppvObject) = 0;
 	virtual HRESULT STDMETHODCALLTYPE GetOutputDirectory (BSTR* pbstr) = 0;
 	virtual IProjectConfigProperties* AsProjectConfigProperties() = 0;
+	virtual IVsProjectCfg* AsVsProjectConfig() = 0;
 };
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("7E69A7FA-5B25-41E1-99FC-F4F33E63F881")
@@ -215,7 +217,7 @@ FELIX_API HRESULT MakeProjectConfigBuilder (IVsHierarchy* hier, IProjectConfig* 
 	IVsOutputWindowPane2* outputWindowPane, IProjectConfigBuilder** to);
 FELIX_API HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to);
 HRESULT ShowCommandLinePropertyBuilder (HWND hwndParent, BSTR valueBefore, BSTR* valueAfter);
-HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, const wchar_t* configName, IProjectMacroResolver* macroResolver);
+HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, IVsProjectCfg* configOrNullForActive);
 FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine);
 HRESULT MakeFolderNode (IFolderNode** ppFolder);
 BOOL LUtilFixFilename (wchar_t* strName);

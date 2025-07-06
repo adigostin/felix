@@ -2819,15 +2819,7 @@ public:
 
 		if (pIVsHierarchy == this)
 		{
-			com_ptr<IVsSolutionBuildManager> buildManager;
-			hr = serviceProvider->QueryService(SID_SVsSolutionBuildManager, IID_PPV_ARGS(&buildManager)); RETURN_IF_FAILED(hr);
-			com_ptr<IVsProjectCfg> cfg;
-			hr = buildManager->FindActiveProjectCfg (nullptr, nullptr, this, &cfg); RETURN_IF_FAILED(hr);
-			wil::unique_bstr name;
-			hr = cfg->get_DisplayName(&name); RETURN_IF_FAILED(hr);
-			com_ptr<IProjectMacroResolver> mr;
-			hr = cfg->QueryInterface(&mr); RETURN_IF_FAILED(hr);
-			hr = GeneratePrePostIncludeFiles(this, name.get(), mr); RETURN_IF_FAILED(hr);
+			hr = GeneratePrePostIncludeFiles(this, nullptr); RETURN_IF_FAILED(hr);
 		}
 
 		return S_OK;

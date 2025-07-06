@@ -182,6 +182,7 @@ BEGIN
     IDS_GEN_PRE_POST_MESSAGE_FAIL " failed.\r\n"
     IDS_GEN_PRE_POST_MESSAGE 
                             "Generating pre/post-include files for configuration ""%s""..."
+    IDS_REMOVING_GEN_FILES  "Removing generated pre/post-include files as there are no files in project with BuildTool = Assembler.\r\n"
 END
 
 #endif    // English (United States) resources

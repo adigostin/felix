@@ -324,9 +324,22 @@ static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* project, IProject
 	return S_OK;
 }
 
-HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, const wchar_t* configName, IProjectMacroResolver* macroResolver)
+HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, IVsProjectCfg* configOrNullForActive)
 {
 	HRESULT hr;
+
+	com_ptr<IVsProjectCfg> config;
+	if (configOrNullForActive)
+		config = configOrNullForActive;
+	else
+	{
+		com_ptr<IVsSolutionBuildManager> buildManager;
+		hr = serviceProvider->QueryService(SID_SVsSolutionBuildManager, IID_PPV_ARGS(&buildManager)); RETURN_IF_FAILED(hr);
+		hr = buildManager->FindActiveProjectCfg (nullptr, nullptr, project->AsHierarchy(), &config); RETURN_IF_FAILED(hr);
+	}
+
+	com_ptr<IProjectMacroResolver> macroResolver;
+	hr = config->QueryInterface(&macroResolver); RETURN_IF_FAILED(hr);
 
 	com_ptr<IVsShell> shell;
 	hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
@@ -339,9 +352,108 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, const wchar_t* confi
 
 	wil::unique_variant projectName;
 	hr = project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_Name, &projectName); RETURN_IF_FAILED(hr);
+
+	// Do we have any file with BuildTool set to Assembler?
+	// If yes, we generate pre/post-include files. If no, we delete any existing pre/post-include files.
+	wil::unique_bstr genFilesStr;
+	hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERATED_FILES, &genFilesStr); RETURN_IF_FAILED(hr);
+	com_ptr<IFolderNode> genFilesFolder;
+	for (auto c = project->AsParentNode()->FirstChild(); c; c = c->Next())
+	{
+		wil::unique_bstr name;
+		if (auto f = wil::try_com_query_nothrow<IFolderNode>(c);
+			f && SUCCEEDED(f->AsFolderNodeProperties()->get_Name(&name)) && !_wcsicmp(name.get(), genFilesStr.get()))
+		{
+			genFilesFolder = std::move(f);
+			break;
+		}
+	}
+
+	stdext::inplace_function<HRESULT(IParentNode*)> enumDescendants;
+	enumDescendants = [&enumDescendants, genFilesFolder=genFilesFolder.get()](IParentNode* parent) -> HRESULT
+		{
+			for (auto c = parent->FirstChild(); c; c = c->Next())
+			{
+				if (c == genFilesFolder)
+					continue;
+
+				if (auto file = wil::try_com_query_nothrow<IFileNodeProperties>(c))
+				{
+					BuildToolKind tool;
+					auto hr = file->get_BuildTool(&tool); RETURN_IF_FAILED(hr);
+					if (tool == BuildToolKind::Assembler)
+						return S_OK;
+				}
+				else if (auto cAsParent = wil::try_com_query_nothrow<IParentNode>(c))
+				{
+					auto hr = enumDescendants(cAsParent); RETURN_IF_FAILED(hr);
+					if (hr == S_OK)
+						return S_OK;
+				}
+			}
+
+			return S_FALSE;
+		};
+	hr = enumDescendants(project->AsParentNode()); RETURN_IF_FAILED(hr);
+	if (hr == S_FALSE)
+	{
+		// No file in project with BuildTool=Assembler. Delete the GeneratedFiles folder, if any, then return.
+		if (genFilesFolder)
+		{
+			wil::unique_bstr str;
+			if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_REMOVING_GEN_FILES, &str)))
+			{
+				op2->OutputTaskItemStringEx2 (str.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
+					nullptr, 0, nullptr, 0, 0, projectName.bstrVal, nullptr, nullptr);
+			}
+
+			com_ptr<IVsRunningDocumentTable> rdt;
+			hr = serviceProvider->QueryService(SID_SVsRunningDocumentTable, IID_PPV_ARGS(&rdt)); RETURN_IF_FAILED(hr);
+			com_ptr<IVsSolution> solution;
+			hr = serviceProvider->QueryService(SID_SVsSolution, &solution); RETURN_IF_FAILED(hr);
+
+			for (auto c = genFilesFolder->AsParentNode()->FirstChild(); c; c = c->Next())
+			{
+				wil::unique_process_heap_string path;
+				hr = GetPathOf (c, path); RETURN_IF_FAILED(hr);
+				VSDOCCOOKIE docCookie;
+				hr = rdt->FindAndLockDocument(RDT_NoLock, path.get(), nullptr, nullptr, nullptr, &docCookie);
+				if (SUCCEEDED(hr) && docCookie != VSDOCCOOKIE_NIL)
+				{
+					hr = solution->CloseSolutionElement (SLNSAVEOPT_NoSave, project->AsHierarchy(), docCookie); LOG_IF_FAILED(hr);
+				}
+			}
+
+			wil::unique_process_heap_string genDirPath;
+			hr = GetPathOf(genFilesFolder, genDirPath); RETURN_IF_FAILED(hr);
+
+			hr = RemoveChildFromParent(project, genFilesFolder); RETURN_IF_FAILED(hr);
+
+			// Attempt to delete the directory from disk. Ignore errors since the directory may be missing.
+			com_ptr<IShellItem> si;
+			hr = SHCreateItemFromParsingName(genDirPath.get(), nullptr, IID_PPV_ARGS(&si));
+			if (SUCCEEDED(hr))
+			{
+				com_ptr<IFileOperation> pfo;
+				hr = CoCreateInstance(__uuidof(FileOperation), NULL, CLSCTX_ALL, IID_PPV_ARGS(&pfo)); RETURN_IF_FAILED(hr);
+				DWORD fof;
+				hr = pfo->SetOperationFlags(FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT); RETURN_IF_FAILED(hr);
+				hr = pfo->DeleteItem(si, nullptr);
+				if (SUCCEEDED(hr))
+					hr = pfo->PerformOperations();
+			}
+
+		}
+
+		return S_OK;
+	}
+
 	wil::unique_bstr str;
 	if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_GEN_PRE_POST_MESSAGE, &str)))
 	{
+		wil::unique_bstr configName;
+		hr = config->get_DisplayName(&configName); RETURN_IF_FAILED(hr);
+
 		wil::unique_process_heap_string message;
 		if (SUCCEEDED(wil::str_printf_nothrow(message, str.get(), configName)))
 			op2->OutputTaskItemStringEx2(message.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,

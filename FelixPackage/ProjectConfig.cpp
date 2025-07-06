@@ -575,6 +575,8 @@ public:
 	}
 
 	virtual IProjectConfigProperties* AsProjectConfigProperties() override { return this; }
+	
+	virtual IVsProjectCfg* AsVsProjectConfig() override { return this; }
 	#pragma endregion
 
 	#pragma region IProjectConfigProperties
@@ -688,9 +690,7 @@ public:
 				com_ptr<IProjectNode> proj;
 				if (SUCCEEDED(_hier->QueryInterface(IID_PPV_ARGS(&proj))))
 				{
-					wil::unique_bstr name;
-					hr = get_DisplayName(&name); RETURN_IF_FAILED(hr);
-					GeneratePrePostIncludeFiles(proj, name.get(), this);
+					hr = GeneratePrePostIncludeFiles(proj, this); RETURN_IF_FAILED(hr);
 				}
 			}
 		
