@@ -11,7 +11,6 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <TargetName>FelixPackageUI</TargetName>
     <ProjectName>FelixPackageUI</ProjectName>
     <ProjectGUID>{476ebc12-b423-40f8-9685-841ab022635a}</ProjectGUID>
     <CopyVsixManifestToOutput>false</CopyVsixManifestToOutput>

@@ -16,6 +16,10 @@ static constexpr DWORD LoadAddressDefaultValue = 0x8000;
 static constexpr wchar_t EntryPointAddressDefaultValue[] = L"32768";
 static constexpr LaunchType LaunchTypeDefaultValue = LaunchType::PrintUsr;
 
+HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigAssemblerProperties** to);
+HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to);
+HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to);
+
 struct ProjectConfig
 	: IProjectConfig
 	, IProjectConfigProperties
@@ -1170,7 +1174,7 @@ struct DebuggingPageProperties
 	#pragma endregion
 };
 
-FELIX_API HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigAssemblerProperties** to)
+HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigAssemblerProperties** to)
 {
 	auto p = com_ptr (new (std::nothrow) AssemblerPageProperties()); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance(config); RETURN_IF_FAILED(hr);
@@ -1178,7 +1182,7 @@ FELIX_API HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config
 	return S_OK;
 }
 
-FELIX_API HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to)
+HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to)
 {
 	return DebuggingPageProperties::CreateInstance(to);
 }
@@ -1408,7 +1412,7 @@ struct PrePostBuildPageProperties
 	#pragma endregion
 };
 
-FELIX_API HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to)
+HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to)
 {
 	return PrePostBuildPageProperties::CreateInstance(post, to);
 }

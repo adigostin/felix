@@ -7,18 +7,15 @@
 
 class LaunchOptionsImpl
 	: public IFelixLaunchOptions
-	, IXmlParent
 {
 	ULONG _refCount = 0;
 	wil::unique_process_heap_string _projectDir;
-	com_ptr<IProjectConfigDebugProperties> _debuggingProperties;
 	DWORD _loadAddress;
 	DWORD _entryPointAddress;
 
 public:
 	HRESULT InitInstance()
 	{
-		auto hr = DebuggingPageProperties_CreateInstance (&_debuggingProperties); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
@@ -31,7 +28,6 @@ public:
 		if (   TryQI<IUnknown>(static_cast<IFelixLaunchOptions*>(this), riid, ppvObject)
 			|| TryQI<IDispatch>(this, riid, ppvObject)
 			|| TryQI<IFelixLaunchOptions>(this, riid, ppvObject)
-			|| TryQI<IXmlParent>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -82,32 +78,6 @@ public:
 		return S_OK;
 	}
 
-	#pragma endregion
-
-	#pragma region IXmlParent
-	virtual HRESULT STDMETHODCALLTYPE GetChildXmlElementName (DISPID dispidProperty, IDispatch* child, BSTR* xmlElementNameOut) override
-	{
-		if (dispidProperty == dispidDebuggingProperties)
-		{
-			*xmlElementNameOut = nullptr;
-			return S_OK;
-		}
-
-		RETURN_HR(E_NOTIMPL);
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE CreateChild (DISPID dispidProperty, PCWSTR xmlElementName, IDispatch** childOut) override
-	{
-		if (dispidProperty == dispidDebuggingProperties)
-		{
-			com_ptr<IProjectConfigDebugProperties> pp;
-			auto hr = DebuggingPageProperties_CreateInstance(&pp); RETURN_IF_FAILED(hr);
-			*childOut = pp.detach();
-			return S_OK;
-		}
-
-		RETURN_HR(E_NOTIMPL);
-	}
 	#pragma endregion
 };
 

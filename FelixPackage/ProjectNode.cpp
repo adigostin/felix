@@ -1566,10 +1566,23 @@ public:
 
 			// TODO: pause monitoring file change notifications
 			//CSuspendFileChanges suspendFileChanges(CString(pszFileName), TRUE);
+
+			// Save XML to temporary stream first. During debugging, the SaveToXml file crashes often and we lose the file content.
+			auto memStreamRaw = SHCreateMemStream(nullptr, 0); RETURN_IF_NULL_ALLOC(memStreamRaw);
+			com_ptr<IStream> memStream;
+			memStream.attach (memStreamRaw);
+			hr = SaveToXml(this, ProjectElementName, 0, memStream); RETURN_IF_FAILED(hr);
+			
+			STATSTG stat;
+			hr = memStream->Stat(&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
+			RETURN_HR_IF(ERROR_FILE_TOO_LARGE, !!stat.cbSize.HighPart);
+			hr = memStream->Seek({ 0 }, STREAM_SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
+
 			com_ptr<IStream> stream;
 			hr = SHCreateStreamOnFile(currentFilePath.get(), STGM_CREATE | STGM_WRITE | STGM_SHARE_DENY_WRITE, &stream); RETURN_IF_FAILED(hr);
-			hr = SaveToXml(this, ProjectElementName, 0, stream); RETURN_IF_FAILED(hr);
+			hr = IStream_Copy(memStream, stream, stat.cbSize.LowPart); RETURN_IF_FAILED(hr);
 			stream.reset();
+
 			// TODO: resume monitoring file change notifications
 
 			_isDirty = false; // TODO: notify property changes
