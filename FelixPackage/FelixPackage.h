@@ -106,16 +106,10 @@ IProjectConfig : IUnknown
 	virtual HRESULT SetSite (IProjectNode* proj) = 0;
 	virtual HRESULT GetSite (REFIID riid, void** ppvObject) = 0;
 	virtual HRESULT STDMETHODCALLTYPE GetOutputDirectory (BSTR* pbstr) = 0;
+	virtual HRESULT STDMETHODCALLTYPE ResolveMacro (const wchar_t* macroFrom, const wchar_t* macroTo, wil::unique_process_heap_string& valueOut) = 0;
 	virtual IProjectConfigProperties* AsProjectConfigProperties() = 0;
 	virtual IVsProjectCfg* AsVsProjectConfig() = 0;
 };
-
-struct DECLSPEC_NOVTABLE DECLSPEC_UUID("7E69A7FA-5B25-41E1-99FC-F4F33E63F881")
-IProjectMacroResolver : IUnknown
-{
-	virtual HRESULT STDMETHODCALLTYPE ResolveMacro (const char* macro, char** ppszValueCoTaskMem) = 0;
-};
-
 
 enum SymbolKind : DWORD
 {
@@ -214,7 +208,7 @@ FELIX_API HRESULT MakeCustomBuildToolProperties (ICustomBuildToolProperties** to
 FELIX_API HRESULT MakeProjectConfigBuilder (IVsHierarchy* hier, IProjectConfig* config,
 	IVsOutputWindowPane2* outputWindowPane, IProjectConfigBuilder** to);
 HRESULT ShowCommandLinePropertyBuilder (HWND hwndParent, BSTR valueBefore, BSTR* valueAfter);
-HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, IVsProjectCfg* configOrNullForActive);
+HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, IProjectConfig* configOrNullForActive);
 FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine);
 HRESULT MakeFolderNode (IFolderNode** ppFolder);
 BOOL LUtilFixFilename (wchar_t* strName);
@@ -230,9 +224,11 @@ HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* child);
 HRESULT CreatePathOfNode (IParentNode* node, wil::unique_process_heap_string& pathOut);
 HRESULT GetItems (IParentNode* itemsIn, SAFEARRAY** itemsOut);
 HRESULT PutItems (SAFEARRAY* sa, IParentNode* items);
-HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectMacroResolver* macroResolver);
+HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectConfig* config);
 IFileNode* FindChildFileByName (IParentNode* parent, const wchar_t* fileName);
 HRESULT MakeFileNodeForExistingFile (LPCWSTR path, IFileNode** ppFile);
 HRESULT ParseNumber (LPCWSTR str, DWORD* value); // returns S_OK or S_FALSE
 HRESULT MakeSldSymbols (const wchar_t* symbolsFullPath, IFelixSymbols** to);
 HRESULT MakeZ80SymSymbols (const wchar_t* symbolsFullPath, IFelixSymbols** to);
+HRESULT ResolveMacros (const wchar_t* pszIn, IProjectConfig* config, IStream* pOut);
+HRESULT ResolveMacros (const wchar_t* pszIn, IProjectConfig* config, wil::unique_process_heap_string& out);

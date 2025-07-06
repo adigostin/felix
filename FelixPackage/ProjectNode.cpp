@@ -2149,7 +2149,7 @@ public:
 			}
 		}
 
-		RETURN_HR(E_INVALIDARG);
+		return E_INVALIDARG;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE AddCfgsOfCfgName(LPCOLESTR pszCfgName, LPCOLESTR pszCloneCfgName, BOOL fPrivate) override

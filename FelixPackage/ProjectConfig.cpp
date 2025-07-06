@@ -9,6 +9,7 @@
 #include "guids.h"
 #include "Z80Xml.h"
 #include "../FelixPackageUi/resource.h"
+#include <string_view>
 
 // Useful doc: https://learn.microsoft.com/en-us/visualstudio/extensibility/internals/managing-configuration-options?view=vs-2022
 
@@ -32,7 +33,6 @@ struct ProjectConfig
 	, IPropertyNotifySink
 	//, public IVsProjectCfgDebugTargetSelection
 	//, public IVsProjectCfgDebugTypeSelection
-	, IProjectMacroResolver
 {
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _hier;
@@ -101,7 +101,6 @@ public:
 			|| TryQI<IVsBuildableProjectCfg2>(this, riid, ppvObject)
 			|| TryQI<ISpecifyPropertyPages>(this, riid, ppvObject)
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
-			|| TryQI<IProjectMacroResolver>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -418,61 +417,55 @@ public:
 	}
 	#pragma endregion
 
-	// IProjectMacroResolver
-	virtual HRESULT STDMETHODCALLTYPE ResolveMacro (const char* macro, char** valueCoTaskMem) override
+	virtual HRESULT STDMETHODCALLTYPE ResolveMacro (const wchar_t* macroFrom, const wchar_t* macroTo, wil::unique_process_heap_string& valueOut) override
 	{
 		HRESULT hr;
 
-		if (!strcmp(macro, "LOAD_ADDR"))
+		// TODO: check for circularity.
+		//static vector_nothrow<const char*> resolving;
+		
+		std::wstring_view macro = { macroFrom, macroTo };
+		
+		if (macro == L"LOAD_ADDR")
 		{
 			unsigned long loadAddress;
 			hr = _assemblerProps->get_LoadAddress(&loadAddress); RETURN_IF_FAILED(hr);
-			char buffer[16];
-			int ires = sprintf_s(buffer, "%u", loadAddress);
-			auto value = wil::make_unique_ansistring_nothrow<wil::unique_cotaskmem_ansistring> (buffer, (size_t)ires); RETURN_IF_NULL_ALLOC(value);
-			*valueCoTaskMem = value.release();
+			wchar_t buffer[16];
+			int ires = swprintf_s(buffer, L"%u", loadAddress);
+			valueOut = wil::make_process_heap_string_nothrow(buffer, (size_t)ires); RETURN_IF_NULL_ALLOC(valueOut);
 			return S_OK;
 		}
-		else if (!strcmp(macro, "DEVICE"))
+		else if (macro == L"DEVICE")
 		{
-			static const char name[] = "ZXSPECTRUM48";
-			char* value = (char*)CoTaskMemAlloc(_countof(name)); RETURN_IF_NULL_ALLOC(value);
-			strcpy(value, name);
-			*valueCoTaskMem = value;
+			valueOut = wil::make_process_heap_string_nothrow(L"ZXSPECTRUM48"); RETURN_IF_NULL_ALLOC(valueOut);
 			return S_OK;
 		}
-		else if (!strcmp(macro, "ENTRY_POINT_ADDR"))
+		else if (macro == L"ENTRY_POINT_ADDR")
 		{
 			wil::unique_bstr addr;
 			hr = _assemblerProps->get_EntryPointAddress(&addr); RETURN_IF_FAILED(hr);
-			int len = WideCharToMultiByte (CP_UTF8, 0, addr.get(), 1 + (int)SysStringLen(addr.get()), nullptr, 0, nullptr, nullptr); RETURN_LAST_ERROR_IF(len==0);
-			auto s = wil::make_unique_ansistring_nothrow<wil::unique_cotaskmem_ansistring>(nullptr, len - 1); RETURN_IF_NULL_ALLOC(s);
-			WideCharToMultiByte (CP_UTF8, 0, addr.get(), 1 + (int)SysStringLen(addr.get()), s.get(), len, nullptr, nullptr);
-			*valueCoTaskMem = s.release();
+			valueOut = wil::make_process_heap_string_nothrow(addr.get()); RETURN_IF_NULL_ALLOC(valueOut);
 			return S_OK;
 		}
-		else if (!strcmp(macro, "SAVESNA"))
+		else if (macro == L"SAVESNA")
 		{
 			OutputFileType ft;
 			hr = _assemblerProps->get_OutputFileType(&ft); RETURN_IF_FAILED(hr);
-			wil::unique_cotaskmem_ansistring line;
 			if (ft == OutputFileType::Binary)
 			{
-				static const char str[] = "; (Binary selected. Filename is passed as command-line parameter)";
-				line = wil::make_unique_ansistring_nothrow<wil::unique_cotaskmem_ansistring>(str, _countof(str) - 1); RETURN_IF_NULL_ALLOC(line);
+				static const wchar_t str[] = L"; (Binary selected. Filename is passed as command-line parameter)";
+				valueOut = wil::make_process_heap_string_nothrow(str, _countof(str) - 1); RETURN_IF_NULL_ALLOC(valueOut);
+				return S_OK;
 			}
-			else
+			else if (ft == OutputFileType::Sna)
 			{
 				wil::unique_bstr fn;
 				hr = _assemblerProps->GetOutputFileName(&fn); RETURN_IF_FAILED(hr);
-				wil::unique_process_heap_string lineutf16;
-				hr = wil::str_printf_nothrow (lineutf16, L"SAVESNA %s", fn.get()); RETURN_IF_FAILED(hr);
-				int len = WideCharToMultiByte (CP_UTF8, 0, lineutf16.get(), -1, nullptr, 0, nullptr, nullptr);
-				line = wil::make_unique_ansistring_nothrow<wil::unique_cotaskmem_ansistring>(nullptr, len); RETURN_IF_NULL_ALLOC(line);
-				WideCharToMultiByte (CP_UTF8, 0, lineutf16.get(), -1, line.get(), len, nullptr, nullptr);
+				hr = wil::str_printf_nothrow (valueOut, L"SAVESNA %s", fn.get()); RETURN_IF_FAILED(hr);
+				return S_OK;
 			}
-			*valueCoTaskMem = line.release();
-			return S_OK;
+			else
+				RETURN_HR(E_NOTIMPL);
 		}
 
 		RETURN_HR(E_NOTIMPL);

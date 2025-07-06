@@ -273,7 +273,7 @@ static HRESULT Write (ISequentialStream* stream, const wchar_t* from, const wcha
 	return stream->Write(from, (ULONG)(to - from) * sizeof(wchar_t), nullptr);
 }
 
-static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* project, IProjectMacroResolver* macroResolver)
+static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* project, IProjectConfig* macroResolver)
 {
 	HRESULT hr;
 
@@ -324,7 +324,7 @@ static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* project, IProject
 	return S_OK;
 }
 
-HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, IVsProjectCfg* configOrNullForActive)
+HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, IProjectConfig* configOrNullForActive)
 {
 	HRESULT hr;
 
@@ -435,24 +435,23 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, IVsProjectCfg* confi
 		return S_OK;
 	}
 
-	com_ptr<IVsProjectCfg> config;
+	com_ptr<IProjectConfig> config;
 	if (configOrNullForActive)
 		config = configOrNullForActive;
 	else
 	{
 		com_ptr<IVsSolutionBuildManager> buildManager;
 		hr = serviceProvider->QueryService(SID_SVsSolutionBuildManager, IID_PPV_ARGS(&buildManager)); RETURN_IF_FAILED(hr);
-		hr = buildManager->FindActiveProjectCfg (nullptr, nullptr, project->AsHierarchy(), &config); RETURN_IF_FAILED(hr);
+		com_ptr<IVsProjectCfg> projectConfig;
+		hr = buildManager->FindActiveProjectCfg (nullptr, nullptr, project->AsHierarchy(), &projectConfig); RETURN_IF_FAILED(hr);
+		hr = projectConfig->QueryInterface(IID_PPV_ARGS(&config)); RETURN_IF_FAILED(hr);
 	}
-
-	com_ptr<IProjectMacroResolver> macroResolver;
-	hr = config->QueryInterface(&macroResolver); RETURN_IF_FAILED(hr);
 
 	wil::unique_bstr str;
 	if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_GEN_PRE_POST_MESSAGE, &str)))
 	{
 		wil::unique_bstr configName;
-		hr = config->get_DisplayName(&configName); RETURN_IF_FAILED(hr);
+		hr = config->AsVsProjectConfig()->get_DisplayName(&configName); RETURN_IF_FAILED(hr);
 
 		wil::unique_process_heap_string message;
 		if (SUCCEEDED(wil::str_printf_nothrow(message, str.get(), configName)))
@@ -460,7 +459,7 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, IVsProjectCfg* confi
 				nullptr, 0, nullptr, 0, 0, projectName.bstrVal, nullptr, nullptr);
 	}
 	
-	hr = GeneratePrePostIncludeFilesInner (project, macroResolver);
+	hr = GeneratePrePostIncludeFilesInner (project, config);
 	if (FAILED(hr))
 	{
 		if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_GEN_PRE_POST_MESSAGE_FAIL, &str)))
@@ -1154,60 +1153,45 @@ HRESULT PutItems (SAFEARRAY* sa, IParentNode* parent)
 	return S_OK;
 }
 
-HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectMacroResolver* macroResolver)
+HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectConfig* macroResolver)
 {
 	HRESULT hr;
 
+	// Read template UTF8 to memory.
 	wil::unique_hfile fromFile (CreateFile (fromPath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr)); RETURN_LAST_ERROR_IF(!fromFile.is_valid());
 	DWORD fileSize = GetFileSize (fromFile.get(), nullptr); RETURN_LAST_ERROR_IF(fileSize == INVALID_FILE_SIZE);
-	auto fromBuffer = wil::make_hlocal_ansistring_nothrow(nullptr, fileSize + 1); RETURN_IF_NULL_ALLOC(fromBuffer);
+	auto fromBufferUtf8 = wil::make_hlocal_ansistring_nothrow(nullptr, fileSize); RETURN_IF_NULL_ALLOC(fromBufferUtf8);
 	DWORD bytesRead;
-	BOOL bres = ReadFile (fromFile.get(), fromBuffer.get(), fileSize, &bytesRead, nullptr); RETURN_IF_WIN32_BOOL_FALSE(bres);
-	fromBuffer.get()[fileSize] = 0;
+	BOOL bres = ReadFile (fromFile.get(), fromBufferUtf8.get(), fileSize, &bytesRead, nullptr); RETURN_IF_WIN32_BOOL_FALSE(bres);
 	fromFile.reset();
+
+	// Convert template UTF8 to UTF16
+	int ires = MultiByteToWideChar(CP_UTF8, 0, fromBufferUtf8.get(), (int)fileSize, nullptr, 0); RETURN_LAST_ERROR_IF(!ires);
+	auto fromBuffer = wil::make_process_heap_string_nothrow(nullptr, ires); RETURN_IF_NULL_ALLOC(fromBuffer);
+	MultiByteToWideChar (CP_UTF8, 0, fromBufferUtf8.get(), (int)fileSize, fromBuffer.get(), ires);
+	fromBuffer.get()[ires] = 0;
+
+	// Generate UTF16 content.
+	com_ptr<IStream> toStreamUtf16;
+	hr = CreateStreamOnHGlobal (nullptr, TRUE, &toStreamUtf16); RETURN_IF_FAILED(hr);
+	hr = ResolveMacros (fromBuffer.get(), macroResolver, toStreamUtf16); RETURN_IF_FAILED(hr);
+
+	// Convert UTF16 content to UTF8;
+	STATSTG stat;
+	hr = toStreamUtf16->Stat(&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
+	HGLOBAL hg;
+	hr = GetHGlobalFromStream(toStreamUtf16, &hg); RETURN_IF_FAILED(hr);
+	auto buffer = GlobalLock(hg); RETURN_LAST_ERROR_IF(!buffer);
+	auto unlock = wil::scope_exit([hg]() { GlobalUnlock(hg); });
+
+	int contentLen = WideCharToMultiByte (CP_UTF8, 0, (LPCWCH)buffer, stat.cbSize.LowPart / 2, nullptr, 0, nullptr, nullptr); RETURN_LAST_ERROR_IF(!contentLen);
+	auto content = wil::make_hlocal_ansistring_nothrow (nullptr, contentLen); RETURN_IF_NULL_ALLOC(content);
+	ires = WideCharToMultiByte (CP_UTF8, 0, (LPCWCH)buffer, stat.cbSize.LowPart / 2, content.get(), contentLen, nullptr, nullptr); RETURN_LAST_ERROR_IF(ires != contentLen);
 
 	com_ptr<IStream> toStream;
 	hr = SHCreateStreamOnFileEx (toPath, STGM_CREATE | STGM_WRITE | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &toStream); RETURN_IF_FAILED(hr);
-
-	const char* from = fromBuffer.get();
-	while(true)
-	{
-		char ch = *from++;
-		if (!ch)
-			break;
-
-		if (ch == '%')
-		{
-			char macro[32];
-			uint32_t i = 0;
-			while(true)
-			{
-				ch = *from++;
-				RETURN_HR_IF(E_UNEXPECTED, !ch);
-				if (ch != '%')
-				{
-					RETURN_HR_IF(E_UNEXPECTED, i == _countof(macro) - 1);
-					macro[i++] = ch;
-				}
-				else
-				{
-					macro[i] = 0;
-					break;
-				}
-			}
-
-			wil::unique_cotaskmem_ansistring value;
-			hr = macroResolver->ResolveMacro(macro, &value); RETURN_IF_FAILED(hr);
-			ULONG cbWritten;
-			hr = toStream->Write (value.get(), strlen(value.get()), &cbWritten); RETURN_IF_FAILED(hr);
-		}
-		else
-		{
-			ULONG cbWritten;
-			hr = toStream->Write(&ch, 1, &cbWritten); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_UNEXPECTED, cbWritten != 1);
-		}
-	}
-
+	hr = toStream->Write(content.get(), contentLen, nullptr); RETURN_IF_FAILED(hr);
+	
 	return S_OK;
 }
 
@@ -1283,5 +1267,56 @@ HRESULT ParseNumber (LPCWSTR str, DWORD* value)
 	}
 
 	*value = val;
+	return S_OK;
+}
+
+HRESULT ResolveMacros (const wchar_t* pszIn, IProjectConfig* config, IStream* pOut)
+{
+	HRESULT hr;
+
+	static const auto IsMacroName = [](const wchar_t* from, const wchar_t* to)
+		{
+			while(from != to)
+			{
+				if (!iswupper(*from) && !iswdigit(*from) && (*from != L'_'))
+					return false;
+				from++;
+			}
+
+			return true;
+		};
+
+	for (const wchar_t* p = pszIn; *p; )
+	{
+		const wchar_t* to;
+		if (p[0] == L'%' && (to = wcschr(p + 1, L'%')) && IsMacroName(p + 1, to))
+		{
+			wil::unique_process_heap_string value;
+			hr = config->ResolveMacro(p + 1, to, value); RETURN_IF_FAILED(hr);
+			hr = ResolveMacros(value.get(), config, pOut); RETURN_IF_FAILED(hr);
+			p = to + 1;
+		}
+		else
+		{
+			hr = pOut->Write(p, 2, nullptr); RETURN_IF_FAILED(hr);
+			p++;
+		}
+	}
+
+	return S_OK;
+}
+
+HRESULT ResolveMacros (const wchar_t* pszIn, IProjectConfig* config, wil::unique_process_heap_string& out)
+{
+	IStream* sraw = SHCreateMemStream(nullptr, 0); RETURN_IF_NULL_ALLOC(sraw);
+	com_ptr<IStream> s;
+	s.attach(sraw);
+	auto hr = ResolveMacros(pszIn, config, sraw); RETURN_IF_FAILED(hr);
+	STATSTG stat;
+	hr = sraw->Stat(&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
+	out = wil::make_process_heap_string_nothrow(nullptr, stat.cbSize.LowPart); RETURN_IF_NULL_ALLOC(out);
+	hr = sraw->Seek({ 0 }, SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
+	hr = sraw->Read(out.get(), stat.cbSize.LowPart, nullptr); RETURN_IF_FAILED(hr);
+	out.get()[stat.cbSize.LowPart] = 0;
 	return S_OK;
 }
