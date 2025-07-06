@@ -6,7 +6,7 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-struct MockSolution : IVsSolution, IVsRegisterProjectTypes
+struct MockSolution : IVsSolution, IVsRegisterProjectTypes, IVsSolutionBuildManager
 {
 	ULONG _refCount = 0;
 	VSCOOKIE _nextProjectTypeCookie = 1;
@@ -18,6 +18,7 @@ struct MockSolution : IVsSolution, IVsRegisterProjectTypes
 		if (   TryQI<IUnknown>(static_cast<IVsSolution*>(this), riid, ppvObject)
 			|| TryQI<IVsSolution>(this, riid, ppvObject)
 			|| TryQI<IVsRegisterProjectTypes>(this, riid, ppvObject)
+			|| TryQI<IVsSolutionBuildManager>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -338,6 +339,77 @@ struct MockSolution : IVsSolution, IVsRegisterProjectTypes
 		return S_OK;
 	}
 	#pragma endregion
+
+	#pragma region IVsSolutionBuildManager
+	virtual HRESULT STDMETHODCALLTYPE DebugLaunch (VSDBGLAUNCHFLAGS grfLaunch) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE StartSimpleUpdateSolutionConfiguration (DWORD dwFlags, DWORD dwDefQueryResults, BOOL fSuppressUI) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE AdviseUpdateSolutionEvents (IVsUpdateSolutionEvents *pIVsUpdateSolutionEvents, VSCOOKIE *pdwCookie) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE UnadviseUpdateSolutionEvents (VSCOOKIE dwCookie) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE UpdateSolutionConfigurationIsActive (BOOL *pfIsActive) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE CanCancelUpdateSolutionConfiguration (BOOL *pfCanCancel) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE CancelUpdateSolutionConfiguration() override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE QueryDebugLaunch (VSDBGLAUNCHFLAGS grfLaunch, BOOL *pfCanLaunch) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE QueryBuildManagerBusy (BOOL *pfBuildManagerBusy) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE FindActiveProjectCfg (
+		/* [unique][in] */ __RPC__in_opt IVsHierarchy *pvReserved1,
+		/* [unique][in] */ __RPC__in_opt LPCOLESTR pvReserved2,
+		/* [unique][in] */ __RPC__in_opt IVsHierarchy *pIVsHierarchy_RequestedProject,
+		/* [optional][out] */ __RPC__deref_out_opt IVsProjectCfg **ppIVsProjectCfg_Active) override
+	{
+		com_ptr<IVsCfgProvider> cfgProvider;
+		auto hr = pIVsHierarchy_RequestedProject->QueryInterface(IID_PPV_ARGS(cfgProvider.addressof())); RETURN_IF_FAILED(hr);
+		com_ptr<IVsCfg> firstCfg;
+		ULONG cActual;
+		hr = cfgProvider->GetCfgs(1, firstCfg.addressof(), &cActual, nullptr); RETURN_IF_FAILED(hr);
+		if (hr == S_FALSE)
+			return E_BOUNDS;
+		com_ptr<IVsProjectCfg> projectCfg;
+		hr = firstCfg->QueryInterface(IID_PPV_ARGS(projectCfg.addressof())); RETURN_IF_FAILED(hr);
+		*ppIVsProjectCfg_Active = projectCfg.detach();
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_IsDebug( 
+		/* [out] */ __RPC__out BOOL *pfIsDebug) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE put_IsDebug( 
+		/* [in] */ BOOL fIsDebug) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE get_CodePage( 
+		/* [out] */ __RPC__out UINT *puiCodePage) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE put_CodePage( 
+		/* [in] */ UINT uiCodePage) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE StartSimpleUpdateProjectConfiguration( 
+		/* [in] */ __RPC__in_opt IVsHierarchy *pIVsHierarchyToBuild,
+		/* [in] */ __RPC__in_opt IVsHierarchy *pIVsHierarchyDependent,
+		/* [in] */ __RPC__in LPCOLESTR pszDependentConfigurationCanonicalName,
+		/* [in] */ DWORD dwFlags,
+		/* [in] */ DWORD dwDefQueryResults,
+		/* [in] */ BOOL fSuppressUI) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE get_StartupProject( 
+		/* [out] */ __RPC__deref_out_opt IVsHierarchy **ppHierarchy) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE set_StartupProject( 
+		/* [in] */ __RPC__in_opt IVsHierarchy *pHierarchy) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE GetProjectDependencies( 
+		/* [in] */ __RPC__in_opt IVsHierarchy *pHier,
+		/* [in] */ ULONG celt,
+		/* [size_is][out][in] */ __RPC__inout_ecount_full(celt) IVsHierarchy *rgpHier[  ],
+		/* [optional][out] */ __RPC__out ULONG *pcActual) override { return E_NOTIMPL; }
+		#pragma endregion
 };
 
 com_ptr<IVsSolution> MakeMockSolution()

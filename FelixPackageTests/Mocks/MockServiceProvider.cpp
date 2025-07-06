@@ -2,8 +2,11 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include "shared/com.h"
+#include "Mocks.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
+
+static const GUID SID_SVsGeneralOutputWindowPane = { 0x65482c72, 0xdefa, 0x41b7, 0x90, 0x2c, 0x11, 0xc0, 0x91, 0x88, 0x9c, 0x83 };
 
 MIDL_INTERFACE("F761DCEE-D880-49B3-80CF-57D310DBF49B")
 IMockServiceProvider : IUnknown
@@ -22,6 +25,7 @@ namespace FelixTests
 		com_ptr<IVsSolution> _solution = MakeMockSolution();
 		com_ptr<IVsRunningDocumentTable> _rdt = MakeMockRDT();
 		com_ptr<IVsShell> _shell = MakeMockShell();
+		com_ptr<IVsOutputWindowPane2> _generalOutputWindowPane = MakeMockOutputWindowPane(nullptr);
 
 		#pragma region IUnknown
 		virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
@@ -74,7 +78,10 @@ namespace FelixTests
 				return E_NOTIMPL;
 
 			if (guidService == SID_SVsSolutionBuildManager)
-				return E_NOTIMPL;
+				return _solution->QueryInterface(riid, ppvObject);
+
+			if (guidService == SID_SVsGeneralOutputWindowPane)
+				return _generalOutputWindowPane->QueryInterface(riid, ppvObject);
 
 			Assert::Fail();
 		}

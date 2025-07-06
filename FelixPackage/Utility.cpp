@@ -328,19 +328,6 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, IVsProjectCfg* confi
 {
 	HRESULT hr;
 
-	com_ptr<IVsProjectCfg> config;
-	if (configOrNullForActive)
-		config = configOrNullForActive;
-	else
-	{
-		com_ptr<IVsSolutionBuildManager> buildManager;
-		hr = serviceProvider->QueryService(SID_SVsSolutionBuildManager, IID_PPV_ARGS(&buildManager)); RETURN_IF_FAILED(hr);
-		hr = buildManager->FindActiveProjectCfg (nullptr, nullptr, project->AsHierarchy(), &config); RETURN_IF_FAILED(hr);
-	}
-
-	com_ptr<IProjectMacroResolver> macroResolver;
-	hr = config->QueryInterface(&macroResolver); RETURN_IF_FAILED(hr);
-
 	com_ptr<IVsShell> shell;
 	hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
 
@@ -447,6 +434,19 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, IVsProjectCfg* confi
 
 		return S_OK;
 	}
+
+	com_ptr<IVsProjectCfg> config;
+	if (configOrNullForActive)
+		config = configOrNullForActive;
+	else
+	{
+		com_ptr<IVsSolutionBuildManager> buildManager;
+		hr = serviceProvider->QueryService(SID_SVsSolutionBuildManager, IID_PPV_ARGS(&buildManager)); RETURN_IF_FAILED(hr);
+		hr = buildManager->FindActiveProjectCfg (nullptr, nullptr, project->AsHierarchy(), &config); RETURN_IF_FAILED(hr);
+	}
+
+	com_ptr<IProjectMacroResolver> macroResolver;
+	hr = config->QueryInterface(&macroResolver); RETURN_IF_FAILED(hr);
 
 	wil::unique_bstr str;
 	if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_GEN_PRE_POST_MESSAGE, &str)))
