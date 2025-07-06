@@ -186,7 +186,7 @@
     <ClCompile Include="ProjectNode.cpp" />
     <ClCompile Include="ProjectConfig.cpp" />
     <ClCompile Include="ProjectFactory.cpp" />
-    <ClCompile Include="Z80UtilityFunctions.cpp" />
+    <ClCompile Include="Utility.cpp" />
     <ClCompile Include="Z80Xml.cpp" />
   </ItemGroup>
   <ItemGroup>
