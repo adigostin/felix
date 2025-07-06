@@ -49,7 +49,7 @@ struct CustomBuildToolProperties
 			|| riid == IID_IWeakReferenceSource
 			|| riid == IID_ICustomTypeDescriptor
 			|| riid == IID_IComponent
-			|| riid == IID_INoIdea3
+			|| riid == IID_TypeDescriptor_IUnimplemented
 			|| riid == IID_IPerPropertyBrowsing
 			|| riid == IID_IVSMDPerPropertyBrowsing
 			|| riid == IID_ISpecifyPropertyPages

@@ -405,8 +405,8 @@ public:
 			|| riid == __uuidof(IVsAggregatableProject)
 			|| riid == IID_IVsParentProject3
 			|| riid == IID_IVsUIHierarchyEventsPrivate
-			|| riid == IID_INoIdea3
-			|| riid == IID_INoIdea4
+			|| riid == IID_TypeDescriptor_IUnimplemented
+			|| riid == IID_PropertyGrid_IUnimplemented
 			|| riid == GUID{ 0x266e178e, 0x46b9, 0x4e95, { 0x91, 0x0c, 0x43, 0xaf, 0x54, 0xe3, 0x02, 0x3c } } // IVsStubWindowPrivate
 			|| riid == IID_IProvideMultipleClassInfo
 			|| riid == IID_IExtendedObject

@@ -118,8 +118,8 @@ public:
 			|| riid == IID_INoMarshal
 			|| riid == IID_IAgileObject
 			|| riid == IID_IRpcOptions
-			|| riid == IID_INoIdea3
-			|| riid == IID_INoIdea4
+			|| riid == IID_TypeDescriptor_IUnimplemented
+			|| riid == IID_PropertyGrid_IUnimplemented
 			|| riid == IID_IConnectionPointContainer
 			|| riid == IID_IPerPropertyBrowsing
 ///			|| riid == IID_IVSMDPerPropertyBrowsing
@@ -774,8 +774,8 @@ struct AssemblerPageProperties
 			|| riid == IID_INoMarshal
 			|| riid == IID_IAgileObject
 			|| riid == IID_IRpcOptions
-			|| riid == IID_INoIdea3
-			|| riid == IID_INoIdea4
+			|| riid == IID_TypeDescriptor_IUnimplemented
+			|| riid == IID_PropertyGrid_IUnimplemented
 			|| riid == IID_IPerPropertyBrowsing
 //			|| riid == IID_IVSMDPerPropertyBrowsing
 			|| riid == IID_IProvideMultipleClassInfo
@@ -1073,8 +1073,8 @@ struct DebuggingPageProperties
 			|| riid == IID_INoMarshal
 			|| riid == IID_IAgileObject
 			|| riid == IID_IRpcOptions
-			|| riid == IID_INoIdea3
-			|| riid == IID_INoIdea4
+			|| riid == IID_TypeDescriptor_IUnimplemented
+			|| riid == IID_PropertyGrid_IUnimplemented
 			|| riid == IID_IPerPropertyBrowsing
 			//|| riid == IID_IVSMDPerPropertyBrowsing
 			|| riid == IID_IProvideMultipleClassInfo

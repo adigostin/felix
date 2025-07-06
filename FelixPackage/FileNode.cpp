@@ -97,8 +97,8 @@ public:
 			|| riid == IID_IUseImmediateCommitPropertyPages
 			|| riid == IID_IVsParentProject3
 			|| riid == IID_IVsUIHierarchyEventsPrivate
-			|| riid == IID_INoIdea3
-			|| riid == IID_INoIdea4
+			|| riid == IID_TypeDescriptor_IUnimplemented
+			|| riid == IID_PropertyGrid_IUnimplemented
 			|| riid == IID_SolutionProperties
 		)
 			return E_NOINTERFACE;
