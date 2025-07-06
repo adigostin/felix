@@ -2,6 +2,8 @@
 #include "pch.h"
 #include "DebugEngine.h"
 #include "shared/com.h"
+#include "guids.h"
+#include "..\FelixPackageUi\resource.h"
 
 class ExpressionContextNoSource : public IDebugExpressionContext2
 {
@@ -55,6 +57,8 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE ParseText (LPCOLESTR pszCode, PARSEFLAGS dwFlags, UINT nRadix,
 		IDebugExpression2 **ppExpr, BSTR* pbstrError, UINT *pichError) override
 	{
+		HRESULT hr;
+
 		*ppExpr = nullptr;
 		*pbstrError = nullptr;
 		*pichError = 0;
@@ -65,28 +69,35 @@ public:
 				return MakeRegisterExpression (_thread.get(), pszCode, (z80_reg16)i, ppExpr);
 		}
 
-		size_t len = wcslen(pszCode);
-		if ((pszCode[0] >= '0' && pszCode[0] <= '9')
-			|| ((len > 1) && ((pszCode[len - 1] & 0xDF) == 'H') && ((pszCode[0] & 0xDF) >= 'A') && ((pszCode[0] & 0xDF) <= 'F')))
+		if (iswdigit(pszCode[0]))
 		{
-			bool hex = (len > 1) && ((pszCode[len - 1] & 0xDF) == 'H');
-			wchar_t* endPtr;
-			uint32_t val = wcstoul (pszCode, &endPtr, hex ? 16 : 10);
-			if (endPtr != &pszCode[len - (hex ? 1 : 0)])
+			DWORD val;
+			hr = ParseNumber(pszCode, &val);
+			if (hr != S_OK)
 			{
-				*pbstrError = SysAllocString (L"Unknown number.");
-				*pichError = (UINT)(endPtr - pszCode);
+				com_ptr<IVsShell> shell;
+				serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell));
+				wil::unique_bstr str;
+				if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_UNK_NUM_FORMAT, &str)))
+					*pbstrError = str.release();
+				*pichError = 0;
 				return E_FAIL;
 			}
 
 			com_ptr<IDebugProgram2> program;
-			auto hr = _thread->GetProgram(&program); RETURN_IF_FAILED(hr);
+			hr = _thread->GetProgram(&program); RETURN_IF_FAILED(hr);
 			bool physicalMemorySpace = false;
 			return MakeNumberExpression (pszCode, physicalMemorySpace, val, program, ppExpr);
 		}
 
-		*pbstrError = SysAllocString (L"Unknown expression. Only numbers and 16-bit register names supported for now.");
-		*pichError = 0;
+		// VS calls this function all the time when the user hovers the mouse in the editor
+		// while debugging. Let's not load any detailed error message.
+		//com_ptr<IVsShell> shell;
+		//serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell));
+		//wil::unique_bstr str;
+		//if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_UNK_EXPRESSION, &str)))
+		//	*pbstrError = str.release();
+		//*pichError = 0;
 		return E_FAIL;
 	}
 	#pragma endregion

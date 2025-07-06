@@ -27,6 +27,8 @@
 #define IDS_GEN_PRE_POST_MESSAGE_FAIL   122
 #define IDS_GEN_PRE_POST_MESSAGE        123
 #define IDS_REMOVING_GEN_FILES          124
+#define IDS_UNK_NUM_FORMAT              125
+#define IDS_UNK_EXPRESSION              126
 #define IDB_IMAGES                      300
 #define IDI_PACKAGE_ICON                400
 #define IDI_SPECTRUM                    401
