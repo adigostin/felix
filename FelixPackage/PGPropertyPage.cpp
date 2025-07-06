@@ -216,6 +216,7 @@ public:
 
 		com_ptr<IVSMDPropertyGrid> grid;
 		hr = browser->CreatePropertyGrid(&grid); RETURN_IF_FAILED(hr);
+		grid->put_GridSort(PGSORT_NOSORT);
 
 		HWND hwnd;
 		hr = grid->get_Handle(&hwnd); RETURN_IF_FAILED(hr);
@@ -431,6 +432,7 @@ public:
 
 		com_ptr<IVSMDPropertyGrid> grid;
 		hr = browser->CreatePropertyGrid(&grid); RETURN_IF_FAILED(hr);
+		grid->put_GridSort(PGSORT_NOSORT);
 
 		HWND gridHWnd;
 		hr = grid->get_Handle(&gridHWnd); RETURN_IF_FAILED(hr);
