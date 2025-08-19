@@ -16,7 +16,7 @@ class Z80DebugPort : public IZ80DebugPort, IConnectionPoint, IConnectionPointCon
 
 public:
 	friend HRESULT MakeDebugPort (const wchar_t* portName, const GUID& portId, IDebugPort2** port);
-	friend static void DestroyDebugPort (Z80DebugPort* p);
+	friend void DestroyDebugPort (Z80DebugPort* p);
 	
 	#pragma region IUnknown
 	virtual HRESULT __stdcall QueryInterface(REFIID riid, void** ppvObject) override
