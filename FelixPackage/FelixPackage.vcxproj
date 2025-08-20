@@ -49,14 +49,9 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Midl>
       <AdditionalOptions>-ms_ext -c_ext -no_format_opt</AdditionalOptions>
-      <PreprocessorDefinitions>DEBUG;UNICODE;_UNICODE;_NEW_SDK=1;_WINDOWS;_USRDLL;_WCHAR_T_DEFINED;__MIDL__=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <SuppressStartupBanner>true</SuppressStartupBanner>
-      <TargetEnvironment>X64</TargetEnvironment>
       <TypeLibraryName>$(IntDir)%(FileName).tlb</TypeLibraryName>
       <HeaderFileName>%(RelativeDir)%(Filename)_h.h</HeaderFileName>
       <InterfaceIdentifierFileName>%(RelativeDir)%(FileName)_i.c</InterfaceIdentifierFileName>
-      <EnableErrorChecks>All</EnableErrorChecks>
-      <StructMemberAlignment>8</StructMemberAlignment>
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
@@ -76,8 +71,6 @@
       <PreprocessorDefinitions>FELIX_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <ResourceCompile>
-      <PreprocessorDefinitions>_DEBUG;UNICODE;_UNICODE;_AFXDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <Culture>0x0409</Culture>
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
@@ -95,14 +88,9 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Midl>
       <AdditionalOptions>-ms_ext -c_ext -no_format_opt</AdditionalOptions>
-      <PreprocessorDefinitions>NDEBUG;_ATL_STATIC_REGISTRY;_ATL_MIN_CRT;UNICODE;_UNICODE;_NEW_SDK=1;_WINDOWS;_USRDLL;_WCHAR_T_DEFINED;__MIDL__=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <SuppressStartupBanner>true</SuppressStartupBanner>
-      <TargetEnvironment>X64</TargetEnvironment>
       <TypeLibraryName>$(IntDir)%(FileName).tlb</TypeLibraryName>
       <HeaderFileName>%(RelativeDir)%(Filename)_h.h</HeaderFileName>
       <InterfaceIdentifierFileName>%(RelativeDir)%(FileName)_i.c</InterfaceIdentifierFileName>
-      <EnableErrorChecks>All</EnableErrorChecks>
-      <StructMemberAlignment>8</StructMemberAlignment>
     </Midl>
     <ClCompile>
       <AdditionalOptions>/Oxs /Zc:strictStrings-</AdditionalOptions>
@@ -122,8 +110,6 @@
       <PreprocessorDefinitions>FELIX_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <ResourceCompile>
-      <PreprocessorDefinitions>NDEBUG;UNICODE;_UNICODE;_AFXDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <Culture>0x0409</Culture>
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
