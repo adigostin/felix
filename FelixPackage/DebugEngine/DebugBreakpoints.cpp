@@ -241,6 +241,14 @@ public:
 			dwFields &= ~BPERESI_TYPE;
 		}
 
+		if (dwFields & BPERESI_PROGRAM)
+		{
+			pErrorResolutionInfo->pProgram = _program;
+			pErrorResolutionInfo->pProgram->AddRef();
+			pErrorResolutionInfo->dwFields |= BPERESI_PROGRAM;
+			dwFields &= ~BPERESI_PROGRAM;
+		}
+
 		dwFields &= ~0x20; // BPERESI174_SUGGESTEDFIX
 
 		LOG_HR_IF (E_NOTIMPL, !!dwFields);
