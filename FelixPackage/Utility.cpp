@@ -610,7 +610,6 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 
 	// --outprefix
 	hr = addOutputPathParam (L" --outprefix=", L""); RETURN_IF_FAILED(hr);
-	hr = Write (cmdLine, L"\\"); RETURN_IF_FAILED(hr);
 
 	// --lst
 	VARIANT_BOOL saveListing;

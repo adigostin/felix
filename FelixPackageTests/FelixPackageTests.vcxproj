@@ -66,6 +66,14 @@ COPY /Y $(SolutionDir)third_party\sentry.dll $(SolutionDir)$(Platform)\$(Configu
 COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Configuration)
    </Command>
     </PostBuildEvent>
+    <Midl>
+      <TypeLibraryName>$(IntDir)%(FileName).tlb</TypeLibraryName>
+      <HeaderFileName>%(RelativeDir)%(Filename)_h.h</HeaderFileName>
+      <InterfaceIdentifierFileName>%(RelativeDir)%(FileName)_i.c</InterfaceIdentifierFileName>
+    </Midl>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -98,6 +106,14 @@ COPY /Y $(SolutionDir)third_party\sentry.dll $(SolutionDir)$(Platform)\$(Configu
 COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Configuration)
    </Command>
     </PostBuildEvent>
+    <Midl>
+      <TypeLibraryName>$(IntDir)%(FileName).tlb</TypeLibraryName>
+      <HeaderFileName>%(RelativeDir)%(Filename)_h.h</HeaderFileName>
+      <InterfaceIdentifierFileName>%(RelativeDir)%(FileName)_i.c</InterfaceIdentifierFileName>
+    </Midl>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="BuilderTests.cpp" />
@@ -117,6 +133,11 @@ COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Conf
     <ClCompile Include="ProjectTests.cpp" />
     <ClCompile Include="SourceFileTests.cpp" />
     <ClCompile Include="TestFunctions.cpp" />
+    <ClCompile Include="XmlTests.cpp" />
+    <ClCompile Include="XmlTests_i.c">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Mocks.h" />
@@ -126,6 +147,12 @@ COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Conf
     <ProjectReference Include="..\FelixPackage\FelixPackage.vcxproj">
       <Project>{79203f4b-6f1f-4d65-ade5-d082617da696}</Project>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Midl Include="XmlTests.idl" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="FelixPackageTests.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

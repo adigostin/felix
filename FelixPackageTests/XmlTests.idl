@@ -1,0 +1,21 @@
+import "oaidl.idl";
+import "ocidl.idl";
+
+[uuid(D903FC23-1E67-4886-AAF2-2710B9032B1B)]
+library XmlTestsLib
+{
+	importlib("stdole2.tlb");
+	
+	[object, uuid(F9E501BD-5CA7-4088-8EB8-4DC03A1ADB0F), dual, nonextensible, pointer_default(unique)]
+	interface IProperties1 : IDispatch
+	{
+		[id(1), bindable, propget] HRESULT OutputFilename ([out, retval] BSTR* pbstrOutputFilename);
+	}
+
+	[object, uuid(E4BA42E8-9FA8-4813-B9EE-DFDA8011A47D), dual, nonextensible, pointer_default(unique)]
+	interface IProperties2 : IDispatch
+	{
+		[id(1), bindable, propget] HRESULT OutputFilename ([out, retval] BSTR* pbstrOutputFilename);
+		[id(1), bindable, propput] HRESULT OutputFilename (BSTR bstrOutputFilename);
+	}
+}

@@ -45,6 +45,9 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("45B35EF7-DC2B-4EE3-BB44-EC25D607BFCE") I
 
 typedef enum
 {
+	// Forces the serializer to generate XML even for properties with default values.
+	// (This flag does not affect properties with no setter that are serializable as XML attributes;
+	//  such properties are not serialized even in the presence of SAVE_XML_FORCE_SERIALIZE_DEFAULTS.)
 	SAVE_XML_FORCE_SERIALIZE_DEFAULTS = 1,
 } SaveXmlFlags;
 
