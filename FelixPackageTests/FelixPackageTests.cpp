@@ -40,7 +40,6 @@ static const char TemplateXML_EmptyProject[] = ""
 
 namespace FelixTests
 {
-
 	TEST_MODULE_INITIALIZE(InitModule)
 	{
 		HRESULT hr;
@@ -49,10 +48,13 @@ namespace FelixTests
 		wchar_t* end;
 		StringCchCatExW (tempPath, _countof(tempPath), L"FelixTest\\", &end, NULL, 0);
 		Assert::IsTrue (end < tempPath + _countof(tempPath) - 1);
-		end[1] = 0;
-		SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = tempPath, .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
-		int ires = SHFileOperation(&file_op);
-		Assert::AreEqual(0, ires);
+		if (PathFileExists(tempPath))
+		{
+			end[1] = 0;
+			SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = tempPath, .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
+			int ires = SHFileOperation(&file_op);
+			Assert::AreEqual(0, ires);
+		}
 		BOOL bres = CreateDirectory(tempPath, 0);
 		Assert::IsTrue(bres);
 
