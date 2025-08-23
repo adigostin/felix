@@ -7,7 +7,7 @@
 // Our XML saving code ignores properties with the dispid equal to DISPID_VALUE.
 #define dispid__name DISPID_VALUE
 
-#define dispidLoadAddress          2
+#define dispidBaseAddress          2
 #define dispidEntryPointAddress    3
 #define dispidLaunchType           4
 #define dispidConfigurations       5

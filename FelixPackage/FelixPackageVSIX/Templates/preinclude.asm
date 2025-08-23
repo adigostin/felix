@@ -13,5 +13,5 @@
 	; (Currently only ZX Spectrum 48K is supported.)
 	DEVICE %DEVICE%
 
-	; This comes from the Project Options -> Debugging -> LoadAddress.
-	ORG %LOAD_ADDR%
+	; This comes from the Project Options -> Debugging -> BaseAddress.
+	ORG %BASE_ADDR%

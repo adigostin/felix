@@ -593,14 +593,14 @@ public:
 		if (!exePath)
 			RETURN_HR(E_NO_EXE_FILENAME);
 
-		DWORD loadAddress;
-		hr = _launchOptions->get_LoadAddress(&loadAddress); RETURN_IF_FAILED(hr);
+		DWORD baseAddress;
+		hr = _launchOptions->get_BaseAddress(&baseAddress); RETURN_IF_FAILED(hr);
 		DWORD launchAddress;
 		hr = _launchOptions->get_EntryPointAddress(&launchAddress); RETURN_IF_FAILED(hr);
 
 		// Load the binary file.
 		DWORD loadedSize;
-		hr = _simulator->LoadBinary(exePath.get(), loadAddress, &loadedSize);
+		hr = _simulator->LoadBinary(exePath.get(), baseAddress, &loadedSize);
 		if (FAILED(hr))
 		{
 			uiShell->ReportErrorInfo(hr);
@@ -612,7 +612,7 @@ public:
 		com_ptr<IDebugModuleCollection> moduleColl;
 		hr = _program->QueryInterface(&moduleColl); RETURN_IF_FAILED(hr);
 		wil::com_ptr_nothrow<IDebugModule2> exe_module;
-		hr = MakeModule (loadAddress, loadedSize, exePath.get(), debug_info_path.get(), true,
+		hr = MakeModule (baseAddress, loadedSize, exePath.get(), debug_info_path.get(), true,
 			this, _program.get(), _callback.get(), &exe_module); RETURN_IF_FAILED(hr);
 		hr = moduleColl->AddModule(exe_module.get()); RETURN_IF_FAILED(hr);
 

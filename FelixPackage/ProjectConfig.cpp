@@ -13,7 +13,7 @@
 
 // Useful doc: https://learn.microsoft.com/en-us/visualstudio/extensibility/internals/managing-configuration-options?view=vs-2022
 
-static constexpr DWORD LoadAddressDefaultValue = 0x8000;
+static constexpr DWORD BaseAddressDefaultValue = 0x8000;
 static constexpr wchar_t EntryPointAddressDefaultValue[] = L"32768";
 static constexpr LaunchType LaunchTypeDefaultValue = LaunchType::PrintUsr;
 
@@ -225,9 +225,9 @@ public:
 		RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
 		hr = opts->put_ProjectDir(projectDir.bstrVal); RETURN_IF_FAILED(hr);
 		
-		DWORD loadAddress;
-		hr = _assemblerProps->get_LoadAddress(&loadAddress); RETURN_IF_FAILED(hr);
-		opts->put_LoadAddress(loadAddress);
+		DWORD baseAddress;
+		hr = _assemblerProps->get_BaseAddress(&baseAddress); RETURN_IF_FAILED(hr);
+		opts->put_BaseAddress(baseAddress);
 
 		wil::unique_bstr epAddressStr;
 		hr = _assemblerProps->get_EntryPointAddress(&epAddressStr); RETURN_IF_FAILED(hr);
@@ -426,12 +426,12 @@ public:
 		
 		std::wstring_view macro = { macroFrom, macroTo };
 		
-		if (macro == L"LOAD_ADDR")
+		if (macro == L"BASE_ADDR")
 		{
-			unsigned long loadAddress;
-			hr = _assemblerProps->get_LoadAddress(&loadAddress); RETURN_IF_FAILED(hr);
+			unsigned long baseAddress;
+			hr = _assemblerProps->get_BaseAddress(&baseAddress); RETURN_IF_FAILED(hr);
 			wchar_t buffer[16];
-			int ires = swprintf_s(buffer, L"%u", loadAddress);
+			int ires = swprintf_s(buffer, L"%u", baseAddress);
 			valueOut = wil::make_process_heap_string_nothrow(buffer, (size_t)ires); RETURN_IF_NULL_ALLOC(valueOut);
 			return S_OK;
 		}
@@ -679,7 +679,7 @@ public:
 
 		if (_hier)
 		{
-			if (   dispID == dispidLoadAddress
+			if (   dispID == dispidBaseAddress
 				|| dispID == dispidEntryPointAddress
 				|| dispID == dispidOutputFileType
 				|| dispID == dispidPlatformName)
@@ -724,7 +724,7 @@ struct AssemblerPageProperties
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
 	OutputFileType _outputFileType = OutputFileType::Binary;
 	wil::unique_bstr _entryPointAddress;
-	DWORD _loadAddress = LoadAddressDefaultValue;
+	DWORD _baseAddress = BaseAddressDefaultValue;
 	bool _saveListing = false;
 	wil::unique_bstr _listingFilename;
 
@@ -811,9 +811,9 @@ struct AssemblerPageProperties
 			return S_OK;
 		}
 
-		if (dispid == dispidLoadAddress)
+		if (dispid == dispidBaseAddress)
 		{
-			*fDefault = (_loadAddress == LoadAddressDefaultValue);
+			*fDefault = (_baseAddress == BaseAddressDefaultValue);
 			return S_OK;
 		}
 
@@ -912,18 +912,18 @@ struct AssemblerPageProperties
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_LoadAddress (DWORD* value) override
+	virtual HRESULT STDMETHODCALLTYPE get_BaseAddress (DWORD* value) override
 	{
-		*value = _loadAddress;
+		*value = _baseAddress;
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_LoadAddress (DWORD value) override
+	virtual HRESULT STDMETHODCALLTYPE put_BaseAddress (DWORD value) override
 	{
-		if (_loadAddress != value)
+		if (_baseAddress != value)
 		{
-			_loadAddress = value;
-			_propNotifyCP->NotifyPropertyChanged(dispidLoadAddress);
+			_baseAddress = value;
+			_propNotifyCP->NotifyPropertyChanged(dispidBaseAddress);
 		}
 
 		return S_OK;

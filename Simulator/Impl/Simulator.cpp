@@ -1211,7 +1211,7 @@ public:
 			return SetErrorInfo(E_BOUNDS, L"Binary does not fit in RAM.\r\n\r\n"
 				"Binary load address range is 0x%04X...0x%04X.\r\n\r\n"
 				"RAM address range = 0x%04X...0x%04X.\r\n\r\n"
-				"Try to adjust the LoadAddress value in the project properties."
+				"Try to adjust the BaseAddress value in the project properties."
 				, address, address + stat.cbSize.LowPart, from, to);
 
 		uint8_t buffer[128];

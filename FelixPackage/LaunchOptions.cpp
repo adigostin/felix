@@ -10,7 +10,7 @@ class LaunchOptionsImpl
 {
 	ULONG _refCount = 0;
 	wil::unique_process_heap_string _projectDir;
-	DWORD _loadAddress;
+	DWORD _baseAddress;
 	DWORD _entryPointAddress;
 
 public:
@@ -54,15 +54,15 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_LoadAddress (DWORD *pdwAddress) override
+	virtual HRESULT STDMETHODCALLTYPE get_BaseAddress (DWORD *pdwAddress) override
 	{
-		*pdwAddress = _loadAddress;
+		*pdwAddress = _baseAddress;
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_LoadAddress (DWORD dwAddress) override
+	virtual HRESULT STDMETHODCALLTYPE put_BaseAddress (DWORD dwAddress) override
 	{
-		_loadAddress = dwAddress;
+		_baseAddress = dwAddress;
 		return S_OK;
 	}
 
