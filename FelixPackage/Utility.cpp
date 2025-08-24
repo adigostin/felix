@@ -617,7 +617,7 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 	if (saveListing)
 	{
 		wil::unique_bstr listingFilename;
-		hr = asmProps->get_SaveListingFilename(&listingFilename); RETURN_IF_FAILED(hr);
+		hr = asmProps->get_ListingFilename(&listingFilename); RETURN_IF_FAILED(hr);
 		if (listingFilename && listingFilename.get()[0])
 		{
 			hr = addOutputPathParam (L" --lst=", listingFilename.get()); RETURN_IF_FAILED(hr);

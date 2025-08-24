@@ -995,7 +995,7 @@ struct AssemblerPageProperties
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_SaveListingFilename (BSTR* pFilename) override
+	virtual HRESULT STDMETHODCALLTYPE get_ListingFilename (BSTR* pFilename) override
 	{
 		if (_listingFilename)
 		{
@@ -1006,7 +1006,7 @@ struct AssemblerPageProperties
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_SaveListingFilename (BSTR filename) override
+	virtual HRESULT STDMETHODCALLTYPE put_ListingFilename (BSTR filename) override
 	{
 		if (VarBstrCmp(_listingFilename.get(), filename, 0, 0) != VARCMP_EQ)
 		{

@@ -65,9 +65,8 @@ library ATLProject1Lib
 		[id(dispidSaveListing), bindable, propget] HRESULT SaveListing ([out, retval] VARIANT_BOOL* save);
 		[id(dispidSaveListing), bindable, propput] HRESULT SaveListing (VARIANT_BOOL save);
 
-		// It's called SaveListingFilename (as opposed to ListingFilename) so it appears in the property grid right after SaveListing.
-		[id(dispidListingFilename), bindable, propget] HRESULT SaveListingFilename ([out, retval] BSTR* pFilename);
-		[id(dispidListingFilename), bindable, propput] HRESULT SaveListingFilename (BSTR filename);
+		[id(dispidListingFilename), bindable, propget] HRESULT ListingFilename ([out, retval] BSTR* pFilename);
+		[id(dispidListingFilename), bindable, propput] HRESULT ListingFilename (BSTR filename);
 
 		HRESULT GetOutputFileName ([out, retval] BSTR* pbstr);
 		HRESULT GetSldFileName ([out, retval] BSTR* pbstr);

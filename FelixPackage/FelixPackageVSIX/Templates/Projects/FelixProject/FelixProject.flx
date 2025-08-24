@@ -2,7 +2,7 @@
 <Z80Project AutoOpenFiles="start.asm">
   <Configurations>
     <Configuration ConfigName="Debug" PlatformName="ZX Spectrum 48K">
-      <AssemblerProperties OutputFileType="Sna" BaseAddress="32768" EntryPointAddress="start" SaveListing="True" SaveListingFilename="output.lst" />
+      <AssemblerProperties OutputFileType="Sna" BaseAddress="32768" EntryPointAddress="start" SaveListing="True" ListingFilename="output.lst" />
     </Configuration>
   </Configurations>
   <Items>
