@@ -417,60 +417,6 @@ public:
 	}
 	#pragma endregion
 
-	virtual HRESULT STDMETHODCALLTYPE ResolveMacro (const wchar_t* macroFrom, const wchar_t* macroTo, wil::unique_process_heap_string& valueOut) override
-	{
-		HRESULT hr;
-
-		// TODO: check for circularity.
-		//static vector_nothrow<const char*> resolving;
-		
-		std::wstring_view macro = { macroFrom, macroTo };
-		
-		if (macro == L"BASE_ADDR")
-		{
-			unsigned long baseAddress;
-			hr = _assemblerProps->get_BaseAddress(&baseAddress); RETURN_IF_FAILED(hr);
-			wchar_t buffer[16];
-			int ires = swprintf_s(buffer, L"%u", baseAddress);
-			valueOut = wil::make_process_heap_string_nothrow(buffer, (size_t)ires); RETURN_IF_NULL_ALLOC(valueOut);
-			return S_OK;
-		}
-		else if (macro == L"DEVICE")
-		{
-			valueOut = wil::make_process_heap_string_nothrow(L"ZXSPECTRUM48"); RETURN_IF_NULL_ALLOC(valueOut);
-			return S_OK;
-		}
-		else if (macro == L"ENTRY_POINT_ADDR")
-		{
-			wil::unique_bstr addr;
-			hr = _assemblerProps->get_EntryPointAddress(&addr); RETURN_IF_FAILED(hr);
-			valueOut = wil::make_process_heap_string_nothrow(addr.get()); RETURN_IF_NULL_ALLOC(valueOut);
-			return S_OK;
-		}
-		else if (macro == L"SAVESNA")
-		{
-			OutputFileType ft;
-			hr = _assemblerProps->get_OutputFileType(&ft); RETURN_IF_FAILED(hr);
-			if (ft == OutputFileType::Binary)
-			{
-				static const wchar_t str[] = L"; (Binary selected. Filename is passed as command-line parameter)";
-				valueOut = wil::make_process_heap_string_nothrow(str, _countof(str) - 1); RETURN_IF_NULL_ALLOC(valueOut);
-				return S_OK;
-			}
-			else if (ft == OutputFileType::Sna)
-			{
-				wil::unique_bstr fn;
-				hr = _assemblerProps->GetOutputFileName(&fn); RETURN_IF_FAILED(hr);
-				hr = wil::str_printf_nothrow (valueOut, L"SAVESNA %s", fn.get()); RETURN_IF_FAILED(hr);
-				return S_OK;
-			}
-			else
-				RETURN_HR(E_NOTIMPL);
-		}
-
-		RETURN_HR(E_NOTIMPL);
-	}
-
 	#pragma region IVsBuildableProjectCfg2
 	virtual HRESULT STDMETHODCALLTYPE GetBuildCfgProperty(VSBLDCFGPROPID propid, VARIANT * pvar) override
 	{
@@ -570,6 +516,8 @@ public:
 		*pbstr = SysAllocString(output_dir.get()); RETURN_IF_NULL_ALLOC(*pbstr);
 		return S_OK;
 	}
+
+	virtual IProjectConfigAssemblerProperties* AsmProps() override { return _assemblerProps; }
 
 	virtual IProjectConfigProperties* AsProjectConfigProperties() override { return this; }
 	

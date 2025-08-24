@@ -5,6 +5,7 @@
 #include "shared/inplace_function.h"
 #include "../FelixPackageUi/resource.h"
 #include "guids.h"
+#include <string_view>
 
 #define __dte_h__
 #include <VSShell174.h>
@@ -1152,7 +1153,70 @@ HRESULT PutItems (SAFEARRAY* sa, IParentNode* parent)
 	return S_OK;
 }
 
-HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectConfig* macroResolver)
+static bool IsMacroName (const wchar_t* from, const wchar_t* to)
+{
+	while(from != to)
+	{
+		if (!iswupper(*from) && !iswdigit(*from) && (*from != L'_'))
+			return false;
+		from++;
+	}
+
+	return true;
+}
+
+static HRESULT ResolveTemplateFileMacro (const wchar_t* macroFrom, const wchar_t* macroTo, IProjectConfig* config, wil::unique_process_heap_string& valueOut)
+{
+	HRESULT hr;
+
+	std::wstring_view macro = { macroFrom, macroTo };
+
+	if (macro == L"BASE_ADDR")
+	{
+		unsigned long baseAddress;
+		hr = config->AsmProps()->get_BaseAddress(&baseAddress); RETURN_IF_FAILED(hr);
+		wchar_t buffer[16];
+		int ires = swprintf_s(buffer, L"%u", baseAddress);
+		valueOut = wil::make_process_heap_string_nothrow(buffer, (size_t)ires); RETURN_IF_NULL_ALLOC(valueOut);
+		return S_OK;
+	}
+	else if (macro == L"DEVICE")
+	{
+		valueOut = wil::make_process_heap_string_nothrow(L"ZXSPECTRUM48"); RETURN_IF_NULL_ALLOC(valueOut);
+		return S_OK;
+	}
+	else if (macro == L"ENTRY_POINT_ADDR")
+	{
+		wil::unique_bstr addr;
+		hr = config->AsmProps()->get_EntryPointAddress(&addr); RETURN_IF_FAILED(hr);
+		valueOut = wil::make_process_heap_string_nothrow(addr.get()); RETURN_IF_NULL_ALLOC(valueOut);
+		return S_OK;
+	}
+	else if (macro == L"SAVESNA")
+	{
+		OutputFileType ft;
+		hr = config->AsmProps()->get_OutputFileType(&ft); RETURN_IF_FAILED(hr);
+		if (ft == OutputFileType::Binary)
+		{
+			static const wchar_t str[] = L"; (Binary selected. Filename is passed as command-line parameter)";
+			valueOut = wil::make_process_heap_string_nothrow(str, _countof(str) - 1); RETURN_IF_NULL_ALLOC(valueOut);
+			return S_OK;
+		}
+		else if (ft == OutputFileType::Sna)
+		{
+			wil::unique_bstr fn;
+			hr = config->AsmProps()->GetOutputFileName(&fn); RETURN_IF_FAILED(hr);
+			hr = wil::str_printf_nothrow (valueOut, L"SAVESNA %s", fn.get()); RETURN_IF_FAILED(hr);
+			return S_OK;
+		}
+		else
+			RETURN_HR(E_NOTIMPL);
+	}
+
+	RETURN_HR(E_NOTIMPL);
+}
+
+HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectConfig* config)
 {
 	HRESULT hr;
 
@@ -1162,31 +1226,44 @@ HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectConfig
 	auto fromBufferUtf8 = wil::make_hlocal_ansistring_nothrow(nullptr, fileSize); RETURN_IF_NULL_ALLOC(fromBufferUtf8);
 	DWORD bytesRead;
 	BOOL bres = ReadFile (fromFile.get(), fromBufferUtf8.get(), fileSize, &bytesRead, nullptr); RETURN_IF_WIN32_BOOL_FALSE(bres);
+	fromBufferUtf8.get()[fileSize] = 0;
 	fromFile.reset();
 
 	// Convert template UTF8 to UTF16
-	int ires = MultiByteToWideChar(CP_UTF8, 0, fromBufferUtf8.get(), (int)fileSize, nullptr, 0); RETURN_LAST_ERROR_IF(!ires);
-	auto fromBuffer = wil::make_process_heap_string_nothrow(nullptr, ires); RETURN_IF_NULL_ALLOC(fromBuffer);
-	MultiByteToWideChar (CP_UTF8, 0, fromBufferUtf8.get(), (int)fileSize, fromBuffer.get(), ires);
-	fromBuffer.get()[ires] = 0;
+	wil::unique_process_heap_string fromBuffer;
+	hr = UTF8ToUTF16(fromBufferUtf8, fromBuffer); RETURN_IF_FAILED(hr);
 
 	// Generate UTF16 content.
 	com_ptr<IStream> toStreamUtf16;
 	hr = CreateStreamOnHGlobal (nullptr, TRUE, &toStreamUtf16); RETURN_IF_FAILED(hr);
-	hr = ResolveMacros (fromBuffer.get(), macroResolver, toStreamUtf16); RETURN_IF_FAILED(hr);
+	for (const wchar_t* p = fromBuffer.get(); *p; )
+	{
+		const wchar_t* to;
+		if (p[0] == L'%' && (to = wcschr(p + 1, L'%')) && IsMacroName(p + 1, to))
+		{
+			wil::unique_process_heap_string value;
+			hr = ResolveTemplateFileMacro(p + 1, to, config, value); RETURN_IF_FAILED(hr);
+			hr = toStreamUtf16->Write (value.get(), sizeof(wchar_t) * wcslen(value.get()), nullptr); RETURN_IF_FAILED(hr);
+			p = to + 1;
+		}
+		else
+		{
+			hr = toStreamUtf16->Write (p, sizeof(wchar_t), nullptr); RETURN_IF_FAILED(hr);
+			p++;
+		}
+	}
 
-	// Convert UTF16 content to UTF8;
+	// Convert UTF16 content to UTF8 content;
 	STATSTG stat;
 	hr = toStreamUtf16->Stat(&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
 	HGLOBAL hg;
 	hr = GetHGlobalFromStream(toStreamUtf16, &hg); RETURN_IF_FAILED(hr);
-	auto buffer = GlobalLock(hg); RETURN_LAST_ERROR_IF(!buffer);
-	auto unlock = wil::scope_exit([hg]() { GlobalUnlock(hg); });
+	auto buffer = wil::unique_hglobal_locked(hg); RETURN_LAST_ERROR_IF(!buffer);
+	wil::unique_hlocal_ansistring content;
+	size_t contentLen;
+	hr = UTF16ToUTF8(static_cast<wchar_t*>(buffer.get()), content, &contentLen); RETURN_IF_FAILED(hr);
 
-	int contentLen = WideCharToMultiByte (CP_UTF8, 0, (LPCWCH)buffer, stat.cbSize.LowPart / 2, nullptr, 0, nullptr, nullptr); RETURN_LAST_ERROR_IF(!contentLen);
-	auto content = wil::make_hlocal_ansistring_nothrow (nullptr, contentLen); RETURN_IF_NULL_ALLOC(content);
-	ires = WideCharToMultiByte (CP_UTF8, 0, (LPCWCH)buffer, stat.cbSize.LowPart / 2, content.get(), contentLen, nullptr, nullptr); RETURN_LAST_ERROR_IF(ires != contentLen);
-
+	// Write UTF8 content to disk.
 	com_ptr<IStream> toStream;
 	hr = SHCreateStreamOnFileEx (toPath, STGM_CREATE | STGM_WRITE | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &toStream); RETURN_IF_FAILED(hr);
 	hr = toStream->Write(content.get(), contentLen, nullptr); RETURN_IF_FAILED(hr);
@@ -1266,56 +1343,5 @@ HRESULT ParseNumber (LPCWSTR str, DWORD* value)
 	}
 
 	*value = val;
-	return S_OK;
-}
-
-HRESULT ResolveMacros (const wchar_t* pszIn, IProjectConfig* config, IStream* pOut)
-{
-	HRESULT hr;
-
-	static const auto IsMacroName = [](const wchar_t* from, const wchar_t* to)
-		{
-			while(from != to)
-			{
-				if (!iswupper(*from) && !iswdigit(*from) && (*from != L'_'))
-					return false;
-				from++;
-			}
-
-			return true;
-		};
-
-	for (const wchar_t* p = pszIn; *p; )
-	{
-		const wchar_t* to;
-		if (p[0] == L'%' && (to = wcschr(p + 1, L'%')) && IsMacroName(p + 1, to))
-		{
-			wil::unique_process_heap_string value;
-			hr = config->ResolveMacro(p + 1, to, value); RETURN_IF_FAILED(hr);
-			hr = ResolveMacros(value.get(), config, pOut); RETURN_IF_FAILED(hr);
-			p = to + 1;
-		}
-		else
-		{
-			hr = pOut->Write(p, 2, nullptr); RETURN_IF_FAILED(hr);
-			p++;
-		}
-	}
-
-	return S_OK;
-}
-
-HRESULT ResolveMacros (const wchar_t* pszIn, IProjectConfig* config, wil::unique_process_heap_string& out)
-{
-	IStream* sraw = SHCreateMemStream(nullptr, 0); RETURN_IF_NULL_ALLOC(sraw);
-	com_ptr<IStream> s;
-	s.attach(sraw);
-	auto hr = ResolveMacros(pszIn, config, sraw); RETURN_IF_FAILED(hr);
-	STATSTG stat;
-	hr = sraw->Stat(&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
-	out = wil::make_process_heap_string_nothrow(nullptr, stat.cbSize.LowPart); RETURN_IF_NULL_ALLOC(out);
-	hr = sraw->Seek({ 0 }, SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
-	hr = sraw->Read(out.get(), stat.cbSize.LowPart, nullptr); RETURN_IF_FAILED(hr);
-	out.get()[stat.cbSize.LowPart] = 0;
 	return S_OK;
 }

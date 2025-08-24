@@ -106,7 +106,7 @@ IProjectConfig : IUnknown
 	virtual HRESULT SetSite (IProjectNode* proj) = 0;
 	virtual HRESULT GetSite (REFIID riid, void** ppvObject) = 0;
 	virtual HRESULT STDMETHODCALLTYPE GetOutputDirectory (BSTR* pbstr) = 0;
-	virtual HRESULT STDMETHODCALLTYPE ResolveMacro (const wchar_t* macroFrom, const wchar_t* macroTo, wil::unique_process_heap_string& valueOut) = 0;
+	virtual IProjectConfigAssemblerProperties* AsmProps() = 0;
 	virtual IProjectConfigProperties* AsProjectConfigProperties() = 0;
 	virtual IVsProjectCfg* AsVsProjectConfig() = 0;
 };
@@ -182,6 +182,50 @@ HRESULT MakeBstrFromString (const char* name, size_t len, BSTR* bstr);
 HRESULT MakeBstrFromString (const char* sl_name_from, const char* sl_name_to, BSTR* to);
 FELIX_API HRESULT MakeBstrFromStreamOnHGlobal (IStream* stream, BSTR* pBstr);
 
+template<typename from_string_type, typename to_string_type>
+HRESULT UTF8ToUTF16 (const from_string_type& fromStringUTF8, to_string_type& toStringUTF16)
+{
+	const char* fromRaw = fromStringUTF8.get();
+	size_t fromLen = strlen(fromRaw);
+	if (fromLen == 0)
+	{
+		auto toString = wil::make_unique_string_nothrow<to_string_type>(L""); RETURN_IF_NULL_ALLOC(toString);
+		toStringUTF16 = std::move(toString);
+		return S_OK;
+	}
+
+	// TODO: start with a buffer with the same number of characters, which will almost always be enough.
+	int wcharCount = MultiByteToWideChar (CP_UTF8, 0, fromRaw, (int)fromLen, nullptr, 0); RETURN_LAST_ERROR_IF(wcharCount == 0);
+	auto toString = wil::make_unique_string_nothrow<to_string_type>(nullptr, wcharCount); RETURN_IF_NULL_ALLOC(toString);
+	int ires = MultiByteToWideChar (CP_UTF8, 0, fromRaw, (int)fromLen, toString.get(), wcharCount); RETURN_LAST_ERROR_IF(ires == 0);
+	toString.get()[wcharCount] = 0;
+	toStringUTF16 = std::move(toString);
+	return S_OK;
+}
+
+template<typename from_string_type, typename to_string_type>
+HRESULT UTF16ToUTF8 (const from_string_type& fromStringUTF16, to_string_type& toStringUTF8, size_t* toStringLen = nullptr)
+{
+	const wchar_t* fromRaw = wil::str_raw_ptr(fromStringUTF16);
+	size_t fromLen = wcslen(fromRaw);
+	if (fromLen == 0)
+	{
+		auto toString = wil::make_unique_ansistring_nothrow<to_string_type>(""); RETURN_IF_NULL_ALLOC(toString);
+		toStringUTF8 = std::move(toString);
+		return S_OK;
+	}
+
+	// TODO: start with a buffer with the same number of characters, which will almost always be enough.
+	int mblen = WideCharToMultiByte (CP_UTF8, 0, fromRaw, (int)fromLen, nullptr, 0, nullptr, nullptr); RETURN_LAST_ERROR_IF(mblen == 0);
+	auto mb = wil::make_unique_ansistring_nothrow<to_string_type>(nullptr, mblen); RETURN_IF_NULL_ALLOC(mb);
+	int ires = WideCharToMultiByte (CP_UTF8, 0, fromRaw, (int)fromLen, mb.get(), mblen, nullptr, nullptr); RETURN_LAST_ERROR_IF(ires == 0);
+	mb.get()[mblen] = 0;
+	toStringUTF8 = std::move(mb);
+	if (toStringLen)
+		*toStringLen = mblen;
+	return S_OK;
+}
+
 VARIANT MakeVariantFromVSITEMID (VSITEMID itemid);
 inline HRESULT InitVariantFromVSITEMID (VSITEMID itemid, VARIANT* pvar)
 {
@@ -230,5 +274,3 @@ HRESULT MakeFileNodeForExistingFile (LPCWSTR path, IFileNode** ppFile);
 HRESULT ParseNumber (LPCWSTR str, DWORD* value); // returns S_OK or S_FALSE
 HRESULT MakeSldSymbols (const wchar_t* symbolsFullPath, IFelixSymbols** to);
 HRESULT MakeZ80SymSymbols (const wchar_t* symbolsFullPath, IFelixSymbols** to);
-HRESULT ResolveMacros (const wchar_t* pszIn, IProjectConfig* config, IStream* pOut);
-HRESULT ResolveMacros (const wchar_t* pszIn, IProjectConfig* config, wil::unique_process_heap_string& out);
