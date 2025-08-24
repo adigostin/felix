@@ -701,36 +701,44 @@ struct AssemblerPageProperties
 			|| TryQI<IDispatch>(this, riid, ppvObject)
 			|| TryQI<IProjectConfigAssemblerProperties>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
+			//|| TryQI<IVSMDPerPropertyBrowsing>(this, riid, ppvObject)
 			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
 		)
 			return S_OK;
 
 		#ifdef _DEBUG
-		// These will never be implemented.
+		// These will never be implemented - they're called from managed code, for example from Marshal.GetObjectForIUnknown()
 		if (   riid == IID_IManagedObject
 			|| riid == IID_IInspectable
-			|| riid == IID_ICustomTypeDescriptor
 			|| riid == IID_IComponent
 			|| riid == IID_IMarshal
 			|| riid == IID_INoMarshal
 			|| riid == IID_IAgileObject
 			|| riid == IID_IRpcOptions
-			|| riid == IID_TypeDescriptor_IUnimplemented
-			|| riid == IID_PropertyGrid_IUnimplemented
-			|| riid == IID_IPerPropertyBrowsing
-//			|| riid == IID_IVSMDPerPropertyBrowsing
-			|| riid == IID_IProvideMultipleClassInfo
 			|| riid == IID_IWeakReferenceSource
-			)
+			|| riid == IID_IProvideClassInfo
+		)
+			return E_NOINTERFACE;
+
+		if (	riid == __uuidof(IXmlParent))
+			return E_NOINTERFACE;
+
+		if (   riid == IID_PropertyGrid_IUnimplemented
+			|| riid == IID_TypeDescriptor_IUnimplemented
+			|| riid == IID_ICustomTypeDescriptor
+			|| riid == IID_IProvideMultipleClassInfo
+			//|| riid == IID_IVSMDPerPropertyBrowsing
+			|| riid == IID_ISpecifyPropertyPages
+		)
+			return E_NOINTERFACE;
+
+		if (riid == IID_IPerPropertyBrowsing)
 			return E_NOINTERFACE;
 
 		if (riid == IID_ICategorizeProperties)
 			return E_NOINTERFACE;
 
 		if (riid == IID_IProvidePropertyBuilder)
-			return E_NOINTERFACE;
-
-		if (riid == IID_ISpecifyPropertyPages)
 			return E_NOINTERFACE;
 		#endif
 
@@ -1375,7 +1383,7 @@ struct PrePostBuildPageProperties
 	#pragma endregion
 };
 
-HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to)
+static HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to)
 {
 	return PrePostBuildPageProperties::CreateInstance(post, to);
 }

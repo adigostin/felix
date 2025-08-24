@@ -624,6 +624,8 @@ public:
 				|| nCmdID == cmdidPropSheetOrProperties // 397 - ignore it here and VS will ask for cmdidPropertyPages, then show the Properties Window
 				|| nCmdID == cmdidSolutionCfg           // 684
 				|| nCmdID == cmdidSolutionCfgGetList    // 685
+				|| nCmdID == cmdidBuildSln              // 882
+				|| nCmdID == cmdidRebuildSln            // 883
 			)
 				return OLECMDERR_E_NOTSUPPORTED;
 
