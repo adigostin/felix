@@ -29,6 +29,8 @@
 #define IDS_REMOVING_GEN_FILES          124
 #define IDS_UNK_NUM_FORMAT              125
 #define IDS_UNK_EXPRESSION              126
+#define IDS_ASM_PROPS_ENTRY_POINT_ADDR_NAME 132
+#define IDS_ASM_PROPS_ENTRY_POINT_ADDR_DESC 133
 #define IDB_IMAGES                      300
 #define IDI_PACKAGE_ICON                400
 #define IDI_SPECTRUM                    401

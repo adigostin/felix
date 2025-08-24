@@ -59,10 +59,8 @@ library ATLProject1Lib
 		[id(dispidBaseAddress), bindable, propget] HRESULT BaseAddress ([out, retval] unsigned long* value);
 		[id(dispidBaseAddress), bindable, propput] HRESULT BaseAddress (unsigned long value);
 
-		[id(dispidEntryPointAddress), bindable, propget, helpstring("This is where execution starts. You can use a number or a symbol name.")]
-		HRESULT EntryPointAddress ([out, retval] BSTR* pbstrAddress);
-		[id(dispidEntryPointAddress), bindable, propput]
-		HRESULT EntryPointAddress (BSTR bstrAddress);
+		[id(dispidEntryPointAddress), bindable, propget] HRESULT EntryPointAddress ([out, retval] BSTR* pbstrAddress);
+		[id(dispidEntryPointAddress), bindable, propput] HRESULT EntryPointAddress (BSTR bstrAddress);
 
 		[id(dispidSaveListing), bindable, propget] HRESULT SaveListing ([out, retval] VARIANT_BOOL* save);
 		[id(dispidSaveListing), bindable, propput] HRESULT SaveListing (VARIANT_BOOL save);
@@ -185,7 +183,7 @@ library ATLProject1Lib
 		[propget] HRESULT BaseAddress ([out, retval] DWORD* pdwAddress);
 		[propput] HRESULT BaseAddress (DWORD dwAddress);
 
-		[/*id(dispidEntryPointAddress), */propget] HRESULT EntryPointAddress ([out, retval] DWORD* pdwAddress);
-		[/*id(dispidEntryPointAddress), */propput] HRESULT EntryPointAddress (DWORD dwAddress);
+		[propget] HRESULT EntryPointAddress ([out, retval] DWORD* pdwAddress);
+		[propput] HRESULT EntryPointAddress (DWORD dwAddress);
 	}
 };
