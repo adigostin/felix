@@ -459,7 +459,7 @@ vector_nothrow<BuildStepRunProcess*> BuildStepRunProcess::pendingSteps;
 struct ProjectConfigBuilder : IProjectConfigBuilder, IBuildStepCallback
 {
 	ULONG _refCount = 0;
-	com_ptr<IVsHierarchy> _hier;
+	com_ptr<IProjectNode> _project;
 	com_ptr<IProjectConfig> _config;
 	wil::unique_bstr _projName;
 	com_ptr<IVsOutputWindowPane2> _outputWindow2;
@@ -474,17 +474,17 @@ public:
 	// (This helped me catch an uninitialized var.)
 	ProjectConfigBuilder() { }
 
-	HRESULT InitInstance (IVsHierarchy* hier, IProjectConfig* config, IVsOutputWindowPane2* outputWindowPane)
+	HRESULT InitInstance (IProjectNode* project, IProjectConfig* config, IVsOutputWindowPane2* outputWindowPane)
 	{
 		HRESULT hr;
 
-		_hier = hier;
+		_project = project;
 		_config = config;
 		_outputWindow2 = outputWindowPane;
 		hr = _weakRefToThis.InitInstance(static_cast<IProjectConfigBuilder*>(this)); RETURN_IF_FAILED(hr);
 
 		wil::unique_variant projectName;
-		hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_Name, &projectName); RETURN_IF_FAILED(hr);
+		hr = project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_Name, &projectName); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_FAIL, projectName.vt != VT_BSTR);
 		_projName = wil::unique_bstr(projectName.release().bstrVal);
 		return S_OK;
@@ -607,7 +607,7 @@ public:
 		vector_nothrow<com_ptr<IBuildStep>> steps;
 
 		wil::unique_variant projectDir;
-		auto hr = _hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, projectDir.addressof()); RETURN_IF_FAILED(hr);
+		auto hr = _project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, projectDir.addressof()); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
 
 		wil::unique_bstr output_dir;
@@ -619,7 +619,7 @@ public:
 		hr = ParseCommandLines (preBuildProps, projectDir.bstrVal, steps);RETURN_IF_FAILED(hr);
 		
 		// First build the files with a custom build tool. This is similar to what VS does.
-		hr = EnumDescendants (_hier, VSITEMID_ROOT, [this, &steps, workDir = projectDir.bstrVal](IChildNode* item)
+		hr = EnumDescendants (_project->AsHierarchy(), VSITEMID_ROOT, [this, &steps, workDir = projectDir.bstrVal](IChildNode* item)
 			{
 				com_ptr<IFileNodeProperties> file;
 				if (SUCCEEDED(item->QueryInterface(&file)))
@@ -646,7 +646,7 @@ public:
 		com_ptr<IProjectConfigAssemblerProperties> asmProps;
 		hr = _config->AsProjectConfigProperties()->get_AssemblerProperties(&asmProps); RETURN_IF_FAILED(hr);
 		wil::unique_bstr cmdLine;
-		hr = MakeSjasmCommandLine (_hier, _config, asmProps, &cmdLine); RETURN_IF_FAILED(hr);
+		hr = MakeSjasmCommandLine (_project->AsHierarchy(), _config, asmProps, &cmdLine); RETURN_IF_FAILED(hr);
 		if (SysStringLen(cmdLine.get()) > 0)
 		{
 			com_ptr<IBuildStep> buildStep;
@@ -827,11 +827,11 @@ public:
 	}
 };
 
-FELIX_API HRESULT MakeProjectConfigBuilder (IVsHierarchy* hier, IProjectConfig* config,
+FELIX_API HRESULT MakeProjectConfigBuilder (IProjectNode* project, IProjectConfig* config,
 	IVsOutputWindowPane2* outputWindowPane, IProjectConfigBuilder** to)
 {
 	auto p = com_ptr(new (std::nothrow) ProjectConfigBuilder()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance(hier, config, outputWindowPane); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance(project, config, outputWindowPane); RETURN_IF_FAILED(hr);
 	*to = p.detach();
 	return S_OK;
 }

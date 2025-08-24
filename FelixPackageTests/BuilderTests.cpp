@@ -43,14 +43,14 @@ namespace FelixTests
 	{
 		TEST_METHOD(BuildFailsOnEmptyProject)
 		{
-			com_ptr<IVsHierarchy> hier;
-			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			com_ptr<IProjectNode> project;
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&project));
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto config = AddDebugProjectConfig(hier);
+			auto config = AddDebugProjectConfig(project->AsHierarchy());
 			auto pane = MakeMockOutputWindowPane(nullptr);
 
 			com_ptr<IProjectConfigBuilder> builder;
-			hr = MakeProjectConfigBuilder (hier, config, pane, &builder);
+			hr = MakeProjectConfigBuilder (project, config, pane, &builder);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			hr = builder->StartBuild (nullptr);
@@ -78,8 +78,8 @@ namespace FelixTests
 		static com_ptr<IProjectConfigBuilder> MakeSjasmProjectBuilder (const char* asmFileContent)
 		{
 			HRESULT hr;
-			com_ptr<IVsHierarchy> hier;
-			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			com_ptr<IProjectNode> project;
+			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&project));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			if (asmFileContent)
@@ -88,13 +88,13 @@ namespace FelixTests
 				DeleteFileOnDisk(tempPath, L"test.asm");
 			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"test.asm");
 			LPCOLESTR filesToOpen[] = { filePath.get() };
-			hier.try_query<IVsProject>()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, filesToOpen, nullptr, nullptr);
+			project->AsVsProject()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, filesToOpen, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto config = AddDebugProjectConfig(hier);
+			auto config = AddDebugProjectConfig(project->AsHierarchy());
 			auto pane = MakeMockOutputWindowPane(nullptr);
 			com_ptr<IProjectConfigBuilder> builder;
-			hr = MakeProjectConfigBuilder (hier, config, pane, &builder);
+			hr = MakeProjectConfigBuilder (project, config, pane, &builder);
 			Assert::IsTrue(SUCCEEDED(hr));
 			return builder;
 		}
@@ -178,8 +178,8 @@ namespace FelixTests
 		{
 			HRESULT hr;
 
-			com_ptr<IVsHierarchy> hier;
-			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			com_ptr<IProjectNode> project;
+			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&project));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			if (sourceFileContent)
@@ -187,9 +187,9 @@ namespace FelixTests
 			else
 				DeleteFileOnDisk(tempPath, sourceFileName);
 			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, sourceFileName);
-			hr = hier.try_query<IVsProject>()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, (LPCOLESTR*)filePath.addressof(), nullptr, nullptr);
+			hr = project->AsVsProject()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, (LPCOLESTR*)filePath.addressof(), nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto sourceFile = wil::try_com_query_nothrow<IFileNodeProperties>(hier.try_query<IParentNode>()->FirstChild());
+			auto sourceFile = wil::try_com_query_nothrow<IFileNodeProperties>(project->AsParentNode()->FirstChild());
 
 			hr = sourceFile->put_BuildTool(BuildToolKind::CustomBuildTool);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -201,11 +201,11 @@ namespace FelixTests
 			hr = cbtProps->put_CommandLine(wil::make_bstr_nothrow(cbtCmdLine).get());
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto config = AddDebugProjectConfig(hier);
+			auto config = AddDebugProjectConfig(project->AsHierarchy());
 			auto pane = MakeMockOutputWindowPane(outputStreamUTF16);
 
 			com_ptr<IProjectConfigBuilder> builder;
-			hr = MakeProjectConfigBuilder (hier, config, pane, &builder);
+			hr = MakeProjectConfigBuilder (project, config, pane, &builder);
 			Assert::IsTrue(SUCCEEDED(hr));
 			return builder;
 		}
@@ -440,10 +440,10 @@ namespace FelixTests
 		{
 			HRESULT hr;
 
-			com_ptr<IVsHierarchy> hier;
-			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			com_ptr<IProjectNode> project;
+			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&project));
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto config = AddDebugProjectConfig(hier);
+			auto config = AddDebugProjectConfig(project->AsHierarchy());
 
 			com_ptr<IProjectConfigPrePostBuildProperties> preBuildProps;
 			hr = config->AsProjectConfigProperties()->get_PreBuildProperties(&preBuildProps);
@@ -464,7 +464,7 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto pane = MakeMockOutputWindowPane(outputStream);
 			com_ptr<IProjectConfigBuilder> builder;
-			hr = MakeProjectConfigBuilder (hier, config, pane, &builder);
+			hr = MakeProjectConfigBuilder (project, config, pane, &builder);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			auto callback = com_ptr(new TestBuildCallback());

@@ -249,7 +249,7 @@ HRESULT GetDefaultProjectFileExtension (BSTR* ppExt);
 HRESULT SetErrorInfo0 (HRESULT errorHR, ULONG packageStringResId);
 HRESULT SetErrorInfo1 (HRESULT errorHR, ULONG packageStringResId, LPCWSTR arg1);
 FELIX_API HRESULT MakeCustomBuildToolProperties (ICustomBuildToolProperties** to);
-FELIX_API HRESULT MakeProjectConfigBuilder (IVsHierarchy* hier, IProjectConfig* config,
+FELIX_API HRESULT MakeProjectConfigBuilder (IProjectNode* project, IProjectConfig* config,
 	IVsOutputWindowPane2* outputWindowPane, IProjectConfigBuilder** to);
 HRESULT ShowCommandLinePropertyBuilder (HWND hwndParent, BSTR valueBefore, BSTR* valueAfter);
 HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, IProjectConfig* configOrNullForActive);

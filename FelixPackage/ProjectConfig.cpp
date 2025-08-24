@@ -444,7 +444,7 @@ public:
 		com_ptr<IVsShell> shell;
 		hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
 
-		hr = MakeProjectConfigBuilder (project->AsHierarchy(), this, op2, &_pendingBuild); RETURN_IF_FAILED(hr);
+		hr = MakeProjectConfigBuilder (project, this, op2, &_pendingBuild); RETURN_IF_FAILED(hr);
 
 		for (auto& cb : _buildStatusCallbacks)
 		{
