@@ -28,6 +28,7 @@ namespace FelixTests
 	com_ptr<IVsOutputWindowPane2> MakeMockOutputWindowPane (IStream* outputStreamUTF16);
 	com_ptr<IServiceProvider> MakeMockServiceProvider();
 	com_ptr<IMockPropertyNotifySink> MakeMockPropertyNotifySink();
+	com_ptr<IVsDebugger> MakeMockDebugger();
 }
 
 using PropChangedCallback = stdext::inplace_function<void(VSITEMID itemid, VSHPROPID propid, DWORD flags)>;

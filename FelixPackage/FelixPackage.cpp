@@ -43,6 +43,8 @@ class FelixPackageImpl : public IVsPackage, IVsSolutionEvents, IOleCommandTarget
 	wil::com_ptr_nothrow<IVsLanguageInfo> _z80AsmLanguageInfo;
 	VSCOOKIE _projectTypeRegistrationCookie = VSCOOKIE_NIL;
 	VSCOOKIE _solutionEventsCookie = VSCOOKIE_NIL;
+	com_ptr<IVsDebugger> _debugger;
+	bool _advisedDebugEventCallback = false;
 	VSCOOKIE _profferLanguageServiceCookie = VSCOOKIE_NIL;
 	VSCOOKIE _profferZXSimulatorServiceCookie = VSCOOKIE_NIL;
 	wil::com_ptr_nothrow<IVsWindowFrame> _simulatorWindowFrame;
@@ -452,6 +454,10 @@ public:
 		hr = regSvc->RegisterProjectType (__uuidof(IProjectNodeProperties), pf.get(), &cookie); RETURN_IF_FAILED(hr);
 		_projectTypeRegistrationCookie = cookie;
 
+		hr = pSP->QueryService (SID_SVsShellDebugger, &_debugger); RETURN_IF_FAILED(hr);
+		hr = _debugger->AdviseDebugEventCallback(static_cast<IDebugEventCallback2*>(this)); RETURN_IF_FAILED(hr);
+		_advisedDebugEventCallback = true;
+
 		wil::com_ptr_nothrow<IProfferService> srpProffer;
 		hr = pSP->QueryService (SID_SProfferService, IID_PPV_ARGS(&srpProffer));
 		if (SUCCEEDED(hr))
@@ -489,6 +495,13 @@ public:
 				_profferLanguageServiceCookie = VSCOOKIE_NIL;
 			}
 		}
+
+		if (_advisedDebugEventCallback)
+		{
+			hr = _debugger->UnadviseDebugEventCallback(static_cast<IDebugEventCallback2*>(this)); LOG_IF_FAILED(hr);
+			_advisedDebugEventCallback = false;
+		}
+		_debugger = nullptr;
 
 		if (_simulatorWindowFrame)
 		{
