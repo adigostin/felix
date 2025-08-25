@@ -782,5 +782,29 @@ namespace FelixTests
 			Assert::AreEqual<VARTYPE>(VT_BSTR, projDir.vt);
 			Assert::AreEqual(L'\\', projDir.bstrVal[SysStringLen(projDir.bstrVal) - 1]);
 		}
+
+		TEST_METHOD(Macro_CircularReference)
+		{
+			com_ptr<IVsSolution> sol;
+			auto hr = serviceProvider->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"Macro_CircularReference");
+
+			com_ptr<IProjectNode> proj;
+			hr = sol->CreateProject (FelixProjectType, TemplatePath_EmptyProject.get(), testPath.get(), L"TestProject.flx", CPF_CLONEFILE, IID_PPV_ARGS(&proj));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			auto cfg = AddDebugProjectConfig(proj->AsHierarchy());
+
+			auto val = wil::make_bstr_failfast(L"%OUTPUT_NAME%");
+			hr = cfg->GeneralProps()->put_OutputName(val.get());
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::unique_bstr fn;
+			hr = cfg->GeneralProps()->get_OutputFilename(&fn); // this tries to resolve the macro from above
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsNotNull(wcsstr(fn.get(), L"%OUTPUT_NAME%"));
+		}
 	};
 }

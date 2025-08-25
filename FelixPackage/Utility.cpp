@@ -1371,7 +1371,7 @@ const wchar_t* GetOutputExtensionFromOutputType (OutputFileType type)
 	WI_ASSERT(false); return L"";
 }
 
-static HRESULT ResolveMacro (IProjectNode* project, IProjectConfig* config, const wchar_t* macroFrom, const wchar_t* macroTo, wil::unique_process_heap_string& valueOut)
+static HRESULT ResolveMacro (IProjectNode* project, IProjectConfig* config, const wchar_t* macroFrom, const wchar_t* macroTo, wil::unique_process_heap_string& valueOut, const wchar_t*& macroUniqueNameOut)
 {
 	HRESULT hr;
 
@@ -1380,13 +1380,16 @@ static HRESULT ResolveMacro (IProjectNode* project, IProjectConfig* config, cons
 	{
 		wil::unique_bstr outputName;
 		hr = config->GeneralProps()->get_OutputName(&outputName); RETURN_IF_FAILED(hr);
-		RETURN_HR(E_NOTIMPL);
+		valueOut = wil::make_process_heap_string_nothrow(outputName.get()); RETURN_IF_NULL_ALLOC(valueOut);
+		macroUniqueNameOut = MacroOutputName;
+		return S_OK;
 	}
 	else if (macro == MacroProjectName)
 	{
 		wil::unique_variant name;
 		hr = project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_Name, &name); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_FAIL, name.vt != VT_BSTR);
 		valueOut = wil::make_process_heap_string_nothrow(name.bstrVal); RETURN_IF_NULL_ALLOC(valueOut);
+		macroUniqueNameOut = MacroProjectName;
 		return S_OK;
 	}
 	else if (macro == MacroProjectDir)
@@ -1394,6 +1397,7 @@ static HRESULT ResolveMacro (IProjectNode* project, IProjectConfig* config, cons
 		wil::unique_variant projectDir;
 		hr = project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
 		valueOut = wil::make_process_heap_string_nothrow(projectDir.bstrVal); RETURN_IF_NULL_ALLOC(valueOut);
+		macroUniqueNameOut = MacroProjectDir;
 		return S_OK;
 	}
 	else if (macro == MacroConfigName)
@@ -1401,18 +1405,16 @@ static HRESULT ResolveMacro (IProjectNode* project, IProjectConfig* config, cons
 		wil::unique_bstr name;
 		hr = config->AsProjectConfigProperties()->get_ConfigName(&name); RETURN_IF_FAILED(hr);
 		valueOut = wil::make_process_heap_string_nothrow(name.get()); RETURN_IF_NULL_ALLOC(valueOut);
+		macroUniqueNameOut = MacroConfigName;
 		return S_OK;
 	}
 
 	RETURN_HR(E_NOTIMPL);
 }
 
-static HRESULT ResolveMacros (IProjectNode* project, IProjectConfig* config, const wchar_t* pszIn, IStream* pOut)
+static HRESULT ResolveMacros (IProjectNode* project, IProjectConfig* config, vector_nothrow<const wchar_t*>& resolving, const wchar_t* pszIn, IStream* pOut)
 {
 	HRESULT hr;
-
-	// TODO: check for circularity.
-	//static vector_nothrow<const char*> resolving;
 
 	for (const wchar_t* p = pszIn; *p; )
 	{
@@ -1420,8 +1422,22 @@ static HRESULT ResolveMacros (IProjectNode* project, IProjectConfig* config, con
 		if (p[0] == L'%' && (to = wcschr(p + 1, L'%')) && IsMacroName(p + 1, to))
 		{
 			wil::unique_process_heap_string value;
-			hr = ResolveMacro (project, config, p + 1, to, value); RETURN_IF_FAILED(hr);
-			hr = ResolveMacros (project, config, value.get(), pOut); RETURN_IF_FAILED(hr);
+			const wchar_t* macroUniqueName;
+			hr = ResolveMacro (project, config, p + 1, to, value, macroUniqueName); RETURN_IF_FAILED(hr);
+			auto it = resolving.find(macroUniqueName);
+			if (it == resolving.end())
+			{
+				// Only resolve if no circular dependency
+				bool pushed = resolving.try_push_back(macroUniqueName); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+				auto remove = wil::scope_exit([&resolving]{ resolving.remove_back(); });
+				hr = ResolveMacros (project, config, resolving, value.get(), pOut); RETURN_IF_FAILED(hr);
+			}
+			else
+			{
+				// Circular dependency. We leave the macro as it. Maybe later we'll tell the user about it somehow.
+				hr = pOut->Write (p, 2 * (to + 1 - p), nullptr); RETURN_IF_FAILED(hr);
+			}
+
 			p = to + 1;
 		}
 		else
@@ -1442,7 +1458,8 @@ HRESULT ResolveMacros (const wchar_t* pszIn, IProjectConfig* config, wil::unique
 	IStream* sraw = SHCreateMemStream(nullptr, 0); RETURN_IF_NULL_ALLOC(sraw);
 	com_ptr<IStream> s;
 	s.attach(sraw);
-	hr = ResolveMacros (project, config, pszIn, sraw); RETURN_IF_FAILED(hr);
+	vector_nothrow<const wchar_t*> resolving;
+	hr = ResolveMacros (project, config, resolving, pszIn, sraw); RETURN_IF_FAILED_EXPECTED(hr);
 	STATSTG stat;
 	hr = sraw->Stat(&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
 	out = wil::make_process_heap_string_nothrow(nullptr, stat.cbSize.LowPart); RETURN_IF_NULL_ALLOC(out);

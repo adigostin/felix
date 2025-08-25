@@ -761,6 +761,7 @@ struct GeneralPageProperties : IProjectConfigGeneralProperties, IConnectionPoint
 		{
 			_outputName = wil::make_process_heap_string_nothrow(tn); RETURN_IF_NULL_ALLOC(_outputName);
 			_propNotifyCP->NotifyPropertyChanged(dispidOutputName);
+			_propNotifyCP->NotifyPropertyChanged(dispidOutputFilename);
 		}
 		
 		return S_OK;
@@ -778,6 +779,7 @@ struct GeneralPageProperties : IProjectConfigGeneralProperties, IConnectionPoint
 		{
 			_outputFileType = value;
 			_propNotifyCP->NotifyPropertyChanged(dispidOutputFileType);
+			_propNotifyCP->NotifyPropertyChanged(dispidOutputFilename);
 		}
 
 		return S_OK;
@@ -806,7 +808,9 @@ struct GeneralPageProperties : IProjectConfigGeneralProperties, IConnectionPoint
 	{
 		if (wcscmp(_outputDirectory.get(), bstrOutputDirectory))
 		{
-			RETURN_HR(E_NOTIMPL);
+			auto od = wil::make_process_heap_string_nothrow(bstrOutputDirectory); RETURN_IF_NULL_ALLOC(od);
+			_outputDirectory = std::move(od);
+			_propNotifyCP->NotifyPropertyChanged(dispidOutputDirectory);
 		}
 
 		return S_OK;
@@ -861,6 +865,9 @@ struct GeneralPageProperties : IProjectConfigGeneralProperties, IConnectionPoint
 
 	virtual HRESULT STDMETHODCALLTYPE HasDefaultValue (DISPID dispid, BOOL *fDefault) override
 	{
+		if (dispid == dispidProjectName)
+			return (*fDefault = TRUE), S_OK;
+
 		if (dispid == dispidOutputName)
 		{
 			*fDefault = !wcscmp(_outputName.get(), OutputNameDefaultValue);
