@@ -203,6 +203,9 @@ BEGIN
     IDS_ASM_PROPS_ENTRY_POINT_ADDR_NAME "Entry Point Address"
     IDS_ASM_PROPS_ENTRY_POINT_ADDR_DESC 
                             "This is where execution starts. You can use a number or a symbol name."
+    IDS_GENERAL_PROPS_OUTPUT_DIR_NAME "Output Directory"
+    IDS_GENERAL_PROPS_OUTPUT_DIR_DESC 
+                            "This is where the build output files are located. The macro %OUTPUT_DIR% expands to this value."
 END
 
 #endif    // English (United States) resources

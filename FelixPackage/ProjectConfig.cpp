@@ -664,7 +664,7 @@ HRESULT MakeProjectConfig (IProjectConfig** to)
 
 static const wchar_t OutputNameDefaultValue[] = L"%PROJECT_NAME%";
 static const OutputFileType OutputTypeDefaultValue = OutputFileType::Sna;
-static const wchar_t OutputDirectoryDefaultValue[] = L"%PROJECT_DIR%bin\\%CONFIG_NAME%\\";
+static const wchar_t OutputDirectoryDefaultValue[] = L"%PROJECT_DIR%Out\\%CONFIG_NAME%\\";
 
 struct GeneralPageProperties : IProjectConfigGeneralProperties, IConnectionPointContainer, IVsPerPropertyBrowsing
 {
@@ -838,6 +838,23 @@ struct GeneralPageProperties : IProjectConfigGeneralProperties, IConnectionPoint
 			if (pbstrLocalizeDescription)
 			{
 				hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERAL_PROPS_PROJ_NAME_DESCRIPTION, pbstrLocalizeDescription); LOG_IF_FAILED(hr);
+			}
+
+			return S_OK;
+		}
+
+		if (dispid == dispidOutputDirectory)
+		{
+			com_ptr<IVsShell> shell;
+			hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(shell.addressof())); RETURN_IF_FAILED(hr);
+			if (pbstrLocalizedName)
+			{
+				hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERAL_PROPS_OUTPUT_DIR_NAME, pbstrLocalizedName); LOG_IF_FAILED(hr);
+			}
+
+			if (pbstrLocalizeDescription)
+			{
+				hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERAL_PROPS_OUTPUT_DIR_DESC, pbstrLocalizeDescription); LOG_IF_FAILED(hr);
 			}
 
 			return S_OK;
