@@ -18,7 +18,7 @@ static constexpr wchar_t EntryPointAddressDefaultValue[] = L"32768";
 
 HRESULT GeneralPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigGeneralProperties** to);
 HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigAssemblerProperties** to);
-HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to);
+HRESULT DebuggingPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigDebugProperties** to);
 HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to);
 
 struct ProjectConfig
@@ -70,7 +70,7 @@ public:
 		hr = AssemblerPageProperties_CreateInstance(this, &_assemblerProps); RETURN_IF_FAILED(hr);
 		hr = AdviseSink<IPropertyNotifySink>(_assemblerProps, _weakRefToThis, &_assemblerPropsAdviseToken); RETURN_IF_FAILED(hr);
 
-		hr = DebuggingPageProperties_CreateInstance(&_debugProps); RETURN_IF_FAILED(hr);
+		hr = DebuggingPageProperties_CreateInstance(this, &_debugProps); RETURN_IF_FAILED(hr);
 		hr = AdviseSink<IPropertyNotifySink>(_debugProps, _weakRefToThis, &_debugPropsAdviseToken); RETURN_IF_FAILED(hr);
 
 		hr = PrePostBuildPageProperties_CreateInstance(false, &_preBuildProps); RETURN_IF_FAILED(hr);
@@ -606,7 +606,7 @@ public:
 			return AssemblerPageProperties_CreateInstance (this, (IProjectConfigAssemblerProperties**)childOut);
 
 		if (dispidProperty == dispidDebuggingProperties)
-			return DebuggingPageProperties_CreateInstance ((IProjectConfigDebugProperties**)childOut);
+			return DebuggingPageProperties_CreateInstance (this, (IProjectConfigDebugProperties**)childOut);
 
 		if (dispidProperty == dispidPreBuildProperties)
 			return PrePostBuildPageProperties_CreateInstance (false, (IProjectConfigPrePostBuildProperties**)childOut);
@@ -1091,7 +1091,6 @@ struct AssemblerPageProperties
 	{
 		switch (dispid)
 		{
-			case dispidOutputFileType:
 			case dispidSaveListing:
 			case dispidListingFilename:
 				*pfCanReset = TRUE;
@@ -1242,18 +1241,17 @@ struct DebuggingPageProperties
 	, IConnectionPointContainer
 {
 	ULONG _refCount = 0;
+	com_ptr<IWeakRef> _config;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
 	LaunchType _launchType = LaunchTypeDefaultValue;
 	wil::unique_process_heap_string _launchTarget;
 
-	static HRESULT CreateInstance (IProjectConfigDebugProperties** to)
+	HRESULT InitInstance (IProjectConfig* config)
 	{
 		HRESULT hr;
-
-		com_ptr<DebuggingPageProperties> p = new (std::nothrow) DebuggingPageProperties(); RETURN_IF_NULL_ALLOC(p);
-		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(p, &p->_propNotifyCP); RETURN_IF_FAILED(hr);
-		p->_launchTarget = wil::make_process_heap_string_nothrow(LaunchTargetDefaultValue); RETURN_IF_NULL_ALLOC(p->_launchTarget);
-		*to = p.detach();
+		hr = config->QueryInterface(IID_PPV_ARGS(&_config)); RETURN_IF_FAILED(hr);
+		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
+		_launchTarget = wil::make_process_heap_string_nothrow(LaunchTargetDefaultValue); RETURN_IF_NULL_ALLOC(_launchTarget);
 		return S_OK;
 	}
 
@@ -1409,9 +1407,12 @@ struct DebuggingPageProperties
 	#pragma endregion
 };
 
-static HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to)
+static HRESULT DebuggingPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigDebugProperties** to)
 {
-	return DebuggingPageProperties::CreateInstance(to);
+	auto p = com_ptr(new (std::nothrow) DebuggingPageProperties()); RETURN_IF_NULL_ALLOC(p);
+	auto hr = p->InitInstance(config); RETURN_IF_FAILED(hr);
+	*to = p.detach();
+	return S_OK;
 }
 
 // ============================================================================
