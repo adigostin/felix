@@ -23,7 +23,7 @@
 #define IDS_GENERATED_FILES             117
 #define IDS_PREINCLUDE                  118
 #define IDS_POSTINCLUDE                 119
-#define IDS_STRING120                   120
+#define IDS_PROPERTY_EVALUATES_TO       120
 #define IDS_GEN_PRE_POST_MESSAGE_DONE   121
 #define IDS_GEN_PRE_POST_MESSAGE_FAIL   122
 #define IDS_GEN_PRE_POST_MESSAGE        123

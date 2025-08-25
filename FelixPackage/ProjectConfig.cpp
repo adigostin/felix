@@ -662,11 +662,54 @@ HRESULT MakeProjectConfig (IProjectConfig** to)
 
 // ============================================================================
 
+static HRESULT MapPropertyToBuilder_MacroResolver (LONG dispid, LONG* pdwCtlBldType, BSTR* pbstrGuidBldr, VARIANT_BOOL* pfRetVal)
+{
+	if (pdwCtlBldType)
+		*pdwCtlBldType = CTLBLDTYPE_FINTERNALBUILDER;
+	if (pbstrGuidBldr)
+		*pbstrGuidBldr = SysAllocString(L"E84F7AF7-6EF0-43D3-8A4D-9D716C2B5596");
+	*pfRetVal = VARIANT_TRUE;
+	return S_OK;
+}
+
+static HRESULT ExecuteBuilder_MacroResolver (LONG dispid, VARIANT* pvarValue, VARIANT_BOOL* pfRetVal, IWeakRef* configWeakRef)
+{
+	if (pvarValue->vt == VT_EMPTY)
+		return S_OK;
+
+	RETURN_HR_IF(E_UNEXPECTED, pvarValue->vt != VT_BSTR || !pvarValue->bstrVal);
+
+	com_ptr<IProjectConfig> config;
+	auto hr = configWeakRef->QueryInterface(IID_PPV_ARGS(&config)); RETURN_IF_FAILED(hr);
+
+	wil::unique_process_heap_string resolved;
+	hr = ResolveMacros (pvarValue->bstrVal, config, resolved); RETURN_IF_FAILED(hr);
+
+	com_ptr<IVsShell> shell;
+	hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
+	wil::unique_bstr format;
+	hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_PROPERTY_EVALUATES_TO, &format); RETURN_IF_FAILED(hr);
+	wil::unique_process_heap_string message;
+	hr = wil::str_printf_nothrow(message, format.get(), pvarValue->bstrVal, resolved.get());
+
+	com_ptr<IVsUIShell> uiShell;
+	hr = serviceProvider->QueryService(SID_SVsUIShell, IID_PPV_ARGS(&uiShell)); RETURN_IF_FAILED(hr);		
+	LONG res;
+	hr = uiShell->ShowMessageBox (0, IID_NULL, NULL, message.get(), NULL, 0, OLEMSGBUTTON_OK, OLEMSGDEFBUTTON_FIRST, OLEMSGICON_INFO, FALSE, &res); RETURN_IF_FAILED(hr);
+	return S_OK;
+}
+
+// ============================================================================
+
 static const wchar_t OutputNameDefaultValue[] = L"%PROJECT_NAME%";
 static const OutputFileType OutputTypeDefaultValue = OutputFileType::Sna;
 static const wchar_t OutputDirectoryDefaultValue[] = L"%PROJECT_DIR%Out\\%CONFIG_NAME%\\";
 
-struct GeneralPageProperties : IProjectConfigGeneralProperties, IConnectionPointContainer, IVsPerPropertyBrowsing
+struct GeneralPageProperties
+	: IProjectConfigGeneralProperties
+	, IConnectionPointContainer
+	, IVsPerPropertyBrowsing
+	, IProvidePropertyBuilder
 {
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _config;
@@ -697,6 +740,7 @@ struct GeneralPageProperties : IProjectConfigGeneralProperties, IConnectionPoint
 			|| TryQI<IProjectConfigGeneralProperties>(this, riid, ppvObject)
 			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
+			|| TryQI<IProvidePropertyBuilder>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -941,6 +985,21 @@ struct GeneralPageProperties : IProjectConfigGeneralProperties, IConnectionPoint
 		return E_NOTIMPL;
 	}
 	#pragma endregion
+
+	#pragma region IProvidePropertyBuilder
+	virtual HRESULT STDMETHODCALLTYPE MapPropertyToBuilder (LONG dispid, LONG* pdwCtlBldType, BSTR* pbstrGuidBldr, VARIANT_BOOL* pfRetVal) override
+	{
+		if (dispid == dispidOutputName || dispid == dispidOutputDirectory)
+			return MapPropertyToBuilder_MacroResolver (dispid, pdwCtlBldType, pbstrGuidBldr, pfRetVal);
+
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE ExecuteBuilder (LONG dispid, BSTR bstrGuidBldr, IDispatch *pdispApp, LONG_PTR hwndBldrOwner, VARIANT *pvarValue, VARIANT_BOOL *pfRetVal) override
+	{
+		return ExecuteBuilder_MacroResolver (dispid, pvarValue, pfRetVal, _config);
+	}
+	#pragma endregion
 };
 
 static HRESULT GeneralPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigGeneralProperties** to)
@@ -957,6 +1016,7 @@ struct AssemblerPageProperties
 	: IProjectConfigAssemblerProperties
 	, IVsPerPropertyBrowsing
 	, IConnectionPointContainer
+	, IProvidePropertyBuilder
 {
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _config;
@@ -993,6 +1053,7 @@ struct AssemblerPageProperties
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 			//|| TryQI<IVSMDPerPropertyBrowsing>(this, riid, ppvObject)
 			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
+			|| TryQI<IProvidePropertyBuilder>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -1026,9 +1087,6 @@ struct AssemblerPageProperties
 			return E_NOINTERFACE;
 
 		if (riid == IID_ICategorizeProperties)
-			return E_NOINTERFACE;
-
-		if (riid == IID_IProvidePropertyBuilder)
 			return E_NOINTERFACE;
 		#endif
 
@@ -1237,6 +1295,21 @@ struct AssemblerPageProperties
 		return S_OK;
 	}
 	#pragma endregion
+
+	#pragma region IProvidePropertyBuilder
+	virtual HRESULT STDMETHODCALLTYPE MapPropertyToBuilder (LONG dispid, LONG* pdwCtlBldType, BSTR* pbstrGuidBldr, VARIANT_BOOL* pfRetVal) override
+	{
+		if (dispid == dispidListingFilename)
+			return MapPropertyToBuilder_MacroResolver (dispid, pdwCtlBldType, pbstrGuidBldr, pfRetVal);
+
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE ExecuteBuilder (LONG dispid, BSTR bstrGuidBldr, IDispatch *pdispApp, LONG_PTR hwndBldrOwner, VARIANT *pvarValue, VARIANT_BOOL *pfRetVal) override
+	{
+		return ExecuteBuilder_MacroResolver (dispid, pvarValue, pfRetVal, _config);
+	}
+	#pragma endregion
 };
 
 static HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigAssemblerProperties** to)
@@ -1256,6 +1329,7 @@ struct DebuggingPageProperties
 	: IProjectConfigDebugProperties
 	, IVsPerPropertyBrowsing
 	, IConnectionPointContainer
+	, IProvidePropertyBuilder
 {
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _config;
@@ -1289,6 +1363,7 @@ struct DebuggingPageProperties
 			|| TryQI<IProjectConfigDebugProperties>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
+			|| TryQI<IProvidePropertyBuilder>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -1310,9 +1385,7 @@ struct DebuggingPageProperties
 		)
 			return E_NOINTERFACE;
 
-		else if (riid == IID_ICategorizeProperties)
-			return E_NOINTERFACE;
-		else if (riid == IID_IProvidePropertyBuilder)
+		if (riid == IID_ICategorizeProperties)
 			return E_NOINTERFACE;
 
 		return E_NOINTERFACE;
@@ -1420,6 +1493,21 @@ struct DebuggingPageProperties
 		}
 
 		return S_OK;
+	}
+	#pragma endregion
+
+	#pragma region IProvidePropertyBuilder
+	virtual HRESULT STDMETHODCALLTYPE MapPropertyToBuilder (LONG dispid, LONG* pdwCtlBldType, BSTR* pbstrGuidBldr, VARIANT_BOOL* pfRetVal) override
+	{
+		if (dispid == dispidLaunchTarget)
+			return MapPropertyToBuilder_MacroResolver (dispid, pdwCtlBldType, pbstrGuidBldr, pfRetVal);
+
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE ExecuteBuilder (LONG dispid, BSTR bstrGuidBldr, IDispatch *pdispApp, LONG_PTR hwndBldrOwner, VARIANT *pvarValue, VARIANT_BOOL *pfRetVal) override
+	{
+		return ExecuteBuilder_MacroResolver (dispid, pvarValue, pfRetVal, _config);
 	}
 	#pragma endregion
 };

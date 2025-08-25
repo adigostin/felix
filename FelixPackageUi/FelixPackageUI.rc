@@ -177,11 +177,13 @@ BEGIN
     IDS_ITEM_ALREADY_EXISTS_IN_LOCATION 
                             "An item with the same name already exists in the selected location."
     IDS_NAME_ALREADY_EXISTS "An item with this name already exists."
-    IDS_FILE_ALREADY_IN_PROJECT
+    IDS_FILE_ALREADY_IN_PROJECT 
                             "The file is already added to this project.\r\n\r\n%s"
     IDS_GENERATED_FILES     "GeneratedFiles"
     IDS_PREINCLUDE          "PreInclude.asm"
     IDS_POSTINCLUDE         "PostInclude.asm"
+    IDS_PROPERTY_EVALUATES_TO 
+                            "Property Value:\r\n%s\r\n\r\nEvaluates to:\r\n%s"
     IDS_GEN_PRE_POST_MESSAGE_DONE " done.\r\n"
     IDS_GEN_PRE_POST_MESSAGE_FAIL " failed.\r\n"
     IDS_GEN_PRE_POST_MESSAGE 
