@@ -37,5 +37,6 @@
 #define dispidOutputDirectory      29
 #define dispidOutputFilename       30
 #define dispidProjectName          31
+#define dispidLaunchTarget         32
 
 #endif

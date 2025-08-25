@@ -178,6 +178,8 @@ extern const wchar_t MacroOutputName[];
 extern const wchar_t MacroProjectName[];
 extern const wchar_t MacroProjectDir[];
 extern const wchar_t MacroConfigName[];
+extern const wchar_t MacroOutputDir[];
+extern const wchar_t MacroOutputFilename[];
 
 const char* PropIDToString (VSHPROPID propid);
 void PrintProperty (const char* prefix, VSHPROPID propid, const VARIANT* pvar);

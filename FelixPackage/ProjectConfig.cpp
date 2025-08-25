@@ -15,7 +15,6 @@
 
 static constexpr DWORD BaseAddressDefaultValue = 0x8000;
 static constexpr wchar_t EntryPointAddressDefaultValue[] = L"32768";
-static constexpr LaunchType LaunchTypeDefaultValue = LaunchType::PrintUsr;
 
 HRESULT GeneralPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigGeneralProperties** to);
 HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigAssemblerProperties** to);
@@ -276,9 +275,10 @@ public:
 		wil::unique_bstr output_filename;
 		hr = _generalProps->get_OutputFilename(&output_filename); RETURN_IF_FAILED(hr);
 
+		wil::unique_bstr launchTarget;
+		hr = _debugProps->get_LaunchTarget(&launchTarget); RETURN_IF_FAILED(hr);
 		wil::unique_process_heap_string exePath;
-		hr = wil::str_concat_nothrow(exePath, output_dir, output_filename); RETURN_IF_FAILED(hr);
-		hr = ResolveMacros ( exePath.get(), this, exePath); RETURN_IF_FAILED(hr);
+		hr = ResolveMacros (launchTarget.get(), this, exePath); RETURN_IF_FAILED(hr);
 		auto exePathBstr = wil::make_bstr_nothrow(exePath.get()); RETURN_IF_NULL_ALLOC(exePathBstr);
 
 		auto sldFilename = wil::make_process_heap_string_nothrow(output_filename.get(), wcslen(output_filename.get()) + 10); RETURN_IF_NULL_ALLOC(sldFilename);
@@ -1233,6 +1233,9 @@ static HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, I
 
 // ============================================================================
 
+static const LaunchType LaunchTypeDefaultValue = LaunchType::PrintUsr;
+static const wchar_t LaunchTargetDefaultValue[] = L"%OUTPUT_DIR%%OUTPUT_FILENAME%";
+
 struct DebuggingPageProperties
 	: IProjectConfigDebugProperties
 	, IVsPerPropertyBrowsing
@@ -1241,6 +1244,7 @@ struct DebuggingPageProperties
 	ULONG _refCount = 0;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
 	LaunchType _launchType = LaunchTypeDefaultValue;
+	wil::unique_process_heap_string _launchTarget;
 
 	static HRESULT CreateInstance (IProjectConfigDebugProperties** to)
 	{
@@ -1248,6 +1252,7 @@ struct DebuggingPageProperties
 
 		com_ptr<DebuggingPageProperties> p = new (std::nothrow) DebuggingPageProperties(); RETURN_IF_NULL_ALLOC(p);
 		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(p, &p->_propNotifyCP); RETURN_IF_FAILED(hr);
+		p->_launchTarget = wil::make_process_heap_string_nothrow(LaunchTargetDefaultValue); RETURN_IF_NULL_ALLOC(p->_launchTarget);
 		*to = p.detach();
 		return S_OK;
 	}
@@ -1314,6 +1319,12 @@ struct DebuggingPageProperties
 
 	virtual HRESULT STDMETHODCALLTYPE HasDefaultValue (DISPID dispid, BOOL *fDefault) override
 	{
+		if (dispid == dispidLaunchTarget)
+		{
+			*fDefault = !wcscmp(_launchTarget.get(), LaunchTargetDefaultValue);
+			return S_OK;
+		}
+
 		if (dispid == dispidLaunchType)
 		{
 			*fDefault = (_launchType == LaunchTypeDefaultValue);
@@ -1357,6 +1368,26 @@ struct DebuggingPageProperties
 		// For configurations, this seems to be requested and then ignored.
 		*value = nullptr;
 		return S_OK;;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_LaunchTarget(BSTR* pbstrLaunchTarget) override
+	{
+		auto b = SysAllocString(_launchTarget.get()); RETURN_IF_NULL_ALLOC(b);
+		*pbstrLaunchTarget = b;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_LaunchTarget (BSTR bstrLaunchTarget) override
+	{
+		const wchar_t* from = bstrLaunchTarget ? bstrLaunchTarget : L"";
+		if (wcscmp(_launchTarget.get(), from))
+		{
+			auto n = wil::make_process_heap_string_nothrow(from); RETURN_IF_NULL_ALLOC(n);
+			_launchTarget = std::move(n);
+			_propNotifyCP->NotifyPropertyChanged(dispidLaunchTarget);
+		}
+		
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_LaunchType (enum LaunchType *value) override

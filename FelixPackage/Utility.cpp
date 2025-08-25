@@ -14,6 +14,8 @@ const wchar_t MacroOutputName[] = L"OUTPUT_NAME";
 const wchar_t MacroProjectName[] = L"PROJECT_NAME";
 const wchar_t MacroProjectDir[] = L"PROJECT_DIR";
 const wchar_t MacroConfigName[] = L"CONFIG_NAME";
+const wchar_t MacroOutputDir[] = L"OUTPUT_DIR";
+const wchar_t MacroOutputFilename[] = L"OUTPUT_FILENAME";
 
 const char* PropIDToString (VSHPROPID propid)
 {
@@ -1406,6 +1408,22 @@ static HRESULT ResolveMacro (IProjectNode* project, IProjectConfig* config, cons
 		hr = config->AsProjectConfigProperties()->get_ConfigName(&name); RETURN_IF_FAILED(hr);
 		valueOut = wil::make_process_heap_string_nothrow(name.get()); RETURN_IF_NULL_ALLOC(valueOut);
 		macroUniqueNameOut = MacroConfigName;
+		return S_OK;
+	}
+	else if (macro == MacroOutputDir)
+	{
+		wil::unique_bstr outputDir;
+		hr = config->GeneralProps()->get_OutputDirectory(&outputDir); RETURN_IF_FAILED(hr);
+		valueOut = wil::make_process_heap_string_nothrow(outputDir.get()); RETURN_IF_NULL_ALLOC(valueOut);
+		macroUniqueNameOut = MacroOutputDir;
+		return S_OK;
+	}
+	else if (macro == MacroOutputFilename)
+	{
+		wil::unique_bstr fn;
+		hr = config->GeneralProps()->get_OutputFilename(&fn); RETURN_IF_FAILED(hr);
+		valueOut = wil::make_process_heap_string_nothrow(fn.get()); RETURN_IF_NULL_ALLOC(valueOut);
+		macroUniqueNameOut = MacroOutputFilename;
 		return S_OK;
 	}
 

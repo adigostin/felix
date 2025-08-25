@@ -91,6 +91,9 @@ library ATLProject1Lib
 	{
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
 
+		[id(dispidLaunchTarget), bindable, propget] HRESULT LaunchTarget ([out, retval] BSTR* pbstrLaunchTarget);
+		[id(dispidLaunchTarget), bindable, propput] HRESULT LaunchTarget (BSTR bstrLaunchTarget);
+
 		// "Selects the launch method: PRINT USR from Basic, RANDOMIZE USR from Basic, or jump right after reset."
 		[id(dispidLaunchType), bindable, propget, helpstring("This setting is currently not implemented; the launch type is always PRINT USR. It will be implemented in a future release.")]
 		HRESULT LaunchType ([out, retval] enum LaunchType* value);
