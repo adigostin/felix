@@ -153,7 +153,6 @@ static HRESULT SetSelectedObjects (const vector_nothrow<ObjInfo>& objects, IVSMD
 }
 
 class PGPropertyPage : public IPropertyPage, IPropertyNotifySink
-	//, IVsPropertyPage, IVsPropertyPage2, IVsPropertyPageNotify
 {
 	ULONG _refCount = 0;
 	GUID _pageGuid;
@@ -187,6 +186,11 @@ public:
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
 		)
 			return S_OK;
+
+		if (   riid == IID_IVsPropertyPage
+			|| riid == IID_IVsPropertyPage2 // used for getting the page title that VS shows in the tree on the left (we do it now via GetPageInfo)
+			|| riid == IID_IVsPropertyPageNotify)
+			return E_NOINTERFACE;
 
 		return E_NOINTERFACE;
 	}
