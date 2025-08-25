@@ -41,7 +41,7 @@ public:
 		if (!cc->PhysicalMemorySpace())
 		{
 			// We were given a CPU memory space, which is all readable.
-			hr = _simulator->ReadMemoryBus ((uint16_t)cc->Address(), (uint16_t)dwCount, rgbMemory); RETURN_IF_FAILED(hr);
+			hr = simulator->ReadMemoryBus ((uint16_t)cc->Address(), (uint16_t)dwCount, rgbMemory); RETURN_IF_FAILED(hr);
 			*pdwRead = dwCount;
 			if (pdwUnreadable)
 				*pdwUnreadable = 0;
@@ -96,7 +96,7 @@ public:
 
 		if (!cc->PhysicalMemorySpace())
 		{
-			auto hr = _simulator->WriteMemoryBus ((uint16_t)cc->Address(), (uint16_t)dwCount, rgbMemory); RETURN_IF_FAILED(hr);
+			auto hr = simulator->WriteMemoryBus ((uint16_t)cc->Address(), (uint16_t)dwCount, rgbMemory); RETURN_IF_FAILED(hr);
 			return S_OK;
 		}
 		else

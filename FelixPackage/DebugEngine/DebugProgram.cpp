@@ -122,13 +122,13 @@ public:
 	{
 		if (_stepOverOrOutBreakpoint)
 		{
-			auto hr = _simulator->RemoveBreakpoint(_stepOverOrOutBreakpoint); LOG_IF_FAILED(hr);
+			auto hr = simulator->RemoveBreakpoint(_stepOverOrOutBreakpoint); LOG_IF_FAILED(hr);
 			_stepOverOrOutBreakpoint = 0;
 		}
 
 		if (_advisingSimulatorEvents)
 		{
-			_simulator->UnadviseDebugEvents(this);
+			simulator->UnadviseDebugEvents(this);
 			_advisingSimulatorEvents = false;
 		}
 
@@ -171,7 +171,7 @@ public:
 		// Despite the name, VS calls Execute() to resume execution of a program
 		// after the program breaks into the debugger and the user clicks Continue.
 		bool checkBreakpointsAtCurrentPC = false;
-		auto hr = _simulator->Resume(checkBreakpointsAtCurrentPC); RETURN_IF_FAILED(hr);
+		auto hr = simulator->Resume(checkBreakpointsAtCurrentPC); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 	
@@ -183,7 +183,7 @@ public:
 		// it assumes execution is stopped because we sent the Load Complete event as SYNC_STOP).
 
 		bool checkBreakpointsAtCurrentPC = true;
-		auto hr = _simulator->Resume(checkBreakpointsAtCurrentPC); RETURN_IF_FAILED(hr);
+		auto hr = simulator->Resume(checkBreakpointsAtCurrentPC); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
@@ -196,19 +196,19 @@ public:
 		{
 			if (sk == STEP_INTO)
 			{
-				hr = _simulator->SimulateOne(); RETURN_IF_FAILED(hr);
+				hr = simulator->SimulateOne(); RETURN_IF_FAILED(hr);
 				return S_OK;
 			}
 			else if (sk == STEP_OVER)
 			{
 				if (_stepOverOrOutBreakpoint)
 				{
-					hr = _simulator->RemoveBreakpoint(_stepOverOrOutBreakpoint); LOG_IF_FAILED(hr);
+					hr = simulator->RemoveBreakpoint(_stepOverOrOutBreakpoint); LOG_IF_FAILED(hr);
 					_stepOverOrOutBreakpoint = 0;
 				}
 
 				uint16_t pc;
-				hr = _simulator->GetPC(&pc); RETURN_IF_FAILED(hr);
+				hr = simulator->GetPC(&pc); RETURN_IF_FAILED(hr);
 
 				uint32_t len = 0;
 ///				TryDecodeBlockInstruction (pc, &len, nullptr); // return value ignored on purpose; we're looking at "len" instead.
@@ -216,7 +216,7 @@ public:
 				if (!len)
 				{
 					uint8_t buffer[4];
-					hr = _simulator->ReadMemoryBus(pc, sizeof(buffer), buffer); RETURN_IF_FAILED(hr);
+					hr = simulator->ReadMemoryBus(pc, sizeof(buffer), buffer); RETURN_IF_FAILED(hr);
 
 					if (buffer[0] == 0xCD // CALL nn
 						||  (buffer[0] & 0xC7) == 0xC4) // CALL cc, nn
@@ -242,22 +242,22 @@ public:
 
 				if (len)
 				{
-					hr = _simulator->AddBreakpoint (BreakpointType::Code, false, pc + len, &_stepOverOrOutBreakpoint); RETURN_IF_FAILED(hr);
+					hr = simulator->AddBreakpoint (BreakpointType::Code, false, pc + len, &_stepOverOrOutBreakpoint); RETURN_IF_FAILED(hr);
 					auto clearBP = wil::scope_exit([this]
 						{ 
-							_simulator->RemoveBreakpoint(_stepOverOrOutBreakpoint);
+							simulator->RemoveBreakpoint(_stepOverOrOutBreakpoint);
 							_stepOverOrOutBreakpoint = 0;
 						});
 
 					bool check_breakpoints = false;
-					hr = _simulator->Resume(check_breakpoints); RETURN_IF_FAILED(hr);
+					hr = simulator->Resume(check_breakpoints); RETURN_IF_FAILED(hr);
 
 					clearBP.release();
 					return S_OK;
 				}
 				else
 				{
-					auto hr = _simulator->SimulateOne(); RETURN_IF_FAILED(hr);
+					auto hr = simulator->SimulateOne(); RETURN_IF_FAILED(hr);
 					return S_OK;
 				}
 			}
@@ -283,7 +283,7 @@ public:
 
 	HRESULT STDMETHODCALLTYPE CauseBreak() override
 	{
-		return _simulator->Break();
+		return simulator->Break();
 	}
 
 	HRESULT STDMETHODCALLTYPE GetEngineInfo(BSTR* pbstrEngine, GUID* pguidEngine) override
@@ -420,7 +420,7 @@ public:
 				{
 					if (bp == _stepOverOrOutBreakpoint)
 					{
-						auto hr = _simulator->RemoveBreakpoint(_stepOverOrOutBreakpoint); LOG_IF_FAILED(hr);
+						auto hr = simulator->RemoveBreakpoint(_stepOverOrOutBreakpoint); LOG_IF_FAILED(hr);
 						_stepOverOrOutBreakpoint = 0;
 						return SendStepCompleteEvent();
 					}

@@ -32,9 +32,7 @@ static const wchar_t BinaryFilename[] = L"ROMs/Spectrum48K.rom";
 static const char SentryReleaseName[] = "0.9.8";
 
 FELIX_API wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
-
 com_ptr<ISimulator> simulator;
-com_ptr<ISimulator> _simulator;
 
 class FelixPackageImpl : public IVsPackage, IVsSolutionEvents, IOleCommandTarget, IDebugEventCallback2, IServiceProvider
 {
@@ -121,16 +119,14 @@ public:
 		wil::com_ptr_nothrow<IProfferService> srpProffer;
 		auto hr = serviceProvider->QueryService (SID_SProfferService, &srpProffer); RETURN_IF_FAILED(hr);
 		
-		hr = MakeSimulator(_packageDir.get(), BinaryFilename, &_simulator); RETURN_IF_FAILED(hr);
-		simulator = _simulator;
-		_simulator->Resume(false);
+		hr = MakeSimulator(_packageDir.get(), BinaryFilename, &simulator); RETURN_IF_FAILED(hr);
+		simulator->Resume(false);
 
 		return S_OK;
 	}
 
 	void ReleaseZxSpectrumSimulator()
 	{
-		_simulator = nullptr;
 		simulator = nullptr;
 
 		if (_profferZXSimulatorServiceCookie)

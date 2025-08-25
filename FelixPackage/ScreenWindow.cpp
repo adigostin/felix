@@ -177,14 +177,14 @@ public:
 			}
 			
 			UINT modifiers = (GetKeyState(VK_SHIFT) >> 15) ? MK_SHIFT : 0;
-			_simulator->ProcessKeyDown((UINT)wParam, modifiers);
+			simulator->ProcessKeyDown((UINT)wParam, modifiers);
 			return 0;
 		}
 
 		if (msg == WM_KEYUP)
 		{
 			UINT modifiers = (GetKeyState(VK_SHIFT) >> 15) ? MK_SHIFT : 0;
-			_simulator->ProcessKeyUp((UINT)wParam, modifiers);
+			simulator->ProcessKeyUp((UINT)wParam, modifiers);
 			return 0;
 		}
 
@@ -270,7 +270,7 @@ public:
 			int ires = StretchDIBits (hdc, xDest, yDest, wscaled, hscaled,
 				0, 0, w, h, bitmapInfo->bmiColors, bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 		
-			if (_simulator->Running_HR() == S_FALSE)
+			if (simulator->Running_HR() == S_FALSE)
 			{
 				SetBkColor(ps.hdc, 0xFFFF00);
 				auto oldFont = wil::SelectObject(ps.hdc, _beamFont.get());
@@ -451,10 +451,10 @@ public:
 		RECT cr;
 		GetClientRect(_hwnd, &cr);
 
-		hr = _simulator->AdviseScreenComplete(this); RETURN_IF_FAILED(hr);
+		hr = simulator->AdviseScreenComplete(this); RETURN_IF_FAILED(hr);
 		_advisingScreenCompleteEvents = true;
 
-		hr = _simulator->AdviseDebugEvents(this); RETURN_IF_FAILED(hr);
+		hr = simulator->AdviseDebugEvents(this); RETURN_IF_FAILED(hr);
 		_advisingSimulatorEvents = true;
 
 		com_ptr<IVsDebugger> debugger;
@@ -467,7 +467,7 @@ public:
 		hr = debugger->GetMode(&mode); RETURN_IF_FAILED(hr);
 		if (mode == DBGMODE_Design)
 		{
-			hr = _simulator->Resume(false); RETURN_IF_FAILED(hr);
+			hr = simulator->Resume(false); RETURN_IF_FAILED(hr);
 		}
 */
 		wil::com_ptr_nothrow<IVsWindowFrame> windowFrame;
@@ -529,13 +529,13 @@ public:
 
 		if (_advisingSimulatorEvents)
 		{
-			_simulator->UnadviseDebugEvents(this);
+			simulator->UnadviseDebugEvents(this);
 			_advisingSimulatorEvents = false;
 		}
 
 		if (_advisingScreenCompleteEvents)
 		{
-			_simulator->UnadviseScreenComplete(this);
+			simulator->UnadviseScreenComplete(this);
 			_advisingScreenCompleteEvents = false;
 		}
 
@@ -612,7 +612,7 @@ public:
 
 		_bitmap = unique_cotaskmem_bitmapinfo(bi);
 		this->beamLocation = beamLocation;
-		BOOL erase = _simulator->Running_HR() == S_FALSE;
+		BOOL erase = simulator->Running_HR() == S_FALSE;
 		InvalidateRect(_hwnd, 0, erase);
 		return S_OK;
 	}
@@ -732,10 +732,10 @@ public:
 
 		if (!start_debugging)
 		{
-			hr = _simulator->LoadFile(filename); RETURN_IF_FAILED_EXPECTED(hr);
-			if (_simulator->Running_HR() == S_FALSE)
+			hr = simulator->LoadFile(filename); RETURN_IF_FAILED_EXPECTED(hr);
+			if (simulator->Running_HR() == S_FALSE)
 			{
-				hr = _simulator->Resume(false); RETURN_IF_FAILED_EXPECTED(hr);
+				hr = simulator->Resume(false); RETURN_IF_FAILED_EXPECTED(hr);
 			}
 			return S_OK;
 		}
@@ -764,7 +764,7 @@ public:
 		com_ptr<IVsUIShell> uiShell;
 		hr = _sp->QueryService (SID_SVsUIShell, &uiShell); RETURN_IF_FAILED(hr);
 
-		if (_simulator->Running_HR() == S_OK)
+		if (simulator->Running_HR() == S_OK)
 		{
 			wil::unique_bstr str;
 			hr = shell->LoadPackageString (CLSID_FelixPackage, IDS_NOT_SUPPORTED_WHILE_SIMULATOR_RUNNING, &str);
@@ -818,7 +818,7 @@ public:
 		auto file = wil::unique_hfile(CreateFile(filename, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr)); RETURN_LAST_ERROR_IF(file.get() == INVALID_HANDLE_VALUE);
 
 		auto mem = wil::unique_hglobal_ptr<uint8_t>((uint8_t*)GlobalAlloc(GMEM_FIXED, 48 * 1024)); RETURN_IF_NULL_ALLOC(mem);
-		hr = _simulator->ReadMemoryBus(0x4000, 0xC000, mem.get()); RETURN_IF_FAILED(hr);
+		hr = simulator->ReadMemoryBus(0x4000, 0xC000, mem.get()); RETURN_IF_FAILED(hr);
 
 		DWORD bytesWritten;
 		BOOL bRes = ::WriteFile (file.get(), mem.get(), 48 * 1024, &bytesWritten, nullptr); RETURN_LAST_ERROR_IF(!bRes);
@@ -840,7 +840,7 @@ public:
 
 			if (prgCmds[0].cmdID == cmdidShowCRTSnapshot)
 			{
-				BOOL show = _simulator->GetShowCRTSnapshot() == S_OK;
+				BOOL show = simulator->GetShowCRTSnapshot() == S_OK;
 				prgCmds[0].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED
 					| (show ? OLECMDF_LATCHED : 0);
 				return S_OK;
@@ -867,7 +867,7 @@ public:
 				auto hr = ConfirmStopDebugging(); RETURN_IF_FAILED(hr);
 				if (hr == S_FALSE)
 					return S_OK;
-				hr = _simulator->Reset(0); RETURN_IF_FAILED(hr);
+				hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
 				return S_OK;
 			}
 
@@ -886,8 +886,8 @@ public:
 
 			if (nCmdID == cmdidShowCRTSnapshot)
 			{
-				BOOL show = _simulator->GetShowCRTSnapshot() == S_OK;
-				auto hr = _simulator->SetShowCRTSnapshot(!show); RETURN_IF_FAILED(hr);
+				BOOL show = simulator->GetShowCRTSnapshot() == S_OK;
+				auto hr = simulator->SetShowCRTSnapshot(!show); RETURN_IF_FAILED(hr);
 				return S_OK;
 			}
 

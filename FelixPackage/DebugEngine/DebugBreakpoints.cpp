@@ -115,23 +115,23 @@ public:
 
 		if (_bps.empty())
 		{
-			hr = _simulator->AdviseDebugEvents(this); RETURN_IF_FAILED(hr);
+			hr = simulator->AdviseDebugEvents(this); RETURN_IF_FAILED(hr);
 		}
 
 		bool reserved = _bps.try_reserve(_bps.size() + 1);
 		if (!reserved)
 		{
 			if (_bps.empty())
-				_simulator->UnadviseDebugEvents(this);
+				simulator->UnadviseDebugEvents(this);
 			RETURN_HR(E_OUTOFMEMORY);
 		}
 
 		SIM_BP_COOKIE cookie;
-		hr = _simulator->AddBreakpoint (type, physicalMemorySpace, address, &cookie);
+		hr = simulator->AddBreakpoint (type, physicalMemorySpace, address, &cookie);
 		if (FAILED(hr))
 		{
 			if (_bps.empty())
-				_simulator->UnadviseDebugEvents(this);
+				simulator->UnadviseDebugEvents(this);
 			RETURN_HR(hr);
 		}
 
@@ -142,12 +142,12 @@ public:
 	virtual HRESULT RemoveBreakpoint (IDebugBoundBreakpoint2* bp) override
 	{
 		auto it = _bps.find_if([bp](auto& p) { return p.second == bp; }); RETURN_HR_IF(E_INVALIDARG, it == _bps.end());
-		auto hr = _simulator->RemoveBreakpoint(it->first); LOG_IF_FAILED(hr);
+		auto hr = simulator->RemoveBreakpoint(it->first); LOG_IF_FAILED(hr);
 		_bps.erase(it);
 
 		if (_bps.empty())
 		{
-			hr = _simulator->UnadviseDebugEvents(this); LOG_IF_FAILED(hr);
+			hr = simulator->UnadviseDebugEvents(this); LOG_IF_FAILED(hr);
 		}
 
 		return S_OK;

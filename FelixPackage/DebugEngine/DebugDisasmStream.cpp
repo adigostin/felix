@@ -855,7 +855,7 @@ public:
 				wistd::unique_ptr<uint8_t[]> decodeBuffer;
 				static constexpr uint32_t longest_expected = 4;
 				decodeBuffer = wil::make_unique_nothrow<uint8_t[]>(longest_expected); 
-				hr = _simulator->ReadMemoryBus(_address, (uint16_t)longest_expected, decodeBuffer.get()); RETURN_IF_FAILED(hr);
+				hr = simulator->ReadMemoryBus(_address, (uint16_t)longest_expected, decodeBuffer.get()); RETURN_IF_FAILED(hr);
 				decodedLength = DecodeInstruction (_address, decodeBuffer.get(), opcode, operands, dwFields & DSF_OPERANDS_SYMBOLS);
 				WI_ASSERT(decodedLength <= longest_expected);
 				hr = MakeBstrFromString (opcode, &bstrOpcode); RETURN_IF_FAILED(hr);
@@ -865,7 +865,7 @@ public:
 			// If the instruction we decoded starts before PC and ends after it,
 			// we're doing something wrong, so let's replace it with some question marks.
 			uint16_t pc;
-			hr = _simulator->GetPC(&pc); RETURN_IF_FAILED(hr);
+			hr = simulator->GetPC(&pc); RETURN_IF_FAILED(hr);
 			if (pc > _address && pc < _address + decodedLength)
 			{
 				bstrOpcode = wil::make_bstr_nothrow(L"??");
@@ -877,7 +877,7 @@ public:
 			{
 				uint32_t opcodeLength = std::min(8u, decodedLength);
 				auto decodeBuffer = wil::make_unique_nothrow<uint8_t[]>(opcodeLength); RETURN_IF_NULL_ALLOC(decodeBuffer);
-				hr = _simulator->ReadMemoryBus (_address, opcodeLength, decodeBuffer.get()); RETURN_IF_FAILED(hr);
+				hr = simulator->ReadMemoryBus (_address, opcodeLength, decodeBuffer.get()); RETURN_IF_FAILED(hr);
 				wchar_t buffer[64];
 				swprintf_s (buffer, L"%02X", decodeBuffer.get()[0]);
 				for (uint32_t i = 1; i < opcodeLength; i++)
@@ -944,11 +944,11 @@ public:
 			{
 				dd->dwFlags = 0;
 
-				if (_simulator->Running_HR() == S_FALSE)
+				if (simulator->Running_HR() == S_FALSE)
 				{
 					// Silly Disassembly Window sometimes calls this function while code is running, that's why the 'if'.
 					z80_register_set regs;
-					hr = _simulator->GetRegisters(&regs, (uint32_t)sizeof(regs)); RETURN_IF_FAILED(hr);
+					hr = simulator->GetRegisters(&regs, (uint32_t)sizeof(regs)); RETURN_IF_FAILED(hr);
 					if (regs.pc == _address)
 						dd->dwFlags |= DF_INSTRUCTION_ACTIVE;
 				}
@@ -1003,7 +1003,7 @@ public:
 			for (INT64 i = 0; i < iInstructions; i++)
 			{
 				uint8_t bytes[6];
-				_simulator->ReadMemoryBus (_address, sizeof(bytes), bytes);
+				simulator->ReadMemoryBus (_address, sizeof(bytes), bytes);
 				const char* dummy_opcode;
 				opersb dummy_operands;
 				uint8_t instructionLength = DecodeInstruction (_address, bytes, dummy_opcode, dummy_operands, false);

@@ -27,7 +27,6 @@ public:
 	~Z80DebugEngine()
 	{
 		WI_ASSERT(!_advisingSimulatorEvents);
-		WI_ASSERT(!_simulator);
 	}
 
 	#pragma region IUnknown
@@ -251,14 +250,14 @@ public:
 			
 			if (_advisingSimulatorEvents)
 			{
-				_simulator->UnadviseDebugEvents(this);
+				simulator->UnadviseDebugEvents(this);
 				_advisingSimulatorEvents = false;
 			}
 
-			WI_ASSERT(_simulator->HasBreakpoints_HR() == S_FALSE);
-			if (_simulator->Running_HR() == S_FALSE)
+			WI_ASSERT(simulator->HasBreakpoints_HR() == S_FALSE);
+			if (simulator->Running_HR() == S_FALSE)
 			{
-				auto hr = _simulator->Resume(false); LOG_IF_FAILED(hr);
+				auto hr = simulator->Resume(false); LOG_IF_FAILED(hr);
 			}
 
 			_callback = nullptr;
@@ -438,7 +437,7 @@ public:
 		hr = _program->QueryInterface(&mcoll); RETURN_IF_FAILED(hr);
 		hr = mcoll->AddModule(romModule.get()); RETURN_IF_FAILED(hr);
 
-		hr = _simulator->AdviseDebugEvents(this); RETURN_IF_FAILED(hr);
+		hr = simulator->AdviseDebugEvents(this); RETURN_IF_FAILED(hr);
 		_advisingSimulatorEvents = true;
 
 		wil::unique_bstr exePath;
@@ -458,16 +457,16 @@ public:
 			hr = romSymbols->GetAddressFromSymbol(L"EDITOR", &editorFunctionAddr); RETURN_IF_FAILED(hr);
 			WI_ASSERT(!_entryPointBreakpoint);
 			WI_ASSERT(!_editorFunctionBreakpoint);
-			hr = _simulator->AddBreakpoint (BreakpointType::Code, false, editorFunctionAddr, &_editorFunctionBreakpoint); RETURN_IF_FAILED(hr);
-			hr = _simulator->Reset(0); RETURN_IF_FAILED(hr);
-			if (_simulator->Running_HR() == S_FALSE)
+			hr = simulator->AddBreakpoint (BreakpointType::Code, false, editorFunctionAddr, &_editorFunctionBreakpoint); RETURN_IF_FAILED(hr);
+			hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
+			if (simulator->Running_HR() == S_FALSE)
 			{
-				hr = _simulator->Resume(true); RETURN_IF_FAILED(hr);
+				hr = simulator->Resume(true); RETURN_IF_FAILED(hr);
 			}
 		}
 		else if (!_wcsicmp(PathFindExtension(exePath.get()), L".sna"))
 		{
-			hr = _simulator->LoadFile(exePath.get());
+			hr = simulator->LoadFile(exePath.get());
 			if (FAILED(hr))
 			{
 				// The LoadFile function generates rich error info via SetErrorInfo.
@@ -491,7 +490,7 @@ public:
 			// Let's put a breakpoint at the exit point.
 			uint16_t addr;
 			hr = ResolveZxSpectrumSymbol (L"MAIN-4", &addr); RETURN_IF_FAILED(hr);
-			hr = _simulator->AddBreakpoint(BreakpointType::Code, false, addr, &_exitPointBreakpoint); RETURN_IF_FAILED(hr);
+			hr = simulator->AddBreakpoint(BreakpointType::Code, false, addr, &_exitPointBreakpoint); RETURN_IF_FAILED(hr);
 		}
 		else
 			RETURN_HR(E_NOTIMPL);
@@ -565,7 +564,7 @@ public:
 	{
 		UINT16 addr;
 		auto hr = ResolveZxSpectrumSymbol (name, &addr); RETURN_IF_FAILED(hr);
-		hr = _simulator->ReadMemoryBus(addr, 2, value); RETURN_IF_FAILED(hr);
+		hr = simulator->ReadMemoryBus(addr, 2, value); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
@@ -573,14 +572,14 @@ public:
 	{
 		UINT16 addr;
 		auto hr = ResolveZxSpectrumSymbol (name, &addr); RETURN_IF_FAILED(hr);
-		hr = _simulator->WriteMemoryBus(addr, 2, &value); RETURN_IF_FAILED(hr);
+		hr = simulator->WriteMemoryBus(addr, 2, &value); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 	
 	HRESULT ProcessEditorFunctionBreakpointHit()
 	{
 		WI_ASSERT(_editorFunctionBreakpoint);
-		auto hr = _simulator->RemoveBreakpoint(_editorFunctionBreakpoint); LOG_IF_FAILED(hr);
+		auto hr = simulator->RemoveBreakpoint(_editorFunctionBreakpoint); LOG_IF_FAILED(hr);
 		_editorFunctionBreakpoint = 0;
 
 		com_ptr<IVsUIShell> uiShell;
@@ -600,7 +599,7 @@ public:
 
 		// Load the binary file.
 		DWORD loadedSize;
-		hr = _simulator->LoadBinary(exePath.get(), baseAddress, &loadedSize);
+		hr = simulator->LoadBinary(exePath.get(), baseAddress, &loadedSize);
 		if (FAILED(hr))
 		{
 			uiShell->ReportErrorInfo(hr);
@@ -633,7 +632,7 @@ public:
 		// We need to replace the command line with PRINT USR <addr>.
 		char cmdLine[16];
 		int cmdLineLen = sprintf_s (cmdLine, "\xF5\xC0%u\x0D\x80", launchAddress); RETURN_HR_IF(E_FAIL, cmdLineLen < 0);
-		hr = _simulator->WriteMemoryBus (eline, (uint16_t)cmdLineLen, cmdLine); RETURN_IF_FAILED(hr);
+		hr = simulator->WriteMemoryBus (eline, (uint16_t)cmdLineLen, cmdLine); RETURN_IF_FAILED(hr);
 		hr = WriteZxSpectrumSystemVar (L"K-CUR", eline + cmdLineLen - 2); RETURN_IF_FAILED(hr);
 		hr = WriteZxSpectrumSystemVar (L"WORKSP", eline + cmdLineLen); RETURN_IF_FAILED(hr);
 		hr = WriteZxSpectrumSystemVar (L"STKBOT", eline + cmdLineLen); RETURN_IF_FAILED(hr);
@@ -641,22 +640,22 @@ public:
 
 		// Jump to some RET instruction, say the one at 0F91h.
 		uint8_t testRet;
-		hr = _simulator->ReadMemoryBus(0x0F91, 1, &testRet); RETURN_IF_FAILED(hr);
+		hr = simulator->ReadMemoryBus(0x0F91, 1, &testRet); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_FAIL, testRet != 0xC9);
-		hr = _simulator->SetPC(0x0F91); RETURN_IF_FAILED(hr);
+		hr = simulator->SetPC(0x0F91); RETURN_IF_FAILED(hr);
 			
 		// Now put another breakpoint at the entry point of the Z80 program.
 		WI_ASSERT(!_entryPointBreakpoint);
-		hr = _simulator->AddBreakpoint (BreakpointType::Code, false, launchAddress, &_entryPointBreakpoint); RETURN_IF_FAILED(hr);
+		hr = simulator->AddBreakpoint (BreakpointType::Code, false, launchAddress, &_entryPointBreakpoint); RETURN_IF_FAILED(hr);
 		// Resume simulation so that the ZX Spectrum ROM parses our command and calls the Z80 program.
-		hr = _simulator->Resume(true); RETURN_IF_FAILED(hr);
+		hr = simulator->Resume(true); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 	
 	HRESULT ProcessEntryPointBreakpointHit()
 	{
 		WI_ASSERT(_entryPointBreakpoint);
-		auto hr = _simulator->RemoveBreakpoint(_entryPointBreakpoint); LOG_IF_FAILED(hr);
+		auto hr = simulator->RemoveBreakpoint(_entryPointBreakpoint); LOG_IF_FAILED(hr);
 		_entryPointBreakpoint = 0;
 
 		com_ptr<IDebugThread2> thread;
@@ -676,7 +675,7 @@ public:
 		// Let's put a breakpoint at the exit point.
 		uint16_t stackBC;
 		hr = ResolveZxSpectrumSymbol (L"STACK-BC", &stackBC); RETURN_IF_FAILED(hr);
-		hr = _simulator->AddBreakpoint(BreakpointType::Code, false, stackBC, &_exitPointBreakpoint); RETURN_IF_FAILED(hr);
+		hr = simulator->AddBreakpoint(BreakpointType::Code, false, stackBC, &_exitPointBreakpoint); RETURN_IF_FAILED(hr);
 
 		// The simulation paused execution before calling us, and we sent the entry point even which is a stopping event.
 		// If the user started debugging with Start Debugging, VS will call our implementation of IDebugProgram2::Continue.
@@ -698,11 +697,11 @@ public:
 	HRESULT ProcessExitPointBreakpointHit()
 	{
 		WI_ASSERT(_exitPointBreakpoint);
-		auto hr = _simulator->RemoveBreakpoint(_exitPointBreakpoint); LOG_IF_FAILED(hr);
+		auto hr = simulator->RemoveBreakpoint(_exitPointBreakpoint); LOG_IF_FAILED(hr);
 		_exitPointBreakpoint = 0;
 
 		//z80_register_set regs;
-		//hr = _simulator->GetRegisters(&regs, (uint32_t)sizeof(regs));
+		//hr = simulator->GetRegisters(&regs, (uint32_t)sizeof(regs));
 		//uint16_t bc = SUCCEEDED(hr) ? regs.main.bc : 0xFFFF;
 
 		TerminateInternal();
@@ -732,19 +731,19 @@ public:
 	{
 		if (_editorFunctionBreakpoint)
 		{
-			auto hr = _simulator->RemoveBreakpoint(_editorFunctionBreakpoint); LOG_IF_FAILED(hr);
+			auto hr = simulator->RemoveBreakpoint(_editorFunctionBreakpoint); LOG_IF_FAILED(hr);
 			_editorFunctionBreakpoint = 0;
 		}
 		
 		if (_entryPointBreakpoint)
 		{
-			auto hr = _simulator->RemoveBreakpoint(_entryPointBreakpoint); LOG_IF_FAILED(hr);
+			auto hr = simulator->RemoveBreakpoint(_entryPointBreakpoint); LOG_IF_FAILED(hr);
 			_entryPointBreakpoint = 0;
 		}
 
 		if (_exitPointBreakpoint)
 		{
-			auto hr = _simulator->RemoveBreakpoint(_exitPointBreakpoint); LOG_IF_FAILED(hr);
+			auto hr = simulator->RemoveBreakpoint(_exitPointBreakpoint); LOG_IF_FAILED(hr);
 			_exitPointBreakpoint = 0;
 		}
 

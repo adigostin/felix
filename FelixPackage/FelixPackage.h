@@ -162,7 +162,6 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("32BEBBF2-86DF-4D79-88DF-1123548C4D8E") I
 
 FELIX_API extern wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 extern wil::com_ptr_nothrow<ISimulator> simulator;
-extern wil::com_ptr_nothrow<ISimulator> _simulator;
 
 extern const wchar_t Z80AsmLanguageName[];
 extern const wchar_t SingleDebugPortName[];
