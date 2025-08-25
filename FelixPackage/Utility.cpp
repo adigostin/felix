@@ -10,6 +10,11 @@
 #define __dte_h__
 #include <VSShell174.h>
 
+const wchar_t MacroOutputName[] = L"OUTPUT_NAME";
+const wchar_t MacroProjectName[] = L"PROJECT_NAME";
+const wchar_t MacroProjectDir[] = L"PROJECT_DIR";
+const wchar_t MacroConfigName[] = L"CONFIG_NAME";
+
 const char* PropIDToString (VSHPROPID propid)
 {
 	switch (propid)
@@ -486,8 +491,10 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 	hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, projectDir.addressof()); RETURN_IF_FAILED(hr);
 	RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
 
-	wil::unique_bstr output_dir;
-	hr = config->GetOutputDirectory(&output_dir); RETURN_IF_FAILED(hr);
+	wil::unique_bstr outputDirUnresolved;
+	hr = config->GeneralProps()->get_OutputDirectory(&outputDirUnresolved); RETURN_IF_FAILED(hr);
+	wil::unique_process_heap_string output_dir;
+	hr = ResolveMacros(outputDirUnresolved.get(), config, output_dir); RETURN_IF_FAILED(hr);
 
 	vector_nothrow<com_ptr<IFileNodeProperties>> asmFiles;
 
@@ -595,18 +602,18 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 	}
 
 	OutputFileType outputFileType;
-	hr = asmProps->get_OutputFileType(&outputFileType); RETURN_IF_FAILED(hr);
+	hr = config->GeneralProps()->get_OutputFileType(&outputFileType); RETURN_IF_FAILED(hr);
 	if (outputFileType == OutputFileType::Binary)
 	{
 		// --raw=...
 		wil::unique_bstr output_filename;
-		hr = asmProps->GetOutputFileName(&output_filename); RETURN_IF_FAILED(hr);
+		hr = config->GeneralProps()->get_OutputFilename(&output_filename); RETURN_IF_FAILED(hr);
 		hr = addOutputPathParam (L" --raw=", output_filename.get()); RETURN_IF_FAILED(hr);
 	}
 
 	// --sld=...
-	wil::unique_bstr sld_filename;
-	hr = asmProps->GetSldFileName (&sld_filename); RETURN_IF_FAILED(hr);
+	wil::unique_process_heap_string sld_filename;
+	hr = GetSldFilename (config, sld_filename); RETURN_IF_FAILED(hr);
 	hr = addOutputPathParam (L" --sld=", sld_filename.get()); RETURN_IF_FAILED(hr);
 
 	// --outprefix
@@ -1175,9 +1182,7 @@ static HRESULT ResolveTemplateFileMacro (const wchar_t* macroFrom, const wchar_t
 	{
 		unsigned long baseAddress;
 		hr = config->AsmProps()->get_BaseAddress(&baseAddress); RETURN_IF_FAILED(hr);
-		wchar_t buffer[16];
-		int ires = swprintf_s(buffer, L"%u", baseAddress);
-		valueOut = wil::make_process_heap_string_nothrow(buffer, (size_t)ires); RETURN_IF_NULL_ALLOC(valueOut);
+		hr = wil::str_printf_nothrow(valueOut, L"%u", baseAddress); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 	else if (macro == L"DEVICE")
@@ -1195,7 +1200,7 @@ static HRESULT ResolveTemplateFileMacro (const wchar_t* macroFrom, const wchar_t
 	else if (macro == L"SAVESNA")
 	{
 		OutputFileType ft;
-		hr = config->AsmProps()->get_OutputFileType(&ft); RETURN_IF_FAILED(hr);
+		hr = config->GeneralProps()->get_OutputFileType(&ft); RETURN_IF_FAILED(hr);
 		if (ft == OutputFileType::Binary)
 		{
 			static const wchar_t str[] = L"; (Binary selected. Filename is passed as command-line parameter)";
@@ -1204,9 +1209,11 @@ static HRESULT ResolveTemplateFileMacro (const wchar_t* macroFrom, const wchar_t
 		}
 		else if (ft == OutputFileType::Sna)
 		{
-			wil::unique_bstr fn;
-			hr = config->AsmProps()->GetOutputFileName(&fn); RETURN_IF_FAILED(hr);
-			hr = wil::str_printf_nothrow (valueOut, L"SAVESNA %s", fn.get()); RETURN_IF_FAILED(hr);
+			wil::unique_bstr outputName;
+			hr = config->GeneralProps()->get_OutputName(&outputName); RETURN_IF_FAILED(hr);
+			wil::unique_process_heap_string on;
+			hr = ResolveMacros(outputName.get(), config, on); RETURN_IF_FAILED(hr);
+			hr = wil::str_printf_nothrow (valueOut, L"SAVESNA %s%s", on.get(), GetOutputExtensionFromOutputType(OutputFileType::Sna)); RETURN_IF_FAILED(hr);
 			return S_OK;
 		}
 		else
@@ -1343,5 +1350,104 @@ HRESULT ParseNumber (LPCWSTR str, DWORD* value)
 	}
 
 	*value = val;
+	return S_OK;
+}
+
+HRESULT GetSldFilename (IProjectConfig* config, wil::unique_process_heap_string& filenameOut)
+{
+	wil::unique_bstr outputName;
+	auto hr = config->GeneralProps()->get_OutputName(&outputName); RETURN_IF_FAILED(hr);
+	hr = wil::str_printf_nothrow(filenameOut, L"%s.sld", outputName.get()); RETURN_IF_FAILED(hr);
+	hr = ResolveMacros(filenameOut.get(), config, filenameOut); RETURN_IF_FAILED(hr);
+	return S_OK;
+}
+
+const wchar_t* GetOutputExtensionFromOutputType (OutputFileType type)
+{
+	if (type == OutputFileType::Binary)
+		return L".bin";
+	if (type == OutputFileType::Sna)
+		return L".sna";
+	WI_ASSERT(false); return L"";
+}
+
+static HRESULT ResolveMacro (IProjectNode* project, IProjectConfig* config, const wchar_t* macroFrom, const wchar_t* macroTo, wil::unique_process_heap_string& valueOut)
+{
+	HRESULT hr;
+
+	std::wstring_view macro = { macroFrom, macroTo };
+	if (macro == MacroOutputName)
+	{
+		wil::unique_bstr outputName;
+		hr = config->GeneralProps()->get_OutputName(&outputName); RETURN_IF_FAILED(hr);
+		RETURN_HR(E_NOTIMPL);
+	}
+	else if (macro == MacroProjectName)
+	{
+		wil::unique_variant name;
+		hr = project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_Name, &name); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_FAIL, name.vt != VT_BSTR);
+		valueOut = wil::make_process_heap_string_nothrow(name.bstrVal); RETURN_IF_NULL_ALLOC(valueOut);
+		return S_OK;
+	}
+	else if (macro == MacroProjectDir)
+	{
+		wil::unique_variant projectDir;
+		hr = project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
+		valueOut = wil::make_process_heap_string_nothrow(projectDir.bstrVal); RETURN_IF_NULL_ALLOC(valueOut);
+		return S_OK;
+	}
+	else if (macro == MacroConfigName)
+	{
+		wil::unique_bstr name;
+		hr = config->AsProjectConfigProperties()->get_ConfigName(&name); RETURN_IF_FAILED(hr);
+		valueOut = wil::make_process_heap_string_nothrow(name.get()); RETURN_IF_NULL_ALLOC(valueOut);
+		return S_OK;
+	}
+
+	RETURN_HR(E_NOTIMPL);
+}
+
+static HRESULT ResolveMacros (IProjectNode* project, IProjectConfig* config, const wchar_t* pszIn, IStream* pOut)
+{
+	HRESULT hr;
+
+	// TODO: check for circularity.
+	//static vector_nothrow<const char*> resolving;
+
+	for (const wchar_t* p = pszIn; *p; )
+	{
+		const wchar_t* to;
+		if (p[0] == L'%' && (to = wcschr(p + 1, L'%')) && IsMacroName(p + 1, to))
+		{
+			wil::unique_process_heap_string value;
+			hr = ResolveMacro (project, config, p + 1, to, value); RETURN_IF_FAILED(hr);
+			hr = ResolveMacros (project, config, value.get(), pOut); RETURN_IF_FAILED(hr);
+			p = to + 1;
+		}
+		else
+		{
+			hr = pOut->Write(p, 2, nullptr); RETURN_IF_FAILED(hr);
+			p++;
+		}
+	}
+
+	return S_OK;
+}
+
+HRESULT ResolveMacros (const wchar_t* pszIn, IProjectConfig* config, wil::unique_process_heap_string& out)
+{
+	HRESULT hr;
+	com_ptr<IProjectNode> project;
+	hr = config->GetSite(IID_PPV_ARGS(&project)); RETURN_IF_FAILED(hr);
+	IStream* sraw = SHCreateMemStream(nullptr, 0); RETURN_IF_NULL_ALLOC(sraw);
+	com_ptr<IStream> s;
+	s.attach(sraw);
+	hr = ResolveMacros (project, config, pszIn, sraw); RETURN_IF_FAILED(hr);
+	STATSTG stat;
+	hr = sraw->Stat(&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
+	out = wil::make_process_heap_string_nothrow(nullptr, stat.cbSize.LowPart); RETURN_IF_NULL_ALLOC(out);
+	hr = sraw->Seek({ 0 }, SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
+	hr = sraw->Read(out.get(), stat.cbSize.LowPart, nullptr); RETURN_IF_FAILED(hr);
+	out.get()[stat.cbSize.LowPart] = 0;
 	return S_OK;
 }

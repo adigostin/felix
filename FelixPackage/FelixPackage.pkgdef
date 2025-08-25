@@ -72,6 +72,10 @@
 // window GUID to have the new window dock to that tool window.
 
 
+[$RootKey$\CLSID\{f9125c48-c421-4257-aca8-23e52f5f9b46}]
+@="General Property Page"
+"InprocServer32"="$PackageFolder$\FelixPackage.dll"
+
 [$RootKey$\CLSID\{0D7FDCBD-7936-495D-9EE1-1F7423367705}]
 @="Assembler Property Page"
 "InprocServer32"="$PackageFolder$\FelixPackage.dll"

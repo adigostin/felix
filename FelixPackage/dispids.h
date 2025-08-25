@@ -25,7 +25,7 @@
 #define dispidCommandLine          17
 #define dispidDescription          18
 #define dispidOutputs              19
-#define dispidGeneralProperties    20 // Same object as dispidAssemblerProperties, used for backward compatibility
+#define dispidGeneralProperties    20
 #define dispidPreBuildProperties   21
 #define dispidPostBuildProperties  22
 #define dispidFolderName           23
@@ -33,5 +33,9 @@
 #define dispidConfigName           25
 #define dispidPlatformName         26
 #define dispidIsGenerated          27
+#define dispidOutputName           28
+#define dispidOutputDirectory      29
+#define dispidOutputFilename       30
+#define dispidProjectName          31
 
 #endif

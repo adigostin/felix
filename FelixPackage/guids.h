@@ -32,6 +32,10 @@ for the GUIDs, and again right after including initguid.h to actually define the
 	DEFINE_GUID(CLSID_Images, 0x79C68924, 0x61F0, 0x4FC7, 0x84, 0x92, 0x1E, 0x3A, 0x16, 0x20, 0xA1, 0x80 );
 #endif
 
+// {F9125C48-C421-4257-ACA8-23E52F5F9B46}
+#ifdef DEFINE_GUID
+	DEFINE_GUID(GeneralPropertyPage_CLSID, 0xf9125c48, 0xc421, 0x4257, 0xac, 0xa8, 0x23, 0xe5, 0x2f, 0x5f, 0x9b, 0x46);
+#endif
 
 // {0D7FDCBD-7936-495D-9EE1-1F7423367705}
 #ifdef DEFINE_GUID

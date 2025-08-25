@@ -13,6 +13,7 @@ library ATLProject1Lib
 	importlib("stdole2.tlb");
 
 	interface IProjectNodeProperties;
+	interface IProjectConfigGeneralProperties;
 	interface IProjectConfigAssemblerProperties;
 	interface IProjectConfigDebugProperties;
 	interface ICommandLineList;
@@ -28,8 +29,7 @@ library ATLProject1Lib
 
 		[id(dispidAssemblerProperties), propget] HRESULT AssemblerProperties ([out, retval] IProjectConfigAssemblerProperties** ppProps);
 
-		// Same object as AssemblerProperties, kept for backward compatibility
-		[id(dispidGeneralProperties), propput] HRESULT GeneralProperties (IProjectConfigAssemblerProperties* pDispatch);
+		[id(dispidGeneralProperties), propget] HRESULT GeneralProperties ([out, retval] IProjectConfigGeneralProperties** ppProps);
 
 		[id(dispidDebuggingProperties), propget] HRESULT DebuggingProperties ([out, retval] IProjectConfigDebugProperties** ppProps);
 
@@ -44,17 +44,31 @@ library ATLProject1Lib
 
 		[id(dispidPlatformName), propget] HRESULT PlatformName ([out, retval] BSTR* pbstr);
 		[id(dispidPlatformName), propput] HRESULT PlatformName (BSTR pbstr);
-	};
+	}
+
+	[object, uuid(E83A8879-04BE-4A3F-9350-A7BCBB0AFCFF), dual, nonextensible, pointer_default(unique)]
+	interface IProjectConfigGeneralProperties : IDispatch
+	{
+		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
+
+		[id(dispidProjectName), bindable, propget] HRESULT ProjectName ([out, retval] BSTR* pbstrProjectName);
+
+		[id(dispidOutputName), bindable, propget] HRESULT OutputName ([out, retval] BSTR* pbstrOutputFileName);
+		[id(dispidOutputName), bindable, propput] HRESULT OutputName (BSTR bstrOutputFileName);
+
+		[id(dispidOutputFileType), bindable, propget] HRESULT OutputFileType ([out, retval] enum OutputFileType* value);
+		[id(dispidOutputFileType), bindable, propput] HRESULT OutputFileType (enum OutputFileType value);
+
+		[id(dispidOutputFilename), bindable, propget] HRESULT OutputFilename ([out, retval] BSTR* pbstrOutputFilename);
+
+		[id(dispidOutputDirectory), bindable, propget] HRESULT OutputDirectory ([out, retval] BSTR* pbstrOutputDirectory);
+		[id(dispidOutputDirectory), bindable, propput] HRESULT OutputDirectory (BSTR bstrOutputDirectory);
+	}
 
 	[object, uuid(6109C4FD-C067-4120-9853-6A2D6682BCB0), dual, nonextensible, pointer_default(unique)]
 	interface IProjectConfigAssemblerProperties : IDispatch
 	{
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
-
-		[id(dispidOutputFileType), bindable, propget]
-		HRESULT OutputFileType ([out, retval] enum OutputFileType* value);
-		[id(dispidOutputFileType), bindable, propput]
-		HRESULT OutputFileType (enum OutputFileType value);
 
 		[id(dispidBaseAddress), bindable, propget] HRESULT BaseAddress ([out, retval] unsigned long* value);
 		[id(dispidBaseAddress), bindable, propput] HRESULT BaseAddress (unsigned long value);
@@ -67,10 +81,7 @@ library ATLProject1Lib
 
 		[id(dispidListingFilename), bindable, propget] HRESULT ListingFilename ([out, retval] BSTR* pFilename);
 		[id(dispidListingFilename), bindable, propput] HRESULT ListingFilename (BSTR filename);
-
-		HRESULT GetOutputFileName ([out, retval] BSTR* pbstr);
-		HRESULT GetSldFileName ([out, retval] BSTR* pbstr);
-	};
+	}
 
 	[uuid(A6C45AD3-6F11-4116-A65D-9083381843D8)]
 	enum LaunchType { PrintUsr, RandomizeUsr, ResetAndJump };

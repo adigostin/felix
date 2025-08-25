@@ -43,6 +43,12 @@ STDAPI DllGetClassObject (REFCLSID rclsid, REFIID riid, LPVOID* ppv)
 	{
 		p = new (std::nothrow) ClassObjectImpl<IPropertyPage>(MakeAsmPropertyPage); RETURN_IF_NULL_ALLOC(p);
 	}
+	else if (rclsid == GeneralPropertyPage_CLSID)
+	{
+		static const auto make = [](IPropertyPage** to)
+			{ return MakePGPropertyPage(IDS_GENERAL_PROP_PAGE_TITLE, GeneralPropertyPage_CLSID, dispidGeneralProperties, to); };
+		p = new (std::nothrow) ClassObjectImpl<IPropertyPage>(make); RETURN_IF_NULL_ALLOC(p);
+	}
 	else if (rclsid == DebugPropertyPage_CLSID)
 	{
 		static const auto make = [](IPropertyPage** to)

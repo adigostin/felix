@@ -17,6 +17,7 @@ static constexpr DWORD BaseAddressDefaultValue = 0x8000;
 static constexpr wchar_t EntryPointAddressDefaultValue[] = L"32768";
 static constexpr LaunchType LaunchTypeDefaultValue = LaunchType::PrintUsr;
 
+HRESULT GeneralPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigGeneralProperties** to);
 HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigAssemblerProperties** to);
 HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to);
 HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to);
@@ -41,6 +42,8 @@ struct ProjectConfig
 	wil::unique_bstr _platformName;
 	unordered_map_nothrow<VSCOOKIE, com_ptr<IVsBuildStatusCallback>> _buildStatusCallbacks;
 	VSCOOKIE _buildStatusNextCookie = VSCOOKIE_NIL + 1;
+	com_ptr<IProjectConfigGeneralProperties> _generalProps;
+	AdviseSinkToken _generalPropsAdviseToken;
 	com_ptr<IProjectConfigAssemblerProperties> _assemblerProps;
 	AdviseSinkToken _assemblerPropsAdviseToken;
 	com_ptr<IProjectConfigDebugProperties> _debugProps;
@@ -61,6 +64,9 @@ public:
 		_platformName = wil::make_bstr_nothrow(L"ZX Spectrum 48K"); RETURN_IF_NULL_ALLOC(_platformName);
 		
 		hr = _weakRefToThis.InitInstance(static_cast<IProjectConfig*>(this)); RETURN_IF_FAILED(hr);
+
+		hr = GeneralPageProperties_CreateInstance(this, &_generalProps); RETURN_IF_FAILED(hr);
+		hr = AdviseSink<IPropertyNotifySink>(_generalProps, _weakRefToThis, &_generalPropsAdviseToken); RETURN_IF_FAILED(hr);
 
 		hr = AssemblerPageProperties_CreateInstance(this, &_assemblerProps); RETURN_IF_FAILED(hr);
 		hr = AdviseSink<IPropertyNotifySink>(_assemblerProps, _weakRefToThis, &_assemblerPropsAdviseToken); RETURN_IF_FAILED(hr);
@@ -266,18 +272,20 @@ public:
 		auto hr = serviceProvider->QueryService (SID_SVsShellDebugger, &debugger); RETURN_IF_FAILED(hr);
 
 		wil::unique_bstr output_dir;
-		hr = GetOutputDirectory(&output_dir); RETURN_IF_FAILED(hr);
+		hr = _generalProps->get_OutputDirectory(&output_dir); RETURN_IF_FAILED(hr);
 		wil::unique_bstr output_filename;
-		hr = _assemblerProps->GetOutputFileName(&output_filename); RETURN_IF_FAILED(hr);
+		hr = _generalProps->get_OutputFilename(&output_filename); RETURN_IF_FAILED(hr);
 
 		wil::unique_process_heap_string exePath;
 		hr = wil::str_concat_nothrow(exePath, output_dir, output_filename); RETURN_IF_FAILED(hr);
+		hr = ResolveMacros ( exePath.get(), this, exePath); RETURN_IF_FAILED(hr);
 		auto exePathBstr = wil::make_bstr_nothrow(exePath.get()); RETURN_IF_NULL_ALLOC(exePathBstr);
 
 		auto sldFilename = wil::make_process_heap_string_nothrow(output_filename.get(), wcslen(output_filename.get()) + 10); RETURN_IF_NULL_ALLOC(sldFilename);
 		PathRenameExtension(sldFilename.get(), L".sld");
 		wil::unique_process_heap_string sldPath;
 		hr = wil::str_concat_nothrow(sldPath, output_dir, sldFilename); RETURN_IF_FAILED(hr);
+		hr = ResolveMacros (sldPath.get(), this, sldPath); RETURN_IF_FAILED(hr);
 		com_ptr<IFelixSymbols> symbols;
 		hr = MakeSldSymbols(sldPath.get(), &symbols); RETURN_IF_FAILED(hr);
 		
@@ -480,12 +488,13 @@ public:
 	#pragma region ISpecifyPropertyPages
 	virtual HRESULT STDMETHODCALLTYPE GetPages (CAUUID *pPages) override
 	{
-		pPages->pElems = (GUID*)CoTaskMemAlloc (4 * sizeof(GUID)); RETURN_IF_NULL_ALLOC(pPages->pElems);
-		pPages->pElems[0] = AssemblerPropertyPage_CLSID;
-		pPages->pElems[1] = DebugPropertyPage_CLSID;
-		pPages->pElems[2] = PreBuildPropertyPage_CLSID;
-		pPages->pElems[3] = PostBuildPropertyPage_CLSID;
-		pPages->cElems = 4;
+		pPages->pElems = (GUID*)CoTaskMemAlloc (5 * sizeof(GUID)); RETURN_IF_NULL_ALLOC(pPages->pElems);
+		pPages->pElems[0] = GeneralPropertyPage_CLSID;
+		pPages->pElems[1] = AssemblerPropertyPage_CLSID;
+		pPages->pElems[2] = DebugPropertyPage_CLSID;
+		pPages->pElems[3] = PreBuildPropertyPage_CLSID;
+		pPages->pElems[4] = PostBuildPropertyPage_CLSID;
+		pPages->cElems = 5;
 		return S_OK;
 	}
 	#pragma endregion
@@ -501,21 +510,7 @@ public:
 		return _hier->QueryInterface(riid, ppvObject);
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetOutputDirectory (BSTR* pbstr) override
-	{
-		com_ptr<IVsHierarchy> hier;
-		auto hr = _hier->QueryInterface(IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
-		wil::unique_variant project_dir;
-		hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &project_dir); RETURN_IF_FAILED(hr);
-		if (project_dir.vt != VT_BSTR)
-			return E_FAIL;
-
-		wil::unique_process_heap_string output_dir;
-		hr = wil::str_concat_nothrow (output_dir, project_dir.bstrVal, L"bin\\", _configName, L"\\");
-
-		*pbstr = SysAllocString(output_dir.get()); RETURN_IF_NULL_ALLOC(*pbstr);
-		return S_OK;
-	}
+	virtual IProjectConfigGeneralProperties* GeneralProps() override { return _generalProps; }
 
 	virtual IProjectConfigAssemblerProperties* AsmProps() override { return _assemblerProps; }
 
@@ -532,15 +527,14 @@ public:
 		return S_OK;
 	}
 
+	virtual HRESULT STDMETHODCALLTYPE get_GeneralProperties (IProjectConfigGeneralProperties** ppProps) override
+	{
+		return wil::com_copy_to_nothrow(_generalProps, ppProps);
+	}
+
 	virtual HRESULT STDMETHODCALLTYPE get_AssemblerProperties (IProjectConfigAssemblerProperties** ppProps) override
 	{
 		return wil::com_copy_to_nothrow(_assemblerProps, ppProps);
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE put_GeneralProperties (IProjectConfigAssemblerProperties* pProps) override
-	{
-		_assemblerProps = pProps;
-		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_DebuggingProperties (IProjectConfigDebugProperties** ppProps) override
@@ -590,6 +584,7 @@ public:
 	{
 		switch (dispidProperty)
 		{
+			case dispidGeneralProperties:
 			case dispidAssemblerProperties:
 			case dispidDebuggingProperties:
 			case dispidPreBuildProperties:
@@ -604,7 +599,10 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE CreateChild (DISPID dispidProperty, PCWSTR xmlElementName, IDispatch** childOut) override
 	{
-		if (dispidProperty == dispidAssemblerProperties || dispidProperty == dispidGeneralProperties)
+		if (dispidProperty == dispidGeneralProperties)
+			return GeneralPageProperties_CreateInstance (this, (IProjectConfigGeneralProperties**)childOut);
+
+		if (dispidProperty == dispidAssemblerProperties)
 			return AssemblerPageProperties_CreateInstance (this, (IProjectConfigAssemblerProperties**)childOut);
 
 		if (dispidProperty == dispidDebuggingProperties)
@@ -662,6 +660,275 @@ HRESULT MakeProjectConfig (IProjectConfig** to)
 	return S_OK;
 }
 
+// ============================================================================
+
+static const wchar_t OutputNameDefaultValue[] = L"%PROJECT_NAME%";
+static const OutputFileType OutputTypeDefaultValue = OutputFileType::Binary;
+static const wchar_t OutputDirectoryDefaultValue[] = L"%PROJECT_DIR%bin\\%CONFIG_NAME%\\";
+
+struct GeneralPageProperties : IProjectConfigGeneralProperties, IConnectionPointContainer, IVsPerPropertyBrowsing
+{
+	ULONG _refCount = 0;
+	com_ptr<IWeakRef> _config;
+	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
+	wil::unique_process_heap_string _outputName;
+	OutputFileType _outputFileType = OutputTypeDefaultValue;
+	wil::unique_process_heap_string _outputDirectory;
+
+	HRESULT InitInstance (IProjectConfig* config)
+	{
+		HRESULT hr;
+		_outputName = wil::make_process_heap_string_nothrow(OutputNameDefaultValue); RETURN_IF_NULL_ALLOC(_outputName);
+		_outputDirectory = wil::make_process_heap_string_nothrow(OutputDirectoryDefaultValue); RETURN_IF_NULL_ALLOC(_outputDirectory);
+		hr = config->QueryInterface(IID_PPV_ARGS(_config.addressof())); RETURN_IF_FAILED(hr);
+		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
+		return S_OK;
+	}
+
+	~GeneralPageProperties()
+	{
+	}
+
+	#pragma region IUnknown
+	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
+	{
+		if (   TryQI<IUnknown>(static_cast<IDispatch*>(this), riid, ppvObject)
+			|| TryQI<IDispatch>(this, riid, ppvObject)
+			|| TryQI<IProjectConfigGeneralProperties>(this, riid, ppvObject)
+			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
+			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
+		)
+			return S_OK;
+
+		return E_NOINTERFACE;
+	}
+
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
+
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
+	#pragma endregion
+
+	IMPLEMENT_IDISPATCH(IID_IProjectConfigGeneralProperties);
+
+	#pragma region IConnectionPointContainer
+	virtual HRESULT STDMETHODCALLTYPE EnumConnectionPoints (IEnumConnectionPoints **ppEnum) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE FindConnectionPoint (REFIID riid, IConnectionPoint **ppCP) override
+	{
+		if (riid == IID_IPropertyNotifySink)
+		{
+			*ppCP = _propNotifyCP;
+			_propNotifyCP->AddRef();
+			return S_OK;
+		}
+
+		RETURN_HR(E_NOTIMPL);
+	}
+	#pragma endregion
+
+	#pragma region IProjectConfigGeneralProperties
+	virtual HRESULT STDMETHODCALLTYPE get___id (BSTR *value) override
+	{
+		*value = nullptr;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_ProjectName (BSTR* pbstrProjectName) override
+	{
+		com_ptr<IProjectConfig> config;
+		auto hr = _config->QueryInterface(IID_PPV_ARGS(&config)); RETURN_IF_FAILED(hr);
+		com_ptr<IVsHierarchy> hier;
+		hr = config->GetSite(IID_PPV_ARGS(&hier)); RETURN_IF_FAILED(hr);
+		wil::unique_variant name;
+		hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_Name, &name); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_FAIL, name.vt != VT_BSTR);
+		*pbstrProjectName = SysAllocString(name.release().bstrVal);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_OutputName (BSTR* pbstrTargetName) override
+	{
+		*pbstrTargetName = SysAllocString(_outputName.get()); RETURN_IF_NULL_ALLOC(*pbstrTargetName);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_OutputName (BSTR bstrTargetName) override
+	{
+		const wchar_t* tn = bstrTargetName ? bstrTargetName : L"";
+		if (wcscmp(_outputName.get(), tn))
+		{
+			_outputName = wil::make_process_heap_string_nothrow(tn); RETURN_IF_NULL_ALLOC(_outputName);
+			_propNotifyCP->NotifyPropertyChanged(dispidOutputName);
+		}
+		
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_OutputFileType (OutputFileType* value) override
+	{
+		*value = _outputFileType;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_OutputFileType (OutputFileType value) override
+	{
+		if (_outputFileType != value)
+		{
+			_outputFileType = value;
+			_propNotifyCP->NotifyPropertyChanged(dispidOutputFileType);
+		}
+
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_OutputFilename (BSTR *pbstrOutputFilename) override
+	{
+		wil::unique_process_heap_string fn;
+		auto hr = wil::str_printf_nothrow(fn, L"%s%s", _outputName.get(), GetOutputExtensionFromOutputType(_outputFileType)); RETURN_IF_FAILED(hr);
+		com_ptr<IProjectConfig> config;
+		hr = _config->QueryInterface(IID_PPV_ARGS(&config)); RETURN_IF_FAILED(hr);
+		wil::unique_process_heap_string resolved;
+		hr = ResolveMacros(fn.get(), config, resolved); RETURN_IF_FAILED(hr);
+		auto out = wil::make_bstr_nothrow(resolved.get()); RETURN_IF_NULL_ALLOC(out);
+		*pbstrOutputFilename = out.release();
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_OutputDirectory (BSTR *pbstrOutputDirectory) override
+	{
+		*pbstrOutputDirectory = SysAllocString(_outputDirectory.get()); RETURN_IF_NULL_ALLOC(*pbstrOutputDirectory);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_OutputDirectory (BSTR bstrOutputDirectory) override
+	{
+		if (wcscmp(_outputDirectory.get(), bstrOutputDirectory))
+		{
+			RETURN_HR(E_NOTIMPL);
+		}
+
+		return S_OK;
+	}
+	#pragma endregion
+
+	#pragma region IVsPerPropertyBrowsing
+	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL* pfHide) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE DisplayChildProperties (DISPID dispid, BOOL *pfDisplay) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE GetLocalizedPropertyInfo (DISPID dispid, LCID localeID, BSTR* pbstrLocalizedName, BSTR* pbstrLocalizeDescription) override
+	{
+		HRESULT hr;
+
+		if (dispid == dispidProjectName)
+		{
+			com_ptr<IVsShell> shell;
+			hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(shell.addressof())); RETURN_IF_FAILED(hr);
+			if (pbstrLocalizedName)
+			{
+				hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERAL_PROPS_PROJ_NAME_NAME, pbstrLocalizedName); LOG_IF_FAILED(hr);
+			}
+
+			if (pbstrLocalizeDescription)
+			{
+				hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERAL_PROPS_PROJ_NAME_DESCRIPTION, pbstrLocalizeDescription); LOG_IF_FAILED(hr);
+			}
+
+			return S_OK;
+		}
+
+		if (dispid == dispidOutputName)
+		{
+			com_ptr<IVsShell> shell;
+			hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(shell.addressof())); RETURN_IF_FAILED(hr);
+			if (pbstrLocalizedName)
+			{
+				hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERAL_PROPS_OUTPUT_NAME_NAME, pbstrLocalizedName); LOG_IF_FAILED(hr);
+			}
+
+			if (pbstrLocalizeDescription)
+			{
+				hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERAL_PROPS_OUTPUT_NAME_DESCRIPTION, pbstrLocalizeDescription); LOG_IF_FAILED(hr);
+			}
+
+			return S_OK;
+		}
+
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE HasDefaultValue (DISPID dispid, BOOL *fDefault) override
+	{
+		if (dispid == dispidOutputName)
+		{
+			*fDefault = !wcscmp(_outputName.get(), OutputNameDefaultValue);
+			return S_OK;
+		}
+
+		if (dispid == dispidOutputFileType)
+		{
+			*fDefault = (_outputFileType == OutputTypeDefaultValue);
+			return S_OK;
+		}
+
+		if (dispid == dispidOutputFilename)
+			return (*fDefault = TRUE), S_OK;
+
+		if (dispid == dispidOutputDirectory)
+		{
+			*fDefault = !wcscmp(_outputDirectory.get(), OutputDirectoryDefaultValue);
+			return S_OK;
+		}
+
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE IsPropertyReadOnly (DISPID dispid, BOOL *fReadOnly) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE GetClassName (BSTR *pbstrClassName) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE CanResetPropertyValue (DISPID dispid, BOOL *pfCanReset) override
+	{
+		if (dispid == dispidOutputName)
+			return (*pfCanReset = TRUE), S_OK;
+
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE ResetPropertyValue (DISPID dispid) override
+	{
+		if (dispid == dispidOutputName)
+		{
+			if (wcscmp(_outputName.get(), OutputNameDefaultValue))
+			{
+				auto tn = wil::make_process_heap_string_nothrow(OutputNameDefaultValue); RETURN_IF_NULL_ALLOC(tn);
+				_outputName = std::move(tn);
+				_propNotifyCP->NotifyPropertyChanged(dispidOutputName);
+			}
+
+			return S_OK;
+		}
+
+		if (dispid == dispidOutputFileType)
+			return put_OutputFileType(OutputFileType::Binary);
+
+		return E_NOTIMPL;
+	}
+	#pragma endregion
+};
+
+static HRESULT GeneralPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigGeneralProperties** to)
+{
+	auto p = com_ptr(new (std::nothrow) GeneralPageProperties()); RETURN_IF_NULL_ALLOC(p);
+	auto hr = p->InitInstance(config); RETURN_IF_FAILED(hr);
+	*to = p.detach();
+	return S_OK;
+}
+
+// ============================================================================
+
 struct AssemblerPageProperties
 	: IProjectConfigAssemblerProperties
 	, IVsPerPropertyBrowsing
@@ -670,7 +937,6 @@ struct AssemblerPageProperties
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _config;
 	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
-	OutputFileType _outputFileType = OutputFileType::Binary;
 	wil::unique_bstr _entryPointAddress;
 	DWORD _baseAddress = BaseAddressDefaultValue;
 	bool _saveListing = false;
@@ -783,12 +1049,6 @@ struct AssemblerPageProperties
 
 	virtual HRESULT STDMETHODCALLTYPE HasDefaultValue (DISPID dispid, BOOL *fDefault) override
 	{
-		if (dispid == dispidOutputFileType)
-		{
-			*fDefault = (_outputFileType == OutputFileType::Binary);
-			return S_OK;
-		}
-
 		if (dispid == dispidBaseAddress)
 		{
 			*fDefault = (_baseAddress == BaseAddressDefaultValue);
@@ -836,9 +1096,6 @@ struct AssemblerPageProperties
 
 	virtual HRESULT STDMETHODCALLTYPE ResetPropertyValue (DISPID dispid) override
 	{
-		if (dispid == dispidOutputFileType)
-			return put_OutputFileType(OutputFileType::Binary);
-
 		if (dispid == dispidSaveListing)
 			return put_SaveListing(VARIANT_FALSE);
 
@@ -871,23 +1128,6 @@ struct AssemblerPageProperties
 		// For configurations, this seems to be requested and then ignored.
 		*value = nullptr;
 		return S_OK;;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE get_OutputFileType (OutputFileType* value) override
-	{
-		*value = _outputFileType;
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE put_OutputFileType (OutputFileType value) override
-	{
-		if (_outputFileType != value)
-		{
-			_outputFileType = value;
-			_propNotifyCP->NotifyPropertyChanged(dispidOutputFileType);
-		}
-
-		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_BaseAddress (DWORD* value) override
@@ -973,28 +1213,18 @@ struct AssemblerPageProperties
 
 		return S_OK;
 	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetOutputFileName (BSTR* pbstr) override
-	{
-		const wchar_t* fn;
-		switch (_outputFileType)
-		{
-			case OutputFileType::Binary: fn = L"output.bin"; break;
-			case OutputFileType::Sna:    fn = L"output.sna"; break;
-			default: RETURN_HR(E_NOTIMPL);
-		}
-
-		*pbstr = SysAllocString(fn); RETURN_IF_NULL_ALLOC(fn);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetSldFileName (BSTR* pbstr) override
-	{
-		*pbstr = SysAllocString(L"output.sld"); RETURN_IF_NULL_ALLOC(*pbstr);
-		return S_OK;
-	}
 	#pragma endregion
 };
+
+static HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigAssemblerProperties** to)
+{
+	auto p = com_ptr (new (std::nothrow) AssemblerPageProperties()); RETURN_IF_NULL_ALLOC(p);
+	auto hr = p->InitInstance(config); RETURN_IF_FAILED(hr);
+	*to = p.detach();
+	return S_OK;
+}
+
+// ============================================================================
 
 struct DebuggingPageProperties
 	: IProjectConfigDebugProperties
@@ -1145,18 +1375,12 @@ struct DebuggingPageProperties
 	#pragma endregion
 };
 
-HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigAssemblerProperties** to)
-{
-	auto p = com_ptr (new (std::nothrow) AssemblerPageProperties()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance(config); RETURN_IF_FAILED(hr);
-	*to = p.detach();
-	return S_OK;
-}
-
-HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to)
+static HRESULT DebuggingPageProperties_CreateInstance (IProjectConfigDebugProperties** to)
 {
 	return DebuggingPageProperties::CreateInstance(to);
 }
+
+// ============================================================================
 
 struct PrePostBuildPageProperties
 	: IProjectConfigPrePostBuildProperties

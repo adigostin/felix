@@ -610,8 +610,10 @@ public:
 		auto hr = _project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, projectDir.addressof()); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
 
-		wil::unique_bstr output_dir;
-		hr = _config->GetOutputDirectory(&output_dir); RETURN_IF_FAILED(hr);
+		wil::unique_bstr outputDirUnresolved;
+		hr = _config->GeneralProps()->get_OutputDirectory(&outputDirUnresolved); RETURN_IF_FAILED(hr);
+		wil::unique_process_heap_string output_dir;
+		hr = ResolveMacros (outputDirUnresolved.get(), _config, output_dir); RETURN_IF_FAILED(hr);
 
 		// Pre-Build Event
 		com_ptr<IProjectConfigPrePostBuildProperties> preBuildProps;

@@ -105,7 +105,7 @@ IProjectConfig : IUnknown
 {
 	virtual HRESULT SetSite (IProjectNode* proj) = 0;
 	virtual HRESULT GetSite (REFIID riid, void** ppvObject) = 0;
-	virtual HRESULT STDMETHODCALLTYPE GetOutputDirectory (BSTR* pbstr) = 0;
+	virtual IProjectConfigGeneralProperties* GeneralProps() = 0;
 	virtual IProjectConfigAssemblerProperties* AsmProps() = 0;
 	virtual IProjectConfigProperties* AsProjectConfigProperties() = 0;
 	virtual IVsProjectCfg* AsVsProjectConfig() = 0;
@@ -174,6 +174,11 @@ FELIX_API extern const wchar_t ProjectElementName[];
 extern const wchar_t ConfigurationElementName[];
 extern const wchar_t FileElementName[];
 extern const wchar_t FolderElementName[];
+
+extern const wchar_t MacroOutputName[];
+extern const wchar_t MacroProjectName[];
+extern const wchar_t MacroProjectDir[];
+extern const wchar_t MacroConfigName[];
 
 const char* PropIDToString (VSHPROPID propid);
 void PrintProperty (const char* prefix, VSHPROPID propid, const VARIANT* pvar);
@@ -274,3 +279,6 @@ HRESULT MakeFileNodeForExistingFile (LPCWSTR path, IFileNode** ppFile);
 HRESULT ParseNumber (LPCWSTR str, DWORD* value); // returns S_OK or S_FALSE
 HRESULT MakeSldSymbols (const wchar_t* symbolsFullPath, IFelixSymbols** to);
 HRESULT MakeZ80SymSymbols (const wchar_t* symbolsFullPath, IFelixSymbols** to);
+HRESULT GetSldFilename (IProjectConfig* config, wil::unique_process_heap_string& filenameOut);
+const wchar_t* GetOutputExtensionFromOutputType (OutputFileType type);
+HRESULT ResolveMacros (const wchar_t* pszIn, IProjectConfig* config, wil::unique_process_heap_string& out);
