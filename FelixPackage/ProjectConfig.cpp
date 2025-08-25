@@ -663,7 +663,7 @@ HRESULT MakeProjectConfig (IProjectConfig** to)
 // ============================================================================
 
 static const wchar_t OutputNameDefaultValue[] = L"%PROJECT_NAME%";
-static const OutputFileType OutputTypeDefaultValue = OutputFileType::Binary;
+static const OutputFileType OutputTypeDefaultValue = OutputFileType::Sna;
 static const wchar_t OutputDirectoryDefaultValue[] = L"%PROJECT_DIR%bin\\%CONFIG_NAME%\\";
 
 struct GeneralPageProperties : IProjectConfigGeneralProperties, IConnectionPointContainer, IVsPerPropertyBrowsing
@@ -1287,16 +1287,13 @@ struct DebuggingPageProperties
 			//|| riid == IID_IVSMDPerPropertyBrowsing
 			|| riid == IID_IProvideMultipleClassInfo
 			|| riid == IID_IWeakReferenceSource
-			)
+		)
 			return E_NOINTERFACE;
 
 		else if (riid == IID_ICategorizeProperties)
 			return E_NOINTERFACE;
 		else if (riid == IID_IProvidePropertyBuilder)
 			return E_NOINTERFACE;
-		else if (riid == IID_IConnectionPointContainer)
-			return E_NOINTERFACE;
-
 
 		return E_NOINTERFACE;
 	}
@@ -1307,7 +1304,6 @@ struct DebuggingPageProperties
 	#pragma endregion
 
 	IMPLEMENT_IDISPATCH(IID_IProjectConfigDebugProperties)
-
 
 	#pragma region IVsPerPropertyBrowsing
 	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL* pfHide) override { return E_NOTIMPL; }

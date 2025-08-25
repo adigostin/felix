@@ -201,7 +201,8 @@ BEGIN
     IDS_GENERAL_PROPS_PROJ_NAME_DESCRIPTION 
                             "The name of the project in the solution. The macro %PROJECT_NAME% expands to this value."
     IDS_ASM_PROPS_ENTRY_POINT_ADDR_NAME "Entry Point Address"
-    IDS_ASM_PROPS_ENTRY_POINT_ADDR_DESC "This is where execution starts. You can use a number or a symbol name."
+    IDS_ASM_PROPS_ENTRY_POINT_ADDR_DESC 
+                            "This is where execution starts. You can use a number or a symbol name."
 END
 
 #endif    // English (United States) resources
