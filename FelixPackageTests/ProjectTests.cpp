@@ -509,11 +509,20 @@ namespace FelixTests
 
 		TEST_METHOD(AddItemSort)
 		{
-			com_ptr<IVsUIHierarchy> hier;
-			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
-			Assert::IsTrue(SUCCEEDED(hr));
+			HRESULT hr;
 
-			auto proj = hier.try_query<IVsProject>();
+			com_ptr<IVsSolution> sol;
+			serviceProvider->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
+
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"AddItemSort");
+
+			com_ptr<IProjectNode> project;
+			hr = sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), testPath.get(), L"TestProject.flx", CPF_CLONEFILE, IID_PPV_ARGS(&project));
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto config = AddDebugProjectConfig(project->AsHierarchy());
+
+			auto proj = wil::try_com_query_failfast<IVsProject2>(project);
+			auto hier = wil::try_com_query_failfast<IVsUIHierarchy>(project);
 			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
 			hr = proj->AddItem(VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"start.asm", 1, templateasm, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -534,7 +543,7 @@ namespace FelixTests
 
 			hr = proj->AddItem(V_VSITEMID(&evenMore), VSADDITEMOP_CLONEFILE, L"file.inc", 1, templateasm, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
-
+			/*
 			wil::unique_variant generatedFiles;
 			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &generatedFiles);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -545,7 +554,7 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 			hr = proj->AddItem(V_VSITEMID(&generatedFiles), VSADDITEMOP_CLONEFILE, L"postinclude.inc", 1, templateasm, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
-
+			*/
 
 			auto c = hier.try_query<IParentNode>()->FirstChild();
 			Assert::IsNotNull(c);
@@ -556,11 +565,11 @@ namespace FelixTests
 			c = genFilesFolder.try_query<IParentNode>()->FirstChild();
 			auto postinc = wil::try_com_query_nothrow<IFileNode>(c);
 			Assert::IsNotNull(postinc.get());
-			Assert::AreEqual(L"postinclude.inc", GetProperty_String(hier, postinc->GetItemId(), VSHPROPID_SaveName).get());
+			Assert::AreEqual(0, _wcsicmp(L"postinclude.asm", GetProperty_String(hier, postinc->GetItemId(), VSHPROPID_SaveName).get()));
 
 			auto preinc = wil::try_com_query_nothrow<IFileNode>(postinc->Next());
 			Assert::IsNotNull(preinc.get());
-			Assert::AreEqual(L"preinclude.inc", GetProperty_String(hier, preinc->GetItemId(), VSHPROPID_SaveName).get());
+			Assert::AreEqual(0, _wcsicmp(L"preinclude.asm", GetProperty_String(hier, preinc->GetItemId(), VSHPROPID_SaveName).get()));
 
 			c = genFilesFolder->Next();
 			Assert::IsNotNull(c);
@@ -808,14 +817,14 @@ namespace FelixTests
 			Assert::IsNotNull(wcsstr(fn.get(), L"%OUTPUT_NAME%"));
 		}
 
-		TEST_METHOD(GeneratedFiles_AddFirstAsmToProject)
+		TEST_METHOD(GeneratedFiles_AddFirstAsmToProject_RemoveLastAsmFromProject)
 		{
 			HRESULT hr;
 
 			com_ptr<IVsSolution> sol;
 			serviceProvider->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
 
-			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"GeneratedFiles_AddFirstAsmToProject");
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"GeneratedFiles_AddFirstAsmToProject_RemoveLastAsmFromProject");
 
 			com_ptr<IProjectNode> project;
 			hr = sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), testPath.get(), L"TestProject.flx", CPF_CLONEFILE, IID_PPV_ARGS(&project));
@@ -846,15 +855,27 @@ namespace FelixTests
 			auto gff = findGenFilesFolder();
 			Assert::IsNull(gff.get());
 
-			hr = project->AsVsProject()->AddItem (VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"file.asm", 1, (LPCOLESTR*)TemplatePath_EmptyFile.addressof(), nullptr, nullptr);
+			static const wchar_t FileName[] = L"file.asm";
+			hr = project->AsVsProject()->AddItem (VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, FileName, 1, (LPCOLESTR*)TemplatePath_EmptyFile.addressof(), nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
-			wil::unique_variant fileItemIdVar;
-			hr = project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &fileItemIdVar);
-			Assert::IsTrue(SUCCEEDED(hr) && fileItemIdVar.vt == VT_VSITEMID);
-			VSITEMID fileItemId = V_VSITEMID(&fileItemIdVar);
+			com_ptr<IFileNode> fn;
+			for (auto c = project->AsParentNode()->FirstChild(); c != nullptr; c = c->Next())
+			{
+				wil::unique_variant n;
+				if (fn = wil::try_com_query_nothrow<IFileNode>(c); fn && SUCCEEDED(fn->GetProperty(VSHPROPID_SaveName, &n)) && V_VT(&n) == VT_BSTR && !wcscmp(FileName, V_BSTR(&n)))
+					break;
+			}
+			Assert::IsNotNull(fn.get());
+			VSITEMID fileItemId = fn->GetItemId();
 
 			gff = findGenFilesFolder();
 			Assert::IsNotNull(gff.get());
+
+			hr = project->AsHierarchyDeleteHandler3()->DeleteItems(1, DELITEMOP_DeleteFromStorage, &fileItemId, DHO_SUPPRESS_UI);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			gff = findGenFilesFolder();
+			Assert::IsNull(gff.get());
 		}
 	};
 }

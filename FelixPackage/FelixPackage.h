@@ -66,6 +66,7 @@ IProjectNode : INode
 	virtual IParentNode* AsParentNode() = 0;
 	virtual IVsUIHierarchy* AsHierarchy() = 0;
 	virtual IVsProject* AsVsProject() = 0;
+	virtual IVsHierarchyDeleteHandler3* AsHierarchyDeleteHandler3() = 0;
 };
 
 // This is the base interface for every node except IProjectNode.

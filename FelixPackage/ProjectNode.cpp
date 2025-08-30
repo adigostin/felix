@@ -2472,9 +2472,11 @@ public:
 						hr = pfo->PerformOperations();
 				}
 			}
-
-			_isDirty = true;
 		}
+
+		hr = GeneratePrePostIncludeFiles(this, nullptr); LOG_IF_FAILED(hr);
+
+		_isDirty = true;
 
 		return S_OK;
 	}
@@ -2747,6 +2749,8 @@ public:
 	virtual IVsUIHierarchy* AsHierarchy() override { return this; }
 
 	virtual IVsProject* AsVsProject() override { return this; }
+
+	virtual IVsHierarchyDeleteHandler3* AsHierarchyDeleteHandler3() override { return this; }
 	#pragma endregion
 
 	#pragma region IPropertyNotifySink
