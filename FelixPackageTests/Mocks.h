@@ -11,6 +11,7 @@ extern wil::unique_process_heap_string TemplatePath_EmptyProject;
 extern wil::unique_process_heap_string TemplatePath_EmptyFile;
 extern wchar_t tempPath[MAX_PATH + 1];
 extern const GUID FelixProjectType;
+extern const GUID CLSID_FelixPackage;
 
 namespace FelixTests
 {
@@ -29,6 +30,7 @@ namespace FelixTests
 	com_ptr<IServiceProvider> MakeMockServiceProvider();
 	com_ptr<IMockPropertyNotifySink> MakeMockPropertyNotifySink();
 	com_ptr<IVsDebugger> MakeMockDebugger();
+	com_ptr<IVsFileChangeEx> MakeMockFileChangeEx();
 }
 
 using PropChangedCallback = stdext::inplace_function<void(VSITEMID itemid, VSHPROPID propid, DWORD flags)>;

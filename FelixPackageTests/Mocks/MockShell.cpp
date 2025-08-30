@@ -2,6 +2,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include "shared/com.h"
+#include "../Mocks.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -85,7 +86,7 @@ struct MockShell : IVsShell
 		/* [in] */ ULONG resid,
 		/* [retval][out] */ __RPC__deref_out_opt BSTR *pbstrOut) override
 	{
-		Assert::IsTrue(guidPackage == GUID{ 0x768BC57B, 0x42A8, 0x42AB, { 0xB3, 0x89, 0x45, 0x79, 0x46, 0xC4, 0xFC, 0x6A } });
+		Assert::IsTrue(guidPackage == CLSID_FelixPackage);
 		if (!_ui)
 		{
 			_ui.reset(LoadLibrary(L"FelixPackageUi.dll"));

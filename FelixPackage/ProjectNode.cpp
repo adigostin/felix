@@ -1908,6 +1908,8 @@ public:
 			hr = AddFileToParent(file, location); RETURN_IF_FAILED(hr);
 		}
 
+		hr = GeneratePrePostIncludeFiles (this, nullptr); LOG_IF_FAILED(hr);
+
 		_isDirty = true;
 
 		*ppNewFile = file.detach();

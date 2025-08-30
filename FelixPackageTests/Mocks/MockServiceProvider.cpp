@@ -27,6 +27,7 @@ namespace FelixTests
 		com_ptr<IVsShell> _shell = MakeMockShell();
 		com_ptr<IVsOutputWindowPane2> _generalOutputWindowPane = MakeMockOutputWindowPane(nullptr);
 		com_ptr<IVsDebugger> _shellDebugger = MakeMockDebugger();
+		com_ptr<IVsFileChangeEx> _fileChange = MakeMockFileChangeEx();
 
 		#pragma region IUnknown
 		virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
@@ -86,6 +87,9 @@ namespace FelixTests
 
 			if (guidService == SID_SVsShellDebugger)
 				return _shellDebugger->QueryInterface(riid, ppvObject);
+
+			if (guidService == SID_SVsFileChangeEx)
+				return _fileChange->QueryInterface(riid, ppvObject);
 
 			Assert::Fail();
 		}

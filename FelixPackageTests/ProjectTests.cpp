@@ -3,6 +3,7 @@
 #include "shared/com.h"
 #include "../FelixPackage/FelixPackage.h"
 #include "../FelixPackage/Z80Xml.h"
+#include "../FelixPackageUi/resource.h"
 #include "Mocks.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -805,6 +806,55 @@ namespace FelixTests
 			hr = cfg->GeneralProps()->get_OutputFilename(&fn); // this tries to resolve the macro from above
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::IsNotNull(wcsstr(fn.get(), L"%OUTPUT_NAME%"));
+		}
+
+		TEST_METHOD(GeneratedFiles_AddFirstAsmToProject)
+		{
+			HRESULT hr;
+
+			com_ptr<IVsSolution> sol;
+			serviceProvider->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
+
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"GeneratedFiles_AddFirstAsmToProject");
+
+			com_ptr<IProjectNode> project;
+			hr = sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), testPath.get(), L"TestProject.flx", CPF_CLONEFILE, IID_PPV_ARGS(&project));
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto config = AddDebugProjectConfig(project->AsHierarchy());
+
+			com_ptr<IVsShell> shell;
+			serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell));
+			wil::unique_bstr genFilesStr;
+			hr = shell->LoadPackageString (CLSID_FelixPackage, IDS_GENERATED_FILES, &genFilesStr);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			auto findGenFilesFolder = [project=project.get(), genFilesStr=genFilesStr.get()]() -> com_ptr<IFolderNode>
+				{
+					for (auto c = project->AsParentNode()->FirstChild(); c; c = c->Next())
+					{
+						wil::unique_bstr name;
+						if (auto f = wil::try_com_query_nothrow<IFolderNode>(c);
+							f && SUCCEEDED(f->AsFolderNodeProperties()->get_Name(&name)) && !_wcsicmp(name.get(), genFilesStr))
+						{
+							return f;
+						}
+					}
+
+					return nullptr;
+				};
+
+			auto gff = findGenFilesFolder();
+			Assert::IsNull(gff.get());
+
+			hr = project->AsVsProject()->AddItem (VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"file.asm", 1, (LPCOLESTR*)TemplatePath_EmptyFile.addressof(), nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_variant fileItemIdVar;
+			hr = project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &fileItemIdVar);
+			Assert::IsTrue(SUCCEEDED(hr) && fileItemIdVar.vt == VT_VSITEMID);
+			VSITEMID fileItemId = V_VSITEMID(&fileItemIdVar);
+
+			gff = findGenFilesFolder();
+			Assert::IsNotNull(gff.get());
 		}
 	};
 }

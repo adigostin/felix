@@ -61,10 +61,9 @@
     </Link>
     <PostBuildEvent>
       <Command>REM These are needed in the output directory for running tests
-REM COPY /Y $(SolutionDir)$(Platform)\$(Configuration)\FelixPackage.dll $(SolutionDir)$(Platform)\$(Configuration)
 COPY /Y $(SolutionDir)third_party\sentry.dll $(SolutionDir)$(Platform)\$(Configuration)
 COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Configuration)
-   </Command>
+XCOPY /y /s /q $(SolutionDir)FelixPackage\FelixPackageVSIX\Templates $(SolutionDir)$(Platform)\$(Configuration)\Templates\*</Command>
     </PostBuildEvent>
     <Midl>
       <TypeLibraryName>$(IntDir)%(FileName).tlb</TypeLibraryName>
@@ -101,10 +100,9 @@ COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Conf
     </Link>
     <PostBuildEvent>
       <Command>REM These are needed in the output directory for running tests
-COPY /Y $(SolutionDir)$(Platform)\$(Configuration)\FelixPackage.dll $(SolutionDir)$(Platform)\$(Configuration)
 COPY /Y $(SolutionDir)third_party\sentry.dll $(SolutionDir)$(Platform)\$(Configuration)
 COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Configuration)
-   </Command>
+XCOPY /y /s /q $(SolutionDir)FelixPackage\FelixPackageVSIX\Templates $(SolutionDir)$(Platform)\$(Configuration)\Templates\*</Command>
     </PostBuildEvent>
     <Midl>
       <TypeLibraryName>$(IntDir)%(FileName).tlb</TypeLibraryName>
@@ -120,6 +118,7 @@ COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Conf
     <ClCompile Include="FelixPackageTests.cpp" />
     <ClCompile Include="FolderTests.cpp" />
     <ClCompile Include="Mocks\MockDebugger.cpp" />
+    <ClCompile Include="Mocks\MockFileChangeEx.cpp" />
     <ClCompile Include="Mocks\MockHierarchyEventSink.cpp" />
     <ClCompile Include="Mocks\MockOutputWindowPane.cpp" />
     <ClCompile Include="Mocks\MockRDT.cpp" />
