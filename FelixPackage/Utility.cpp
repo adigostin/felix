@@ -482,6 +482,7 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, IProjectConfig* conf
 	return S_OK;
 };
 
+// Returns S_FALSE when there are no files with BuildTool=Assembler.
 FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine)
 {
 	HRESULT hr;
@@ -561,7 +562,7 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 		asmFiles.try_push_back(std::move(postIncludeFile));
 
 	if (asmFiles.empty())
-		return (*ppCmdLine = nullptr), S_OK;
+		return (*ppCmdLine = nullptr), S_FALSE;
 
 	com_ptr<IStream> cmdLine;
 	hr = CreateStreamOnHGlobal (nullptr, TRUE, &cmdLine); RETURN_IF_FAILED(hr);

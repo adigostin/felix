@@ -39,6 +39,7 @@
 #define IDS_ASM_PROPS_ENTRY_POINT_ADDR_DESC 133
 #define IDS_GENERAL_PROPS_OUTPUT_DIR_NAME 134
 #define IDS_GENERAL_PROPS_OUTPUT_DIR_DESC 135
+#define IDS_NO_BUILD_TOOL_ASM_FILES     136
 #define IDB_IMAGES                      300
 #define IDI_PACKAGE_ICON                400
 #define IDI_SPECTRUM                    401

@@ -419,7 +419,18 @@ public:
 		com_ptr<IProjectConfigAssemblerProperties> asmProps;
 		hr = _objects.front().GetChild()->QueryInterface(&asmProps); RETURN_IF_FAILED(hr);
 
-		return MakeSjasmCommandLine(hier, config, asmProps, pText);
+		hr = MakeSjasmCommandLine(hier, config, asmProps, pText); RETURN_IF_FAILED(hr);
+		if (hr == S_FALSE)
+		{
+			com_ptr<IVsShell> shell;
+			hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
+			wil::unique_bstr message;
+			hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_NO_BUILD_TOOL_ASM_FILES, &message); RETURN_IF_FAILED(hr);
+			*pText = message.release();
+			return S_OK;
+		}
+
+		return S_OK;
 	}
 
 	#pragma region IPropertyPage

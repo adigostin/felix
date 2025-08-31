@@ -208,6 +208,8 @@ BEGIN
     IDS_GENERAL_PROPS_OUTPUT_DIR_NAME "Output Directory"
     IDS_GENERAL_PROPS_OUTPUT_DIR_DESC 
                             "This is where the build output files are located. The macro %OUTPUT_DIR% expands to this value."
+    IDS_NO_BUILD_TOOL_ASM_FILES 
+                            "<There are no files with BuildTool=Assembler in the project. The assembler will not be invoked as part of the build.>"
 END
 
 #endif    // English (United States) resources
