@@ -4,7 +4,6 @@
 #include "shared/OtherGuids.h"
 #include "shared/unordered_map_nothrow.h"
 #include "shared/com.h"
-#include "shared/string_builder.h"
 #include "dispids.h"
 #include "guids.h"
 #include "Z80Xml.h"
@@ -37,8 +36,8 @@ struct ProjectConfig
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _hier;
 	DWORD _threadId;
-	wil::unique_bstr _configName;
-	wil::unique_bstr _platformName;
+	wil::unique_process_heap_string _configName;
+	wil::unique_process_heap_string _platformName;
 	unordered_map_nothrow<VSCOOKIE, com_ptr<IVsBuildStatusCallback>> _buildStatusCallbacks;
 	VSCOOKIE _buildStatusNextCookie = VSCOOKIE_NIL + 1;
 	com_ptr<IProjectConfigGeneralProperties> _generalProps;
@@ -60,7 +59,7 @@ public:
 	{
 		HRESULT hr;
 		_threadId = GetCurrentThreadId();
-		_platformName = wil::make_bstr_nothrow(L"ZX Spectrum 48K"); RETURN_IF_NULL_ALLOC(_platformName);
+		_platformName = wil::make_process_heap_string_nothrow(L"ZX Spectrum 48K"); RETURN_IF_NULL_ALLOC(_platformName);
 		
 		hr = _weakRefToThis.InitInstance(static_cast<IProjectConfig*>(this)); RETURN_IF_FAILED(hr);
 
@@ -159,9 +158,9 @@ public:
 	#pragma region IVsCfg
 	virtual HRESULT STDMETHODCALLTYPE get_DisplayName(BSTR * pbstrDisplayName) override
 	{
-		wstring_builder sb;
-		sb << _configName.get() << L"|" << _platformName.get();
-		*pbstrDisplayName = SysAllocStringLen(sb.data(), sb.size()); RETURN_IF_NULL_ALLOC(*pbstrDisplayName);
+		wil::unique_process_heap_string s;
+		auto hr = wil::str_printf_nothrow(s, L"%s|%s", _configName.get(), _platformName.get());
+		*pbstrDisplayName = SysAllocString(s.get()); RETURN_IF_NULL_ALLOC(*pbstrDisplayName);
 		return S_OK;
 	}
 
@@ -554,26 +553,28 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE get_ConfigName (BSTR* pbstr) override
 	{
-		return copy_bstr(_configName, pbstr);
+		*pbstr = SysAllocString(_configName.get()); RETURN_IF_NULL_ALLOC(*pbstr);
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_ConfigName (BSTR value) override
 	{
 		// TODO: notifications
-		auto newName = wil::make_bstr_nothrow(value); RETURN_IF_NULL_ALLOC(newName); 
+		auto newName = wil::make_process_heap_string_nothrow(value); RETURN_IF_NULL_ALLOC(newName); 
 		_configName = std::move(newName);
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_PlatformName (BSTR* pbstr) override
 	{
-		return copy_bstr(_platformName, pbstr);
+		*pbstr = SysAllocString(_platformName.get()); RETURN_IF_NULL_ALLOC(*pbstr);
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_PlatformName (BSTR value) override
 	{
 		// TODO: notifications
-		auto newName = wil::make_bstr_nothrow(value); RETURN_IF_NULL_ALLOC(newName); 
+		auto newName = wil::make_process_heap_string_nothrow(value); RETURN_IF_NULL_ALLOC(newName); 
 		_platformName = std::move(newName);
 		return S_OK;
 	}

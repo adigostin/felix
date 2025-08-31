@@ -535,22 +535,6 @@ HRESULT inline SetErrorInfo (HRESULT errorHR, LPCWSTR messageFormat, ...)
 
 #define IMPLEMENT_IDISPATCH(DISP_IID) IMPLEMENT_IDISPATCH_(DISP_IID,NULL)
 
-inline HRESULT copy_bstr (BSTR bstrFrom, BSTR* pbstrTo)
-{
-	if (bstrFrom && bstrFrom[0])
-	{
-		*pbstrTo = SysAllocStringLen(bstrFrom, SysStringLen(bstrFrom)); RETURN_IF_NULL_ALLOC(*pbstrTo);
-	}
-	else
-		*pbstrTo = nullptr;
-	return S_OK;
-}
-
-inline HRESULT copy_bstr (const wil::unique_bstr& from, BSTR* pbstrTo)
-{
-	return copy_bstr(from.get(), pbstrTo);
-}
-
 #pragma region IWeakRef
 // This interface is meant to be implemented by COM classes (in QueryInterface), but not by C++ classes.
 // Deriving a C++ class from this interface in addition to other interfaces is most likely an error.
