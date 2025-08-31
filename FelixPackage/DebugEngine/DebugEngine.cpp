@@ -73,7 +73,7 @@ public:
 			|| riid == IID_IDebugEngineStepFilterManager90
 			|| riid == IID_IDebugSymbolSettings100
 			|| riid == IID_IDebugSymbolSettings170
-			|| riid == IID_IDebugVisualizerExtensionReceiver178
+			//|| riid == IID_IDebugVisualizerExtensionReceiver178
 		)
 			return E_NOINTERFACE;
 
