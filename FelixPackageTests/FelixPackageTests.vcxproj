@@ -63,7 +63,7 @@
       <Command>REM These are needed in the output directory for running tests
 COPY /Y $(SolutionDir)third_party\sentry.dll $(SolutionDir)$(Platform)\$(Configuration)
 COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Configuration)
-XCOPY /y /s /q $(SolutionDir)FelixPackage\FelixPackageVSIX\Templates $(SolutionDir)$(Platform)\$(Configuration)\Templates\*</Command>
+XCOPY /y /s /q $(SolutionDir)FelixPackageVSIX\Templates $(SolutionDir)$(Platform)\$(Configuration)\Templates\*</Command>
     </PostBuildEvent>
     <Midl>
       <TypeLibraryName>$(IntDir)%(FileName).tlb</TypeLibraryName>
@@ -102,7 +102,7 @@ XCOPY /y /s /q $(SolutionDir)FelixPackage\FelixPackageVSIX\Templates $(SolutionD
       <Command>REM These are needed in the output directory for running tests
 COPY /Y $(SolutionDir)third_party\sentry.dll $(SolutionDir)$(Platform)\$(Configuration)
 COPY /Y $(SolutionDir)third_party\sjasmplus.exe $(SolutionDir)$(Platform)\$(Configuration)
-XCOPY /y /s /q $(SolutionDir)FelixPackage\FelixPackageVSIX\Templates $(SolutionDir)$(Platform)\$(Configuration)\Templates\*</Command>
+XCOPY /y /s /q $(SolutionDir)FelixPackageVSIX\Templates $(SolutionDir)$(Platform)\$(Configuration)\Templates\*</Command>
     </PostBuildEvent>
     <Midl>
       <TypeLibraryName>$(IntDir)%(FileName).tlb</TypeLibraryName>

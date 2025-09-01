@@ -15,7 +15,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FelixPackage", "FelixPackag
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FelixPackageUI", "FelixPackageUi\FelixPackageUi.vcxproj", "{476EBC12-B423-40F8-9685-841AB022635A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FelixPackageVSIX", "FelixPackage\FelixPackageVSIX\FelixPackageVSIX.csproj", "{D2FFE9B6-FD8E-4216-9E6B-55A5680DAAEE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FelixPackageVSIX", "FelixPackageVSIX\FelixPackageVSIX.csproj", "{D2FFE9B6-FD8E-4216-9E6B-55A5680DAAEE}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{9006F0A4-AE74-487A-AF43-2B423FA7134E}"
 	ProjectSection(SolutionItems) = preProject

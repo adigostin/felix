@@ -50,22 +50,22 @@
     <Content Include="ROMs\Spectrum48K.z80sym">
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="..\..\third_party\xaudio2\release\bin\x64\xaudio2_9redist.dll">
+    <Content Include="..\third_party\xaudio2\release\bin\x64\xaudio2_9redist.dll">
       <Link>xaudio2_9redist.dll</Link>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <None Include="source.extension.vsixmanifest">
       <SubType>Designer</SubType>
     </None>
-    <Content Include="..\..\third_party\sentry.dll">
+    <Content Include="..\third_party\sentry.dll">
       <Link>sentry.dll</Link>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="..\..\third_party\sentry.pdb">
+    <Content Include="..\third_party\sentry.pdb">
       <Link>sentry.pdb</Link>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="..\..\third_party\sjasmplus.exe">
+    <Content Include="..\third_party\sjasmplus.exe">
       <Link>sjasmplus.exe</Link>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
@@ -102,13 +102,13 @@
     </Content>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\FelixPackage.vcxproj">
+    <ProjectReference Include="..\FelixPackage\FelixPackage.vcxproj">
       <Project>{79203f4b-6f1f-4d65-ade5-d082617da696}</Project>
       <Name>FelixPackage</Name>
       <IncludeOutputGroupsInVSIX>BuiltProjectOutputGroup;BuiltProjectOutputGroupDependencies;GetCopyToOutputDirectoryItems;PkgdefProjectOutputGroup;DebugSymbolsProjectOutputGroup</IncludeOutputGroupsInVSIX>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
-    <ProjectReference Include="..\..\FelixPackageUi\FelixPackageUi.vcxproj">
+    <ProjectReference Include="..\FelixPackageUi\FelixPackageUi.vcxproj">
       <Project>{476ebc12-b423-40f8-9685-841ab022635a}</Project>
       <Name>FelixPackageUi</Name>
       <VSIXSubPath>1033</VSIXSubPath>
