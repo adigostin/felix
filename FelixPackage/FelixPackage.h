@@ -62,7 +62,7 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("F36A3A6C-01AF-423B-86FD-DB071AA47E97")
 IProjectNode : INode
 {
 	virtual VSITEMID MakeItemId() = 0;
-	virtual HRESULT GetAutoOpenFiles (BSTR* pbstrFilenames) = 0; // TODO: AsProjectNodeProperties()->get_AutoOpenFile
+	virtual HRESULT GetAutoOpenFiles (BSTR* pbstrFilenames) = 0;
 	virtual IParentNode* AsParentNode() = 0;
 	virtual IVsUIHierarchy* AsHierarchy() = 0;
 	virtual IVsProject* AsVsProject() = 0;
@@ -76,7 +76,7 @@ IChildNode : INode
 	virtual HRESULT GetParent (IParentNode** ppParent) = 0;
 	virtual HRESULT SetItemId (IParentNode* parent, VSITEMID itemId) = 0;
 	virtual HRESULT ClearItemId() = 0;
-	virtual IChildNode* Next() = 0; // TODO: keep an unordered_map with itemid/itemptr, then get rid of Next, SetNext, FindDescendant
+	virtual IChildNode* Next() = 0;
 	virtual void SetNext (IChildNode* next) = 0;
 	virtual HRESULT GetProperty (VSHPROPID propid, VARIANT* pvar) = 0;
 	virtual HRESULT SetProperty (VSHPROPID propid, REFVARIANT var) = 0;
