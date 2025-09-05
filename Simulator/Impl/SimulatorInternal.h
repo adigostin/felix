@@ -20,10 +20,11 @@ struct BreakpointsHit
 	uint32_t size;
 };
 
-// TODO: ICPU shoulnd't derive from IDevice, too little in common.
-struct DECLSPEC_NOVTABLE ICPU : IDevice
+struct DECLSPEC_NOVTABLE ICPU
 {
-//	virtual HRESULT STDMETHODCALLTYPE GetRegisters (IRegisterGroup** ppRegs) = 0;
+	virtual ~ICPU() = default;
+	virtual uint64_t Time() = 0;
+	virtual void Reset() = 0;
 	virtual UINT16 GetStackStartAddress() const = 0;
 	virtual BOOL STDMETHODCALLTYPE Halted() = 0;
 	virtual UINT16 GetPC() const = 0;

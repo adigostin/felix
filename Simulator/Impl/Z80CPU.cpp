@@ -1631,13 +1631,6 @@ public:
 		return cpu_time;
 	}
 
-	virtual BOOL NeedSyncWithRealTime (UINT64* sync_time) override { return false; }
-
-	virtual void SimulateTo (UINT64 requested_time) override
-	{
-		WI_ASSERT(false);
-	}
-
 	virtual void Reset() override
 	{
 		memset (&regs, 0, sizeof(regs));
