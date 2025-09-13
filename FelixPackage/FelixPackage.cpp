@@ -734,22 +734,23 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE Event (IDebugEngine2 *pEngine, IDebugProcess2 *pProcess, IDebugProgram2 *pProgram, IDebugThread2 *pThread, IDebugEvent2 *pEvent, REFIID riidEvent, DWORD dwAttrib) override
 	{
 		DWORD attrs;
-		if (SUCCEEDED(pEvent->GetAttributes(&attrs)) && (attrs & EVENT_STOPPING))
+		if (riidEvent == __uuidof(IDebugLoadCompleteEvent2))
 		{
-			// When starting debugging, VS switches to the Debug window layout. This window layout does not
-			// include the Simulator tool window on a newly created project. This is bad UX for a new user.
-			// We want to force show it every time debugging starts, _after_ VS has switched to the Debug window layout.
-			// This last bit is tricky; the earliest point in time I could find when VS is already in the Debug window layout
-			// is the handler of an EVENT_SYNC_STOP debug event. This may or may not work in future versions of VS;
-			// we'll see about that.
-			if (!_simulatorWindowFrame)
+			com_ptr<IFelixLoadCompleteEvent> flce;
+			if (SUCCEEDED(pEvent->QueryInterface(IID_PPV_ARGS(&flce))))
 			{
-				auto hr = CreateSimulatorToolWindow(&_simulatorWindowFrame); RETURN_IF_FAILED(hr);
-			}
+				// When starting debugging, VS switches to the Debug window layout. This window layout does not
+				// include the Simulator tool window on a newly created project. This is bad UX for a new user.
+				// We want to force show it every time debugging starts, _after_ VS has switched to the Debug window layout.
+				if (!_simulatorWindowFrame)
+				{
+					auto hr = CreateSimulatorToolWindow(&_simulatorWindowFrame); RETURN_IF_FAILED(hr);
+				}
 
-			if (_simulatorWindowFrame)
-			{
-				auto hr = _simulatorWindowFrame->Show(); RETURN_IF_FAILED(hr);
+				if (_simulatorWindowFrame)
+				{
+					auto hr = _simulatorWindowFrame->Show(); RETURN_IF_FAILED(hr);
+				}
 			}
 		}
 

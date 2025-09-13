@@ -48,6 +48,10 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{FCC163D3-2F23-457E-BDDD-EE5A94D9EC83}")
 	virtual HRESULT ContainsBreakpoint (IDebugBoundBreakpoint2* bp) = 0;
 };
 
+struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{EE258338-F1FA-4FE5-A518-F7A589F43B60}") IFelixLoadCompleteEvent : IUnknown
+{
+};
+
 HRESULT MakeBreakpointManager (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program, IBreakpointManager** ppManager);
 HRESULT MakeSimplePendingBreakpoint (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program,
 	IBreakpointManager* bpman, bool physicalMemorySpace, UINT64 address, IDebugPendingBreakpoint2** to);
