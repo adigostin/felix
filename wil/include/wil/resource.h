@@ -16,6 +16,10 @@
 #include "wistd_functional.h"
 #include "wistd_memory.h"
 
+#if WIL_USE_STL
+#include <iterator>
+#endif
+
 #pragma warning(push)
 #pragma warning(disable : 26135 26110) // Missing locking annotation, Caller failing to hold lock
 #pragma warning(disable : 4714)        // __forceinline not honored
@@ -27,10 +31,10 @@
 // stdint.h and intsafe.h have conflicting definitions, so it's not safe to include either to pick up our dependencies,
 // so the definitions we need are copied below
 #ifdef _WIN64
-#define __WI_SIZE_MAX 0xffffffffffffffffui64 // UINT64_MAX
-#else                                        /* _WIN64 */
-#define __WI_SIZE_MAX 0xffffffffui32         // UINT32_MAX
-#endif                                       /* _WIN64 */
+#define __WI_SIZE_MAX 0xffffffffffffffffULL // UINT64_MAX
+#else                                       /* _WIN64 */
+#define __WI_SIZE_MAX 0xffffffffUL          // UINT32_MAX
+#endif                                      /* _WIN64 */
 /// @endcond
 
 // Forward declaration
@@ -721,7 +725,7 @@ class com_ptr_t; // forward
 namespace details
 {
     // The first two attach_to_smart_pointer() overloads are ambiguous when passed a com_ptr_t.
-    // To solve that use this functions return type to elminate the reset form for com_ptr_t.
+    // To solve that use this functions return type to eliminate the reset form for com_ptr_t.
     template <typename T, typename err>
     wistd::false_type use_reset(wil::com_ptr_t<T, err>*)
     {
@@ -1004,7 +1008,8 @@ private:
 
     void call_init(wistd::true_type)
     {
-        RtlZeroMemory(this, sizeof(*this));
+        // Suppress '-Wnontrivial-memcall' with 'static_cast'
+        RtlZeroMemory(static_cast<void*>(this), sizeof(*this));
     }
 
     void call_init(wistd::false_type)
@@ -1025,7 +1030,7 @@ struct empty_deleter
 };
 
 /** unique_any_array_ptr is a RAII type for managing conformant arrays that need to be freed and have elements that may need to be
-freed. The intented use for this RAII type would be to capture out params from API like IPropertyValue::GetStringArray. This class
+freed. The intended use for this RAII type would be to capture out params from API like IPropertyValue::GetStringArray. This class
 also maintains the size of the array, so it can iterate over the members and deallocate them before it deallocates the base array
 pointer.
 
@@ -2892,6 +2897,7 @@ typedef unique_any_t<event_t<details::unique_storage<details::handle_resource_po
 typedef unique_any_t<event_t<details::unique_storage<details::handle_resource_policy>, err_exception_policy>> unique_event;
 #endif
 
+#ifndef WIL_NO_SLIM_EVENT
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) && \
     ((_WIN32_WINNT >= _WIN32_WINNT_WIN8) || (__WIL_RESOURCE_ENABLE_QUIRKS && (_WIN32_WINNT >= _WIN32_WINNT_WIN7)))
 enum class SlimEventType
@@ -2973,13 +2979,13 @@ public:
         return !!ReadAcquire(&m_isSignaled);
     }
 
-    bool wait(DWORD timeoutMiliseconds) WI_NOEXCEPT
+    bool wait(DWORD timeoutMilliseconds) WI_NOEXCEPT
     {
-        if (timeoutMiliseconds == 0)
+        if (timeoutMilliseconds == 0)
         {
             return TryAcquireEvent();
         }
-        else if (timeoutMiliseconds == INFINITE)
+        else if (timeoutMilliseconds == INFINITE)
         {
             return wait();
         }
@@ -2991,12 +2997,12 @@ public:
 
         while (!TryAcquireEvent())
         {
-            if (elapsedTimeMilliseconds >= timeoutMiliseconds)
+            if (elapsedTimeMilliseconds >= timeoutMilliseconds)
             {
                 return false;
             }
 
-            DWORD newTimeout = static_cast<DWORD>(timeoutMiliseconds - elapsedTimeMilliseconds);
+            DWORD newTimeout = static_cast<DWORD>(timeoutMilliseconds - elapsedTimeMilliseconds);
 
             if (!WaitForSignal(newTimeout))
             {
@@ -3039,10 +3045,10 @@ private:
         }
     }
 
-    bool WaitForSignal(DWORD timeoutMiliseconds) WI_NOEXCEPT
+    bool WaitForSignal(DWORD timeoutMilliseconds) WI_NOEXCEPT
     {
         LONG falseValue = FALSE;
-        BOOL waitResult = WaitOnAddress(&m_isSignaled, &falseValue, sizeof(m_isSignaled), timeoutMiliseconds);
+        BOOL waitResult = WaitOnAddress(&m_isSignaled, &falseValue, sizeof(m_isSignaled), timeoutMilliseconds);
         __FAIL_FAST_ASSERT__(waitResult || ::GetLastError() == ERROR_TIMEOUT);
         return !!waitResult;
     }
@@ -3060,6 +3066,7 @@ using slim_event_manual_reset = slim_event_t<SlimEventType::ManualReset>;
 using slim_event = slim_event_auto_reset;
 
 #endif // WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) && (_WIN32_WINNT >= _WIN32_WINNT_WIN8)
+#endif // WIL_NO_SLIM_EVENT
 
 typedef unique_any<HANDLE, decltype(&details::ReleaseMutex), details::ReleaseMutex, details::pointer_access_none> mutex_release_scope_exit;
 
@@ -3715,6 +3722,14 @@ namespace details
     {
         ::HeapFree(::GetProcessHeap(), 0, p);
     }
+
+    struct heap_allocator
+    {
+        static _Ret_opt_bytecap_(size) void* allocate(size_t size) WI_NOEXCEPT
+        {
+            return ::HeapAlloc(::GetProcessHeap(), HEAP_ZERO_MEMORY, size);
+        }
+    };
 } // namespace details
 /// @endcond
 
@@ -3744,25 +3759,6 @@ struct mapview_deleter
         ::UnmapViewOfFile(p);
     }
 };
-
-template <typename T = void>
-using unique_process_heap_ptr = wistd::unique_ptr<details::ensure_trivially_destructible_t<T>, process_heap_deleter>;
-
-typedef unique_any<PWSTR, decltype(&details::FreeProcessHeap), details::FreeProcessHeap> unique_process_heap_string;
-
-/// @cond
-namespace details
-{
-    template <>
-    struct string_allocator<unique_process_heap_string>
-    {
-        static _Ret_opt_bytecap_(size) void* allocate(size_t size) WI_NOEXCEPT
-        {
-            return ::HeapAlloc(::GetProcessHeap(), HEAP_ZERO_MEMORY, size);
-        }
-    };
-} // namespace details
-/// @endcond
 
 /** Manages a typed pointer allocated with VirtualAlloc
 A specialization of wistd::unique_ptr<> that frees via VirtualFree(p, 0, MEM_RELEASE).
@@ -4058,6 +4054,93 @@ typedef weak_any<shared_hfind_change> weak_hfind_change;
 #endif
 
 #endif // __WIL_WINBASE_STL
+
+#if (defined(_HEAPAPI_H_) && !defined(__WIL__WIL_HEAP_API) && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM | WINAPI_PARTITION_GAMES) && !defined(WIL_KERNEL_MODE)) || \
+    defined(WIL_DOXYGEN)
+/// @cond
+#define __WIL__WIL_HEAP_API
+/// @endcond
+
+template <typename T = void>
+using unique_process_heap_ptr = wistd::unique_ptr<details::ensure_trivially_destructible_t<T>, process_heap_deleter>;
+typedef unique_any<void*, decltype(&details::FreeProcessHeap), details::FreeProcessHeap> unique_process_heap;
+typedef unique_any<PWSTR, decltype(&details::FreeProcessHeap), details::FreeProcessHeap> unique_process_heap_string;
+
+#ifndef WIL_NO_ANSI_STRINGS
+typedef unique_any<PSTR, decltype(&wil::details::FreeProcessHeap), wil::details::FreeProcessHeap> unique_process_heap_ansistring;
+#endif // WIL_NO_ANSI_STRINGS
+
+/// @cond
+namespace details
+{
+    template <>
+    struct string_allocator<wil::unique_process_heap_string> : heap_allocator
+    {
+    };
+
+#ifndef WIL_NO_ANSI_STRINGS
+    template <>
+    struct string_allocator<unique_process_heap_ansistring> : heap_allocator
+    {
+    };
+#endif
+} // namespace details
+/// @endcond
+
+inline auto make_process_heap_string_nothrow(
+    _When_((source != nullptr) && length != static_cast<size_t>(-1), _In_reads_(length))
+        _When_((source != nullptr) && length == static_cast<size_t>(-1), _In_z_) PCWSTR source,
+    size_t length = static_cast<size_t>(-1)) WI_NOEXCEPT
+{
+    return make_unique_string_nothrow<unique_process_heap_string>(source, length);
+}
+
+inline auto make_process_heap_string_failfast(
+    _When_((source != nullptr) && length != static_cast<size_t>(-1), _In_reads_(length))
+        _When_((source != nullptr) && length == static_cast<size_t>(-1), _In_z_) PCWSTR source,
+    size_t length = static_cast<size_t>(-1)) WI_NOEXCEPT
+{
+    return make_unique_string_failfast<unique_process_heap_string>(source, length);
+}
+
+#ifndef WIL_NO_ANSI_STRINGS
+inline auto make_process_heap_ansistring_nothrow(
+    _When_((source != nullptr) && length != static_cast<size_t>(-1), _In_reads_(length))
+        _When_((source != nullptr) && length == static_cast<size_t>(-1), _In_z_) PCSTR source,
+    size_t length = static_cast<size_t>(-1)) WI_NOEXCEPT
+{
+    return make_unique_ansistring_nothrow<unique_process_heap_ansistring>(source, length);
+}
+
+inline auto make_process_heap_ansistring_failfast(
+    _When_((source != nullptr) && length != static_cast<size_t>(-1), _In_reads_(length))
+        _When_((source != nullptr) && length == static_cast<size_t>(-1), _In_z_) PCSTR source,
+    size_t length = static_cast<size_t>(-1)) WI_NOEXCEPT
+{
+    return make_unique_ansistring_failfast<unique_process_heap_ansistring>(source, length);
+}
+#endif // WIL_NO_ANSI_STRINGS
+
+#ifdef WIL_ENABLE_EXCEPTIONS
+inline auto make_process_heap_string(
+    _When_((source != nullptr) && length != static_cast<size_t>(-1), _In_reads_(length))
+        _When_((source != nullptr) && length == static_cast<size_t>(-1), _In_z_) PCWSTR source,
+    size_t length = static_cast<size_t>(-1))
+{
+    return make_unique_string<unique_process_heap_string>(source, length);
+}
+
+#ifndef WIL_NO_ANSI_STRINGS
+inline auto make_process_heap_ansistring(
+    _When_((source != nullptr) && length != static_cast<size_t>(-1), _In_reads_(length))
+        _When_((source != nullptr) && length == static_cast<size_t>(-1), _In_z_) PCSTR source,
+    size_t length = static_cast<size_t>(-1))
+{
+    return make_unique_ansistring<unique_process_heap_ansistring>(source, length);
+}
+#endif // WIL_NO_ANSI_STRINGS
+#endif // WIL_ENABLE_EXCEPTIONS
+#endif // _HEAPAPI_H_
 
 #if (defined(__WIL_WINBASE_) && defined(__NOTHROW_T_DEFINED) && !defined(__WIL_WINBASE_NOTHROW_T_DEFINED_STL) && defined(WIL_RESOURCE_STL) && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)) || \
     defined(WIL_DOXYGEN)
@@ -4506,32 +4589,6 @@ namespace details
 } // namespace details
 /// @endcond
 
-inline auto make_process_heap_string_nothrow(
-    _When_((source != nullptr) && length != static_cast<size_t>(-1), _In_reads_(length))
-        _When_((source != nullptr) && length == static_cast<size_t>(-1), _In_z_) PCWSTR source,
-    size_t length = static_cast<size_t>(-1)) WI_NOEXCEPT
-{
-    return make_unique_string_nothrow<unique_process_heap_string>(source, length);
-}
-
-inline auto make_process_heap_string_failfast(
-    _When_((source != nullptr) && length != static_cast<size_t>(-1), _In_reads_(length))
-        _When_((source != nullptr) && length == static_cast<size_t>(-1), _In_z_) PCWSTR source,
-    size_t length = static_cast<size_t>(-1)) WI_NOEXCEPT
-{
-    return make_unique_string_failfast<unique_process_heap_string>(source, length);
-}
-
-#ifdef WIL_ENABLE_EXCEPTIONS
-inline auto make_process_heap_string(
-    _When_((source != nullptr) && length != static_cast<size_t>(-1), _In_reads_(length))
-        _When_((source != nullptr) && length == static_cast<size_t>(-1), _In_z_) PCWSTR source,
-    size_t length = static_cast<size_t>(-1))
-{
-    return make_unique_string<unique_process_heap_string>(source, length);
-}
-#endif // WIL_ENABLE_EXCEPTIONS
-
 typedef unique_any_handle_null<decltype(&::HeapDestroy), ::HeapDestroy> unique_hheap;
 typedef unique_any<DWORD, decltype(&::TlsFree), ::TlsFree, details::pointer_access_all, DWORD, DWORD, TLS_OUT_OF_INDEXES, DWORD> unique_tls;
 typedef unique_any<PSECURITY_DESCRIPTOR, decltype(&::LocalFree), ::LocalFree> unique_hlocal_security_descriptor;
@@ -4731,7 +4788,7 @@ inline unique_hstring make_unique_string_nothrow<unique_hstring>(
         _When_((source != nullptr) && length == static_cast<size_t>(-1), _In_z_) PCWSTR source,
     size_t length) WI_NOEXCEPT
 {
-    WI_ASSERT(source != nullptr); // the HSTRING version of this function does not suport this case
+    WI_ASSERT(source != nullptr); // the HSTRING version of this function does not support this case
     if (length == static_cast<size_t>(-1))
     {
         length = wcslen(source);
@@ -5218,7 +5275,7 @@ struct cert_context_t
     }
 
     /** A wrapper around CertEnumCertificatesInStore.
-    CertEnumCertificatesInStore takes ownership of its second paramter in an unclear fashion,
+    CertEnumCertificatesInStore takes ownership of its second parameter in an unclear fashion,
     making it error-prone to use in combination with unique_cert_context. This wrapper helps
     manage the resource correctly while ensuring the GetLastError state set by CertEnumCertificatesInStore.
     is not lost. See MSDN for more information on `CertEnumCertificatesInStore`.
@@ -6264,7 +6321,7 @@ using wdf_wait_lock_release_scope_exit =
 using unique_wdf_device_init = unique_any<WDFDEVICE_INIT*, decltype(&::WdfDeviceInitFree), ::WdfDeviceInitFree>;
 #endif
 
-inline WI_NODISCARD _IRQL_requires_max_(PASSIVE_LEVEL)
+WI_NODISCARD inline _IRQL_requires_max_(PASSIVE_LEVEL)
 _Acquires_lock_(lock)
 wdf_wait_lock_release_scope_exit acquire_wdf_wait_lock(WDFWAITLOCK lock) WI_NOEXCEPT
 {
@@ -6272,7 +6329,7 @@ wdf_wait_lock_release_scope_exit acquire_wdf_wait_lock(WDFWAITLOCK lock) WI_NOEX
     return wdf_wait_lock_release_scope_exit(lock);
 }
 
-inline WI_NODISCARD _IRQL_requires_max_(APC_LEVEL)
+WI_NODISCARD inline _IRQL_requires_max_(APC_LEVEL)
 _When_(return, _Acquires_lock_(lock))
 wdf_wait_lock_release_scope_exit try_acquire_wdf_wait_lock(WDFWAITLOCK lock) WI_NOEXCEPT
 {
@@ -6291,7 +6348,7 @@ wdf_wait_lock_release_scope_exit try_acquire_wdf_wait_lock(WDFWAITLOCK lock) WI_
 using wdf_spin_lock_release_scope_exit =
     unique_any<WDFSPINLOCK, decltype(&::WdfSpinLockRelease), ::WdfSpinLockRelease, details::pointer_access_none>;
 
-inline WI_NODISCARD _IRQL_requires_max_(DISPATCH_LEVEL)
+WI_NODISCARD inline _IRQL_requires_max_(DISPATCH_LEVEL)
 _IRQL_raises_(DISPATCH_LEVEL)
 _Acquires_lock_(lock)
 wdf_spin_lock_release_scope_exit acquire_wdf_spin_lock(WDFSPINLOCK lock) WI_NOEXCEPT
@@ -6507,7 +6564,7 @@ private:
 // function only if the call-site source location is obtained from elsewhere (i.e., plumbed
 // through other abstractions).
 template <typename wdf_object_t>
-inline WI_NODISCARD unique_wdf_object_reference<wdf_object_t> wdf_object_reference_increment(
+WI_NODISCARD inline unique_wdf_object_reference<wdf_object_t> wdf_object_reference_increment(
     wdf_object_t wdfObject, PVOID tag, LONG lineNumber, PCSTR fileName) WI_NOEXCEPT
 {
     // Parameter is incorrectly marked as non-const, so the const-cast is required.
@@ -6516,7 +6573,7 @@ inline WI_NODISCARD unique_wdf_object_reference<wdf_object_t> wdf_object_referen
 }
 
 template <typename wdf_object_t>
-inline WI_NODISCARD unique_wdf_object_reference<wdf_object_t> wdf_object_reference_increment(
+WI_NODISCARD inline unique_wdf_object_reference<wdf_object_t> wdf_object_reference_increment(
     const wil::unique_wdf_any<wdf_object_t>& wdfObject, PVOID tag, LONG lineNumber, PCSTR fileName) WI_NOEXCEPT
 {
     return wdf_object_reference_increment(wdfObject.get(), tag, lineNumber, fileName);
@@ -7294,7 +7351,7 @@ namespace details
 
         struct iterator
         {
-#if defined(_XUTILITY_) || defined(WIL_DOXYGEN)
+#if WIL_USE_STL || defined(WIL_DOXYGEN)
             // muse be input_iterator_tag as use of one instance invalidates the other.
             typedef ::std::input_iterator_tag iterator_category;
 #endif
@@ -7451,7 +7508,7 @@ namespace details
 {
     // Only those lock types specialized by lock_proof_traits will allow either a write_lock_required or
     // read_lock_required to be constructed. The allows_exclusive value indicates if the type represents an exclusive,
-    // write-safe lock aquisition, or a shared, read-only lock acquisition.
+    // write-safe lock acquisition, or a shared, read-only lock acquisition.
     template <typename T>
     struct lock_proof_traits
     {
@@ -7480,7 +7537,7 @@ another function that requires them.
 These types are implicitly convertible from various lock holding types, enabling callers to provide them as
 proof of the lock that they hold.
 
-The following example is intentially contrived to demonstrate multiple use cases:
+The following example is intentionally contrived to demonstrate multiple use cases:
   - Methods that require only shared/read access
   - Methods that require only exclusive write access
   - Methods that pass their proof-of-lock to a helper

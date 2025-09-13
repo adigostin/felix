@@ -1,7 +1,7 @@
 #include "common.h"
 #include <wil/windowing.h>
 
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) && WIL_HAS_CXX_17
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 TEST_CASE("EnumWindows", "[windowing]")
 {
     // lambda can return a bool
@@ -149,18 +149,42 @@ TEST_CASE("EnumThreadWindows", "[windowing]")
 #endif
 }
 
+bool has_child_window(HWND hwnd)
+{
+    bool hasChildWindow = false;
+    wil::for_each_child_window_nothrow(hwnd, [&hasChildWindow](HWND) {
+        hasChildWindow = true;
+        return false;
+    });
+    return hasChildWindow;
+}
+
 TEST_CASE("EnumChildWindows", "[windowing]")
 {
     // find any window
     HWND parent{};
+
     wil::for_each_window_nothrow([&parent](HWND hwnd) {
-        if (IsWindow(hwnd) && IsWindowVisible(hwnd))
+        if (IsWindow(hwnd) && IsWindowVisible(hwnd) && has_child_window(hwnd))
         {
-            parent = hwnd;
-            return false;
+            // Make sure we choose a window that has children
+            bool hasChildren = false;
+            wil::for_each_child_window_nothrow(hwnd, [&](HWND) {
+                hasChildren = true;
+                return false;
+            });
+
+            if (hasChildren)
+            {
+                parent = hwnd;
+                return false;
+            }
         }
         return true;
     });
+
+    // Avoid confusing issues below
+    REQUIRE(parent != nullptr);
 
     // nothrow version
     {
@@ -212,6 +236,7 @@ TEST_CASE("EnumChildWindows", "[windowing]")
         wil::for_each_child_window(parent, [&windows](HWND hwnd) {
             windows.push_back(hwnd);
         });
+        REQUIRE(windows.size() > 0);
         wil::for_each_child_window(parent, [windows = std::vector<HWND>{}](HWND hwnd) mutable {
             windows.push_back(hwnd);
         });

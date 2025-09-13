@@ -1,4 +1,4 @@
-// Relatively simple tests as a sanity check to verify that our funciton mocking & use of detours is working correctly
+// Relatively simple tests as a sanity check to verify that our function mocking & use of detours is working correctly
 #include "pch.h"
 
 #include "common.h"
@@ -102,7 +102,7 @@ __declspec(noinline) int __cdecl LocalAddFunction(int lhs, int rhs)
     return lhs + rhs;
 }
 
-TEST_CASE("MockingTests::ThreadDetourLocalFunciton", "[mocking]")
+TEST_CASE("MockingTests::ThreadDetourLocalFunction", "[mocking]")
 {
     {
         witest::detoured_thread_function<&LocalAddFunction> detour;
@@ -116,7 +116,7 @@ TEST_CASE("MockingTests::ThreadDetourLocalFunciton", "[mocking]")
     REQUIRE(LocalAddFunction(2, 3) == 5);
 }
 
-TEST_CASE("MockingTests::GlobalDetourLocalFunciton", "[mocking]")
+TEST_CASE("MockingTests::GlobalDetourLocalFunction", "[mocking]")
 {
     {
         witest::detoured_global_function<&LocalAddFunction> detour;
@@ -397,11 +397,13 @@ TEST_CASE("MockingTests::GlobalDetourDestructorRace", "[mocking]")
     detourRunningEvent.wait(); // Wait for 'detouredThread' to kick off & invoke the detoured function
     detour.reset();            // Kick off everything to continue
 
+    // NOTE: While 'reset' will wait for all calls to complete, it will NOT wait for anything after that point in time to complete
+    // (e.g. assignment of the result to a variable), so we need to call 'join' first
+    detouredThread.join();
+    nonDetouredThread.join();
+
     // By the time 'reset' completes, all calls should also have completed, hence the check before the calls to 'join' are fine
     REQUIRE(detouredResult == 6);
     REQUIRE(nonDetouredResult == 5);
-
-    detouredThread.join();
-    nonDetouredThread.join();
 }
 #endif

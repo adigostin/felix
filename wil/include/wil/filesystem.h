@@ -26,6 +26,10 @@
 #include "win32_helpers.h"
 #include "resource.h"
 
+#if WIL_USE_STL
+#include <iterator>
+#endif
+
 namespace wil
 {
 //! Determines if a path is an extended length path that can be used to access paths longer than MAX_PATH.
@@ -403,7 +407,7 @@ struct next_entry_offset_iterator
     using value_type = T;
     using pointer = const T*;
     using reference = const T&;
-#ifdef _XUTILITY_
+#if WIL_USE_STL
     using iterator_category = ::std::forward_iterator_tag;
 #endif
 
@@ -476,7 +480,7 @@ next_entry_offset_iterator<T> create_next_entry_offset_iterator(T* p)
 
 enum class FolderChangeEvent : DWORD
 {
-    ChangesLost = 0, // requies special handling, reset state as events were lost
+    ChangesLost = 0, // requires special handling, reset state as events were lost
     Added = FILE_ACTION_ADDED,
     Removed = FILE_ACTION_REMOVED,
     Modified = FILE_ACTION_MODIFIED,
@@ -1122,9 +1126,9 @@ struct file_and_error_result
     DWORD last_error{};
 };
 
-/** Non-throwing open existing using OPEN_EXISTING.
+/** Non-throwing open existing using OPEN_EXISTING, returns handle and error code.
 ~~~
-auto handle = wil::try_open_file(filePath.c_str());
+auto [handle, error] = wil::try_open_file(filePath.c_str());
 ~~~
 */
 inline file_and_error_result try_open_file(
@@ -1150,7 +1154,7 @@ inline wil::unique_hfile open_file(
     DWORD dwDesiredAccess = GENERIC_READ,
     DWORD dwShareMode = FILE_SHARE_READ,
     DWORD dwFlagsAndAttributes = FILE_ATTRIBUTE_NORMAL,
-    bool inheritHandle = false) noexcept
+    bool inheritHandle = false)
 {
     auto result = try_open_file(path, dwDesiredAccess, dwShareMode, dwFlagsAndAttributes, inheritHandle);
     THROW_WIN32_IF(result.last_error, !result.file.is_valid());
@@ -1173,7 +1177,7 @@ namespace details
 
 /** create using CREATE_NEW, returns handle and error code.
 ~~~
-auto [handle, error = wil::try_create_new_file(filePath.c_str());
+auto [handle, error] = wil::try_create_new_file(filePath.c_str());
 ~~~
 */
 inline file_and_error_result try_create_new_file(
@@ -1189,7 +1193,7 @@ inline file_and_error_result try_create_new_file(
 
 /** create using OPEN_ALWAYS, returns handle and error code.
 ~~~
-auto [handle, error = wil::try_open_or_create_file(filePath.c_str());
+auto [handle, error] = wil::try_open_or_create_file(filePath.c_str());
 ~~~
 */
 inline file_and_error_result try_open_or_create_file(
@@ -1205,7 +1209,7 @@ inline file_and_error_result try_open_or_create_file(
 
 /** create using CREATE_ALWAYS, returns handle and error code.
 ~~~
-auto [handle, error = wil::try_open_or_truncate_existing_file(filePath.c_str());
+auto [handle, error] = wil::try_open_or_truncate_existing_file(filePath.c_str());
 ~~~
 */
 inline file_and_error_result try_open_or_truncate_existing_file(
@@ -1221,7 +1225,7 @@ inline file_and_error_result try_open_or_truncate_existing_file(
 
 /** create using TRUNCATE_EXISTING, returns handle and error code.
 ~~~
-auto [handle, error = wil::try_truncate_existing_file(filePath.c_str());
+auto [handle, error] = wil::try_truncate_existing_file(filePath.c_str());
 ~~~
 */
 inline file_and_error_result try_truncate_existing_file(
@@ -1247,7 +1251,7 @@ inline wil::unique_hfile create_new_file(
     DWORD dwShareMode = FILE_SHARE_READ,
     LPSECURITY_ATTRIBUTES lpSecurityAttributes = nullptr,
     DWORD dwFlagsAndAttributes = FILE_ATTRIBUTE_NORMAL,
-    HANDLE hTemplateFile = nullptr) noexcept
+    HANDLE hTemplateFile = nullptr)
 {
     auto result = try_create_new_file(path, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwFlagsAndAttributes, hTemplateFile);
     THROW_WIN32_IF(result.last_error, !result.file.is_valid());
@@ -1265,7 +1269,7 @@ inline wil::unique_hfile open_or_create_file(
     DWORD dwShareMode = FILE_SHARE_READ,
     LPSECURITY_ATTRIBUTES lpSecurityAttributes = nullptr,
     DWORD dwFlagsAndAttributes = FILE_ATTRIBUTE_NORMAL,
-    HANDLE hTemplateFile = nullptr) noexcept
+    HANDLE hTemplateFile = nullptr)
 {
     auto result = try_open_or_create_file(path, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwFlagsAndAttributes, hTemplateFile);
     THROW_WIN32_IF(result.last_error, !result.file.is_valid());
@@ -1283,7 +1287,7 @@ inline wil::unique_hfile open_or_truncate_existing_file(
     DWORD dwShareMode = FILE_SHARE_READ,
     LPSECURITY_ATTRIBUTES lpSecurityAttributes = nullptr,
     DWORD dwFlagsAndAttributes = FILE_ATTRIBUTE_NORMAL,
-    HANDLE hTemplateFile = nullptr) noexcept
+    HANDLE hTemplateFile = nullptr)
 {
     auto result = try_open_or_truncate_existing_file(
         path, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwFlagsAndAttributes, hTemplateFile);
@@ -1302,7 +1306,7 @@ inline wil::unique_hfile truncate_existing_file(
     DWORD dwShareMode = FILE_SHARE_READ,
     LPSECURITY_ATTRIBUTES lpSecurityAttributes = nullptr,
     DWORD dwFlagsAndAttributes = FILE_ATTRIBUTE_NORMAL,
-    HANDLE hTemplateFile = nullptr) noexcept
+    HANDLE hTemplateFile = nullptr)
 {
     auto result =
         try_truncate_existing_file(path, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwFlagsAndAttributes, hTemplateFile);

@@ -68,7 +68,7 @@ namespace details
                 wil::unique_hmodule errorModule;
                 if (GetModuleHandleExW(0, L"api-ms-win-core-winrt-error-l1-1-1.dll", &errorModule))
                 {
-                    auto pfn = reinterpret_cast<decltype(&::RoOriginateErrorW)>(GetProcAddress(errorModule.get(), "RoOriginateErrorW"));
+                    auto pfn = details::GetProcAddress<decltype(&::RoOriginateErrorW)>(errorModule.get(), "RoOriginateErrorW");
                     if (pfn != nullptr)
                     {
                         pfn(failure.hr, 0, failure.pszMessage);
@@ -122,7 +122,7 @@ namespace details
 } // namespace wil
 
 // Automatically call RoOriginateError upon error origination by including this file
-WI_HEADER_INITITALIZATION_FUNCTION(ResultStowedExceptionInitialize, [] {
+WI_HEADER_INITIALIZATION_FUNCTION(ResultStowedExceptionInitialize, [] {
     ::wil::SetOriginateErrorCallback(::wil::details::RaiseRoOriginateOnWilExceptions);
     ::wil::SetFailfastWithContextCallback(::wil::details::FailfastWithContextCallback);
     return 1;

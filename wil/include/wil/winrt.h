@@ -29,30 +29,10 @@
 #endif
 
 /// @cond
-#if defined(WIL_ENABLE_EXCEPTIONS) && !defined(__WI_HAS_STD_LESS)
-#ifdef __has_include
-#if __has_include(<functional>)
-#define __WI_HAS_STD_LESS 1
+#if WIL_USE_STL
 #include <functional>
-#endif // Otherwise, not using STL; don't specialize std::less
-#else
-// Fall back to the old way of forward declaring std::less
-#define __WI_HAS_STD_LESS 1
-#pragma warning(push)
-#pragma warning(disable : 4643) // Forward declaring '...' in namespace std is not permitted by the C++ Standard.
-namespace std
-{
-template <class _Ty>
-struct less;
-}
-#pragma warning(pop)
-#endif
-#endif
-#if defined(WIL_ENABLE_EXCEPTIONS) && defined(__has_include)
-#if __has_include(<vector>)
-#define __WI_HAS_STD_VECTOR 1
+#include <iterator>
 #include <vector>
-#endif
 #endif
 /// @endcond
 
@@ -188,41 +168,43 @@ namespace details
         }
 
         template <typename LhsT, typename RhsT>
-        static auto equals(LhsT&& lhs, RhsT&& rhs) WI_NOEXCEPT->decltype(compare(wistd::forward<LhsT>(lhs), wistd::forward<RhsT>(rhs)), bool())
+        static auto equals(LhsT&& lhs, RhsT&& rhs) WI_NOEXCEPT
+            -> decltype(compare(wistd::forward<LhsT>(lhs), wistd::forward<RhsT>(rhs)), bool())
         {
             return compare(wistd::forward<LhsT>(lhs), wistd::forward<RhsT>(rhs)) == CSTR_EQUAL;
         }
 
         template <typename LhsT, typename RhsT>
-        static auto not_equals(LhsT&& lhs, RhsT&& rhs)
-            WI_NOEXCEPT->decltype(compare(wistd::forward<LhsT>(lhs), wistd::forward<RhsT>(rhs)), bool())
+        static auto not_equals(LhsT&& lhs, RhsT&& rhs) WI_NOEXCEPT
+            -> decltype(compare(wistd::forward<LhsT>(lhs), wistd::forward<RhsT>(rhs)), bool())
         {
             return compare(wistd::forward<LhsT>(lhs), wistd::forward<RhsT>(rhs)) != CSTR_EQUAL;
         }
 
         template <typename LhsT, typename RhsT>
-        static auto less(LhsT&& lhs, RhsT&& rhs) WI_NOEXCEPT->decltype(compare(wistd::forward<LhsT>(lhs), wistd::forward<RhsT>(rhs)), bool())
+        static auto less(LhsT&& lhs, RhsT&& rhs) WI_NOEXCEPT
+            -> decltype(compare(wistd::forward<LhsT>(lhs), wistd::forward<RhsT>(rhs)), bool())
         {
             return compare(wistd::forward<LhsT>(lhs), wistd::forward<RhsT>(rhs)) == CSTR_LESS_THAN;
         }
 
         template <typename LhsT, typename RhsT>
-        static auto less_equals(LhsT&& lhs, RhsT&& rhs)
-            WI_NOEXCEPT->decltype(compare(wistd::forward<LhsT>(lhs), wistd::forward<RhsT>(rhs)), bool())
+        static auto less_equals(LhsT&& lhs, RhsT&& rhs) WI_NOEXCEPT
+            -> decltype(compare(wistd::forward<LhsT>(lhs), wistd::forward<RhsT>(rhs)), bool())
         {
             return compare(wistd::forward<LhsT>(lhs), wistd::forward<RhsT>(rhs)) != CSTR_GREATER_THAN;
         }
 
         template <typename LhsT, typename RhsT>
-        static auto greater(LhsT&& lhs, RhsT&& rhs)
-            WI_NOEXCEPT->decltype(compare(wistd::forward<LhsT>(lhs), wistd::forward<RhsT>(rhs)), bool())
+        static auto greater(LhsT&& lhs, RhsT&& rhs) WI_NOEXCEPT
+            -> decltype(compare(wistd::forward<LhsT>(lhs), wistd::forward<RhsT>(rhs)), bool())
         {
             return compare(wistd::forward<LhsT>(lhs), wistd::forward<RhsT>(rhs)) == CSTR_GREATER_THAN;
         }
 
         template <typename LhsT, typename RhsT>
-        static auto greater_equals(LhsT&& lhs, RhsT&& rhs)
-            WI_NOEXCEPT->decltype(compare(wistd::forward<LhsT>(lhs), wistd::forward<RhsT>(rhs)), bool())
+        static auto greater_equals(LhsT&& lhs, RhsT&& rhs) WI_NOEXCEPT
+            -> decltype(compare(wistd::forward<LhsT>(lhs), wistd::forward<RhsT>(rhs)), bool())
         {
             return compare(wistd::forward<LhsT>(lhs), wistd::forward<RhsT>(rhs)) != CSTR_LESS_THAN;
         }
@@ -271,7 +253,7 @@ struct TwoPhaseHStringConstructor
         return TwoPhaseHStringConstructor{characterLength};
     }
 
-    //! Returns the HSTRING after it has been populated like Detatch() or release(); be sure to put this in a RAII type to manage
+    //! Returns the HSTRING after it has been populated like Detach() or release(); be sure to put this in a RAII type to manage
     //! its lifetime.
     HSTRING Promote()
     {
@@ -608,7 +590,7 @@ public:
     class vector_iterator
     {
     public:
-#if defined(_XUTILITY_) || defined(WIL_DOXYGEN)
+#if WIL_USE_STL || defined(WIL_DOXYGEN)
         // could be random_access_iterator_tag but missing some features
         typedef ::std::bidirectional_iterator_tag iterator_category;
 #endif
@@ -799,7 +781,7 @@ public:
     class vector_iterator_nothrow
     {
     public:
-#if defined(_XUTILITY_) || defined(WIL_DOXYGEN)
+#if WIL_USE_STL || defined(WIL_DOXYGEN)
         // must be input_iterator_tag as use (via ++, --, etc.) of one invalidates the other.
         typedef ::std::input_iterator_tag iterator_category;
 #endif
@@ -969,7 +951,7 @@ public:
     class iterable_iterator
     {
     public:
-#if defined(_XUTILITY_) || defined(WIL_DOXYGEN)
+#if WIL_USE_STL || defined(WIL_DOXYGEN)
         typedef ::std::forward_iterator_tag iterator_category;
 #endif
         typedef TSmart value_type;
@@ -1079,7 +1061,7 @@ private:
 };
 #pragma endregion
 
-#if defined(__WI_HAS_STD_VECTOR) || defined(WIL_DOXYGEN)
+#if (WIL_USE_STL && defined(WIL_ENABLE_EXCEPTIONS)) || defined(WIL_DOXYGEN)
 /** Converts WinRT vectors to std::vector by requesting the collection's data in a single
 operation. This can be more efficient in terms of IPC cost than iteratively processing it.
 @code
@@ -1174,7 +1156,7 @@ public:
     class iterable_iterator_nothrow
     {
     public:
-#if defined(_XUTILITY_) || defined(WIL_DOXYGEN)
+#if WIL_USE_STL || defined(WIL_DOXYGEN)
         // muse be input_iterator_tag as use of one instance invalidates the other.
         typedef ::std::input_iterator_tag iterator_category;
 #endif
@@ -1406,7 +1388,7 @@ namespace Windows
                 return typename wil::iterable_range<X>::iterable_iterator();
             }
         } // namespace Collections
-    }     // namespace Foundation
+    } // namespace Foundation
 } // namespace Windows
 #if defined(MIDL_NS_PREFIX) || defined(____x_ABI_CWindows_CFoundation_CIClosable_FWD_DEFINED__)
 } // namespace ABI
@@ -1700,8 +1682,8 @@ hr = run_when_complete_nothrow<StorageFile*>(getFileOp.Get(), [](HRESULT hr, ISt
 ~~~
 */
 
-//! Run a fuction when an async operation completes. Use Microsoft::WRL::FtmBase for TAgility to make the completion handler agile
-//! and run on the async thread.
+//! Run a function when an async operation completes. Use Microsoft::WRL::FtmBase for TAgility to make the completion handler
+//! agile and run on the async thread.
 template <typename TAgility = IUnknown, typename TFunc>
 HRESULT run_when_complete_nothrow(_In_ ABI::Windows::Foundation::IAsyncAction* operation, TFunc&& func) WI_NOEXCEPT
 {
@@ -1727,8 +1709,8 @@ HRESULT run_when_complete_nothrow(_In_ ABI::Windows::Foundation::IAsyncActionWit
 }
 
 #ifdef WIL_ENABLE_EXCEPTIONS
-//! Run a fuction when an async operation completes. Use Microsoft::WRL::FtmBase for TAgility to make the completion handler agile
-//! and run on the async thread.
+//! Run a function when an async operation completes. Use Microsoft::WRL::FtmBase for TAgility to make the completion handler
+//! agile and run on the async thread.
 template <typename TAgility = IUnknown, typename TFunc>
 void run_when_complete(_In_ ABI::Windows::Foundation::IAsyncAction* operation, TFunc&& func)
 {
@@ -2496,7 +2478,7 @@ struct ABI::Windows::Foundation::IAsyncOperationWithProgressCompletedHandler<ABI
 #pragma pop_macro("ABI")
 #endif
 
-#if __WI_HAS_STD_LESS
+#if WIL_USE_STL
 
 namespace std
 {

@@ -3,9 +3,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#if _HAS_CXX17
 #include <optional>
-#endif
 #include <array>
 
 #include <windows.h>
@@ -1486,7 +1484,6 @@ TEST_CASE("BasicRegistryTests::wstrings", "[registry]")
         REQUIRE_SUCCEEDED(deleteHr);
     }
 
-#if defined(_VECTOR_)
     SECTION("get_value_nothrow with non-null-terminated string: with opened key")
     {
         wil::unique_hkey hkey;
@@ -1556,7 +1553,6 @@ TEST_CASE("BasicRegistryTests::wstrings", "[registry]")
         const std::wstring result{wil::reg::get_value_string(HKEY_CURRENT_USER, testSubkey, stringValueName)};
         REQUIRE(result.empty());
     }
-#endif
 
     SECTION("set_value_nothrow/get_value_string_nothrow: into buffers with open key")
     {
@@ -3084,7 +3080,7 @@ void verify_cotaskmem_array_nothrow(
 }
 #endif
 
-#if defined(_VECTOR_) && defined(WIL_ENABLE_EXCEPTIONS)
+#ifdef WIL_ENABLE_EXCEPTIONS
 namespace
 {
 // Test byte vectors/binary getters. These tests are very similar to the
@@ -3311,7 +3307,7 @@ TEST_CASE("BasicRegistryTests::vector-bytes", "[registry]")
     }
 #endif // #if defined(__cpp_lib_optional)
 }
-#endif // #if defined(_VECTOR_) && defined(WIL_ENABLE_EXCEPTIONS)
+#endif
 
 #if defined(__WIL_OBJBASE_H_)
 TEST_CASE("BasicRegistryTests::cotaskmem_array-bytes", "[registry]")
@@ -3355,7 +3351,6 @@ TEST_CASE("BasicRegistryTests::cotaskmem_array-bytes", "[registry]")
 #endif // #if defined(__WIL_OBJBASE_H_)
 
 #if defined(WIL_ENABLE_EXCEPTIONS)
-#if defined(_STRING_)
 TEST_CASE("BasicRegistryTests::value_iterator", "[registry]")
 {
     const auto deleteHr = HRESULT_FROM_WIN32(::RegDeleteTreeW(HKEY_CURRENT_USER, testSubkey));
@@ -3526,7 +3521,7 @@ TEST_CASE("BasicRegistryTests::value_iterator", "[registry]")
                 REQUIRE(value_data.type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         });
         REQUIRE(count == 4);
@@ -3559,7 +3554,7 @@ TEST_CASE("BasicRegistryTests::value_iterator", "[registry]")
                 REQUIRE(value_data.type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         });
         REQUIRE(count == 4);
@@ -3644,7 +3639,7 @@ TEST_CASE("BasicRegistryTests::value_iterator", "[registry]")
                 REQUIRE(value_data.type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
 
@@ -3677,7 +3672,7 @@ TEST_CASE("BasicRegistryTests::value_iterator", "[registry]")
                 REQUIRE(value_data.type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
         REQUIRE(count == 4);
@@ -3855,7 +3850,7 @@ TEST_CASE("BasicRegistryTests::key_iterator", "[registry]")
                 REQUIRE(key_data.name.size() == wcslen(test_enum_KeyName4));
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         });
         REQUIRE(count == 4);
@@ -3935,12 +3930,11 @@ TEST_CASE("BasicRegistryTests::key_iterator", "[registry]")
                 REQUIRE(key_data.name.size() == wcslen(test_enum_KeyName4));
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
     }
 }
-#endif // #if !defined(_STRING_)
 
 #if defined(__WIL_OLEAUTO_H_)
 TEST_CASE("BasicRegistryTests::value_bstr_iterator", "[registry]")
@@ -4115,7 +4109,7 @@ TEST_CASE("BasicRegistryTests::value_bstr_iterator", "[registry]")
                 REQUIRE(value_data.type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         });
         REQUIRE(count == 4);
@@ -4144,7 +4138,7 @@ TEST_CASE("BasicRegistryTests::value_bstr_iterator", "[registry]")
                 REQUIRE(value_data.type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         });
         REQUIRE(count == 4);
@@ -4221,7 +4215,7 @@ TEST_CASE("BasicRegistryTests::value_bstr_iterator", "[registry]")
                 REQUIRE(value_data.type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
 
@@ -4250,7 +4244,7 @@ TEST_CASE("BasicRegistryTests::value_bstr_iterator", "[registry]")
                 REQUIRE(value_data.type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
         REQUIRE(count == 4);
@@ -4430,7 +4424,7 @@ TEST_CASE("BasicRegistryTests::key_bstr_iterator", "[registry]")
                 REQUIRE(0 == wcscmp(key_data.name.get(), test_enum_KeyName4));
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         });
         REQUIRE(count == 4);
@@ -4546,7 +4540,7 @@ TEST_CASE("BasicRegistryTests::key_bstr_iterator", "[registry]")
                 REQUIRE(0 == wcscmp(key_data.name.get(), test_enum_KeyName4));
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
     }
@@ -4722,7 +4716,7 @@ TEST_CASE("BasicRegistryTests::value_heap_string_iterator", "[registry]")
                 REQUIRE(value_data.type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         });
         REQUIRE(count == 4);
@@ -4751,7 +4745,7 @@ TEST_CASE("BasicRegistryTests::value_heap_string_iterator", "[registry]")
                 REQUIRE(value_data.type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         });
         REQUIRE(count == 4);
@@ -4829,7 +4823,7 @@ TEST_CASE("BasicRegistryTests::value_heap_string_iterator", "[registry]")
                 REQUIRE(value_data.type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
 
@@ -4858,7 +4852,7 @@ TEST_CASE("BasicRegistryTests::value_heap_string_iterator", "[registry]")
                 REQUIRE(value_data.type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
         REQUIRE(count == 4);
@@ -5035,7 +5029,7 @@ TEST_CASE("BasicRegistryTests::key_heap_string_iterator", "[registry]")
                 REQUIRE(0 == wcscmp(key_data.name.get(), test_enum_KeyName4));
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         });
         REQUIRE(count == 4);
@@ -5152,7 +5146,7 @@ TEST_CASE("BasicRegistryTests::key_heap_string_iterator", "[registry]")
                 REQUIRE(0 == wcscmp(key_data.name.get(), test_enum_KeyName4));
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
     }
@@ -5366,7 +5360,7 @@ TEST_CASE("BasicRegistryTests::value_bstr_nothrow_iterator", "[registry]")
                 REQUIRE(value_data.type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
         REQUIRE(count == 4);
@@ -5401,7 +5395,7 @@ TEST_CASE("BasicRegistryTests::value_bstr_nothrow_iterator", "[registry]")
                 REQUIRE(value_data.type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
         REQUIRE_SUCCEEDED(testIterator.last_error());
@@ -5432,7 +5426,7 @@ TEST_CASE("BasicRegistryTests::value_bstr_nothrow_iterator", "[registry]")
                 REQUIRE(manual_iterator->type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
 
             const auto hr = manual_iterator.move_next();
@@ -5467,7 +5461,7 @@ TEST_CASE("BasicRegistryTests::value_bstr_nothrow_iterator", "[registry]")
                 REQUIRE(manual_iterator->type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
         REQUIRE_SUCCEEDED(manual_iterator.last_error());
@@ -5672,7 +5666,7 @@ TEST_CASE("BasicRegistryTests::key_bstr_nothrow_iterator", "[registry]")
                 REQUIRE(0 == wcscmp(key_data.name.get(), test_enum_KeyName4));
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
         REQUIRE(count == 4);
@@ -5698,7 +5692,7 @@ TEST_CASE("BasicRegistryTests::key_bstr_nothrow_iterator", "[registry]")
                 REQUIRE(0 == wcscmp(key_data.name.get(), test_enum_KeyName4));
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
         REQUIRE_SUCCEEDED(testIterator.last_error());
@@ -5725,7 +5719,7 @@ TEST_CASE("BasicRegistryTests::key_bstr_nothrow_iterator", "[registry]")
                 REQUIRE(0 == wcscmp(manual_iterator->name.get(), test_enum_KeyName4));
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
 
             const auto hr = manual_iterator.move_next();
@@ -5756,7 +5750,7 @@ TEST_CASE("BasicRegistryTests::key_bstr_nothrow_iterator", "[registry]")
                 REQUIRE(0 == wcscmp(manual_iterator->name.get(), test_enum_KeyName4));
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
         REQUIRE_SUCCEEDED(manual_iterator.last_error());
@@ -5968,7 +5962,7 @@ TEST_CASE("BasicRegistryTests::value_heap_string_nothrow_iterator", "[registry]"
                 REQUIRE(value_data.type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
         REQUIRE(count == 4);
@@ -6003,7 +5997,7 @@ TEST_CASE("BasicRegistryTests::value_heap_string_nothrow_iterator", "[registry]"
                 REQUIRE(value_data.type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
         REQUIRE_SUCCEEDED(testIterator.last_error());
@@ -6034,7 +6028,7 @@ TEST_CASE("BasicRegistryTests::value_heap_string_nothrow_iterator", "[registry]"
                 REQUIRE(manual_iterator->type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
 
             const auto hr = manual_iterator.move_next();
@@ -6069,7 +6063,7 @@ TEST_CASE("BasicRegistryTests::value_heap_string_nothrow_iterator", "[registry]"
                 REQUIRE(manual_iterator->type == REG_SZ);
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
         REQUIRE_SUCCEEDED(manual_iterator.last_error());
@@ -6271,7 +6265,7 @@ TEST_CASE("BasicRegistryTests::key_heap_string_nothrow_iterator", "[registry]")
                 REQUIRE(0 == wcscmp(key_data.name.get(), test_enum_KeyName4));
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
         REQUIRE(count == 4);
@@ -6297,7 +6291,7 @@ TEST_CASE("BasicRegistryTests::key_heap_string_nothrow_iterator", "[registry]")
                 REQUIRE(0 == wcscmp(key_data.name.get(), test_enum_KeyName4));
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
         REQUIRE_SUCCEEDED(testIterator.last_error());
@@ -6324,7 +6318,7 @@ TEST_CASE("BasicRegistryTests::key_heap_string_nothrow_iterator", "[registry]")
                 REQUIRE(0 == wcscmp(manual_iterator->name.get(), test_enum_KeyName4));
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
 
             const auto hr = manual_iterator.move_next();
@@ -6355,7 +6349,7 @@ TEST_CASE("BasicRegistryTests::key_heap_string_nothrow_iterator", "[registry]")
                 REQUIRE(0 == wcscmp(manual_iterator->name.get(), test_enum_KeyName4));
                 break;
             default:
-                REQUIRE_FAILED(false);
+                FAIL();
             }
         }
         REQUIRE_SUCCEEDED(manual_iterator.last_error());
