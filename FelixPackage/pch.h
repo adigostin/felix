@@ -12,6 +12,9 @@
 #undef __EXCEPTIONS // WIL and Intellisense look at this
 
 // Visual C++ headers
+#include <cstdint>
+#include <initializer_list>
+#include <utility>
 
 // Windows Platform headers
 #include <Windows.h>

@@ -151,6 +151,27 @@ TEST_CASE("StlTests::TestZStringView literal", "[stl][zstring_view]")
     }
 }
 
+#if __cpp_lib_format >= 201907L
+
+TEST_CASE("StlTests::TestZStringView formatting", "[stl][zstring_view]")
+{
+    SECTION("zstring_view can be used with std::format(wchar_t const*)")
+    {
+        auto str = L"kittens"_zv;
+        auto f = std::format(L"Hello {}", str);
+        REQUIRE(f == L"Hello kittens");
+    }
+
+    SECTION("zstring_view can be used with std::format(char const*)")
+    {
+        auto str = "kittens"_zv;
+        auto f = std::format("Hello {}", str);
+        REQUIRE(f == "Hello kittens");
+    }
+}
+
+#endif
+
 TEST_CASE("StlTests::TestZWStringView", "[stl][zstring_view]")
 {
     // Test empty cases
@@ -211,4 +232,15 @@ TEST_CASE("StlTests::TestZWStringView", "[stl][zstring_view]")
     CustomNoncopyableString customString;
     wil::zwstring_view fromCustomString(customString);
     REQUIRE(fromCustomString == (PCWSTR)customString);
+
+    // Test constructing from a type that has a c_str() method only
+    struct string_with_c_str
+    {
+        constexpr PCWSTR c_str() const
+        {
+            return L"hello";
+        }
+    };
+    string_with_c_str fake_path{};
+    REQUIRE(wil::zwstring_view(fake_path) == L"hello");
 }

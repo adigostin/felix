@@ -145,6 +145,26 @@ class basic_zstring_view : public std::basic_string_view<TChar>
 {
     using size_type = typename std::basic_string_view<TChar>::size_type;
 
+    template <typename T>
+    struct has_c_str
+    {
+        template <typename U>
+        static auto test(int) -> decltype(std::declval<U>().c_str(), std::true_type());
+        template <typename U>
+        static std::false_type test(...);
+        static constexpr bool value = decltype(test<T>(0))::value;
+    };
+
+    template <typename T>
+    struct has_size
+    {
+        template <typename U>
+        static auto test(int) -> decltype(std::declval<U>().size() == 1, std::true_type());
+        template <typename U>
+        static std::false_type test(...);
+        static constexpr bool value = decltype(test<T>(0))::value;
+    };
+
 public:
     constexpr basic_zstring_view() noexcept = default;
     constexpr basic_zstring_view(const basic_zstring_view&) noexcept = default;
@@ -174,6 +194,16 @@ public:
 
     constexpr basic_zstring_view(const std::basic_string<TChar>& str) noexcept :
         std::basic_string_view<TChar>(&str[0], str.size())
+    {
+    }
+
+    template <typename TSrc, std::enable_if_t<has_c_str<TSrc>::value && has_size<TSrc>::value>* = nullptr>
+    constexpr basic_zstring_view(TSrc const& src) noexcept : std::basic_string_view<TChar>(src.c_str(), src.size())
+    {
+    }
+
+    template <typename TSrc, std::enable_if_t<has_c_str<TSrc>::value && !has_size<TSrc>::value>* = nullptr>
+    constexpr basic_zstring_view(TSrc const& src) noexcept : std::basic_string_view<TChar>(src.c_str())
     {
     }
 
@@ -215,18 +245,26 @@ inline namespace literals
 {
     constexpr zstring_view operator""_zv(const char* str, std::size_t len) noexcept
     {
-        return zstring_view(str, len);
+        return {str, len};
     }
 
     constexpr zwstring_view operator""_zv(const wchar_t* str, std::size_t len) noexcept
     {
-        return zwstring_view(str, len);
+        return {str, len};
     }
 } // namespace literals
 
 #endif // __cpp_lib_string_view >= 201606L
 
 } // namespace wil
+
+#if (__WI_LIBCPP_STD_VER >= 20) && WI_HAS_INCLUDE(<format>, 1) // Assume present if C++20
+#include <format>
+template <typename TChar>
+struct std::formatter<wil::basic_zstring_view<TChar>, TChar> : std::formatter<std::basic_string_view<TChar>, TChar>
+{
+};
+#endif
 
 #endif // WIL_ENABLE_EXCEPTIONS
 

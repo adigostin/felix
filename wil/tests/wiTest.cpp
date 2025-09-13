@@ -2139,9 +2139,11 @@ TEST_CASE("WindowsInternalTests::WistdTests", "[resource][wistd]")
     spConstruct.reset();
     spConstruct.release();
 
+#if !defined(WITEST_ADDRESS_SANITIZER)
     auto spTooBig = wil::make_unique_nothrow<int[]>(static_cast<size_t>(-1));
     REQUIRE_FALSE(spTooBig);
     // REQUIRE_FAILFAST_UNSPECIFIED([]{ auto spTooBigFF = wil::make_unique_failfast<int[]>(static_cast<size_t>(-1)); });
+#endif
 
     object_counter_state state;
     count = 0;
@@ -4220,5 +4222,16 @@ TEST_CASE("WindowsInternalTests::ArgvToCommandLine", "[win32_helpers]")
         L"\"test\" \"This\u00A0string\u180Ehas\u2000no\u2001space\u2002characters\u2003even\u2004though\u2005it\u2006contains\u2007characters\u2008that\u2009look\u200Athe\u200Bsame\u200Cor\u200Dare\u202Fsometimes\u205Ftreated\u2060the\u2800same\u3000as\u3164whitespace\"");
 }
 #endif
+
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP | WINAPI_PARTITION_SYSTEM)
+TEST_CASE("wil::WaitForDebuggerPresent", "[win32_helpers]")
+{
+#ifdef WIL_ENABLE_EXCEPTIONS
+    wil::WaitForDebuggerPresent();
+#endif // WIL_ENABLE_EXCEPTIONS
+    wil::WaitForDebuggerPresentFailFast();
+    wil::WaitForDebuggerPresentNoThrow();
+}
+#endif // WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP | WINAPI_PARTITION_SYSTEM)
 
 #pragma warning(pop)
