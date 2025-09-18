@@ -29,7 +29,7 @@ static const wchar_t BinaryFilename[] = L"ROMs/Spectrum48K.rom";
 
 // These must be kept in sync with the pkgdef line [$RootKey$\InstalledProducts\FelixPackage]
 //static const wchar_t InstalledProductRegPath[] = L"InstalledProducts\\FelixPackage";
-static const char SentryReleaseName[] = "0.9.8";
+static const char SentryReleaseName[] = "0.9.9";
 
 FELIX_API wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 com_ptr<ISimulator> simulator;
