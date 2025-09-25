@@ -26,6 +26,9 @@
 "DllName"="FelixPackageUI.dll"
 "Path"="$PackageFolder$"
 
+[$RootKey$\Packages\{768bc57b-42a8-42ab-b389-457946c4fc6a}\Automation]
+"FelixProjects"=""
+
 ; Be sure to keep DisplayProjectFileExtensions in sync with Z80Project::GetFormatList.
 [$RootKey$\Projects\{D438161C-F032-4014-BC5C-20A80EAFF59B}]
 @="Z80ProjectFactory"

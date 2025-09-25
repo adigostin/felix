@@ -15,6 +15,7 @@
 #include <Windows.h>
 #undef GetClassName
 #undef GetClassInfo
+#undef GetObject
 #include <propvarutil.h>
 #include <shellapi.h>
 #include <Shlwapi.h>

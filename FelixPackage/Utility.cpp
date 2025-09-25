@@ -7,9 +7,6 @@
 #include "guids.h"
 #include <string_view>
 
-#define __dte_h__
-#include <VSShell174.h>
-
 const wchar_t MacroOutputName[] = L"OUTPUT_NAME";
 const wchar_t MacroProjectName[] = L"PROJECT_NAME";
 const wchar_t MacroProjectDir[] = L"PROJECT_DIR";
@@ -197,10 +194,6 @@ const char* PropIDToString (VSHPROPID propid)
 		case VSHPROPID_ActiveIntellisenseProjectContext:return "ActiveIntellisenseProjectContext";
 		case VSHPROPID_ProjectCapabilitiesChecker:      return "ProjectCapabilitiesChecker";
 		case VSHPROPID_ContainsStartupTask:             return "ContainsStartupTask";
-
-		// VSSPROPID13
-		case VSSPROPID_EnableEnhancedTooltips:          return "VSSPROPID_EnableEnhancedTooltips"; // -9088
-		case VSHPROPID_SlowEnumeration:                 return "VSHPROPID_SlowEnumeration"; // -9089
 	}
 
 	return nullptr;

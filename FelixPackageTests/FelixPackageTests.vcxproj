@@ -50,6 +50,7 @@
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <SDLCheck>false</SDLCheck>
       <BasicRuntimeChecks>UninitializedLocalUsageCheck</BasicRuntimeChecks>
+      <AdditionalOptions>/Zc:strictStrings- %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <AdditionalDependencies>vsguids.lib;Shlwapi.lib;ad2de.lib;sentry.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -88,6 +89,7 @@ XCOPY /y /s /q $(SolutionDir)FelixPackageVSIX\Templates $(SolutionDir)$(Platform
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <SDLCheck>false</SDLCheck>
       <WholeProgramOptimization>false</WholeProgramOptimization>
+      <AdditionalOptions>/Zc:strictStrings- %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <AdditionalDependencies>vsguids.lib;Shlwapi.lib;ad2de.lib;sentry.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -133,6 +135,7 @@ XCOPY /y /s /q $(SolutionDir)FelixPackageVSIX\Templates $(SolutionDir)$(Platform
     <ClCompile Include="ProjectTests.cpp" />
     <ClCompile Include="SourceFileTests.cpp" />
     <ClCompile Include="TestFunctions.cpp" />
+    <ClCompile Include="UITests\UITests.cpp" />
     <ClCompile Include="XmlTests.cpp" />
     <ClCompile Include="XmlTests_i.c">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
