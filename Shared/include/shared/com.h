@@ -505,7 +505,7 @@ HRESULT inline SetErrorInfo (HRESULT errorHR, LPCWSTR messageFormat, ...)
 	return errorHR;
 }
 
-#define IMPLEMENT_IDISPATCH_(DISP_IID, filename) static ITypeInfo* GetTypeInfo() { \
+#define IMPLEMENT_IDISPATCH_(IID, filename) static ITypeInfo* GetTypeInfo() { \
 		static com_ptr<ITypeInfo> _typeInfo; \
 		if (!_typeInfo) { \
 			HRESULT hr; com_ptr<ITypeLib> _typeLib; \
@@ -516,7 +516,7 @@ HRESULT inline SetErrorInfo (HRESULT errorHR, LPCWSTR messageFormat, ...)
 			} else { \
 				hr = LoadTypeLibEx (filename, REGKIND_NONE, &_typeLib); FAIL_FAST_IF_FAILED(hr); \
 			} \
-			hr = _typeLib->GetTypeInfoOfGuid(DISP_IID, &_typeInfo); FAIL_FAST_IF_FAILED(hr); \
+			hr = _typeLib->GetTypeInfoOfGuid(__uuidof(IID), &_typeInfo); FAIL_FAST_IF_FAILED(hr); \
 		} \
 		return _typeInfo.get(); \
 	} \
@@ -530,10 +530,10 @@ HRESULT inline SetErrorInfo (HRESULT errorHR, LPCWSTR messageFormat, ...)
 		return DispGetIDsOfNames (GetTypeInfo(), rgszNames, cNames, rgDispId); \
 	} \
 	virtual HRESULT STDMETHODCALLTYPE Invoke(DISPID dispIdMember, REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr) override final { \
-		return DispInvoke (static_cast<IDispatch*>(this), GetTypeInfo(), dispIdMember, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr); \
+		return DispInvoke (static_cast<IID*>(this), GetTypeInfo(), dispIdMember, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr); \
 	}
 
-#define IMPLEMENT_IDISPATCH(DISP_IID) IMPLEMENT_IDISPATCH_(DISP_IID,NULL)
+#define IMPLEMENT_IDISPATCH(IID) IMPLEMENT_IDISPATCH_(IID,NULL)
 
 #pragma region IWeakRef
 // This interface is meant to be implemented by COM classes (in QueryInterface), but not by C++ classes.

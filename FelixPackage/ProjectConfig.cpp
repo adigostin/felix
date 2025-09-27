@@ -153,7 +153,7 @@ public:
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IProjectConfigProperties);
+	IMPLEMENT_IDISPATCH(IProjectConfigProperties);
 
 	#pragma region IVsCfg
 	virtual HRESULT STDMETHODCALLTYPE get_DisplayName(BSTR * pbstrDisplayName) override
@@ -753,7 +753,7 @@ struct GeneralPageProperties
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IProjectConfigGeneralProperties);
+	IMPLEMENT_IDISPATCH(IProjectConfigGeneralProperties);
 
 	#pragma region IConnectionPointContainer
 	virtual HRESULT STDMETHODCALLTYPE EnumConnectionPoints (IEnumConnectionPoints **ppEnum) override
@@ -1099,7 +1099,7 @@ struct AssemblerPageProperties
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IProjectConfigAssemblerProperties);
+	IMPLEMENT_IDISPATCH(IProjectConfigAssemblerProperties);
 
 	#pragma region IVsPerPropertyBrowsing
 	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL* pfHide) override { return E_NOTIMPL; }
@@ -1397,7 +1397,7 @@ struct DebuggingPageProperties
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IProjectConfigDebugProperties)
+	IMPLEMENT_IDISPATCH(IProjectConfigDebugProperties)
 
 	#pragma region IVsPerPropertyBrowsing
 	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL* pfHide) override { return E_NOTIMPL; }
@@ -1568,7 +1568,7 @@ struct PrePostBuildPageProperties
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IProjectConfigPrePostBuildProperties)
+	IMPLEMENT_IDISPATCH(IProjectConfigPrePostBuildProperties)
 
 	#pragma region IVsPerPropertyBrowsing
 	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL* pfHide) override { return E_NOTIMPL; }

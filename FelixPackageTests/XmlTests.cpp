@@ -28,7 +28,7 @@ namespace FelixTests
 				virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 				#pragma endregion
 
-				IMPLEMENT_IDISPATCH(IID_IProperties1)
+				IMPLEMENT_IDISPATCH(IProperties1)
 
 				#pragma region IProperties1
 				virtual HRESULT STDMETHODCALLTYPE get_OutputFilename (BSTR *pbstrOutputFilename) override
@@ -69,7 +69,7 @@ namespace FelixTests
 				virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 				#pragma endregion
 
-				IMPLEMENT_IDISPATCH(IID_IProperties2);
+				IMPLEMENT_IDISPATCH(IProperties2);
 
 				#pragma region IProperties2
 				virtual HRESULT STDMETHODCALLTYPE get_OutputFilename (BSTR* pbstrOutputFilename) override
@@ -142,7 +142,7 @@ namespace FelixTests
 				virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 				#pragma endregion
 
-				IMPLEMENT_IDISPATCH(IID_IProperties2);
+				IMPLEMENT_IDISPATCH(IProperties2);
 
 				#pragma region IProperties2
 				virtual HRESULT STDMETHODCALLTYPE get_OutputFilename (BSTR *pbstrOutputFilename) override

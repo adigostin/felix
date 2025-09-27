@@ -32,7 +32,7 @@ struct ACProjects : VxDTE::Projects
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(VxDTE::IID_Projects);
+	IMPLEMENT_IDISPATCH(VxDTE::Projects);
 
 	#pragma region VxDTE::Projects
     virtual HRESULT STDMETHODCALLTYPE Item (VARIANT index, VxDTE::Project** lppcReturn) override

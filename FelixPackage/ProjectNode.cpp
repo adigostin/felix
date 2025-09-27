@@ -480,7 +480,7 @@ public:
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IProjectNodeProperties);
+	IMPLEMENT_IDISPATCH(IProjectNodeProperties);
 
 	#pragma region IVsHierarchy
 	virtual HRESULT STDMETHODCALLTYPE SetSite(IServiceProvider* pSP) override

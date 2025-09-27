@@ -60,7 +60,7 @@ public:
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IFolderNodeProperties);
+	IMPLEMENT_IDISPATCH(IFolderNodeProperties);
 
 	#pragma region IFolderNodeProperties
 	virtual HRESULT STDMETHODCALLTYPE get___id (BSTR *value) override

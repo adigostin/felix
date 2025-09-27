@@ -39,7 +39,7 @@ public:
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IFelixLaunchOptions)
+	IMPLEMENT_IDISPATCH(IFelixLaunchOptions)
 
 	#pragma region IFelixLaunchOptions
 	virtual HRESULT STDMETHODCALLTYPE get_ProjectDir (BSTR *pbstr) override

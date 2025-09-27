@@ -112,7 +112,7 @@ public:
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_IFileNodeProperties);
+	IMPLEMENT_IDISPATCH(IFileNodeProperties);
 
 	#pragma region IChildNode
 	virtual VSITEMID STDMETHODCALLTYPE GetItemId() override { return _itemId; }

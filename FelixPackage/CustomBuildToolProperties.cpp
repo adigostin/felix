@@ -67,7 +67,7 @@ struct CustomBuildToolProperties
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	IMPLEMENT_IDISPATCH(IID_ICustomBuildToolProperties);
+	IMPLEMENT_IDISPATCH(ICustomBuildToolProperties);
 
 	#pragma region ICustomBuildToolProperties
 	virtual HRESULT STDMETHODCALLTYPE get_CommandLine (BSTR *value) override
