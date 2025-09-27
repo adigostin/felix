@@ -9,6 +9,8 @@
 #include "dispids.h"
 #include "guids.h"
 #include "../FelixPackageUi/resource.h"
+#define FORCE_EXPLICIT_DTE_NAMESPACE
+#include <dte.h>
 
 // What MPF implements: https://docs.microsoft.com/en-us/visualstudio/extensibility/internals/project-model-core-components?view=vs-2022
 class ProjectNode
@@ -32,6 +34,7 @@ class ProjectNode
 	, IVsPerPropertyBrowsing
 	, IVsUpdateSolutionEvents
 	, IVsHierarchyEvents // this implementation forwards to sinks hierarchy events generated in descendants
+	, VxDTE::Project
 {
 	ULONG _refCount = 0;
 	GUID _projectInstanceGuid;
@@ -184,12 +187,12 @@ public:
 
 			com_ptr<IStream> stream;
 			auto hr = SHCreateStreamOnFileEx(projFilePath, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, 0, nullptr, &stream); RETURN_IF_FAILED(hr);
-			hr = LoadFromXml(this, ProjectElementName, stream.get()); RETURN_IF_FAILED(hr);
+			hr = LoadFromXml(static_cast<IProjectNodeProperties*>(this), ProjectElementName, stream.get()); RETURN_IF_FAILED(hr);
 
 			hr = CoCreateGuid (&_projectInstanceGuid); RETURN_IF_FAILED(hr);
 
 			hr = SHCreateStreamOnFileEx (projFilePath, STGM_CREATE | STGM_WRITE | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, 0, nullptr, &stream); RETURN_IF_FAILED(hr);
-			hr = SaveToXml(this, ProjectElementName, 0, stream.get()); RETURN_IF_FAILED(hr);
+			hr = SaveToXml(static_cast<IProjectNodeProperties*>(this), ProjectElementName, 0, stream.get()); RETURN_IF_FAILED(hr);
 		}
 		else if (grfCreateFlags & CPF_OPENFILE)
 		{
@@ -204,7 +207,7 @@ public:
 
 			com_ptr<IStream> stream;
 			hr = SHCreateStreamOnFileEx(pszFilename, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, 0, nullptr, &stream); RETURN_IF_FAILED_EXPECTED(hr);
-			hr = LoadFromXml (this, ProjectElementName, stream.get()); RETURN_IF_FAILED(hr);
+			hr = LoadFromXml (static_cast<IProjectNodeProperties*>(this), ProjectElementName, stream.get()); RETURN_IF_FAILED(hr);
 		}
 		else
 		{
@@ -345,7 +348,7 @@ public:
 		RETURN_HR_IF_EXPECTED(E_NOINTERFACE, riid == IID_ICustomCast); // VS abuses this, let's check it first
 
 		if (   TryQI<IProjectNodeProperties>(this, riid, ppvObject)
-			|| TryQI<IDispatch>(this, riid, ppvObject)
+			|| TryQI<IDispatch>(static_cast<IProjectNodeProperties*>(this), riid, ppvObject)
 			|| TryQI<IUnknown>(static_cast<IVsUIHierarchy*>(this), riid, ppvObject)
 			|| TryQI<IVsHierarchy>(this, riid, ppvObject)
 			|| TryQI<IVsUIHierarchy>(this, riid, ppvObject)
@@ -371,6 +374,7 @@ public:
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 			|| TryQI<IVsUpdateSolutionEvents>(this, riid, ppvObject)
 			|| TryQI<IVsHierarchyEvents>(this, riid, ppvObject)
+			|| TryQI<VxDTE::Project>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -614,7 +618,7 @@ public:
 
 		#pragma region Some properties apply to the hierarchy as a whole
 		if (propid == VSHPROPID_ExtObject) // -2027
-			return E_NOTIMPL;
+			return InitVariantFromDispatch(static_cast<IProjectNodeProperties*>(this), pvar);
 
 		if (propid == VSHPROPID_ParentHierarchy) // -2032
 			return InitVariantFromUnknown (_parentHierarchy.get(), pvar);
@@ -663,7 +667,7 @@ public:
 				// recursively and will stop when (1) we return an error HRESULT, or (2) we return the same
 				// browse object as in the previous call, or (3) it overflows the stack (that exception
 				// seems to be caught and turned into a freeze).
-				return InitVariantFromDispatch (this, pvar);
+				return InitVariantFromDispatch (static_cast<IProjectNodeProperties*>(this), pvar);
 			}
 
 			if (propid == VSHPROPID_ProjectDir) //-2021
@@ -1571,7 +1575,7 @@ public:
 			auto memStreamRaw = SHCreateMemStream(nullptr, 0); RETURN_IF_NULL_ALLOC(memStreamRaw);
 			com_ptr<IStream> memStream;
 			memStream.attach (memStreamRaw);
-			hr = SaveToXml(this, ProjectElementName, 0, memStream); RETURN_IF_FAILED(hr);
+			hr = SaveToXml(static_cast<IProjectNodeProperties*>(this), ProjectElementName, 0, memStream); RETURN_IF_FAILED(hr);
 			
 			STATSTG stat;
 			hr = memStream->Stat(&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
@@ -2887,6 +2891,142 @@ public:
 			sink.second->OnInvalidateIcon(hicon);
 		return S_OK;
 	}
+	#pragma endregion
+
+	#pragma region VxDTE::Project
+	virtual HRESULT STDMETHODCALLTYPE get_Name(BSTR *lpbstrName) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_Name (BSTR bstrName) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_FileName (BSTR *lpbstrReturn) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+	 
+	virtual HRESULT STDMETHODCALLTYPE get_IsDirty (VARIANT_BOOL *lpfReturn) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_IsDirty (VARIANT_BOOL Dirty) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_Collection (VxDTE::Projects **lppaReturn) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE SaveAs (BSTR NewFileName) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_DTE (VxDTE::DTE**lppaReturn) override
+	{
+		HRESULT hr = serviceProvider->QueryService(VxDTE::SID_SDTE, VxDTE::IID__DTE, (void**)lppaReturn); RETURN_IF_FAILED(hr);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_Kind (BSTR *lpbstrFileName) override
+	{
+		wchar_t buffer[40];
+		int ires = StringFromGUID2(__uuidof(IProjectNodeProperties), buffer, _countof(buffer)); WI_ASSERT(ires);
+		*lpbstrFileName = SysAllocStringLen(buffer, ires - 1); RETURN_IF_NULL_ALLOC(*lpbstrFileName);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_ProjectItems (VxDTE::ProjectItems **lppcReturn) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_Properties (VxDTE::Properties **ppObject) override
+	{
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_UniqueName (BSTR *lpbstrFileName) override
+	{
+		*lpbstrFileName = SysAllocString(_filename.get()); RETURN_IF_NULL_ALLOC(*lpbstrFileName);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_Object (IDispatch **ProjectModel) override
+	{
+		return QueryInterface(IID_PPV_ARGS(ProjectModel));
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_Extender (BSTR ExtenderName, IDispatch **Extender) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_ExtenderNames (VARIANT *ExtenderNames) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_ExtenderCATID (BSTR *pRetval) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_FullName (BSTR *lpbstrReturn) override
+	{
+		wil::unique_process_heap_string fn;
+		auto hr = wil::str_printf_nothrow(fn, L"%s\\%s", _projectDir, _filename); RETURN_IF_FAILED(hr);
+		*lpbstrReturn = SysAllocString(fn.get()); RETURN_IF_NULL_ALLOC(*lpbstrReturn);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_Saved (VARIANT_BOOL *lpfReturn) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_Saved (VARIANT_BOOL SavedFlag) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_ConfigurationManager (VxDTE::ConfigurationManager **ppConfigurationManager) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_Globals (VxDTE::Globals **ppGlobals) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE Save (BSTR FileName) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_ParentProjectItem (VxDTE::ProjectItem **ppParentProjectItem) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_CodeModel (VxDTE::CodeModel **ppCodeModel) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE Delete() override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
 	#pragma endregion
 
 	HRESULT RefreshHierarchy()

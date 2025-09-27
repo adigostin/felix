@@ -36,8 +36,6 @@ static const char SentryReleaseName[] = "0.9.8";
 FELIX_API wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 com_ptr<ISimulator> simulator;
 
-HRESULT MakeDTEProjects (VxDTE::Projects** ppProjects);
-
 class FelixPackageImpl : public IVsPackage, IVsSolutionEvents, IOleCommandTarget, IDebugEventCallback2, IServiceProvider
 {
 	ULONG _refCount = 0;
@@ -547,9 +545,6 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetAutomationObject (LPCOLESTR pszPropName, IDispatch **ppDisp) override
 	{
-		if (!wcscmp(pszPropName, L"FelixProjects"))
-			return MakeDTEProjects((VxDTE::Projects**)ppDisp);
-
 		RETURN_HR(E_NOTIMPL);
 	}
 

@@ -205,10 +205,11 @@ public:
 			|| propid == VSHPROPID_ItemDocCookie // -2034
 			|| propid == VSHPROPID_IsHiddenItem // -2043
 			|| propid == VSHPROPID_OverlayIconIndex	// -2048
+			|| propid == VSHPROPID_IsNonSearchable // -2051
 			|| propid == VSHPROPID_ExternalItem // -2103
 			|| propid == VSHPROPID_ProvisionalViewingStatus // -2112
+			|| propid == VSHPROPID_IsSharedItemsImportFile // -2154
 			|| propid == -2177 // VSHPROPID_PreserveExpandCollapseState
-
 		)
 			return E_NOTIMPL;
 

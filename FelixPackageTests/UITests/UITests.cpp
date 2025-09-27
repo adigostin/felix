@@ -266,9 +266,29 @@ namespace FelixTests
 
 		TEST_METHOD(LaunchVS)
 		{
-			auto name = wil::make_bstr_failfast(L"FelixProjects");
-			com_ptr<IDispatch> obj;
-			auto hr = _targetVS.dte->GetObject(name.get(), &obj);
+			com_ptr<IUnknown> solution;
+			auto hr = _targetVS.dte->get_Solution((VxDTE::Solution**)solution.addressof());
+			Assert::IsTrue(SUCCEEDED(hr));
+		}
+
+		TEST_METHOD(CloneProject)
+		{
+			HRESULT hr;
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"CloneProject");
+
+			com_ptr<IUnknown> solution;
+			hr = _targetVS.dte->get_Solution((VxDTE::Solution**)solution.addressof());
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto sln = wil::com_query_failfast<VxDTE::_Solution>(solution);
+			hr = sln->Create(wil::make_bstr_failfast(testPath.get()).get(), wil::make_bstr_failfast(L"test.sln").get());
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
+
+			com_ptr<VxDTE::Project> proj;
+			hr = sln->AddFromTemplate (
+				wil::make_bstr_failfast(templateFullPath.get()).get(),
+				wil::make_bstr_failfast(testPath.get()).get(),
+				wil::make_bstr_failfast(L"test.flx").get(), VARIANT_TRUE, &proj);
 			Assert::IsTrue(SUCCEEDED(hr));
 		}
 	};
