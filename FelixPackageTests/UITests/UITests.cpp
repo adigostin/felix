@@ -179,14 +179,14 @@ namespace FelixTests
 			ULONG fetched;
 			while (enumProcesses->Next(1, &var, &fetched) == S_OK)
 			{
-				if (auto targetProcess = wil::try_com_query_failfast<VxDTE::Process>(var.pdispVal))
+				if (auto targetProcess = wil::try_com_query_failfast<VxDTE::Process3>(var.pdispVal))
 				{
 					long pid;
 					if (SUCCEEDED(targetProcess->get_ProcessID(&pid))
 						&& (DWORD)pid == targetVSProcessID)
 					{
 						targetVSDTE->put_SuppressUI(VARIANT_TRUE);
-						hr = targetProcess->Attach();
+						hr = targetProcess->Attach2(wil::make_variant_bstr_failfast(L"Managed/Native"));
 						targetVSDTE->put_SuppressUI(VARIANT_FALSE);
 						Assert::IsTrue(SUCCEEDED(hr));
 						return;
