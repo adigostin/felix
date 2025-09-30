@@ -6,6 +6,8 @@
 #include "../FelixPackage/Z80Xml.h"
 #include "Mocks.h"
 
+#include <UIAutomationClient.h>
+
 #define FORCE_EXPLICIT_DTE_NAMESPACE
 #include <dte.h>
 namespace VxDTE
@@ -25,17 +27,20 @@ namespace FelixTests
 	};
 
 	static VSInstance _targetVS;
+	static com_ptr<IUIAutomation> automation;
 
 	TEST_CLASS(UITests)
 	{
 		static void StartOrRestart (const wchar_t* devenvExe, const wchar_t* devenvArguments, const wchar_t* testDataRoot, const wchar_t* tempRoot)
 		{
+			HRESULT hr;
+
 			auto cmdLine = wil::str_concat_failfast<wil::unique_process_heap_string>(L"\"", devenvExe, L"\" ", devenvArguments);
 			STARTUPINFO si = { .cb = sizeof(si) };
 			wil::unique_process_information pi;
 			BOOL bres = CreateProcessW (devenvExe, cmdLine.get(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi);
 			Assert::IsTrue(bres);
-			Sleep(5000);
+			Sleep(5000); // Give it 5 seconds to start up. PTVS does the same.
 			DWORD exitCode;
 			bres = GetExitCodeProcess (pi.hProcess, &exitCode);
 			Assert::IsTrue(bres);
@@ -47,10 +52,54 @@ namespace FelixTests
 			{
 				if (SUCCEEDED(GetDTE(pi.dwProcessId, &dte)))
 					break;
-				Sleep(500);
+				Sleep(250);
 			}
 
 			Assert::IsNotNull(dte.get(), L"Failed to start VS");
+
+			// The window we get from DTE is the main window (even if it's invisible), not the splash window.
+			com_ptr<VxDTE::Window> dteMainWindow;
+			hr = dte->get_MainWindow(&dteMainWindow);
+			Assert::IsTrue(SUCCEEDED(hr));
+			long dteMainWindowHWnd;
+			hr = dteMainWindow->get_HWnd(&dteMainWindowHWnd);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			auto handle = FindTopLevelWindow(pi.dwProcessId);
+			Assert::IsNotNull(handle);
+			if (handle != (HWND)(size_t)(DWORD)dteMainWindowHWnd)
+			{
+				// We have the splash window up.
+				com_ptr<IUIAutomationElement> topLevelWindow;
+				hr = automation->ElementFromHandle(handle, &topLevelWindow);
+				Assert::IsTrue(SUCCEEDED(hr));
+				com_ptr<IUIAutomationCondition> condition;
+				hr = automation->CreatePropertyCondition(UIA_NamePropertyId, wil::make_variant_bstr_failfast(L"Continue without code"), &condition);
+				Assert::IsTrue(SUCCEEDED(hr));
+				com_ptr<IUIAutomationElement> cwc;
+				hr = topLevelWindow->FindFirst(TreeScope_Descendants, condition, &cwc);
+				Assert::IsTrue(SUCCEEDED(hr));
+				com_ptr<IUnknown> patternUnk;
+				hr = cwc->GetCurrentPattern(UIA_InvokePatternId, &patternUnk);
+				Assert::IsTrue(SUCCEEDED(hr));
+				com_ptr<IUIAutomationInvokePattern> invpat;
+				hr = patternUnk->QueryInterface(IID_PPV_ARGS(&invpat));
+				Assert::IsTrue(SUCCEEDED(hr));
+				hr = invpat->Invoke();
+				Assert::IsTrue(SUCCEEDED(hr));
+
+				// Let's wait for the main window to become the top level window
+				DWORD tickStart = GetTickCount();
+				while (true)
+				{
+					handle = FindTopLevelWindow(pi.dwProcessId);
+					if (handle == (HWND)(size_t)(DWORD)dteMainWindowHWnd)
+						break;
+					if (GetTickCount() - tickStart >= 5000)
+						Assert::Fail();
+					Sleep(100);
+				}
+			}
 
 			if (IsDebuggerPresent())
 				FindAndAttach(pi.dwProcessId, dte);
@@ -249,11 +298,41 @@ namespace FelixTests
 			return S_OK;
         }
 
+		static HWND FindTopLevelWindow (DWORD process_id)
+		{
+			struct handle_data {
+				DWORD process_id;
+				HWND window_handle;
+			};
+
+			handle_data data;
+			data.process_id = process_id;
+			data.window_handle = 0;
+
+			auto callback = [](HWND handle, LPARAM lParam) -> BOOL
+				{
+					handle_data* data = (handle_data*)lParam;
+					DWORD process_id = 0;
+					GetWindowThreadProcessId(handle, &process_id);
+					if (data->process_id != process_id || GetWindow(handle, GW_OWNER) || !IsWindowVisible(handle))
+						return TRUE;
+					data->window_handle = handle;
+					return FALSE;   
+				};
+			EnumWindows(callback, (LPARAM)&data);
+			return data.window_handle;
+		}
+
 	public:
 		TEST_CLASS_INITIALIZE(UITestsInitialize)
 		{
+			HRESULT hr;
+
+			hr = CoCreateInstance (__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation));
+			Assert::IsTrue(SUCCEEDED(hr));
+
 			wil::unique_process_heap_string devenvExe;
-			auto hr = wil::GetEnvironmentVariableW (L"VSAPPIDDIR", devenvExe);
+			hr = wil::GetEnvironmentVariableW (L"VSAPPIDDIR", devenvExe);
 			Assert::IsTrue(SUCCEEDED(hr));
 			devenvExe = wil::str_concat_failfast<wil::unique_process_heap_string>(devenvExe, L"devenv.exe");
 			StartOrRestart (devenvExe.get(), L"/rootSuffix Exp", L"", L"");
@@ -262,6 +341,7 @@ namespace FelixTests
 		TEST_CLASS_CLEANUP(UITestsCleanup)
 		{
 			CloseCurrentInstance();
+			automation = nullptr;
 		}
 
 		TEST_METHOD(LaunchVS)
@@ -269,13 +349,16 @@ namespace FelixTests
 			com_ptr<IUnknown> solution;
 			auto hr = _targetVS.dte->get_Solution((VxDTE::Solution**)solution.addressof());
 			Assert::IsTrue(SUCCEEDED(hr));
+			auto sln = wil::com_query_failfast<VxDTE::_Solution>(solution);
+			sln->Close();
 		}
 
 		TEST_METHOD(CloneProject)
 		{
 			HRESULT hr;
 			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"CloneProject");
-
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			
 			com_ptr<IUnknown> solution;
 			hr = _targetVS.dte->get_Solution((VxDTE::Solution**)solution.addressof());
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -289,7 +372,7 @@ namespace FelixTests
 				wil::make_bstr_failfast(templateFullPath.get()).get(),
 				wil::make_bstr_failfast(testPath.get()).get(),
 				wil::make_bstr_failfast(L"test.flx").get(), VARIANT_TRUE, &proj);
-			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsTrue(SUCCEEDED(hr), wil::str_printf_failfast<wil::unique_process_heap_string>(L"0x%08x", hr).get());
 		}
 	};
 }
