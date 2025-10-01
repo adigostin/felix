@@ -252,14 +252,18 @@ namespace FelixTests
 
             //MessageFilter.Register();
 
-			wil::unique_process_heap_string prefix;
-			//hr = wil::GetModuleFileNameExW<wil::unique_process_heap_string>(_processInfo.hProcess, NULL, prefix);
-			//Assert::IsTrue(SUCCEEDED(hr));
-			//if (!_wcsicmp(PathFindFileName(prefix.get()), L"devenv.exe"))
-				prefix = wil::make_process_heap_string_failfast(L"VisualStudio");
-            
-			//string progId = string.Format("!{0}.DTE.{1}:{2}", prefix, AssemblyVersionInfo.VSVersion, processId);
-			auto progId = wil::str_printf_failfast<wil::unique_process_heap_string> (L"!%s.DTE.%s:%u", prefix, L"17.0", processId);
+			wil::unique_process_heap_string fn;
+			hr = wil::GetModuleFileNameW(nullptr, fn); RETURN_IF_FAILED_EXPECTED(hr);
+			DWORD dummydw;
+			DWORD verlen = GetFileVersionInfoSize (fn.get(), &dummydw); RETURN_LAST_ERROR_IF_EXPECTED(verlen == 0);
+			auto verbuffer = wil::make_unique_nothrow<char[]>(verlen);
+			BOOL bres = GetFileVersionInfo(fn.get(), 0, verlen, verbuffer.get()); RETURN_IF_WIN32_BOOL_FALSE_EXPECTED(bres);
+			void* valbuffer;
+			UINT vallen;
+			bres = VerQueryValueW (verbuffer.get(), L"\\", &valbuffer, &vallen); RETURN_HR_IF_EXPECTED(E_FAIL, !bres);
+			VS_FIXEDFILEINFO* fi = (VS_FIXEDFILEINFO*)valbuffer;
+			DWORD vsMajorVersion = fi->dwProductVersionMS >> 16;
+			auto progId = wil::str_printf_failfast<wil::unique_process_heap_string> (L"!VisualStudio.DTE.%u.0:%u", vsMajorVersion, processId);
             
 			com_ptr<IUnknown> runningObject;
 			com_ptr<IBindCtx> bindCtx;
