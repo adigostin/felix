@@ -12,14 +12,14 @@ struct CustomBuildToolProperties
 	, IConnectionPointContainer
 {
 	ULONG _refCount = 0;
-	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
+	com_ptr<ConnectionPointImpl<IPropertyNotifySink>> _propNotifyCP;
 	wil::unique_bstr _commandLine;
 	wil::unique_bstr _description;
 	wil::unique_bstr _outputs;
 
 	HRESULT InitInstance()
 	{
-		auto hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
+		auto hr = ConnectionPointImpl<IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
@@ -82,7 +82,7 @@ struct CustomBuildToolProperties
 		if (VarBstrCmp(_commandLine.get(), value, 0, 0) != VARCMP_EQ)
 		{
 			_commandLine = (value && value[0]) ? wil::make_bstr_nothrow(value) : nullptr;
-			_propNotifyCP->NotifyPropertyChanged(dispidCommandLine);
+			_propNotifyCP->Notify([](auto* sink) { sink->OnChanged(dispidCommandLine); });
 		}
 
 		return S_OK;
@@ -100,7 +100,7 @@ struct CustomBuildToolProperties
 		if (VarBstrCmp(_description.get(), value, 0, 0) != VARCMP_EQ)
 		{
 			_description = (value && value[0]) ? wil::make_bstr_nothrow(value) : nullptr;
-			_propNotifyCP->NotifyPropertyChanged(dispidDescription);
+			_propNotifyCP->Notify([](auto* sink) { sink->OnChanged(dispidDescription); });
 		}
 
 		return S_OK;
@@ -118,7 +118,7 @@ struct CustomBuildToolProperties
 		if (VarBstrCmp(_outputs.get(), value, 0, 0) != VARCMP_EQ)
 		{
 			_outputs = (value && value[0]) ? wil::make_bstr_nothrow(value) : nullptr;
-			_propNotifyCP->NotifyPropertyChanged(dispidOutputs);
+			_propNotifyCP->Notify([](auto* sink) { sink->OnChanged(dispidOutputs); });
 		}
 
 		return S_OK;

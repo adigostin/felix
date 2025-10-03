@@ -8,7 +8,7 @@
 #include "../FelixPackage.h"
 #include "../Z80Xml.h"
 
-class Z80DebugEngine : public IDebugEngine2, IDebugEngineLaunch2, ISimulatorEventHandler, IFelixLaunchOptionsProvider
+class Z80DebugEngine : public IDebugEngine2, IDebugEngineLaunch2, ISimulatorEventNotifySink, IFelixLaunchOptionsProvider
 {
 	ULONG _refCount = 0;
 	wil::unique_bstr _registryRoot;
@@ -21,14 +21,9 @@ class Z80DebugEngine : public IDebugEngine2, IDebugEngineLaunch2, ISimulatorEven
 	SIM_BP_COOKIE _editorFunctionBreakpoint = 0;
 	SIM_BP_COOKIE _entryPointBreakpoint = 0;
 	SIM_BP_COOKIE _exitPointBreakpoint = 0;
-	bool _advisingSimulatorEvents = false;
+	AdviseSinkToken _simulatorEventsToken;
 
 public:
-	~Z80DebugEngine()
-	{
-		WI_ASSERT(!_advisingSimulatorEvents);
-	}
-
 	#pragma region IUnknown
 	virtual HRESULT __stdcall QueryInterface(REFIID riid, void** ppvObject) override
 	{
@@ -38,7 +33,7 @@ public:
 		if (   TryQI<IUnknown>(static_cast<IDebugEngine2*>(this), riid, ppvObject)
 			|| TryQI<IDebugEngine2>(this, riid, ppvObject)
 			|| TryQI<IDebugEngineLaunch2>(this, riid, ppvObject)
-			|| TryQI<ISimulatorEventHandler>(this, riid, ppvObject)
+			|| TryQI<ISimulatorEventNotifySink>(this, riid, ppvObject)
 			|| TryQI<IFelixLaunchOptionsProvider>(this, riid, ppvObject)
 		)
 			return S_OK;
@@ -248,11 +243,7 @@ public:
 			
 			hr = z80Port->SendProgramDestroyEventToSinks (_program.get(), 0); RETURN_IF_FAILED(hr);
 			
-			if (_advisingSimulatorEvents)
-			{
-				simulator->UnadviseDebugEvents(this);
-				_advisingSimulatorEvents = false;
-			}
+			_simulatorEventsToken.reset();
 
 			WI_ASSERT(simulator->HasBreakpoints_HR() == S_FALSE);
 			if (simulator->Running_HR() == S_FALSE)
@@ -464,8 +455,7 @@ public:
 		hr = _program->QueryInterface(&mcoll); RETURN_IF_FAILED(hr);
 		hr = mcoll->AddModule(romModule.get()); RETURN_IF_FAILED(hr);
 
-		hr = simulator->AdviseDebugEvents(this); RETURN_IF_FAILED(hr);
-		_advisingSimulatorEvents = true;
+		hr = AdviseSink<ISimulatorEventNotifySink>(simulator, static_cast<IDebugEngine2*>(this), &_simulatorEventsToken); RETURN_IF_FAILED(hr);
 
 		wil::unique_bstr exePath;
 		hr = pProcess->GetName (GN_FILENAME, &exePath); RETURN_IF_FAILED(hr);
@@ -790,8 +780,8 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region ISimulatorEventHandler
-	virtual HRESULT STDMETHODCALLTYPE ProcessSimulatorEvent (ISimulatorEvent* event, REFIID riidEvent) override
+	#pragma region ISimulatorEventNotifySink
+	virtual HRESULT STDMETHODCALLTYPE NotifySimulatorEvent (ISimulatorEvent* event, REFIID riidEvent) override
 	{
 		if (riidEvent == __uuidof(ISimulatorResumeEvent))
 		{

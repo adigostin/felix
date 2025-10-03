@@ -93,16 +93,22 @@ public:
 
 HRESULT MakeConnectionPointEnumerator (const CONNECTDATA* data, uint32_t size, IEnumConnections** ppEnum);
 
-template<const IID& iid>
+template<typename ISink> requires wistd::is_base_of_v<IUnknown, ISink>
 class ConnectionPointImpl : public IConnectionPoint
 {
 	ULONG _refCount = 0;
 	IConnectionPointContainer* _cont = nullptr;
+	// We store pointers to IUnknown, rather than pointers to the sink interface type, in order to
+	// allow the users of our class to pass us weak references to sinks (pointers to IWeakRef).
+	// The sources don't know if the sinks are strong or weak references. So at the point of notifying the sinks;
+	// a source does a QueryInterface to the sink interface type. If the result is S_OK and the obtained pointer
+	// is non-NULL, it has now a strong reference and notifies it; if the result is S_OK and the obtained pointer
+	// is NULL, that was a weak reference to an object that's now dead, so it ignores it.
 	vector_nothrow<CONNECTDATA> _cps;
 	DWORD _nextCookie = 1;
 
 public:
-	static HRESULT CreateInstance (IConnectionPointContainer* cont, ConnectionPointImpl<iid>** cp)
+	static HRESULT CreateInstance (IConnectionPointContainer* cont, ConnectionPointImpl<ISink>** cp)
 	{
 		com_ptr<ConnectionPointImpl> p = new (std::nothrow) ConnectionPointImpl(); RETURN_IF_NULL_ALLOC(p);
 		p->_cont = cont;
@@ -148,7 +154,7 @@ public:
 	#pragma region IConnectionPoint
 	virtual HRESULT STDMETHODCALLTYPE GetConnectionInterface (IID *pIID) override
 	{
-		*pIID = iid;
+		*pIID = __uuidof(ISink);
 		return S_OK;
 	}
 
@@ -182,12 +188,17 @@ public:
 	}
 	#pragma endregion
 
-	void NotifyPropertyChanged (DISPID dispID) const
+	bool empty() const { return _cps.empty(); }
+
+	template<typename predicate_t> requires wistd::is_invocable_v<predicate_t, ISink*>
+	void Notify (const predicate_t& pred)
 	{
 		for (auto& c : _cps)
 		{
-			if (auto sink = wil::try_com_query_nothrow<IPropertyNotifySink>(c.pUnk))
-				sink->OnChanged(dispID);
+			com_ptr<ISink> sink;
+			auto hr = c.pUnk->QueryInterface(IID_PPV_ARGS(&sink)); LOG_IF_FAILED(hr);
+			if (SUCCEEDED(hr) && sink)
+				pred(sink.get());
 		}
 	}
 };
@@ -564,7 +575,7 @@ class WeakRefToThis
 			{
 				// All normal references have been released and the object is now dead.
 				*ppvObject = nullptr;
-				return E_UNEXPECTED;
+				return S_OK;
 			}
 
 			if (riid == __uuidof(IWeakRef))

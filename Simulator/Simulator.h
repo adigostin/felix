@@ -6,9 +6,9 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{E420CF93-E250-4C0A-A96D-A58D52651D14}")
 {
 };
 
-struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{A8DC31F4-2BFD-4BCF-BBA0-7DA0DE6C9F71}") ISimulatorEventHandler : IUnknown
+struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{A8DC31F4-2BFD-4BCF-BBA0-7DA0DE6C9F71}") ISimulatorEventNotifySink : IUnknown
 {
-	virtual HRESULT STDMETHODCALLTYPE ProcessSimulatorEvent (ISimulatorEvent* event, REFIID riidEvent) = 0;
+	virtual HRESULT STDMETHODCALLTYPE NotifySimulatorEvent (ISimulatorEvent* event, REFIID riidEvent) = 0;
 };
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("F578EBE3-7596-4FC7-A976-56C9B0AAD856") IScreenCompleteEventHandler : IUnknown
@@ -51,8 +51,6 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{56344845-3DDA-4BC0-9645-7EBA3FE94A93}")
 	virtual HRESULT STDMETHODCALLTYPE Reset (UINT16 startAddress) = 0;
 	virtual HRESULT STDMETHODCALLTYPE Running_HR() = 0;
 	virtual HRESULT STDMETHODCALLTYPE SimulateOne() = 0;
-	virtual HRESULT STDMETHODCALLTYPE AdviseDebugEvents (ISimulatorEventHandler* handler) = 0;
-	virtual HRESULT STDMETHODCALLTYPE UnadviseDebugEvents (ISimulatorEventHandler* handler) = 0;
 	virtual HRESULT STDMETHODCALLTYPE AdviseScreenComplete (IScreenCompleteEventHandler* handler) = 0;
 	virtual HRESULT STDMETHODCALLTYPE UnadviseScreenComplete (IScreenCompleteEventHandler* handler) = 0;
 	virtual HRESULT STDMETHODCALLTYPE ProcessKeyDown (uint32_t vkey, uint32_t modifiers) = 0;

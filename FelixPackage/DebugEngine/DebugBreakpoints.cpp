@@ -8,13 +8,14 @@
 
 // https://docs.microsoft.com/en-us/visualstudio/extensibility/debugger/binding-breakpoints?view=vs-2022
 
-class BreakpointManagerImpl : public IBreakpointManager, ISimulatorEventHandler
+class BreakpointManagerImpl : public IBreakpointManager, ISimulatorEventNotifySink
 {
 	ULONG _refCount = 0;
 	com_ptr<IDebugEventCallback2> _callback;
 	com_ptr<IDebugEngine2> _engine;
 	com_ptr<IDebugProgram2> _program;
 	unordered_map_nothrow<SIM_BP_COOKIE, com_ptr<IDebugBoundBreakpoint2>> _bps;
+	AdviseSinkToken _eventNotifyToken;
 
 public:
 	static HRESULT CreateInstance (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program, IBreakpointManager** ppManager)
@@ -39,7 +40,7 @@ public:
 
 		if (   TryQI<IUnknown>(static_cast<IBreakpointManager*>(this), riid, ppvObject)
 			|| TryQI<IBreakpointManager>(this, riid, ppvObject)
-			|| TryQI<ISimulatorEventHandler>(this, riid, ppvObject))
+			|| TryQI<ISimulatorEventNotifySink>(this, riid, ppvObject))
 			return S_OK;
 
 		*ppvObject = nullptr;
@@ -51,8 +52,8 @@ public:
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	#pragma region ISimulatorEventHandler
-	virtual HRESULT STDMETHODCALLTYPE ProcessSimulatorEvent (ISimulatorEvent* event, REFIID riidEvent) override
+	#pragma region ISimulatorEventNotifySink
+	virtual HRESULT STDMETHODCALLTYPE NotifySimulatorEvent (ISimulatorEvent* event, REFIID riidEvent) override
 	{
 		if (riidEvent == __uuidof(ISimulatorBreakpointEvent))
 		{
@@ -113,25 +114,18 @@ public:
 		for (auto& existing : _bps)
 			RETURN_HR_IF(E_INVALIDARG, existing.second == bp);
 
+		bool reserved = _bps.try_reserve(_bps.size() + 1); RETURN_HR_IF(E_OUTOFMEMORY, !reserved);
+
 		if (_bps.empty())
 		{
-			hr = simulator->AdviseDebugEvents(this); RETURN_IF_FAILED(hr);
-		}
-
-		bool reserved = _bps.try_reserve(_bps.size() + 1);
-		if (!reserved)
-		{
-			if (_bps.empty())
-				simulator->UnadviseDebugEvents(this);
-			RETURN_HR(E_OUTOFMEMORY);
+			hr = AdviseSink<ISimulatorEventNotifySink>(simulator, static_cast<IBreakpointManager*>(this), &_eventNotifyToken); RETURN_IF_FAILED(hr);
 		}
 
 		SIM_BP_COOKIE cookie;
 		hr = simulator->AddBreakpoint (type, physicalMemorySpace, address, &cookie);
 		if (FAILED(hr))
 		{
-			if (_bps.empty())
-				simulator->UnadviseDebugEvents(this);
+			_eventNotifyToken.reset();
 			RETURN_HR(hr);
 		}
 
@@ -146,9 +140,7 @@ public:
 		_bps.erase(it);
 
 		if (_bps.empty())
-		{
-			hr = simulator->UnadviseDebugEvents(this); LOG_IF_FAILED(hr);
-		}
+			_eventNotifyToken.reset();
 
 		return S_OK;
 	}

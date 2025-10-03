@@ -28,7 +28,7 @@ struct FileNode
 	BuildToolKind _buildTool = BuildToolKind::None;
 	bool _isGenerated = false;
 	com_ptr<ICustomBuildToolProperties> _customBuildToolProps;
-	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
+	com_ptr<ConnectionPointImpl<IPropertyNotifySink>> _propNotifyCP;
 	AdviseSinkToken _cbtPropNotifyToken;
 	WeakRefToThis _weakRefToThis;
 
@@ -37,7 +37,7 @@ public:
 	{
 		HRESULT hr;
 		hr = _weakRefToThis.InitInstance(static_cast<IFileNode*>(this)); RETURN_IF_FAILED(hr);
-		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
+		hr = ConnectionPointImpl<IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
 		hr = MakeCustomBuildToolProperties(&_customBuildToolProps); RETURN_IF_FAILED(hr);
 		hr = AdviseSink<IPropertyNotifySink>(_customBuildToolProps, _weakRefToThis, &_cbtPropNotifyToken); RETURN_IF_FAILED(hr);
 		return S_OK;
@@ -813,8 +813,11 @@ public:
 				hr = GeneratePrePostIncludeFiles (project, nullptr); RETURN_IF_FAILED(hr);
 			}
 
-			_propNotifyCP->NotifyPropertyChanged(dispidBuildToolKind);
-			_propNotifyCP->NotifyPropertyChanged(dispidCustomBuildToolProps);
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink)
+				{
+					sink->OnChanged(dispidBuildToolKind);
+					sink->OnChanged(dispidCustomBuildToolProps);
+				});
 		}
 
 		return S_OK;

@@ -714,7 +714,7 @@ struct GeneralPageProperties
 {
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _config;
-	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
+	com_ptr<ConnectionPointImpl<IPropertyNotifySink>> _propNotifyCP;
 	wil::unique_process_heap_string _outputName;
 	OutputFileType _outputFileType = OutputTypeDefaultValue;
 	wil::unique_process_heap_string _outputDirectory;
@@ -725,7 +725,7 @@ struct GeneralPageProperties
 		_outputName = wil::make_process_heap_string_nothrow(OutputNameDefaultValue); RETURN_IF_NULL_ALLOC(_outputName);
 		_outputDirectory = wil::make_process_heap_string_nothrow(OutputDirectoryDefaultValue); RETURN_IF_NULL_ALLOC(_outputDirectory);
 		hr = config->QueryInterface(IID_PPV_ARGS(_config.addressof())); RETURN_IF_FAILED(hr);
-		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
+		hr = ConnectionPointImpl<IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
@@ -805,8 +805,11 @@ struct GeneralPageProperties
 		if (wcscmp(_outputName.get(), tn))
 		{
 			_outputName = wil::make_process_heap_string_nothrow(tn); RETURN_IF_NULL_ALLOC(_outputName);
-			_propNotifyCP->NotifyPropertyChanged(dispidOutputName);
-			_propNotifyCP->NotifyPropertyChanged(dispidOutputFilename);
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink)
+				{
+					sink->OnChanged(dispidOutputName);
+					sink->OnChanged(dispidOutputFilename);
+				});
 		}
 		
 		return S_OK;
@@ -823,8 +826,11 @@ struct GeneralPageProperties
 		if (_outputFileType != value)
 		{
 			_outputFileType = value;
-			_propNotifyCP->NotifyPropertyChanged(dispidOutputFileType);
-			_propNotifyCP->NotifyPropertyChanged(dispidOutputFilename);
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink)
+				{
+					sink->OnChanged(dispidOutputFileType);
+					sink->OnChanged(dispidOutputFilename);
+				});
 		}
 
 		return S_OK;
@@ -855,7 +861,7 @@ struct GeneralPageProperties
 		{
 			auto od = wil::make_process_heap_string_nothrow(bstrOutputDirectory); RETURN_IF_NULL_ALLOC(od);
 			_outputDirectory = std::move(od);
-			_propNotifyCP->NotifyPropertyChanged(dispidOutputDirectory);
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidOutputDirectory); });
 		}
 
 		return S_OK;
@@ -974,7 +980,7 @@ struct GeneralPageProperties
 			{
 				auto tn = wil::make_process_heap_string_nothrow(OutputNameDefaultValue); RETURN_IF_NULL_ALLOC(tn);
 				_outputName = std::move(tn);
-				_propNotifyCP->NotifyPropertyChanged(dispidOutputName);
+				_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidOutputName); });
 			}
 
 			return S_OK;
@@ -1021,7 +1027,7 @@ struct AssemblerPageProperties
 {
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _config;
-	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
+	com_ptr<ConnectionPointImpl<IPropertyNotifySink>> _propNotifyCP;
 	wil::unique_bstr _entryPointAddress;
 	DWORD _baseAddress = BaseAddressDefaultValue;
 	bool _saveListing = false;
@@ -1031,7 +1037,7 @@ struct AssemblerPageProperties
 	{
 		HRESULT hr;
 		hr = config->QueryInterface(IID_PPV_ARGS(_config.addressof())); RETURN_IF_FAILED(hr);
-		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
+		hr = ConnectionPointImpl<IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
 		_entryPointAddress = wil::make_bstr_nothrow(EntryPointAddressDefaultValue); RETURN_IF_NULL_ALLOC(_entryPointAddress);
 		return S_OK;
 	}
@@ -1223,7 +1229,7 @@ struct AssemblerPageProperties
 		if (_baseAddress != value)
 		{
 			_baseAddress = value;
-			_propNotifyCP->NotifyPropertyChanged(dispidBaseAddress);
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidBaseAddress); });
 		}
 
 		return S_OK;
@@ -1249,7 +1255,7 @@ struct AssemblerPageProperties
 			}
 
 			_entryPointAddress.reset(newStr);
-			_propNotifyCP->NotifyPropertyChanged(dispidEntryPointAddress);
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidEntryPointAddress); });
 		}
 
 		return S_OK;
@@ -1267,7 +1273,7 @@ struct AssemblerPageProperties
 		if (_saveListing != s)
 		{
 			_saveListing = s;
-			_propNotifyCP->NotifyPropertyChanged(dispidSaveListing);
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidSaveListing); });
 		}
 
 		return S_OK;
@@ -1290,7 +1296,7 @@ struct AssemblerPageProperties
 		{
 			auto fn = wil::make_bstr_nothrow(filename); RETURN_IF_NULL_ALLOC(fn);
 			_listingFilename = std::move(fn);
-			_propNotifyCP->NotifyPropertyChanged(dispidListingFilename);
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidListingFilename); });
 		}
 
 		return S_OK;
@@ -1334,7 +1340,7 @@ struct DebuggingPageProperties
 {
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _config;
-	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
+	com_ptr<ConnectionPointImpl<IPropertyNotifySink>> _propNotifyCP;
 	LaunchType _launchType = LaunchTypeDefaultValue;
 	wil::unique_process_heap_string _launchTarget;
 
@@ -1342,7 +1348,7 @@ struct DebuggingPageProperties
 	{
 		HRESULT hr;
 		hr = config->QueryInterface(IID_PPV_ARGS(&_config)); RETURN_IF_FAILED(hr);
-		hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
+		hr = ConnectionPointImpl<IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
 		_launchTarget = wil::make_process_heap_string_nothrow(LaunchTargetDefaultValue); RETURN_IF_NULL_ALLOC(_launchTarget);
 		return S_OK;
 	}
@@ -1473,7 +1479,7 @@ struct DebuggingPageProperties
 		{
 			auto n = wil::make_process_heap_string_nothrow(from); RETURN_IF_NULL_ALLOC(n);
 			_launchTarget = std::move(n);
-			_propNotifyCP->NotifyPropertyChanged(dispidLaunchTarget);
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidLaunchTarget); });
 		}
 		
 		return S_OK;
@@ -1490,7 +1496,7 @@ struct DebuggingPageProperties
 		if (_launchType != value)
 		{
 			_launchType = value;
-			_propNotifyCP->NotifyPropertyChanged(dispidLaunchType);
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidLaunchType); });
 		}
 
 		return S_OK;
@@ -1530,7 +1536,7 @@ struct PrePostBuildPageProperties
 	, IProvidePropertyBuilder
 {
 	ULONG _refCount = 0;
-	com_ptr<ConnectionPointImpl<IID_IPropertyNotifySink>> _propNotifyCP;
+	com_ptr<ConnectionPointImpl<IPropertyNotifySink>> _propNotifyCP;
 	bool _post;
 	wil::unique_bstr _commandLine;
 	wil::unique_bstr _description;
@@ -1538,7 +1544,7 @@ struct PrePostBuildPageProperties
 	static HRESULT CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to)
 	{
 		com_ptr<PrePostBuildPageProperties> p = new (std::nothrow) PrePostBuildPageProperties(); RETURN_IF_NULL_ALLOC(p);
-		auto hr = ConnectionPointImpl<IID_IPropertyNotifySink>::CreateInstance(p, &p->_propNotifyCP); RETURN_IF_FAILED(hr);
+		auto hr = ConnectionPointImpl<IPropertyNotifySink>::CreateInstance(p, &p->_propNotifyCP); RETURN_IF_FAILED(hr);
 		p->_post = post;
 		*to = p.detach();
 		return S_OK;
@@ -1716,7 +1722,7 @@ struct PrePostBuildPageProperties
 			}
 			else
 				_commandLine = nullptr;
-			_propNotifyCP->NotifyPropertyChanged(dispidCommandLine);
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidCommandLine); });
 		}
 
 		return S_OK;
@@ -1740,7 +1746,7 @@ struct PrePostBuildPageProperties
 			}
 			else
 				_description = nullptr;
-			_propNotifyCP->NotifyPropertyChanged(dispidDescription);
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidDescription); });
 		}
 
 		return S_OK;

@@ -22,7 +22,7 @@ using unique_cotaskmem_bitmapinfo = wil::unique_any<BITMAPINFO*, decltype(&::CoT
 
 // ============================================================================
 
-class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler
+class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, IConnectionPointContainer
 {
 	ULONG _refCount = 0;
 
@@ -42,7 +42,7 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler
 	bool _running = false; // and this only by the main thread
 	wil::unique_handle _cpuThread;
 	wil::unique_handle _cpu_thread_exit_request;
-	vector_nothrow<wil::com_ptr_nothrow<ISimulatorEventHandler>> _eventHandlers;
+	com_ptr<ConnectionPointImpl<ISimulatorEventNotifySink>> _eventHandlers;
 	com_ptr<IScreenCompleteEventHandler> _screenCompleteHandler;
 
 	using RunOnSimulatorThreadFunction = HRESULT(*)(void*);
@@ -73,7 +73,11 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler
 public:
 	HRESULT InitInstance (LPCWSTR dir, LPCWSTR romFilename)
 	{
-		auto hr = MakeZ80CPU(&memoryBus, &ioBus, &irq, &_cpu); RETURN_IF_FAILED(hr);
+		HRESULT hr;
+		
+		hr = ConnectionPointImpl<ISimulatorEventNotifySink>::CreateInstance(this, &_eventHandlers); RETURN_IF_FAILED(hr);
+
+		hr = MakeZ80CPU(&memoryBus, &ioBus, &irq, &_cpu); RETURN_IF_FAILED(hr);
 
 		hr = MakeScreenDevice(&memoryBus, &ioBus, &irq, this, &_screen); RETURN_IF_FAILED(hr);
 
@@ -117,7 +121,7 @@ public:
 
 	~SimulatorImpl()
 	{
-		WI_ASSERT (_eventHandlers.empty());
+		WI_ASSERT (_eventHandlers->empty());
 		WI_ASSERT (!_screenCompleteHandler);
 
 		if (_cpu)
@@ -145,6 +149,7 @@ public:
 
 		if (   TryQI<IUnknown>(static_cast<ISimulator*>(this), riid, ppvObject)
 			|| TryQI<ISimulator>(this, riid, ppvObject)
+			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -440,8 +445,8 @@ public:
 				if (auto bpEvent = com_ptr(new (std::nothrow) BreakpointEvent());
 					bpEvent && SUCCEEDED(bpEvent->InitInstance(BreakpointType::Code, bps->address, bps->bps, bps->size)))
 				{
-					for (uint32_t i = 0; i < _eventHandlers.size(); i++)
-						_eventHandlers[i]->ProcessSimulatorEvent(bpEvent, __uuidof(ISimulatorBreakpointEvent));
+					_eventHandlers->Notify([bpEvent=bpEvent.get()](ISimulatorEventNotifySink* sink)
+						{ sink->NotifySimulatorEvent(bpEvent, __uuidof(ISimulatorBreakpointEvent)); });
 				}
 
 				_screenComplete = nullptr;
@@ -501,8 +506,8 @@ public:
 		using SimulateOneEvent = SimulatorEvent<ISimulatorSimulateOneEvent>;
 		auto event = com_ptr(new (std::nothrow) SimulateOneEvent()); RETURN_IF_NULL_ALLOC(event);
 
-		for (uint32_t i = 0; i < _eventHandlers.size(); i++)
-			_eventHandlers[i]->ProcessSimulatorEvent(event, __uuidof(event));
+		_eventHandlers->Notify([&event](ISimulatorEventNotifySink* sink)
+			{ sink->NotifySimulatorEvent(event, __uuidof(event)); });
 
 		return S_OK;
 	}
@@ -609,10 +614,8 @@ public:
 
 		using BreakEvent = SimulatorEvent<ISimulatorBreakEvent>;
 		if (auto event = com_ptr(new (std::nothrow) BreakEvent()))
-		{
-			for (uint32_t i = 0; i < _eventHandlers.size(); i++)
-				_eventHandlers[i]->ProcessSimulatorEvent(event, __uuidof(event));
-		}
+			_eventHandlers->Notify([&event] (ISimulatorEventNotifySink* sink)
+				{ sink->NotifySimulatorEvent(event, __uuidof(event)); });
 
 		_screenComplete = nullptr;
 		if (_screenCompleteHandler)
@@ -658,8 +661,8 @@ public:
 		using ResumeEvent = SimulatorEvent<ISimulatorResumeEvent>;
 		auto event = com_ptr(new (std::nothrow) ResumeEvent()); RETURN_IF_NULL_ALLOC(event);
 
-		for (uint32_t i = 0; i < _eventHandlers.size(); i++)
-			_eventHandlers[i]->ProcessSimulatorEvent(event, __uuidof(event));
+		_eventHandlers->Notify([&event](ISimulatorEventNotifySink* sink)
+			{ sink->NotifySimulatorEvent(event, __uuidof(event)); });
 
 		return S_OK;
 	}
@@ -1261,19 +1264,6 @@ public:
 		return S_OK;
 	}
 	*/
-	virtual HRESULT STDMETHODCALLTYPE AdviseDebugEvents (ISimulatorEventHandler* handler) override
-	{
-		auto it = _eventHandlers.find(handler); RETURN_HR_IF(E_INVALIDARG, it != _eventHandlers.end());
-		bool pushed = _eventHandlers.try_push_back(handler); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE UnadviseDebugEvents (ISimulatorEventHandler* handler) override
-	{
-		auto it = _eventHandlers.find(handler); RETURN_HR_IF(E_INVALIDARG, it == _eventHandlers.end());
-		_eventHandlers.erase(it);
-		return S_OK;
-	}
 
 	virtual HRESULT STDMETHODCALLTYPE AdviseScreenComplete (IScreenCompleteEventHandler* handler) override
 	{
@@ -1429,6 +1419,25 @@ public:
 				}
 			}
 		}
+	}
+	#pragma endregion
+
+	#pragma region IConnectionPointContainer
+	virtual HRESULT STDMETHODCALLTYPE EnumConnectionPoints (IEnumConnectionPoints **ppEnum) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE FindConnectionPoint (REFIID riid, IConnectionPoint **ppCP) override
+	{
+		if (riid == __uuidof(ISimulatorEventNotifySink))
+		{
+			*ppCP = _eventHandlers;
+			(*ppCP)->AddRef();
+			return S_OK;
+		}
+
+		RETURN_HR(E_NOTIMPL);
 	}
 	#pragma endregion
 };

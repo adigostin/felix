@@ -10,7 +10,7 @@
 
 static const wchar_t SingleDebugProgramName[] = L"Z80 Program";
 
-class DebugProgramImpl : public IDebugProgram2, IDebugModuleCollection, ISimulatorEventHandler
+class DebugProgramImpl : public IDebugProgram2, IDebugModuleCollection, ISimulatorEventNotifySink
 {
 	ULONG _refCount = 0;
 	GUID _programId;
@@ -19,7 +19,7 @@ class DebugProgramImpl : public IDebugProgram2, IDebugModuleCollection, ISimulat
 	com_ptr<IDebugEngine2> _engine;
 	com_ptr<IDebugEventCallback2> _callback;
 	com_ptr<IDebugThread2> _thread;
-	bool _advisingSimulatorEvents = false;
+	AdviseSinkToken _eventNotifyToken;
 	SIM_BP_COOKIE _stepOverOrOutBreakpoint = 0;
 
 public:
@@ -35,8 +35,7 @@ public:
 
 		hr = MakeThread (engine, this, callback, &_thread); RETURN_IF_FAILED(hr);
 
-		hr = simulator->AdviseDebugEvents(this); RETURN_IF_FAILED(hr);
-		_advisingSimulatorEvents = true;
+		hr = AdviseSink<ISimulatorEventNotifySink>(simulator, static_cast<IDebugProgram2*>(this), &_eventNotifyToken); RETURN_IF_FAILED(hr);
 
 		_engine = engine;
 		_callback = callback;
@@ -53,7 +52,7 @@ public:
 		if (   TryQI<IUnknown>(static_cast<IDebugProgram2*>(this), riid, ppvObject)
 			|| TryQI<IDebugProgram2>(this, riid, ppvObject)
 			|| TryQI<IDebugModuleCollection>(this, riid, ppvObject)
-			|| TryQI<ISimulatorEventHandler>(this, riid, ppvObject)
+			|| TryQI<ISimulatorEventNotifySink>(this, riid, ppvObject)
 		)
 			return S_OK;
 		
@@ -126,12 +125,7 @@ public:
 			_stepOverOrOutBreakpoint = 0;
 		}
 
-		if (_advisingSimulatorEvents)
-		{
-			simulator->UnadviseDebugEvents(this);
-			_advisingSimulatorEvents = false;
-		}
-
+		_eventNotifyToken.reset();
 		_engine = nullptr;
 		_callback = nullptr;
 		_thread = nullptr;
@@ -405,8 +399,8 @@ public:
 		return S_OK;
 	}
 
-	#pragma region ISimulatorEventHandler
-	virtual HRESULT STDMETHODCALLTYPE ProcessSimulatorEvent (ISimulatorEvent* event, REFIID riidEvent) override
+	#pragma region ISimulatorEventNotifySink
+	virtual HRESULT STDMETHODCALLTYPE NotifySimulatorEvent (ISimulatorEvent* event, REFIID riidEvent) override
 	{
 		if (riidEvent == __uuidof(ISimulatorBreakpointEvent))
 		{

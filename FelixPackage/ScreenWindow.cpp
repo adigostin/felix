@@ -18,7 +18,7 @@ class ScreenWindowImpl
 	, public IVsWindowFrameNotify4
 	, public IVsWindowFrameNotify3
 	, public IOleCommandTarget
-	, public ISimulatorEventHandler
+	, public ISimulatorEventNotifySink
 	, public IScreenCompleteEventHandler
 	, public IVsBroadcastMessageEvents
 {
@@ -33,7 +33,7 @@ class ScreenWindowImpl
 	com_ptr<IVsSettingsManager> _sm;
 	DWORD _debugger_events_cookie = 0;
 	bool _advisingScreenCompleteEvents = false;
-	bool _advisingSimulatorEvents = false;
+	AdviseSinkToken _simulatorEventsToken;
 	struct Rational { LONG numerator; LONG denominator; };
 	Rational _zoom;
 	wil::unique_hfont _debugFont;
@@ -84,7 +84,7 @@ public:
 			|| TryQI<IVsWindowFrameNotify4>(this, riid, ppvObject)
 			|| TryQI<IVsWindowFrameNotify3>(this, riid, ppvObject)
 			|| TryQI<IOleCommandTarget>(this, riid, ppvObject)
-			|| TryQI<ISimulatorEventHandler>(this, riid, ppvObject)
+			|| TryQI<ISimulatorEventNotifySink>(this, riid, ppvObject)
 			|| TryQI<IScreenCompleteEventHandler>(this, riid, ppvObject)
 			|| TryQI<IVsBroadcastMessageEvents>(this, riid, ppvObject)
 		)
@@ -454,8 +454,7 @@ public:
 		hr = simulator->AdviseScreenComplete(this); RETURN_IF_FAILED(hr);
 		_advisingScreenCompleteEvents = true;
 
-		hr = simulator->AdviseDebugEvents(this); RETURN_IF_FAILED(hr);
-		_advisingSimulatorEvents = true;
+		hr = AdviseSink<ISimulatorEventNotifySink>(simulator, static_cast<IVsWindowPane*>(this), &_simulatorEventsToken); RETURN_IF_FAILED(hr);
 
 		com_ptr<IVsDebugger> debugger;
 		hr = _sp->QueryService(SID_SVsShellDebugger, &debugger); RETURN_IF_FAILED(hr);
@@ -527,11 +526,7 @@ public:
 			_debugger_events_cookie = 0;
 		}
 
-		if (_advisingSimulatorEvents)
-		{
-			simulator->UnadviseDebugEvents(this);
-			_advisingSimulatorEvents = false;
-		}
+		_simulatorEventsToken.reset();
 
 		if (_advisingScreenCompleteEvents)
 		{
@@ -586,8 +581,8 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region ISimulatorEventHandler
-	virtual HRESULT STDMETHODCALLTYPE ProcessSimulatorEvent (ISimulatorEvent* event, REFIID riidEvent) override
+	#pragma region ISimulatorEventNotifySink
+	virtual HRESULT STDMETHODCALLTYPE NotifySimulatorEvent (ISimulatorEvent* event, REFIID riidEvent) override
 	{
 		if (riidEvent == __uuidof(ISimulatorBreakEvent) || riidEvent == __uuidof(ISimulatorResumeEvent))
 		{
