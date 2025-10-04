@@ -440,10 +440,6 @@ public:
 		hr = tce->Send (_callback.get(), this, _program.get(), thread.get()); LOG_IF_FAILED(hr);
 
 		// Create a debug module for the ROM.
-		wil::unique_hlocal_string packageDir;
-		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, packageDir); RETURN_IF_FAILED(hr);
-		auto fnres = PathFindFileName(packageDir.get()); RETURN_HR_IF(CO_E_BAD_PATH, fnres == packageDir.get());
-		*fnres = 0;
 		auto rom_path = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(rom_path);
 		auto pres = PathCombine (rom_path.get(), packageDir.get(), L"ROMs/Spectrum48K.rom"); RETURN_HR_IF(CO_E_BAD_PATH, !pres);
 		auto rom_debug_info_path = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(rom_debug_info_path);

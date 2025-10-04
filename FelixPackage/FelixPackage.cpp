@@ -35,11 +35,11 @@ static const char SentryReleaseName[] = "0.9.10";
 
 FELIX_API wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 com_ptr<ISimulator> simulator;
+FELIX_API wil::unique_process_heap_string packageDir;
 
 class FelixPackageImpl : public IVsPackage, IVsSolutionEvents, IOleCommandTarget, IDebugEventCallback2, IServiceProvider
 {
 	ULONG _refCount = 0;
-	wil::unique_hlocal_string _packageDir;
 	wil::com_ptr_nothrow<IVsLanguageInfo> _z80AsmLanguageInfo;
 	VSCOOKIE _projectTypeRegistrationCookie = VSCOOKIE_NIL;
 	VSCOOKIE _solutionEventsCookie = VSCOOKIE_NIL;
@@ -54,10 +54,9 @@ class FelixPackageImpl : public IVsPackage, IVsSolutionEvents, IOleCommandTarget
 public:
 	HRESULT InitInstance()
 	{
-		wil::unique_hlocal_string moduleFilename;
-		auto hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, moduleFilename); RETURN_IF_FAILED(hr);
-		auto fnres = PathFindFileName(moduleFilename.get()); RETURN_HR_IF(CO_E_BAD_PATH, fnres == moduleFilename.get());
-		_packageDir = wil::make_hlocal_string_nothrow(moduleFilename.get(), fnres - moduleFilename.get()); RETURN_IF_NULL_ALLOC(_packageDir);
+		auto hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, packageDir); RETURN_IF_FAILED(hr);
+		auto fnres = PathFindFileName(packageDir.get()); RETURN_HR_IF(CO_E_BAD_PATH, fnres == packageDir.get());
+		*fnres = 0;
 
 		hr = Z80AsmLanguageInfo_CreateInstance(&_z80AsmLanguageInfo); RETURN_IF_FAILED(hr);
 		return S_OK;
@@ -121,7 +120,7 @@ public:
 		wil::com_ptr_nothrow<IProfferService> srpProffer;
 		auto hr = serviceProvider->QueryService (SID_SProfferService, &srpProffer); RETURN_IF_FAILED(hr);
 		
-		hr = MakeSimulator(_packageDir.get(), BinaryFilename, &simulator); RETURN_IF_FAILED(hr);
+		hr = MakeSimulator(packageDir.get(), BinaryFilename, &simulator); RETURN_IF_FAILED(hr);
 		simulator->Resume(false);
 
 		return S_OK;

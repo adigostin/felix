@@ -269,22 +269,12 @@ static HRESULT Write (ISequentialStream* stream, const wchar_t* psz)
 	return stream->Write(psz, (ULONG)wcslen(psz) * sizeof(wchar_t), nullptr);
 }
 
-static HRESULT Write (ISequentialStream* stream, const wchar_t* from, const wchar_t* to)
-{
-	return stream->Write(from, (ULONG)(to - from) * sizeof(wchar_t), nullptr);
-}
-
 static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* project, IProjectConfig* macroResolver)
 {
 	HRESULT hr;
 
 	com_ptr<IVsShell> shell;
 	hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
-
-	wil::unique_hlocal_string packageDir;
-	hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, packageDir); RETURN_IF_FAILED(hr);
-	auto fnres = PathFindFileName(packageDir.get()); RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), fnres == packageDir.get());
-	*fnres = 0;
 
 	wil::unique_bstr genFilesStr;
 	hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERATED_FILES, &genFilesStr); RETURN_IF_FAILED(hr);
@@ -560,15 +550,12 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 	com_ptr<IStream> cmdLine;
 	hr = CreateStreamOnHGlobal (nullptr, TRUE, &cmdLine); RETURN_IF_FAILED(hr);
 
-	wil::unique_hlocal_string moduleFilename;
-	hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, moduleFilename); RETURN_IF_FAILED(hr);
-	auto fnres = PathFindFileName(moduleFilename.get()); RETURN_HR_IF(CO_E_BAD_PATH, fnres == moduleFilename.get());
-	bool hasSpaces = !!wcschr(moduleFilename.get(), L' ');
+	bool hasSpaces = !!wcschr(packageDir.get(), L' ');
 	if (hasSpaces)
 	{
 		hr = Write(cmdLine, L"\""); RETURN_IF_FAILED(hr);
 	}
-	hr = Write(cmdLine, moduleFilename.get(), fnres); RETURN_IF_FAILED(hr);
+	hr = Write(cmdLine, packageDir.get()); RETURN_IF_FAILED(hr);
 	hr = Write(cmdLine, L"sjasmplus.exe"); RETURN_IF_FAILED(hr);
 	if (hasSpaces)
 	{

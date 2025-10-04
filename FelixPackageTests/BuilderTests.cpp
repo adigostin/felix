@@ -117,22 +117,16 @@ namespace FelixTests
 
 		TEST_METHOD(Test_SjasmMissingExe)
 		{
-			wil::unique_hlocal_string moduleFilename;
-			auto hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, moduleFilename);
-			Assert::IsTrue(SUCCEEDED(hr));
-			PathFindFileName(moduleFilename.get())[0] = 0;
 			auto sjasmOrigPath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH);
-			PathCombine (sjasmOrigPath.get(), moduleFilename.get(), L"sjasmplus.exe");
-			Assert::IsTrue(SUCCEEDED(hr));
+			PathCombine (sjasmOrigPath.get(), packageDir.get(), L"sjasmplus.exe");
 			auto sjasmTempPath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH);
-			PathCombine(sjasmTempPath.get(), moduleFilename.get(), L"sjasmplus.tmp");
-			Assert::IsTrue(SUCCEEDED(hr));
+			PathCombine(sjasmTempPath.get(), packageDir.get(), L"sjasmplus.tmp");
 			BOOL bres = MoveFileExW (sjasmOrigPath.get(), sjasmTempPath.get(), MOVEFILE_REPLACE_EXISTING);
 			Assert::IsTrue(bres);
 
 			auto builder = MakeSjasmProjectBuilder({ });
 			auto callback = com_ptr(new TestBuildCallback());
-			hr = builder->StartBuild (callback);
+			auto hr = builder->StartBuild (callback);
 
 			bres = MoveFileExW(sjasmTempPath.get(), sjasmOrigPath.get(), MOVEFILE_REPLACE_EXISTING);
 			Assert::IsTrue(bres);
