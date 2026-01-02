@@ -1,5 +1,3 @@
-
-
 #include "pch.h"
 #include "shared/com.h"
 #include "../FelixPackage/FelixPackage.h"
@@ -362,7 +360,8 @@ namespace FelixTests
 			HRESULT hr;
 			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"CloneProject");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			
+			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
+
 			com_ptr<IUnknown> solution;
 			hr = _targetVS.dte->get_Solution((VxDTE::Solution**)solution.addressof());
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -379,6 +378,66 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr), wil::str_printf_failfast<wil::unique_process_heap_string>(L"0x%08x", hr).get());
 		}
 
+		TEST_METHOD(BuildProject)
+		{
+			HRESULT hr;
+
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"BuildProject");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
+
+			// Create a new solution in the test directory
+			com_ptr<IUnknown> solution;
+			hr = _targetVS.dte->get_Solution((VxDTE::Solution**)solution.addressof());
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto sln = wil::com_query_failfast<VxDTE::_Solution>(solution);
+			hr = sln->Create(wil::make_bstr_failfast(testPath.get()).get(), wil::make_bstr_failfast(L"test.sln").get());
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
+
+			// Add a new project from the template
+			com_ptr<VxDTE::Project> proj;
+			hr = sln->AddFromTemplate (
+				wil::make_bstr_failfast(templateFullPath.get()).get(),
+				wil::make_bstr_failfast(testPath.get()).get(),
+				wil::make_bstr_failfast(L"test.flx").get(), VARIANT_TRUE, &proj);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			// Save the solution before building
+			hr = sln->SaveAs(wil::make_bstr_failfast(L"test.sln").get());
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			// Get the SolutionBuild interface to launch the build
+			com_ptr<VxDTE::SolutionBuild> solutionBuild;
+			hr = sln->get_SolutionBuild(&solutionBuild);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			// Get the project's unique name to identify which project to build
+			wil::unique_bstr projUniqueName;
+			hr = proj->get_UniqueName(&projUniqueName);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			// Build the specific project with the active configuration
+			com_ptr<VxDTE::SolutionConfiguration> solConfig;
+			hr = solutionBuild->get_ActiveConfiguration(&solConfig); 
+			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_bstr solConfigName;
+			hr = solConfig->get_Name(&solConfigName);
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = solutionBuild->BuildProject(solConfigName.get(), projUniqueName.get(), VARIANT_TRUE);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			// Make sure build completed successfully. LastBuildInfo returns the number of failed projects.
+			VxDTE::vsBuildState buildState;
+			hr = solutionBuild->get_BuildState(&buildState);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<int>(VxDTE::vsBuildStateDone	, buildState);
+			long lastBuildInfo;
+			hr = solutionBuild->get_LastBuildInfo(&lastBuildInfo);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual(0l, lastBuildInfo, L"Build should have no errors");
+		}
+
 		TEST_METHOD(OpenSpecificEditor)
 		{
 			// At some point between VS 17.10 and 17.14, the VS implementation of IVsUIShellOpenDocument::OpenStandardEditor
@@ -392,11 +451,12 @@ namespace FelixTests
 			HRESULT hr;
 			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"OpenSpecificEditor");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
 
-			com_ptr<IUnknown> solution;
+			wil::com_ptr_failfast<IUnknown> solution;
 			hr = _targetVS.dte->get_Solution((VxDTE::Solution**)solution.addressof());
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto sln = wil::com_query_failfast<VxDTE::_Solution>(solution);
+			auto sln = solution.query<VxDTE::_Solution>();
 			hr = sln->Create(wil::make_bstr_failfast(testPath.get()).get(), wil::make_bstr_failfast(L"test.sln").get());
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
@@ -406,7 +466,7 @@ namespace FelixTests
 				wil::make_bstr_failfast(templateFullPath.get()).get(),
 				wil::make_bstr_failfast(testPath.get()).get(),
 				wil::make_bstr_failfast(L"test.flx").get(), VARIANT_TRUE, &proj);
-			Assert::IsTrue(SUCCEEDED(hr), wil::str_printf_failfast<wil::unique_process_heap_string>(L"0x%08x", hr).get());
+			Assert::IsTrue(SUCCEEDED(hr));
 			hr = sln->SaveAs(wil::make_bstr_failfast(L"test.sln").get());
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto hier = proj.query<IVsUIHierarchy>();
