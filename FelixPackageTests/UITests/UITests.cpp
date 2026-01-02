@@ -246,11 +246,11 @@ namespace FelixTests
 			Assert::Fail();
 		}
 
-        static HRESULT GetDTE (DWORD processId, VxDTE::_DTE** ppDTE)
-        {
+		static HRESULT GetDTE (DWORD processId, VxDTE::_DTE** ppDTE)
+		{
 			HRESULT hr;
 
-            //MessageFilter.Register();
+			//MessageFilter.Register();
 
 			wil::unique_process_heap_string fn;
 			hr = wil::GetModuleFileNameW(nullptr, fn); RETURN_IF_FAILED_EXPECTED(hr);
@@ -264,19 +264,19 @@ namespace FelixTests
 			VS_FIXEDFILEINFO* fi = (VS_FIXEDFILEINFO*)valbuffer;
 			DWORD vsMajorVersion = fi->dwProductVersionMS >> 16;
 			auto progId = wil::str_printf_failfast<wil::unique_process_heap_string> (L"!VisualStudio.DTE.%u.0:%u", vsMajorVersion, processId);
-            
+
 			com_ptr<IUnknown> runningObject;
 			com_ptr<IBindCtx> bindCtx;
 			com_ptr<IRunningObjectTable> rot;
 			com_ptr<IEnumMoniker> enumMonikers;
 
-            hr = CreateBindCtx(0, &bindCtx); RETURN_IF_FAILED_EXPECTED(hr);
-            hr = bindCtx->GetRunningObjectTable(&rot); RETURN_IF_FAILED_EXPECTED(hr);
-            hr = rot->EnumRunning(&enumMonikers); RETURN_IF_FAILED_EXPECTED(hr);
+			hr = CreateBindCtx(0, &bindCtx); RETURN_IF_FAILED_EXPECTED(hr);
+			hr = bindCtx->GetRunningObjectTable(&rot); RETURN_IF_FAILED_EXPECTED(hr);
+			hr = rot->EnumRunning(&enumMonikers); RETURN_IF_FAILED_EXPECTED(hr);
 			
-            com_ptr<IMoniker> moniker;
-            ULONG numberFetched = 0;
-            while (enumMonikers->Next (1, moniker.addressof(), &numberFetched) == S_OK)
+			com_ptr<IMoniker> moniker;
+			ULONG numberFetched = 0;
+			while (enumMonikers->Next (1, moniker.addressof(), &numberFetched) == S_OK)
 			{
 				wil::unique_cotaskmem_string name;
 				hr = moniker->GetDisplayName(bindCtx, nullptr, &name);
@@ -295,12 +295,12 @@ namespace FelixTests
 					rot->GetObject(moniker, &runningObject);
 					break;
 				}
-            }
+			}
 
 			Assert::IsNotNull(runningObject.get());
 			hr = runningObject->QueryInterface(IID_PPV_ARGS(ppDTE)); RETURN_IF_FAILED_EXPECTED(hr);
 			return S_OK;
-        }
+		}
 
 		static HWND FindTopLevelWindow (DWORD process_id)
 		{
@@ -377,6 +377,66 @@ namespace FelixTests
 				wil::make_bstr_failfast(testPath.get()).get(),
 				wil::make_bstr_failfast(L"test.flx").get(), VARIANT_TRUE, &proj);
 			Assert::IsTrue(SUCCEEDED(hr), wil::str_printf_failfast<wil::unique_process_heap_string>(L"0x%08x", hr).get());
+		}
+
+		TEST_METHOD(OpenSpecificEditor)
+		{
+			// At some point between VS 17.10 and 17.14, the VS implementation of IVsUIShellOpenDocument::OpenStandardEditor
+			// started trying to open our .asm files not with "Source Code (Text) Editor", but with
+			// "Common Language Editor Supporting TextMate Bundles" (or at least this was the new default shown in Open With...).
+			// The implementation started returning E_NOTIMPL in most cases.
+			// The solution was to call OpenSpecificEditor with GUID_TextEditorFactory, instead of OpenStandardEditor.
+			// This test verifies this solution. The test fails with the old code that calls OpenStandardEditor,
+			// and succeeds with the new code that calls OpenSpecificEditor.
+
+			HRESULT hr;
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"OpenSpecificEditor");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+
+			com_ptr<IUnknown> solution;
+			hr = _targetVS.dte->get_Solution((VxDTE::Solution**)solution.addressof());
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto sln = wil::com_query_failfast<VxDTE::_Solution>(solution);
+			hr = sln->Create(wil::make_bstr_failfast(testPath.get()).get(), wil::make_bstr_failfast(L"test.sln").get());
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
+
+			wil::com_ptr_failfast<VxDTE::Project> proj;
+			hr = sln->AddFromTemplate (
+				wil::make_bstr_failfast(templateFullPath.get()).get(),
+				wil::make_bstr_failfast(testPath.get()).get(),
+				wil::make_bstr_failfast(L"test.flx").get(), VARIANT_TRUE, &proj);
+			Assert::IsTrue(SUCCEEDED(hr), wil::str_printf_failfast<wil::unique_process_heap_string>(L"0x%08x", hr).get());
+			hr = sln->SaveAs(wil::make_bstr_failfast(L"test.sln").get());
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto hier = proj.query<IVsUIHierarchy>();
+			VSITEMID itemid;
+			hr = hier->ParseCanonicalName(L"file.asm", &itemid);
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto vsp2 = proj.query<IVsProject2>();
+			com_ptr<IVsWindowFrame> wf;
+			hr = vsp2->OpenItem (itemid, LOGVIEWID_Primary, nullptr, &wf);
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = wf->Show();
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = sln->Close();
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			auto fullSlnPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\test.sln");
+			hr = sln->Open(wil::make_bstr_failfast(fullSlnPath.get()).get()); 
+			Assert::IsTrue(SUCCEEDED(hr));
+			com_ptr<VxDTE::Projects> projects;
+			hr = sln->get_Projects(&projects);
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = projects->Item(wil::make_variant_bstr_failfast(L"test.flx"), &proj);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hier = proj.query<IVsUIHierarchy>();
+			hr = hier->ParseCanonicalName(L"file.asm", &itemid);
+			Assert::IsTrue(SUCCEEDED(hr));
+			vsp2 = proj.query<IVsProject2>();
+			hr = vsp2->OpenItem (itemid, LOGVIEWID_Primary, nullptr, &wf); // This would return E_NOTIMPL before the fix.
+			Assert::IsTrue(SUCCEEDED(hr));
 		}
 	};
 }

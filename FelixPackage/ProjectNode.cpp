@@ -450,7 +450,8 @@ public:
 		if (riid == __uuidof(ISupportErrorInfo))
 			return E_NOINTERFACE;
 
-		if (   riid == __uuidof(IVsProject4)
+		if (   riid == __uuidof(IVsProject3)
+			|| riid == __uuidof(IVsProject4)
 			|| riid == __uuidof(IVsProject5)
 			|| riid == __uuidof(IVsHasRelatedSaveItems)
 		)
@@ -1640,7 +1641,7 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region IVsProject3
+	#pragma region IVsProject2
 	virtual HRESULT STDMETHODCALLTYPE IsDocumentInProject(LPCOLESTR pszMkDocument, BOOL* pfFound, VSDOCUMENTPRIORITY* pdwPriority, VSITEMID* pitemid) override
 	{
 		RETURN_HR_IF(E_POINTER, !pszMkDocument || !pfFound || !pdwPriority || !pitemid);
@@ -1726,7 +1727,8 @@ public:
 		com_ptr<IVsUIShellOpenDocument> uiShellOpenDocument;
 		hr = serviceProvider->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED_EXPECTED(hr);
 
-		hr = uiShellOpenDocument->OpenStandardEditor(OSE_ChooseBestStdEditor, mkDocument.get(), rguidLogicalView,
+		static const GUID TextEditorFactory = {0x8b382828, 0x6202, 0x11d1, {0x88, 0x70, 0x0, 0x0, 0xf8, 0x75, 0x79, 0xd2}};
+		hr = uiShellOpenDocument->OpenSpecificEditor (0, mkDocument.get(), TextEditorFactory, nullptr, rguidLogicalView, 
 			L"%3", this, itemid, punkDocDataExisting, nullptr, ppWindowFrame);
 		if (FAILED(hr))
 		{
@@ -2896,37 +2898,37 @@ public:
 	#pragma region VxDTE::Project
 	virtual HRESULT STDMETHODCALLTYPE get_Name(BSTR *lpbstrName) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_Name (BSTR bstrName) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_FileName (BSTR *lpbstrReturn) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 	 
 	virtual HRESULT STDMETHODCALLTYPE get_IsDirty (VARIANT_BOOL *lpfReturn) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_IsDirty (VARIANT_BOOL Dirty) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_Collection (VxDTE::Projects **lppaReturn) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE SaveAs (BSTR NewFileName) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_DTE (VxDTE::DTE**lppaReturn) override
@@ -2945,7 +2947,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE get_ProjectItems (VxDTE::ProjectItems **lppcReturn) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_Properties (VxDTE::Properties **ppObject) override
@@ -2966,17 +2968,17 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE get_Extender (BSTR ExtenderName, IDispatch **Extender) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_ExtenderNames (VARIANT *ExtenderNames) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_ExtenderCATID (BSTR *pRetval) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_FullName (BSTR *lpbstrReturn) override
@@ -2989,42 +2991,42 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE get_Saved (VARIANT_BOOL *lpfReturn) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_Saved (VARIANT_BOOL SavedFlag) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_ConfigurationManager (VxDTE::ConfigurationManager **ppConfigurationManager) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_Globals (VxDTE::Globals **ppGlobals) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE Save (BSTR FileName) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_ParentProjectItem (VxDTE::ProjectItem **ppParentProjectItem) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_CodeModel (VxDTE::CodeModel **ppCodeModel) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE Delete() override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return E_NOTIMPL;
 	}
 
 	#pragma endregion
