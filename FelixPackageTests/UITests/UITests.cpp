@@ -355,6 +355,37 @@ namespace FelixTests
 			sln->Close();
 		}
 
+		void CreateSolutionAndProject (
+			const wchar_t* testDir, 
+			const wchar_t* solutionName, 
+			const wchar_t* projectName,
+			VxDTE::_Solution** ppSln,
+			VxDTE::Project** ppProj)
+		{
+			HRESULT hr;
+			wil::com_ptr_failfast<IUnknown> solution;
+			hr = _targetVS.dte->get_Solution((VxDTE::Solution**)solution.addressof());
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto sln = solution.query<VxDTE::_Solution>();
+			hr = sln->Create(wil::make_bstr_failfast(testDir).get(), wil::make_bstr_failfast(solutionName).get());
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::com_ptr_failfast<VxDTE::Project> proj;
+			hr = sln->AddFromTemplate (
+				wil::make_bstr_failfast(templateFullPath.get()).get(),
+				wil::make_bstr_failfast(testDir).get(),
+				wil::make_bstr_failfast(projectName).get(), VARIANT_TRUE, &proj);
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = sln->SaveAs(wil::make_bstr_failfast(solutionName).get());
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			if (ppSln)
+				*ppSln = sln.detach();
+
+			if (ppProj)
+				*ppProj = proj.detach();
+		}
+
 		TEST_METHOD(CloneProject)
 		{
 			HRESULT hr;
@@ -386,35 +417,13 @@ namespace FelixTests
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
 			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
 
-			// Create a new solution in the test directory
-			com_ptr<IUnknown> solution;
-			hr = _targetVS.dte->get_Solution((VxDTE::Solution**)solution.addressof());
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto sln = wil::com_query_failfast<VxDTE::_Solution>(solution);
-			hr = sln->Create(wil::make_bstr_failfast(testPath.get()).get(), wil::make_bstr_failfast(L"test.sln").get());
-			Assert::IsTrue(SUCCEEDED(hr));
+			wil::com_ptr_failfast<VxDTE::_Solution> sln;
+			CreateSolutionAndProject (testPath.get(), L"test.sln", L"test.flx", &sln, nullptr);
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
-
-			// Add a new project from the template
-			com_ptr<VxDTE::Project> proj;
-			hr = sln->AddFromTemplate (
-				wil::make_bstr_failfast(templateFullPath.get()).get(),
-				wil::make_bstr_failfast(testPath.get()).get(),
-				wil::make_bstr_failfast(L"test.flx").get(), VARIANT_TRUE, &proj);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			// Save the solution before building
-			hr = sln->SaveAs(wil::make_bstr_failfast(L"test.sln").get());
-			Assert::IsTrue(SUCCEEDED(hr));
 
 			// Get the SolutionBuild interface to launch the build
 			com_ptr<VxDTE::SolutionBuild> solutionBuild;
 			hr = sln->get_SolutionBuild(&solutionBuild);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			// Get the project's unique name to identify which project to build
-			wil::unique_bstr projUniqueName;
-			hr = proj->get_UniqueName(&projUniqueName);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			// Build the specific project with the active configuration
@@ -424,7 +433,7 @@ namespace FelixTests
 			wil::unique_bstr solConfigName;
 			hr = solConfig->get_Name(&solConfigName);
 			Assert::IsTrue(SUCCEEDED(hr));
-			hr = solutionBuild->BuildProject(solConfigName.get(), projUniqueName.get(), VARIANT_TRUE);
+			hr = solutionBuild->BuildProject(solConfigName.get(), wil::make_bstr_failfast(L"test.flx").get(), VARIANT_TRUE);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			// Make sure build completed successfully. LastBuildInfo returns the number of failed projects.
@@ -453,22 +462,11 @@ namespace FelixTests
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
 			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
 
-			wil::com_ptr_failfast<IUnknown> solution;
-			hr = _targetVS.dte->get_Solution((VxDTE::Solution**)solution.addressof());
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto sln = solution.query<VxDTE::_Solution>();
-			hr = sln->Create(wil::make_bstr_failfast(testPath.get()).get(), wil::make_bstr_failfast(L"test.sln").get());
-			Assert::IsTrue(SUCCEEDED(hr));
+			wil::com_ptr_failfast<VxDTE::_Solution> sln;
+			wil::com_ptr_failfast<VxDTE::Project> proj;
+			CreateSolutionAndProject(testPath.get(), L"test.sln", L"test.flx", &sln, &proj);
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
 
-			wil::com_ptr_failfast<VxDTE::Project> proj;
-			hr = sln->AddFromTemplate (
-				wil::make_bstr_failfast(templateFullPath.get()).get(),
-				wil::make_bstr_failfast(testPath.get()).get(),
-				wil::make_bstr_failfast(L"test.flx").get(), VARIANT_TRUE, &proj);
-			Assert::IsTrue(SUCCEEDED(hr));
-			hr = sln->SaveAs(wil::make_bstr_failfast(L"test.sln").get());
-			Assert::IsTrue(SUCCEEDED(hr));
 			auto hier = proj.query<IVsUIHierarchy>();
 			VSITEMID itemid;
 			hr = hier->ParseCanonicalName(L"file.asm", &itemid);
