@@ -38,7 +38,6 @@ namespace FelixTests
 			wil::unique_process_information pi;
 			BOOL bres = CreateProcessW (devenvExe, cmdLine.get(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi);
 			Assert::IsTrue(bres);
-			Sleep(5000); // Give it 5 seconds to start up. PTVS does the same.
 			DWORD exitCode;
 			bres = GetExitCodeProcess (pi.hProcess, &exitCode);
 			Assert::IsTrue(bres);
@@ -107,19 +106,33 @@ namespace FelixTests
 
 		static void CloseCurrentInstance(bool hard = false)
 		{
-			_targetVS.dte = nullptr;
 			if (_targetVS.processInfo.hProcess)
 			{
 				if (hard) {
 					TerminateProcess(_targetVS.processInfo.hProcess, 1234);
 				} else {
-					//if (!_vs.CloseMainWindow()) {
-					//	TerminateProcess(_targetVS.processInfo.hProcess, 1234);
-					//}
-					//if (!_vs.WaitForExit(10000)) {
-					TerminateProcess(_targetVS.processInfo.hProcess, 1234);
-					//}
+					bool closed = false;
+					com_ptr<VxDTE::Window> dteMainWindow;
+					if (SUCCEEDED(_targetVS.dte->Quit()))//get_MainWindow(&dteMainWindow)))
+					{
+						//long dteMainWindowHWnd;
+						//if (SUCCEEDED(dteMainWindow->get_HWnd(&dteMainWindowHWnd)))
+						//{
+						//	HWND hWnd = (HWND)(size_t)(DWORD)dteMainWindowHWnd;
+						//	if (PostMessageW(hWnd, WM_CLOSE, 0, 0))
+						//	{
+								DWORD waitRes = WaitForSingleObject(_targetVS.processInfo.hProcess, IsDebuggerPresent() ? INFINITE : 10000);
+								if (waitRes == WAIT_OBJECT_0)
+									closed = true;
+						//	}
+						//}
+					}
+
+					if (!closed)
+						TerminateProcess(_targetVS.processInfo.hProcess, 1234);
 				}
+
+				_targetVS.dte.reset();
 				_targetVS.processInfo.reset();
 			}
 		}
@@ -233,7 +246,8 @@ namespace FelixTests
 						&& (DWORD)pid == targetVSProcessID)
 					{
 						targetVSDTE->put_SuppressUI(VARIANT_TRUE);
-						hr = targetProcess->Attach2(wil::make_variant_bstr_failfast(L"Managed/Native"));
+						//hr = targetProcess->Attach2(wil::make_variant_bstr_failfast(L"Managed/Native"));
+						hr = targetProcess->Attach2(wil::make_variant_bstr_failfast(L"Native"));
 						targetVSDTE->put_SuppressUI(VARIANT_FALSE);
 						Assert::IsTrue(SUCCEEDED(hr));
 						return;
@@ -290,14 +304,15 @@ namespace FelixTests
 
 				if (name && !wcscmp(name.get(), progId.get()))
 				{
-					rot->GetObject(moniker, &runningObject);
-					break;
+					hr = rot->GetObject(moniker, &runningObject);
+					Assert::IsTrue(SUCCEEDED(hr));
+					Assert::IsNotNull(runningObject.get());
+					hr = runningObject->QueryInterface(IID_PPV_ARGS(ppDTE)); RETURN_IF_FAILED_EXPECTED(hr);
+					return S_OK;
 				}
 			}
 
-			Assert::IsNotNull(runningObject.get());
-			hr = runningObject->QueryInterface(IID_PPV_ARGS(ppDTE)); RETURN_IF_FAILED_EXPECTED(hr);
-			return S_OK;
+			return E_FAIL;
 		}
 
 		static HWND FindTopLevelWindow (DWORD process_id)
@@ -531,6 +546,90 @@ namespace FelixTests
 			vsp2 = proj.query<IVsProject2>();
 			hr = vsp2->OpenItem (itemid, LOGVIEWID_Primary, nullptr, &wf); // This would return E_NOTIMPL before the fix.
 			Assert::IsTrue(SUCCEEDED(hr));
+		}
+
+		struct FileChangeEvents : IVsFileChangeEvents
+		{
+			ULONG _refCount = 0;
+			bool _changed = false;
+
+			#pragma region IUnknown
+			virtual HRESULT STDMETHODCALLTYPE QueryInterface (REFIID riid, void** ppvObject) override
+			{
+				if (TryQI<IUnknown>(this, riid, ppvObject) || TryQI<IVsFileChangeEvents>(this, riid, ppvObject))
+					return S_OK;
+
+				*ppvObject = nullptr;
+				return E_NOINTERFACE;
+			}
+			virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
+			virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
+			#pragma endregion
+
+			#pragma region IVsFileChangeEvents
+			virtual HRESULT STDMETHODCALLTYPE FilesChanged (DWORD cChanges, LPCOLESTR rgpszFile[], VSFILECHANGEFLAGS rggrfChange[]) override
+			{
+				_changed = true;
+				return S_OK;
+			}
+
+			virtual HRESULT STDMETHODCALLTYPE DirectoryChanged (LPCOLESTR pszDirectory) override
+			{
+				RETURN_HR(E_NOTIMPL);
+			}
+			#pragma endregion
+		};
+
+		TEST_METHOD(AdviseFileChangeNotCalledOnProjectSave)
+		{
+			HRESULT hr;
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"AdviseFileChangeNotCalledOnProjectSave");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
+
+			wil::com_ptr_failfast<VxDTE::_Solution> sln;
+			wil::com_ptr_failfast<VxDTE::Project> proj;
+			CreateSolutionAndProject (testPath.get(), L"test.sln", L"test.flx", &sln, &proj);
+			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
+
+			com_ptr<IDispatch> aodisp;
+			hr = _targetVS.dte->GetObject(wil::make_bstr_failfast(L"TestHelper").get(), &aodisp);
+			Assert::IsTrue(SUCCEEDED(hr));
+			com_ptr<IFelixTestHelper> ao;
+			hr = aodisp->QueryInterface(IID_PPV_ARGS(&ao));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			auto fce = com_ptr(new (std::nothrow) FileChangeEvents()); FAIL_FAST_IF_NULL_ALLOC(fce);
+			DWORD cookie;
+			hr = ao->AdviseProjectFileChange(proj, fce, &cookie);
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto unadvise = wil::scope_exit([ao=ao.get(), cookie]() {
+				ao->UnadviseProjectFileChange(cookie);
+			});
+
+			hr = proj->Save(nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			// give it some time to notice the file changed on disk, and to call our callback
+			DWORD tickStart = GetTickCount();
+			while (!fce->_changed && GetTickCount() - tickStart < 1000)
+			{
+				MSG msg;
+				while(PeekMessage(&msg,0,0,0,PM_NOREMOVE))
+				{
+					if (::GetMessage(&msg, NULL, 0, 0) > 0)
+						::DispatchMessage(&msg);
+				}
+
+				Sleep(10);
+			}
+
+			bool changed = fce->_changed;
+			hr = CoDisconnectObject(fce, 0);
+			Assert::IsTrue(SUCCEEDED(hr));
+			fce = nullptr;
+
+			Assert::IsFalse(changed); // this would fail before the fix (IgnoreFile called in ProjectNode::Save)
 		}
 	};
 }

@@ -1569,8 +1569,16 @@ public:
 		{
 			// "Save" operation (save under existing name)
 
-			// TODO: pause monitoring file change notifications
-			//CSuspendFileChanges suspendFileChanges(CString(pszFileName), TRUE);
+			com_ptr<IVsFileChangeEx> fileChangeEx;
+			hr = serviceProvider->QueryService(SID_SVsFileChangeEx, IID_PPV_ARGS(&fileChangeEx)); RETURN_IF_FAILED(hr);
+			stdext::inplace_function<void()> unignore;
+			hr = fileChangeEx->IgnoreFile (VSCOOKIE_NIL, currentFilePath.get(), TRUE);
+			if (SUCCEEDED(hr))
+				unignore = [&fileChangeEx, &currentFilePath] { fileChangeEx->IgnoreFile (VSCOOKIE_NIL, currentFilePath.get(), FALSE); };
+			// bscprj also has the code below, not sure if it's necessary (maybe if the project is unloaded and its xml is open in an editor?)
+			//srpDocData->QueryInterface(IID_IVsDocDataFileChangeControl, (void**)&m_srpIVsDocDataFileChangeControl);
+			//if(m_srpIVsDocDataFileChangeControl)
+			//	m_srpIVsDocDataFileChangeControl->IgnoreFileChanges(TRUE);
 
 			// Save XML to temporary stream first. During debugging, the SaveToXml file crashes often and we lose the file content.
 			auto memStreamRaw = SHCreateMemStream(nullptr, 0); RETURN_IF_NULL_ALLOC(memStreamRaw);
@@ -3011,7 +3019,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE Save (BSTR FileName) override
 	{
-		return E_NOTIMPL;
+		return this->Save((FileName && FileName[0]) ? FileName : nullptr, FALSE, DEF_FORMAT_INDEX);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_ParentProjectItem (VxDTE::ProjectItem **ppParentProjectItem) override

@@ -37,6 +37,8 @@ FELIX_API wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 com_ptr<ISimulator> simulator;
 FELIX_API wil::unique_process_heap_string packageDir;
 
+HRESULT TestHelper_CreateInstance (IFelixTestHelper** out);
+
 class FelixPackageImpl : public IVsPackage, IVsSolutionEvents, IOleCommandTarget, IDebugEventCallback2, IServiceProvider
 {
 	ULONG _refCount = 0;
@@ -50,6 +52,7 @@ class FelixPackageImpl : public IVsPackage, IVsSolutionEvents, IOleCommandTarget
 	wil::com_ptr_nothrow<IVsWindowFrame> _simulatorWindowFrame;
 	wil::ThreadFailureCache _threadFailureCache;
 	sentry_options_t *_sentryOptions = nullptr;
+	bool _comLibraryRegistered = false;
 
 public:
 	HRESULT InitInstance()
@@ -480,6 +483,25 @@ public:
 	{
 		HRESULT hr;
 
+		if (_comLibraryRegistered)
+		{
+			wil::unique_process_heap_string fn;
+			if (SUCCEEDED(wil::GetModuleFileNameW((HMODULE)&__ImageBase, fn)))
+			{
+				com_ptr<ITypeLib> typeLib;
+				if (SUCCEEDED(LoadTypeLibEx(fn.get(), REGKIND_NONE, &typeLib)))
+				{
+					TLIBATTR* attr = nullptr;
+					if (SUCCEEDED(typeLib->GetLibAttr(&attr)))
+					{
+						auto rel = wil::scope_exit([&]() { typeLib->ReleaseTLibAttr(attr); });
+						if (SUCCEEDED(UnRegisterTypeLibForUser (attr->guid, attr->wMajorVerNum, attr->wMinorVerNum, attr->lcid, attr->syskind)))
+							_comLibraryRegistered = true;
+					}
+				}
+			}
+		}
+
 		ReleaseZxSpectrumSimulator();
 
 		if (_profferLanguageServiceCookie)
@@ -544,6 +566,26 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetAutomationObject (LPCOLESTR pszPropName, IDispatch **ppDisp) override
 	{
+		HRESULT hr;
+
+		if (!_comLibraryRegistered)
+		{
+			wil::unique_process_heap_string fn;
+			hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, fn); RETURN_IF_FAILED(hr);
+			com_ptr<ITypeLib> typeLib;
+			hr = LoadTypeLibEx(fn.get(), REGKIND_NONE, &typeLib); RETURN_IF_FAILED(hr);
+			hr = RegisterTypeLibForUser(typeLib, fn.get(), nullptr); RETURN_IF_FAILED(hr);
+			_comLibraryRegistered = true;
+		}
+
+		if (!wcscmp(pszPropName, L"TestHelper"))
+		{
+			com_ptr<IFelixTestHelper> testHelper;
+			hr = TestHelper_CreateInstance(&testHelper); RETURN_IF_FAILED(hr);
+			*ppDisp = testHelper.detach();
+			return S_OK;
+		}	
+
 		RETURN_HR(E_NOTIMPL);
 	}
 

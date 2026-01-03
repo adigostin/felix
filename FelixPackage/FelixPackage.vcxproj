@@ -74,7 +74,6 @@
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <RegisterOutput>false</RegisterOutput>
       <AdditionalDependencies>vsguids.lib;Shlwapi.lib;ad2de.lib;sentry.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <ModuleDefinitionFile>.\FelixPackage.def</ModuleDefinitionFile>
@@ -113,7 +112,6 @@
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <RegisterOutput>false</RegisterOutput>
       <AdditionalDependencies>vsguids.lib;Shlwapi.lib;ad2de.lib;sentry.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <ModuleDefinitionFile>.\FelixPackage.def</ModuleDefinitionFile>
@@ -171,6 +169,7 @@
     <ClCompile Include="ProjectNode.cpp" />
     <ClCompile Include="ProjectConfig.cpp" />
     <ClCompile Include="ProjectFactory.cpp" />
+    <ClCompile Include="TestHelper.cpp" />
     <ClCompile Include="Utility.cpp" />
     <ClCompile Include="Z80Xml.cpp" />
   </ItemGroup>

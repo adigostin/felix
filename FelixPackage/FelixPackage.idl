@@ -1,5 +1,6 @@
 
 import "docobj.idl";
+import "vsshell.idl";
 #include "dispids.h"
 
 //cpp_quote("#ifdef __midl")
@@ -40,10 +41,10 @@ library ATLProject1Lib
 		HRESULT PostBuildProperties ([out, retval] IProjectConfigPrePostBuildProperties** ppProps);
 
 		[id(dispidConfigName), propget] HRESULT ConfigName ([out, retval] BSTR* pbstr);
-		[id(dispidConfigName), propput] HRESULT ConfigName (BSTR pbstr);
+		[id(dispidConfigName), propput] HRESULT ConfigName (BSTR bstr);
 
 		[id(dispidPlatformName), propget] HRESULT PlatformName ([out, retval] BSTR* pbstr);
-		[id(dispidPlatformName), propput] HRESULT PlatformName (BSTR pbstr);
+		[id(dispidPlatformName), propput] HRESULT PlatformName (BSTR bstr);
 	}
 
 	[object, uuid(E83A8879-04BE-4A3F-9350-A7BCBB0AFCFF), dual, nonextensible, pointer_default(unique)]
@@ -191,7 +192,7 @@ library ATLProject1Lib
 	interface IFelixLaunchOptions : IDispatch
 	{
 		[id(dispidProjectDir), propget] HRESULT ProjectDir ([out, retval] BSTR* pbstr);
-		[id(dispidProjectDir), propput] HRESULT ProjectDir (BSTR pbstr);
+		[id(dispidProjectDir), propput] HRESULT ProjectDir (BSTR bstr);
 
 		[propget] HRESULT BaseAddress ([out, retval] DWORD* pdwAddress);
 		[propput] HRESULT BaseAddress (DWORD dwAddress);
@@ -199,4 +200,13 @@ library ATLProject1Lib
 		[propget] HRESULT EntryPointAddress ([out, retval] DWORD* pdwAddress);
 		[propput] HRESULT EntryPointAddress (DWORD dwAddress);
 	}
+
+	[object, uuid(4C8F0355-C1B4-4DB1-A996-0C28A3BF352C), oleautomation, dual, nonextensible]
+	interface IFelixTestHelper : IDispatch
+	{
+		[propget] HRESULT BscProjectsEvents([out, retval] IDispatch** ppdisp);
+		[propget] HRESULT BscProjectItemsEvents([in] IDispatch* Filter, [out, retval] IDispatch** ppdisp);
+		HRESULT AdviseProjectFileChange ([in] IDispatch* project, IVsFileChangeEvents* pFCE, VSCOOKIE* pvsCookie);
+		HRESULT UnadviseProjectFileChange (VSCOOKIE vsCookie);
+	};
 };
