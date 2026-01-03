@@ -325,6 +325,59 @@ namespace FelixTests
 			return data.window_handle;
 		}
 
+		void CreateSolutionAndProject (PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName, VxDTE::_Solution** ppSln, VxDTE::Project** ppProj)
+		{
+			HRESULT hr;
+			wil::com_ptr_failfast<IUnknown> solution;
+			hr = _targetVS.dte->get_Solution((VxDTE::Solution**)solution.addressof());
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto sln = solution.query<VxDTE::_Solution>();
+			hr = sln->Create(wil::make_bstr_failfast(testDir).get(), wil::make_bstr_failfast(solutionName).get());
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::com_ptr_failfast<VxDTE::Project> proj;
+			hr = sln->AddFromTemplate (
+				wil::make_bstr_failfast(templateFullPath.get()).get(),
+				wil::make_bstr_failfast(testDir).get(),
+				wil::make_bstr_failfast(projectName).get(), VARIANT_TRUE, &proj);
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = sln->SaveAs(wil::make_bstr_failfast(solutionName).get());
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			if (ppSln)
+				*ppSln = sln.detach();
+
+			if (ppProj)
+				*ppProj = proj.detach();
+		}
+
+		void BuildSolution (VxDTE::_Solution* sln, long* buildFailCount)
+		{
+			HRESULT hr;
+
+			com_ptr<VxDTE::SolutionBuild> solutionBuild;
+			hr = sln->get_SolutionBuild(&solutionBuild);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			com_ptr<VxDTE::SolutionConfiguration> solConfig;
+			hr = solutionBuild->get_ActiveConfiguration(&solConfig); 
+			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_bstr solConfigName;
+			hr = solConfig->get_Name(&solConfigName);
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = solutionBuild->BuildProject(solConfigName.get(), wil::make_bstr_failfast(L"test.flx").get(), VARIANT_TRUE);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			// Make sure build completed successfully. LastBuildInfo returns the number of failed projects, despite the parameter name.
+			VxDTE::vsBuildState buildState;
+			hr = solutionBuild->get_BuildState(&buildState);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<int>(VxDTE::vsBuildStateDone, buildState);
+
+			hr = solutionBuild->get_LastBuildInfo(buildFailCount);
+			Assert::IsTrue(SUCCEEDED(hr));
+		}
+
 	public:
 		TEST_CLASS_INITIALIZE(UITestsInitialize)
 		{
@@ -353,37 +406,6 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto sln = wil::com_query_failfast<VxDTE::_Solution>(solution);
 			sln->Close();
-		}
-
-		void CreateSolutionAndProject (
-			const wchar_t* testDir, 
-			const wchar_t* solutionName, 
-			const wchar_t* projectName,
-			VxDTE::_Solution** ppSln,
-			VxDTE::Project** ppProj)
-		{
-			HRESULT hr;
-			wil::com_ptr_failfast<IUnknown> solution;
-			hr = _targetVS.dte->get_Solution((VxDTE::Solution**)solution.addressof());
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto sln = solution.query<VxDTE::_Solution>();
-			hr = sln->Create(wil::make_bstr_failfast(testDir).get(), wil::make_bstr_failfast(solutionName).get());
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			wil::com_ptr_failfast<VxDTE::Project> proj;
-			hr = sln->AddFromTemplate (
-				wil::make_bstr_failfast(templateFullPath.get()).get(),
-				wil::make_bstr_failfast(testDir).get(),
-				wil::make_bstr_failfast(projectName).get(), VARIANT_TRUE, &proj);
-			Assert::IsTrue(SUCCEEDED(hr));
-			hr = sln->SaveAs(wil::make_bstr_failfast(solutionName).get());
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			if (ppSln)
-				*ppSln = sln.detach();
-
-			if (ppProj)
-				*ppProj = proj.detach();
 		}
 
 		TEST_METHOD(CloneProject)
@@ -421,30 +443,44 @@ namespace FelixTests
 			CreateSolutionAndProject (testPath.get(), L"test.sln", L"test.flx", &sln, nullptr);
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
 
-			// Get the SolutionBuild interface to launch the build
-			com_ptr<VxDTE::SolutionBuild> solutionBuild;
-			hr = sln->get_SolutionBuild(&solutionBuild);
-			Assert::IsTrue(SUCCEEDED(hr));
+			long buildFailCount;
+			BuildSolution(sln, &buildFailCount);
+			Assert::AreEqual(0l, buildFailCount);
+		}
 
-			// Build the specific project with the active configuration
-			com_ptr<VxDTE::SolutionConfiguration> solConfig;
-			hr = solutionBuild->get_ActiveConfiguration(&solConfig); 
-			Assert::IsTrue(SUCCEEDED(hr));
-			wil::unique_bstr solConfigName;
-			hr = solConfig->get_Name(&solConfigName);
-			Assert::IsTrue(SUCCEEDED(hr));
-			hr = solutionBuild->BuildProject(solConfigName.get(), wil::make_bstr_failfast(L"test.flx").get(), VARIANT_TRUE);
-			Assert::IsTrue(SUCCEEDED(hr));
+		TEST_METHOD(BuildProjectWithError)
+		{
+			HRESULT hr;
 
-			// Make sure build completed successfully. LastBuildInfo returns the number of failed projects.
-			VxDTE::vsBuildState buildState;
-			hr = solutionBuild->get_BuildState(&buildState);
-			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::AreEqual<int>(VxDTE::vsBuildStateDone	, buildState);
-			long lastBuildInfo;
-			hr = solutionBuild->get_LastBuildInfo(&lastBuildInfo);
-			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::AreEqual(0l, lastBuildInfo, L"Build should have no errors");
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"BuildProjectWithError");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
+
+			wil::com_ptr_failfast<VxDTE::_Solution> sln;
+			wil::com_ptr_failfast<VxDTE::Project> proj;
+			CreateSolutionAndProject (testPath.get(), L"test.sln", L"test.flx", &sln, &proj);
+			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
+
+			long buildFailCount;
+			BuildSolution(sln, &buildFailCount);
+			Assert::AreEqual(0l, buildFailCount);
+
+			WriteFileOnDisk(testPath.get(), L"file.asm", "\tabcde");
+
+			BuildSolution(sln, &buildFailCount);
+			Assert::AreEqual(1l, buildFailCount);
+
+			hr = _targetVS.dte->ExecuteCommand(wil::make_bstr_failfast(L"View.ErrorList").get());
+			auto dte2 = wil::com_query_failfast<VxDTE::DTE2>(_targetVS.dte);
+			wil::com_ptr_failfast<VxDTE::ToolWindows> toolWindows;
+			hr = dte2->get_ToolWindows(&toolWindows);
+			wil::com_ptr_failfast<VxDTE::ErrorList> errorList;
+			hr = toolWindows->get_ErrorList(&errorList);
+			wil::com_ptr_failfast<VxDTE::ErrorItems> errorItems;
+			hr = errorList->get_ErrorItems(&errorItems);
+			long errorCount;
+			hr = errorItems->get_Count(&errorCount);
+			Assert::AreEqual(1l, errorCount);
 		}
 
 		TEST_METHOD(OpenSpecificEditor)
