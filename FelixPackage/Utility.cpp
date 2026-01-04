@@ -281,6 +281,10 @@ static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* project, IProject
 	com_ptr<IFolderNode> folder;
 	hr = GetOrCreateChildFolder(project->AsParentNode(), genFilesStr.get(), true, &folder); RETURN_IF_FAILED(hr);
 
+	wil::unique_process_heap_string packageDir;
+	hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, packageDir); RETURN_IF_FAILED(hr);
+	*PathFindFileName(packageDir.get()) = 0;
+
 	for (ULONG resID : { IDS_PREINCLUDE, IDS_POSTINCLUDE })
 	{
 		wil::unique_bstr fileName;
@@ -476,6 +480,10 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 	wil::unique_variant projectDir;
 	hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, projectDir.addressof()); RETURN_IF_FAILED(hr);
 	RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
+
+	wil::unique_process_heap_string packageDir;
+	hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, packageDir); RETURN_IF_FAILED(hr);
+	*PathFindFileName(packageDir.get()) = 0;
 
 	wil::unique_bstr outputDirUnresolved;
 	hr = config->GeneralProps()->get_OutputDirectory(&outputDirUnresolved); RETURN_IF_FAILED(hr);

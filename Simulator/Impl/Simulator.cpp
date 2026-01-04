@@ -14,7 +14,7 @@ static constexpr UINT WM_SCREEN_COMPLETE  = WM_APP + 1;
 
 static ATOM wndClassAtom;
 
-HRESULT STDMETHODCALLTYPE MakeHC91ROM (Bus* memory_bus, Bus* io_bus, const wchar_t* folder, const wchar_t* BinaryFilename, wistd::unique_ptr<IMemoryDevice>* ppDevice);
+HRESULT STDMETHODCALLTYPE MakeHC91ROM (Bus* memory_bus, Bus* io_bus, const wchar_t* binaryFilename, wistd::unique_ptr<IMemoryDevice>* ppDevice);
 HRESULT STDMETHODCALLTYPE MakeHC91RAM (Bus* memory_bus, Bus* io_bus, wistd::unique_ptr<IMemoryDevice>* ppDevice);
 HRESULT STDMETHODCALLTYPE MakeBeeper (Bus* io_bus, wistd::unique_ptr<IDevice>* ppDevice);
 
@@ -71,7 +71,7 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, ICon
 	unique_cotaskmem_bitmapinfo _screenComplete;
 
 public:
-	HRESULT InitInstance (LPCWSTR dir, LPCWSTR romFilename)
+	HRESULT InitInstance (LPCWSTR romFilename)
 	{
 		HRESULT hr;
 		
@@ -85,7 +85,7 @@ public:
 		
 		hr = MakeBeeper(&ioBus, &_beeper); RETURN_IF_FAILED(hr);
 
-		hr = MakeHC91ROM (&memoryBus, &ioBus, dir, romFilename, &_romDevice); RETURN_IF_FAILED(hr);
+		hr = MakeHC91ROM (&memoryBus, &ioBus, romFilename, &_romDevice); RETURN_IF_FAILED(hr);
 ///		hr = _romDevice->AdviseBusAddressRangeChange(this); RETURN_IF_FAILED(hr);
 
 		hr = MakeHC91RAM (&memoryBus, &ioBus, &_ramDevice); RETURN_IF_FAILED(hr);
@@ -1442,10 +1442,10 @@ public:
 	#pragma endregion
 };
 
-HRESULT MakeSimulator (LPCWSTR dir, LPCWSTR romFilename, ISimulator** sim)
+HRESULT MakeSimulator (LPCWSTR romFilename, ISimulator** sim)
 {
 	com_ptr<SimulatorImpl> s = new (std::nothrow) SimulatorImpl(); RETURN_IF_NULL_ALLOC(s);
-	auto hr = s->InitInstance(dir, romFilename); RETURN_IF_FAILED(hr);
+	auto hr = s->InitInstance(romFilename); RETURN_IF_FAILED(hr);
 	*sim = s.detach();
 	return S_OK;
 }

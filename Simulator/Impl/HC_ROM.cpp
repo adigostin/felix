@@ -10,21 +10,19 @@ class HC_ROM : public IMemoryDevice
 	UINT64 _time = 0;
 	bool _cpmSrc = false; // false - reading from index 0 of _data; true - reading from index 24K of _data.
 	bool _cpmDst = false; // false - responding to bus address range 0-3FFF; true - responding to bus address range E000-FFFF
-	wil::unique_hlocal_string _folder;
+	wil::unique_hlocal_string _binaryFilename;
 	uint8_t _data[0x8000]; // this one last
 	//vector_nothrow<com_ptr<IWeakRef>> _callbacks;
 
 public:
-	HRESULT InitInstance (Bus* memory_bus, Bus* io_bus, const wchar_t* folder, const wchar_t* BinaryFilename)
+	HRESULT InitInstance (Bus* memory_bus, Bus* io_bus, const wchar_t* binaryFilename)
 	{
 		HRESULT hr;
 		_memory_bus = memory_bus;
 		_io_bus = io_bus;
-		_folder = wil::make_hlocal_string_nothrow(folder); RETURN_IF_NULL_ALLOC(_folder);
-		wchar_t binaryPath[MAX_PATH];
-		PathCombine (binaryPath, _folder.get(), BinaryFilename);
+		_binaryFilename = wil::make_hlocal_string_nothrow(binaryFilename); RETURN_IF_NULL_ALLOC(_binaryFilename);
 		com_ptr<IStream> romStream;
-		hr = SHCreateStreamOnFileEx (binaryPath, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &romStream); RETURN_IF_FAILED(hr);
+		hr = SHCreateStreamOnFileEx (binaryFilename, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &romStream); RETURN_IF_FAILED(hr);
 		STATSTG stat;
 		hr = romStream->Stat(&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
 		if (stat.cbSize.HighPart)
@@ -174,10 +172,10 @@ public:
 	#pragma endregion
 };
 
-HRESULT STDMETHODCALLTYPE MakeHC91ROM (Bus* memory_bus, Bus* io_bus, const wchar_t* folder, const wchar_t* BinaryFilename, wistd::unique_ptr<IMemoryDevice>* ppDevice)
+HRESULT STDMETHODCALLTYPE MakeHC91ROM (Bus* memory_bus, Bus* io_bus, const wchar_t* binaryFilename, wistd::unique_ptr<IMemoryDevice>* ppDevice)
 {
 	auto d = wil::make_unique_nothrow<HC_ROM>(); RETURN_IF_NULL_ALLOC(d);
-	auto hr = d->InitInstance(memory_bus, io_bus, folder, BinaryFilename); RETURN_IF_FAILED(hr);
+	auto hr = d->InitInstance(memory_bus, io_bus, binaryFilename); RETURN_IF_FAILED(hr);
 	*ppDevice = std::move(d);
 	return S_OK;
 }

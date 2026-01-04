@@ -7,7 +7,7 @@
 ; This must be kept in sync with the string InstalledProductRegPath.
 [$RootKey$\InstalledProducts\FelixPackage]
 @="#100"
-"Package"="{768bc57b-42a8-42ab-b389-457946c4fc6a}"
+"Package"="{768BC57B-42A8-42AB-B389-457946C4FC6A}"
 ; This is the one that goes to the list in Help -> About -> Installed products.
 ; Keep it in sync with the version number from source.extension.vsixmanifest.
 "PID"="0.9.10"
@@ -15,17 +15,17 @@
 "LogoID"="#400"
 "UseInterface"=dword:00000000
 
-[$RootKey$\Packages\{768bc57b-42a8-42ab-b389-457946c4fc6a}]
+[$RootKey$\Packages\{768BC57B-42A8-42AB-B389-457946C4FC6A}]
 @="Felix Package"
 "InprocServer32"="$PackageFolder$\FelixPackage.dll"
 "CompanyName"="Adi Gostin"
 "ProductName"="Felix"
 
-[$RootKey$\Packages\{768bc57b-42a8-42ab-b389-457946c4fc6a}\SatelliteDll]
+[$RootKey$\Packages\{768BC57B-42A8-42AB-B389-457946C4FC6A}\SatelliteDll]
 "DllName"="FelixPackageUI.dll"
 "Path"="$PackageFolder$"
 
-[$RootKey$\Packages\{768bc57b-42a8-42ab-b389-457946c4fc6a}\Automation]
+[$RootKey$\Packages\{768BC57B-42A8-42AB-B389-457946C4FC6A}\Automation]
 "TestHelper"=""
 
 ; Be sure to keep DisplayProjectFileExtensions in sync with Z80Project::GetFormatList.
@@ -33,7 +33,7 @@
 @="Z80ProjectFactory"
 "DisplayName"="Z80 Project55"
 "DisplayProjectFileExtensions"="Felix Project Files (*.flx);*.flx"
-"Package"="{768bc57b-42a8-42ab-b389-457946c4fc6a}"
+"Package"="{768BC57B-42A8-42AB-B389-457946C4FC6A}"
 "DefaultProjectExtension"="flx"
 "PossibleProjectExtensions"="flx"
 "ProjectTemplatesDir"="$PackageFolder$\Templates\Projects\FelixProject"
@@ -43,28 +43,28 @@
 ; The "@" string must match Z80AsmLanguageGuid.
 [$RootKey$\Languages\Language Services\Z80Asm]
 @="{598BC226-2E96-43AD-AD42-67D9CC6F75F6}"
-"Package"="{768bc57b-42a8-42ab-b389-457946c4fc6a}"
+"Package"="{768BC57B-42A8-42AB-B389-457946C4FC6A}"
 [$RootKey$\Languages\File Extensions\.asm]
 @="{598BC226-2E96-43AD-AD42-67D9CC6F75F6}"
 [$RootKey$\Languages\File Extensions\.inc]
 @="{598BC226-2E96-43AD-AD42-67D9CC6F75F6}"
 
 ; New Project template
-[$RootKey$\NewProjectTemplates\TemplateDirs\{768bc57b-42a8-42ab-b389-457946c4fc6a}\/1]
+[$RootKey$\NewProjectTemplates\TemplateDirs\{768BC57B-42A8-42AB-B389-457946C4FC6A}\/1]
 @="Felix"
 "SortPriority"=dword:00000064
 "TemplatesDir"="$PackageFolder$\Templates\Projects\FelixProject"
 
 ; New Item templates
-[$RootKey$\Projects\{D438161C-F032-4014-BC5C-20A80EAFF59B}\AddItemTemplates\TemplateDirs\{768bc57b-42a8-42ab-b389-457946c4fc6a}\/1]
+[$RootKey$\Projects\{D438161C-F032-4014-BC5C-20A80EAFF59B}\AddItemTemplates\TemplateDirs\{768BC57B-42A8-42AB-B389-457946C4FC6A}\/1]
 @="Z80"
 "TemplatesDir"="$PackageFolder$\Templates\Items"
 "SortPriority"=dword:00000064
 
 [$RootKey$\Menus]
-"{768bc57b-42a8-42ab-b389-457946c4fc6a}"=", 1000, 1"
+"{768BC57B-42A8-42AB-B389-457946C4FC6A}"=", 1000, 1"
 [$RootKey$\ToolWindows\{6f52da3a-e13c-4a1e-a178-98805f356a66}]
-@="{768bc57b-42a8-42ab-b389-457946c4fc6a}"
+@="{768BC57B-42A8-42AB-B389-457946C4FC6A}"
 "Name"="Simulator Screen"
 "Float"="100,100,400,400"
 "Orientation"="Right"

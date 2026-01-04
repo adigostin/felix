@@ -35,7 +35,6 @@ static const char SentryReleaseName[] = "0.9.10";
 
 FELIX_API wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 com_ptr<ISimulator> simulator;
-FELIX_API wil::unique_process_heap_string packageDir;
 
 HRESULT TestHelper_CreateInstance (IFelixTestHelper** out);
 
@@ -53,6 +52,7 @@ class FelixPackageImpl : public IVsPackage, IVsSolutionEvents, IOleCommandTarget
 	wil::ThreadFailureCache _threadFailureCache;
 	sentry_options_t *_sentryOptions = nullptr;
 	bool _comLibraryRegistered = false;
+	wil::unique_process_heap_string packageDir;
 
 public:
 	HRESULT InitInstance()
@@ -123,7 +123,9 @@ public:
 		wil::com_ptr_nothrow<IProfferService> srpProffer;
 		auto hr = serviceProvider->QueryService (SID_SProfferService, &srpProffer); RETURN_IF_FAILED(hr);
 		
-		hr = MakeSimulator(packageDir.get(), BinaryFilename, &simulator); RETURN_IF_FAILED(hr);
+		wil::unique_process_heap_string romFilename;
+		hr = wil::str_concat_nothrow(romFilename, packageDir.get(), BinaryFilename); RETURN_IF_FAILED(hr);
+		hr = MakeSimulator(romFilename.get(), &simulator); RETURN_IF_FAILED(hr);
 		simulator->Resume(false);
 
 		return S_OK;

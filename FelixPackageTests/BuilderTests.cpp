@@ -117,10 +117,14 @@ namespace FelixTests
 
 		TEST_METHOD(Test_SjasmMissingExe)
 		{
+			wil::unique_process_heap_string dllDir;
+			wil::GetModuleFileNameW((HMODULE)&__ImageBase, dllDir);
+			*PathFindFileName(dllDir.get()) = 0;
+
 			auto sjasmOrigPath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH);
-			PathCombine (sjasmOrigPath.get(), packageDir.get(), L"sjasmplus.exe");
+			PathCombine (sjasmOrigPath.get(), dllDir.get(), L"sjasmplus.exe");
 			auto sjasmTempPath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH);
-			PathCombine(sjasmTempPath.get(), packageDir.get(), L"sjasmplus.tmp");
+			PathCombine(sjasmTempPath.get(), dllDir.get(), L"sjasmplus.tmp");
 			BOOL bres = MoveFileExW (sjasmOrigPath.get(), sjasmTempPath.get(), MOVEFILE_REPLACE_EXISTING);
 			Assert::IsTrue(bres);
 

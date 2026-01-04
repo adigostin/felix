@@ -69,4 +69,4 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{56344845-3DDA-4BC0-9645-7EBA3FE94A93}")
 	virtual HRESULT STDMETHODCALLTYPE SetShowCRTSnapshot(BOOL val) = 0;
 };
 
-HRESULT MakeSimulator (LPCWSTR dir, LPCWSTR romFilename, ISimulator** to);
+HRESULT MakeSimulator (LPCWSTR romFilename, ISimulator** to);

@@ -440,10 +440,12 @@ public:
 		hr = tce->Send (_callback.get(), this, _program.get(), thread.get()); LOG_IF_FAILED(hr);
 
 		// Create a debug module for the ROM.
-		auto rom_path = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(rom_path);
-		auto pres = PathCombine (rom_path.get(), packageDir.get(), L"ROMs/Spectrum48K.rom"); RETURN_HR_IF(CO_E_BAD_PATH, !pres);
-		auto rom_debug_info_path = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(rom_debug_info_path);
-		pres = PathCombine (rom_debug_info_path.get(), packageDir.get(), L"ROMs/Spectrum48K.z80sym"); RETURN_IF_FAILED(hr);
+		wil::unique_process_heap_string dll;
+		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, dll); RETURN_IF_FAILED(hr);
+		PathFindFileName(dll.get())[0] = 0; // remove file name
+		wil::unique_process_heap_string rom_path, rom_debug_info_path;
+		hr = wil::str_concat_nothrow(rom_path, dll, L"ROMs\\Spectrum48K.rom"); RETURN_IF_NULL_ALLOC(rom_path);
+		hr = wil::str_concat_nothrow(rom_debug_info_path, dll, L"ROMs\\Spectrum48K.z80sym"); RETURN_IF_NULL_ALLOC(rom_debug_info_path);
 		wil::com_ptr_nothrow<IDebugModule2> romModule;
 		hr = MakeModule (0, 0x5CCB, rom_path.get(), rom_debug_info_path.get(), false,
 			this, _program.get(), _callback.get(), &romModule); RETURN_IF_FAILED(hr);
