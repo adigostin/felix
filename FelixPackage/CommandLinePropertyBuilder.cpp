@@ -86,8 +86,7 @@ static INT_PTR CALLBACK CommandLineDialogProcStatic (HWND hwnd, UINT uMsg, WPARA
 
 HRESULT ShowCommandLinePropertyBuilder (HWND hwndParent, BSTR valueBefore, BSTR* valueAfter)
 {
-	com_ptr<IVsShell> shell;
-	auto hr = serviceProvider->QueryService(SID_SVsShell, &shell);
+	HRESULT hr;
 	HINSTANCE uiLibrary;
 	hr = shell->LoadUILibrary(CLSID_FelixPackage, 0, (DWORD_PTR*)&uiLibrary); RETURN_IF_FAILED(hr);
 	auto params = wistd::unique_ptr<S>(new (std::nothrow) S()); RETURN_IF_NULL_ALLOC(params);

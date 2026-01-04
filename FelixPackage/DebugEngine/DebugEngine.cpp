@@ -490,8 +490,6 @@ public:
 				// to the GUI code. The GUI will eventually show a generic E_FAIL.
 				// So let's show that detailed error info here; the user will see two error messages,
 				// but that's not as bad as seeing a single one without detailed information.
-				com_ptr<IVsUIShell> uiShell;
-				serviceProvider->QueryService(SID_SVsUIShell, &uiShell);
 				uiShell->ReportErrorInfo(hr);
 				return hr;
 			}
@@ -596,9 +594,6 @@ public:
 		WI_ASSERT(_editorFunctionBreakpoint);
 		auto hr = simulator->RemoveBreakpoint(_editorFunctionBreakpoint); LOG_IF_FAILED(hr);
 		_editorFunctionBreakpoint = 0;
-
-		com_ptr<IVsUIShell> uiShell;
-		hr = serviceProvider->QueryService(SID_SVsUIShell, &uiShell); RETURN_IF_FAILED(hr);
 
 		com_ptr<IDebugProcess2> process;
 		hr = _program->GetProcess(&process); RETURN_IF_FAILED(hr);

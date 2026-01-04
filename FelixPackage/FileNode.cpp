@@ -1032,10 +1032,7 @@ public:
 		sink->OnPropertyChanged(_itemId, VSHPROPID_IconMonikerId, 0);
 
 		// Make sure the property browser is updated.
-		com_ptr<IVsUIShell> uiShell;
-		hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell);
-		if (SUCCEEDED(hr))
-			uiShell->RefreshPropertyBrowser(DISPID_UNKNOWN); // refresh all properties
+		uiShell->RefreshPropertyBrowser(DISPID_UNKNOWN); // refresh all properties
 
 		// Mark project as dirty.
 		com_ptr<IPropertyNotifySink> pns;

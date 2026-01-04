@@ -257,14 +257,8 @@ public:
 			}
 			else if (sk == STEP_OUT)
 			{
-				wil::com_ptr_nothrow<IVsUIShell> uiShell;
-				hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell);
-				if (SUCCEEDED(hr))
-				{
-					SetErrorInfo(E_NOTIMPL, L"Step Out is not yet implemented.");
-					uiShell->ReportErrorInfo(E_NOTIMPL);
-				}
-
+				SetErrorInfo(E_NOTIMPL, L"Step Out is not yet implemented.");
+				uiShell->ReportErrorInfo(E_NOTIMPL);
 				SendStepCompleteEvent();
 				return S_OK;
 			}

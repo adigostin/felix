@@ -480,8 +480,6 @@ public:
 		hr = toolbarHost->AddToolbar (VSTWT_TOP, &CLSID_FelixPackageCmdSet, TWToolbar); RETURN_IF_FAILED(hr);
 
 		hr = InitVSColors(); RETURN_IF_FAILED(hr);
-		wil::com_ptr_nothrow<IVsShell> shell;
-		hr = _sp->QueryService(SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
 		hr = shell->AdviseBroadcastMessages (this, &_broadcastCookie); RETURN_IF_FAILED(hr);
 		auto unadviseBroadcastIfFailed = wil::scope_exit([this, shell=shell.get()]
 			{ shell->UnadviseBroadcastMessages (_broadcastCookie); _broadcastCookie = VSCOOKIE_NIL; });
@@ -507,14 +505,8 @@ public:
 
 		if (_broadcastCookie != VSCOOKIE_NIL)
 		{
-			wil::com_ptr_nothrow<IVsShell> shell;
-			hr = _sp->QueryService(SID_SVsShell, &shell);
+			hr = shell->UnadviseBroadcastMessages (_broadcastCookie);
 			WI_ASSERT(SUCCEEDED(hr));
-			if (SUCCEEDED(hr))
-			{
-				hr = shell->UnadviseBroadcastMessages (_broadcastCookie);
-				WI_ASSERT(SUCCEEDED(hr));
-			}
 			_broadcastCookie = VSCOOKIE_NIL;
 		}
 
@@ -697,10 +689,8 @@ public:
 
 		wchar_t filename[MAX_PATH];
 		filename[0] = 0;
-		com_ptr<IVsUIShell> shell;
-		hr = _sp->QueryService (SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
 		HWND dialogOwner;
-		hr = shell->GetDialogOwnerHwnd(&dialogOwner); RETURN_IF_FAILED(hr);
+		hr = uiShell->GetDialogOwnerHwnd(&dialogOwner); RETURN_IF_FAILED(hr);
 		VSOPENFILENAMEW of = { };
 		of.lStructSize = (DWORD)sizeof(of);
 		of.hwndOwner = dialogOwner;
@@ -709,7 +699,7 @@ public:
 		of.nMaxFileName = (DWORD)ARRAYSIZE(filename);
 		of.pwzInitialDir = initial_directory.get();
 		of.pwzFilter = L"ZX Spectrum files (*.sna;*.z80)\0*.sna;*.z80\0All Files (*.*)\0*.*\0";
-		hr = shell->GetOpenFileNameViaDlg(&of);
+		hr = uiShell->GetOpenFileNameViaDlg(&of);
 		if (hr == OLE_E_PROMPTSAVECANCELLED)
 			return S_OK;
 		RETURN_IF_FAILED(hr);
@@ -753,11 +743,7 @@ public:
 
 	HRESULT SaveRAM()
 	{
-		com_ptr<IVsShell> shell;
-		auto hr = _sp->QueryService (SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
-
-		com_ptr<IVsUIShell> uiShell;
-		hr = _sp->QueryService (SID_SVsUIShell, &uiShell); RETURN_IF_FAILED(hr);
+		HRESULT hr;
 
 		if (simulator->Running_HR() == S_OK)
 		{

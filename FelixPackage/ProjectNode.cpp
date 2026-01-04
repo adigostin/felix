@@ -73,14 +73,9 @@ class ProjectNode
 		wil::com_ptr_nothrow<IFileOperation> pfo;
 		auto hr = CoCreateInstance(__uuidof(FileOperation), NULL, CLSCTX_ALL, IID_PPV_ARGS(&pfo)); RETURN_IF_FAILED(hr);
 
-		wil::com_ptr_nothrow<IVsUIShell> shell;
-		hr = serviceProvider->QueryService(SID_SVsUIShell, &shell);
-		if (SUCCEEDED(hr))
-		{
-			HWND ownerHwnd;
-			hr = shell->GetDialogOwnerHwnd(&ownerHwnd); RETURN_IF_FAILED(hr);
-			hr = pfo->SetOwnerWindow(ownerHwnd); RETURN_IF_FAILED(hr);
-		}
+		HWND ownerHwnd;
+		hr = uiShell->GetDialogOwnerHwnd(&ownerHwnd); RETURN_IF_FAILED(hr);
+		hr = pfo->SetOwnerWindow(ownerHwnd); RETURN_IF_FAILED(hr);
 
 		// -----------------------------------------
 		// Create shell items for the source project file, source folder, destination folder.
@@ -1054,8 +1049,6 @@ public:
 		_caption = std::move(newCaption);
 
 		// Make sure the property browser is updated
-		com_ptr<IVsUIShell> uiShell;
-		hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell); RETURN_IF_FAILED(hr);
 		uiShell->RefreshPropertyBrowser(DISPID_VALUE); // return value ignored on purpose
 
 		// Let the world know that the project is renamed. Solution needs to be told of rename. 
@@ -1464,12 +1457,9 @@ public:
 		POINTS pts;
 		memcpy (&pts, &pvaIn->uintVal, 4);
 
-		com_ptr<IVsUIShell> shell;
-		auto hr = serviceProvider->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
-
 		if (itemid == VSITEMID_ROOT)
 		{
-			return shell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_PROJNODE, pts, nullptr);
+			return uiShell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_PROJNODE, pts, nullptr);
 		}
 		else if (itemid == VSITEMID_SELECTION)
 		{
@@ -1509,11 +1499,11 @@ public:
 			}
 
 			if (projectNodeIncluded && !fileNodesIncluded)
-				return shell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_PROJNODE, pts, nullptr);
+				return uiShell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_PROJNODE, pts, nullptr);
 			else if (projectNodeIncluded && fileNodesIncluded)
-				return shell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_XPROJ_PROJITEM, pts, nullptr);
+				return uiShell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_XPROJ_PROJITEM, pts, nullptr);
 			else if (!projectNodeIncluded && fileNodesIncluded)
-				return shell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_XPROJ_MULTIITEM, pts, nullptr);
+				return uiShell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_XPROJ_MULTIITEM, pts, nullptr);
 			return E_NOTIMPL;
 		}
 		else
@@ -1522,9 +1512,9 @@ public:
 			if (FindDescendant(itemid, &d) == S_OK)
 			{
 				if (wil::try_com_query_nothrow<IFileNode>(d))
-					return shell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_ITEMNODE, pts, nullptr);
+					return uiShell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_ITEMNODE, pts, nullptr);
 				else if (wil::try_com_query_nothrow<IFolderNode>(d))
-					return shell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_FOLDERNODE, pts, nullptr);
+					return uiShell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_FOLDERNODE, pts, nullptr);
 				return E_NOTIMPL;
 			}
 			else
@@ -1840,8 +1830,6 @@ public:
 			hr = c->GetProperty(VSHPROPID_SaveName, &saveName); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_UNEXPECTED, saveName.vt != VT_BSTR);
 			if (saveName.bstrVal && !_wcsicmp(saveName.bstrVal, pszNewFileName))
 			{
-				com_ptr<IVsShell> shell;
-				hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
 				wil::unique_bstr text;
 				hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_ITEM_ALREADY_EXISTS_IN_LOCATION, &text); RETURN_IF_FAILED(hr);
 
@@ -2471,10 +2459,8 @@ public:
 		}
 		else
 		{
-			com_ptr<IVsUIShell> shell;
-			auto hr = serviceProvider->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
 			HWND ownerHwnd;
-			hr = shell->GetDialogOwnerHwnd(&ownerHwnd); RETURN_IF_FAILED(hr);
+			hr = uiShell->GetDialogOwnerHwnd(&ownerHwnd); RETURN_IF_FAILED(hr);
 			hr = pfo->SetOwnerWindow(ownerHwnd); RETURN_IF_FAILED(hr);
 			hr = pfo->SetOperationFlags(FOF_NOCONFIRMATION); RETURN_IF_FAILED(hr);
 		}
@@ -2562,13 +2548,8 @@ public:
 				if (FAILED(hr))
 					return hr;
 
-				wil::com_ptr_nothrow<IVsUIShell> shell;
-				hr = serviceProvider->QueryService(SID_SVsUIShell, &shell);
-				if (FAILED(hr))
-					return hr;
-
 				wil::unique_bstr docNew;
-				return shell->SaveDocDataToFile (VSSAVE_SilentSave, ff.get(), pszSilentSaveAsName, &docNew, pfCanceled);
+				return uiShell->SaveDocDataToFile (VSSAVE_SilentSave, ff.get(), pszSilentSaveAsName, &docNew, pfCanceled);
 			}
 
 			RETURN_HR(E_NOTIMPL);
@@ -3126,10 +3107,8 @@ public:
 
 	HRESULT RefreshHierarchy()
 	{
-		com_ptr<IVsUIShell> shell;
-		auto hr = serviceProvider->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
 		LONG result;
-		hr = shell->ShowMessageBox (0, GUID_NULL, L"title", L"Refresh not yet implemented", 0, 0,
+		uiShell->ShowMessageBox (0, GUID_NULL, L"title", L"Refresh not yet implemented", 0, 0,
 			OLEMSGBUTTON_OK, OLEMSGDEFBUTTON_FIRST, OLEMSGICON_INFO, FALSE, &result);
 		return S_OK;
 	}
@@ -3153,8 +3132,6 @@ public:
 			hr = GetPathOf (node, parentPath); RETURN_IF_FAILED(hr);
 		}
 
-		com_ptr<IVsShell> shell;
-		hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
 		wil::unique_bstr newFolderName;
 		hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_NEW_FOLDER_NAME, &newFolderName); RETURN_IF_FAILED(hr);
 
@@ -3205,12 +3182,8 @@ public:
 			{
 				// them post the rename command to the shell. Folder verification and creation will
 				// happen in the setlabel code...
-				com_ptr<IVsUIShell> shell;
-				if (SUCCEEDED(serviceProvider->QueryService(SID_SVsUIShell, IID_PPV_ARGS(shell.addressof()))))
-				{
-					wil::unique_variant dummy;
-					shell->PostExecCommand (&CMDSETID_StandardCommandSet97, cmdidRename, 0, &dummy);
-				}
+				wil::unique_variant dummy;
+				uiShell->PostExecCommand (&CMDSETID_StandardCommandSet97, cmdidRename, 0, &dummy);
 			}
 		}
 

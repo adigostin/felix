@@ -167,8 +167,6 @@ public:
 	HRESULT InitInstance (UINT titleStringResId, REFGUID pageGuid, DISPID dispidChildObj)
 	{
 		HRESULT hr;
-		com_ptr<IVsShell> shell;
-		hr = serviceProvider->QueryService(SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
 		hr = shell->LoadPackageString(CLSID_FelixPackage, titleStringResId, &title); RETURN_IF_FAILED(hr);
 		_pageGuid = pageGuid;
 		_dispidChildObj = dispidChildObj;
@@ -351,8 +349,6 @@ public:
 	HRESULT InitInstance()
 	{
 		HRESULT hr;
-		com_ptr<IVsShell> shell;
-		hr = serviceProvider->QueryService(SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
 		hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_ASSEMBLER_PROP_PAGE_TITLE, &title); RETURN_IF_FAILED(hr);
 
 		com_ptr<IVsFontAndColorStorage> fcs;
@@ -422,8 +418,6 @@ public:
 		hr = MakeSjasmCommandLine(hier, config, asmProps, pText); RETURN_IF_FAILED(hr);
 		if (hr == S_FALSE)
 		{
-			com_ptr<IVsShell> shell;
-			hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
 			wil::unique_bstr message;
 			hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_NO_BUILD_TOOL_ASM_FILES, &message); RETURN_IF_FAILED(hr);
 			*pText = message.release();

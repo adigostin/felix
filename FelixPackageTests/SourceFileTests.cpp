@@ -132,13 +132,17 @@ namespace FelixTests
 		TEST_METHOD(RenameFileOutsideProjectDirOtherDrive)
 		{
 			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"\\RenameFileOutsideProjectDirSameDrive");
-			CreateDirectory(testDir.get(), nullptr);
+			Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
+			auto delDir = wil::scope_exit([tp=testDir.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
 
 			com_ptr<IVsHierarchy> hier;
 			auto hr = MakeProjectNode (nullptr, testDir.get(), nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsTrue(PathFileExists(L"D:\\FelixTest") || CreateDirectory(L"D:\\FelixTest", nullptr));
+			auto delDir2 = wil::scope_exit([] { std::error_code ec; std::filesystem::remove_all(L"D:\\FelixTest", ec); });
+			Assert::IsTrue(PathFileExists(L"D:\\FelixTest\\RenameFileOutsideProjectDirSameDrive") || CreateDirectory(L"D:\\FelixTest\\RenameFileOutsideProjectDirSameDrive", nullptr));
 			const wchar_t* fileFullPath = L"D:\\FelixTest\\RenameFileOutsideProjectDirSameDrive\\file.asm";
 			hr = hier.try_query<IVsProject>()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, &fileFullPath, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));

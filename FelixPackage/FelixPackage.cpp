@@ -34,6 +34,8 @@ static const wchar_t BinaryFilename[] = L"ROMs/Spectrum48K.rom";
 static const char SentryReleaseName[] = "0.9.10";
 
 FELIX_API wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
+wil::com_ptr_nothrow<IVsShell> shell;
+wil::com_ptr_nothrow<IVsUIShell> uiShell;
 com_ptr<ISimulator> simulator;
 
 HRESULT TestHelper_CreateInstance (IFelixTestHelper** out);
@@ -201,31 +203,22 @@ public:
 		hr = wss->GetBool(SettingsCollection, AlwaysReportSettingsName, &report);
 		if (hr != S_OK || !report)
 		{
-			wil::com_ptr_nothrow<IVsUIShell> uiShell;
-			hr = serviceProvider->QueryService(SID_SVsUIShell, &uiShell);
+			HWND parent;
+			hr = uiShell->GetDialogOwnerHwnd(&parent);
 			if (SUCCEEDED(hr))
 			{
-				HWND parent;
-				hr = uiShell->GetDialogOwnerHwnd(&parent);
-				if (SUCCEEDED(hr))
+				static HMODULE _uiLibrary = nullptr;
+				if (_uiLibrary || SUCCEEDED(shell->LoadUILibrary(CLSID_FelixPackage, 0, (DWORD_PTR*)&_uiLibrary)))
 				{
-					com_ptr<IVsShell> shell;
-					hr = serviceProvider->QueryService(SID_SVsShell, &shell); 
+					INT_PTR res = DialogBoxParamW (_uiLibrary, MAKEINTRESOURCE(IDD_REPORT_ERROR), parent, TelemetryDialogProc, (LPARAM)(void*)&failure);
+					if (res == IDYES)
 					{
-						static HMODULE _uiLibrary = nullptr;
-						if (_uiLibrary || SUCCEEDED(shell->LoadUILibrary(CLSID_FelixPackage, 0, (DWORD_PTR*)&_uiLibrary)))
-						{
-							INT_PTR res = DialogBoxParamW (_uiLibrary, MAKEINTRESOURCE(IDD_REPORT_ERROR), parent, TelemetryDialogProc, (LPARAM)(void*)&failure);
-							if (res == IDYES)
-							{
-								if (SUCCEEDED(wss->CreateCollection(SettingsCollection)))
-									wss->SetBool(SettingsCollection, AlwaysReportSettingsName, TRUE);
-							}
-
-							if (res == IDYES || res == IDOK)
-								report = TRUE;
-						}
+						if (SUCCEEDED(wss->CreateCollection(SettingsCollection)))
+							wss->SetBool(SettingsCollection, AlwaysReportSettingsName, TRUE);
 					}
+
+					if (res == IDYES || res == IDOK)
+						report = TRUE;
 				}
 			}
 		}
@@ -276,14 +269,8 @@ public:
 		if (message == WM_INITDIALOG)
 		{
 			// Get the owner window and dialog box rectangles. 
-
-			com_ptr<IVsUIShell> shell;
-			auto hr = serviceProvider->QueryService(SID_SVsUIShell, &shell);
-			if (SUCCEEDED(hr))
-			{
-				HWND hwndOwner = GetParent(hwndDlg);
-				shell->CenterDialogOnWindow(hwndDlg, hwndOwner);
-			}
+			HWND hwndOwner = GetParent(hwndDlg);
+			uiShell->CenterDialogOnWindow(hwndDlg, hwndOwner);
 
 			auto& failure = *(const wil::FailureInfo*)(void*)lParam;
 			wchar_t message[2048];
@@ -361,17 +348,12 @@ public:
 		}
 
 		// Fall back to something documented
-		com_ptr<IVsShell> shell;
-		hr = serviceProvider->QueryService(SID_SVsShell, &shell);
-		if (SUCCEEDED(hr))
+		wil::unique_variant ver;
+		hr = shell->GetProperty (VSSPROPID_ReleaseVersion, &ver);
+		if (SUCCEEDED(hr) && (ver.vt == VT_BSTR))
 		{
-			wil::unique_variant ver;
-			hr = shell->GetProperty (VSSPROPID_ReleaseVersion, &ver);
-			if (SUCCEEDED(hr) && (ver.vt == VT_BSTR))
-			{
-				*pBstr = ver.release().bstrVal;
-				return;
-			}
+			*pBstr = ver.release().bstrVal;
+			return;
 		}
 
 		*pBstr = SysAllocString(L"VS Ver Unknown");
@@ -436,9 +418,12 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE SetSite (IServiceProvider *pSP) override
 	{
 		HRESULT hr;
+
 		WI_ASSERT(!serviceProvider);
-		
 		serviceProvider = pSP;
+
+		hr = pSP->QueryService(SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
+		hr = pSP->QueryService(SID_SVsUIShell, &uiShell); RETURN_IF_FAILED(hr);
 
 		if (!serviceProvider.try_query<IMockServiceProvider>())
 			InitSentry();
@@ -757,13 +742,10 @@ public:
 	{
 		HRESULT hr;
 
-		wil::com_ptr_nothrow<IVsUIShell> shell;
-		hr = serviceProvider->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
-
 		wil::com_ptr_nothrow<IVsWindowPane> pane;
 		hr = SimulatorWindowPane_CreateInstance (&pane); RETURN_IF_FAILED(hr);
 
-		hr = shell->CreateToolWindow (CTW_fForceCreate | CTW_fActivateWithProject | CTW_fToolbarHost, 0, pane.get(), GUID_NULL,
+		hr = uiShell->CreateToolWindow (CTW_fForceCreate | CTW_fActivateWithProject | CTW_fToolbarHost, 0, pane.get(), GUID_NULL,
 			CLSID_FelixPersistenceSlot, GUID_NULL, nullptr, L"ZX Simulator", nullptr, ppFrame); RETURN_IF_FAILED(hr);
 
 		VARIANT srpvt;
@@ -858,55 +840,22 @@ HRESULT GetDefaultProjectFileExtension (BSTR* ppExt)
 
 HRESULT SetErrorInfo0 (HRESULT errorHR, ULONG packageStringResId)
 {
-	com_ptr<IVsShell> shell;
-	auto hr = serviceProvider->QueryService(SID_SVsShell, &shell);
-	if (FAILED(hr))
-		return errorHR;
-
 	wil::unique_bstr message;
-	hr = shell->LoadPackageString(CLSID_FelixPackage, packageStringResId, &message);
-	if (FAILED(hr))
-		return errorHR;
-
-	com_ptr<IVsUIShell> uiShell;
-	hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell);
-	if (FAILED(hr))
-		return errorHR;
-
-	uiShell->SetErrorInfo (errorHR, message.get(), 0, nullptr, nullptr);
+	if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, packageStringResId, &message)))
+		uiShell->SetErrorInfo (errorHR, message.get(), 0, nullptr, nullptr);
 
 	return errorHR;
 }
 
 HRESULT SetErrorInfo1 (HRESULT errorHR, ULONG packageStringResId, LPCWSTR arg1)
 {
-	wil::com_ptr_nothrow<IVsShell> shell;
-	auto hr = serviceProvider->QueryService(SID_SVsShell, &shell);
-	if (FAILED(hr))
-		return errorHR;
-
 	wil::unique_bstr message;
-	hr = shell->LoadPackageString(CLSID_FelixPackage, packageStringResId, &message);
-	if (FAILED(hr))
-		return errorHR;
-
-	wil::unique_hlocal_string buffer;
-	for (size_t sz = 100; ; sz *= 2)
+	if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, packageStringResId, &message)))
 	{
-		buffer = wil::make_hlocal_string_nothrow(nullptr, sz);
-		if (!buffer)
-			return errorHR;
-		int ires = _snwprintf_s (buffer.get(), sz, _TRUNCATE, message.get(), arg1);
-		if (ires != -1)
-			break;
+		wil::unique_hlocal_string buffer;
+		if (SUCCEEDED(wil::str_printf_nothrow(buffer, message.get(), arg1)))
+			uiShell->SetErrorInfo (errorHR, buffer.get(), 0, nullptr, nullptr);
 	}
-
-	com_ptr<IVsUIShell> uiShell;
-	hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell);
-	if (FAILED(hr))
-		return errorHR;
-
-	uiShell->SetErrorInfo (errorHR, buffer.get(), 0, nullptr, nullptr);
 
 	return errorHR;
 }

@@ -75,8 +75,6 @@ public:
 			hr = ParseNumber(pszCode, &val);
 			if (hr != S_OK)
 			{
-				com_ptr<IVsShell> shell;
-				serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell));
 				wil::unique_bstr str;
 				if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_UNK_NUM_FORMAT, &str)))
 					*pbstrError = str.release();
@@ -92,8 +90,6 @@ public:
 
 		// VS calls this function all the time when the user hovers the mouse in the editor
 		// while debugging. Let's not load any detailed error message.
-		//com_ptr<IVsShell> shell;
-		//serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell));
 		//wil::unique_bstr str;
 		//if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_UNK_EXPRESSION, &str)))
 		//	*pbstrError = str.release();

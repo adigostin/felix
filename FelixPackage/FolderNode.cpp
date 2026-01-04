@@ -310,10 +310,7 @@ public:
 			{
 				POINTS pts;
 				memcpy (&pts, &pvaIn->uintVal, 4);
-
-				com_ptr<IVsUIShell> shell;
-				hr = serviceProvider->QueryService(SID_SVsUIShell, &shell); RETURN_IF_FAILED(hr);
-				hr = shell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_FOLDERNODE, pts, nullptr); RETURN_IF_FAILED(hr);
+				hr = uiShell->ShowContextMenu (0, guidSHLMainMenu, IDM_VS_CTXT_FOLDERNODE, pts, nullptr); RETURN_IF_FAILED(hr);
 				return S_OK;
 			}
 
@@ -631,10 +628,7 @@ public:
 		sink->OnPropertyChanged (_itemId, VSHPROPID_DescriptiveName, 0);
 
 		// Make sure the property browser is updated.
-		com_ptr<IVsUIShell> uiShell;
-		hr = serviceProvider->QueryService (SID_SVsUIShell, &uiShell);
-		if (SUCCEEDED(hr))
-			uiShell->RefreshPropertyBrowser(DISPID_UNKNOWN); // refresh all properties
+		uiShell->RefreshPropertyBrowser(DISPID_UNKNOWN); // refresh all properties
 
 		hier.try_query<IPropertyNotifySink>()->OnChanged(dispidItems);
 

@@ -273,9 +273,6 @@ static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* project, IProject
 {
 	HRESULT hr;
 
-	com_ptr<IVsShell> shell;
-	hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
-
 	wil::unique_bstr genFilesStr;
 	hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERATED_FILES, &genFilesStr); RETURN_IF_FAILED(hr);
 	com_ptr<IFolderNode> folder;
@@ -322,9 +319,6 @@ static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* project, IProject
 HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, IProjectConfig* configOrNullForActive)
 {
 	HRESULT hr;
-
-	com_ptr<IVsShell> shell;
-	hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
 
 	com_ptr<IVsOutputWindowPane> op;
 	hr = serviceProvider->QueryService(SID_SVsGeneralOutputWindowPane, IID_PPV_ARGS(&op)); RETURN_IF_FAILED(hr);
@@ -473,9 +467,6 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, IProjectConfig* conf
 FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine)
 {
 	HRESULT hr;
-
-	com_ptr<IVsShell> shell;
-	hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
 
 	wil::unique_variant projectDir;
 	hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, projectDir.addressof()); RETURN_IF_FAILED(hr);
@@ -706,13 +697,9 @@ HRESULT QueryEditProjectFile (IVsHierarchy* hier)
 
 HRESULT GetHierarchyWindow (IVsUIHierarchyWindow** ppHierWindow)
 {
-	com_ptr<IVsUIShell> shell;
-	auto hr = serviceProvider->QueryService(SID_SVsUIShell, IID_PPV_ARGS(shell.addressof()));
-	if(FAILED(hr))
-		return hr;
-
+	HRESULT hr;
 	com_ptr<IVsWindowFrame> frame;
-	hr = shell->FindToolWindow(0, GUID_SolutionExplorer, frame.addressof());
+	hr = uiShell->FindToolWindow(0, GUID_SolutionExplorer, frame.addressof());
 	if(FAILED(hr))
 		return hr;
 

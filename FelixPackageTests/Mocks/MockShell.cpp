@@ -6,7 +6,7 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-struct MockShell : IVsShell
+struct MockShell : IVsShell, IVsUIShell
 {
 	ULONG _refCount = 0;
 	wil::unique_hmodule _ui;
@@ -14,8 +14,9 @@ struct MockShell : IVsShell
 	#pragma region IUnknown
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
 	{
-		if (TryQI<IUnknown>(this, riid, ppvObject)
+		if (TryQI<IUnknown>(static_cast<IVsShell*>(this), riid, ppvObject)
 			|| TryQI<IVsShell>(this, riid, ppvObject)
+			|| TryQI<IVsUIShell>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -127,6 +128,209 @@ struct MockShell : IVsShell
 	virtual HRESULT STDMETHODCALLTYPE IsPackageLoaded( 
 		/* [in] */ __RPC__in REFGUID guidPackage,
 		/* [retval][out] */ __RPC__deref_out_opt IVsPackage **ppPackage) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+	#pragma endregion
+
+	#pragma region IVsUIShell
+	virtual HRESULT STDMETHODCALLTYPE GetToolWindowEnum(IEnumWindowFrames** ppEnum) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetDocumentWindowEnum(IEnumWindowFrames** ppEnum) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE FindToolWindow(VSFINDTOOLWIN grfFTW, REFGUID rguidPersistenceSlot, IVsWindowFrame** ppWindowFrame) override
+	{
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE CreateToolWindow(VSCREATETOOLWIN grfCTW, DWORD dwToolWindowId, IUnknown* punkTool, REFCLSID rclsidTool, REFGUID rguidPersistenceSlot, REFGUID rguidAutoActivate, IServiceProvider* pSP, LPCOLESTR pszCaption, BOOL* pfDefaultPosition, IVsWindowFrame** ppWindowFrame) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE CreateDocumentWindow(VSCREATEDOCWIN grfCDW, LPCOLESTR pszMkDocument, IVsUIHierarchy* pUIH, VSITEMID itemid, IUnknown* punkDocView, IUnknown* punkDocData, REFGUID rguidEditorType, LPCOLESTR pszPhysicalView, REFGUID rguidCmdUI, IServiceProvider* pSP, LPCOLESTR pszOwnerCaption, LPCOLESTR pszEditorCaption, BOOL* pfDefaultPosition, IVsWindowFrame** ppWindowFrame) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE SetErrorInfo(HRESULT hr, LPCOLESTR pszDescription, DWORD dwReserved, LPCOLESTR pszHelpKeyword, LPCOLESTR pszSource) override
+	{
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE ReportErrorInfo(HRESULT hr) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetDialogOwnerHwnd(HWND* phwnd) override
+	{
+		*phwnd = nullptr;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE EnableModeless(BOOL fEnable) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE SaveDocDataToFile(VSSAVEFLAGS grfSave, IUnknown* pPersistFile, LPCOLESTR pszUntitledPath, BSTR* pbstrDocumentNew, BOOL* pfCanceled) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE SetupToolbar(HWND hwnd, IVsToolWindowToolbar* ptwt, IVsToolWindowToolbarHost **pptwth) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE SetForegroundWindow() override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE TranslateAcceleratorAsACmd(MSG* pMsg) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE UpdateCommandUI(BOOL fImmediateUpdate) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE UpdateDocDataIsDirtyFeedback(VSCOOKIE docCookie, BOOL fDirty) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE RefreshPropertyBrowser(DISPID dispid) override
+	{
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE SetWaitCursor() override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE PostExecCommand(const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT* pvaIn) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE ShowContextMenu(DWORD dwCompRole, REFCLSID rclsidActive, LONG nMenuId, REFPOINTS pos, IOleCommandTarget* pCmdTrgtActive) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE ShowMessageBox(DWORD dwCompRole, REFCLSID rclsidComp, LPOLESTR pszTitle, LPOLESTR pszText, LPOLESTR pszHelpFile, DWORD dwHelpContextID, OLEMSGBUTTON msgbtn, OLEMSGDEFBUTTON msgdefbtn, OLEMSGICON msgicon, BOOL fSysAlert, LONG* pnResult) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE SetMRUComboText(const GUID* pguidCmdGroup, DWORD dwCmdID, LPSTR lpszText, BOOL fAddToList) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE SetToolbarVisibleInFullScreen(const GUID* pguidCmdGroup, DWORD dwToolbarId, BOOL fVisibleInFullScreen) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE FindToolWindowEx(VSFINDTOOLWIN grfFTW, REFGUID rguidPersistenceSlot, DWORD dwToolWinId, IVsWindowFrame** ppWindowFrame) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetAppName(BSTR* pbstrAppName) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetVSSysColor(VSSYSCOLOR dwSysColIndex, DWORD* pdwRGBval) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE SetMRUComboTextW(const GUID* pguidCmdGroup, DWORD dwCmdID, LPWSTR pwszText, BOOL fAddToList) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE PostSetFocusMenuCommand(const GUID* pguidCmdGroup, DWORD nCmdID) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetCurrentBFNavigationItem(IVsWindowFrame** ppWindowFrame, BSTR* pbstrData, IUnknown** ppunk) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE AddNewBFNavigationItem(IVsWindowFrame* pWindowFrame, BSTR bstrData, IUnknown* punk, BOOL fReplaceCurrent) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnModeChange(DBGMODE dbgmodeNew) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetErrorInfo (BSTR *pbstrErrText) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetOpenFileNameViaDlg(VSOPENFILENAMEW* pOpenFileName) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetSaveFileNameViaDlg(VSSAVEFILENAMEW* pSaveFileName) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetDirectoryViaBrowseDlg(VSBROWSEINFOW* pBrowse) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE CenterDialogOnWindow(HWND hwndDialog, HWND hwndParent) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetPreviousBFNavigationItem(IVsWindowFrame** ppWindowFrame, BSTR* pbstrData, IUnknown** ppunk) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetNextBFNavigationItem(IVsWindowFrame** ppWindowFrame, BSTR* pbstrData, IUnknown** ppunk) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetURLViaDlg(LPCOLESTR pszDlgTitle, LPCOLESTR pszStaticLabel, LPCOLESTR pszHelpTopic, BSTR* pbstrURL) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE RemoveAdjacentBFNavigationItem(RemoveBFDirection rdDir) override
+	{
+		Assert::Fail(L"Not Implemented");
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE RemoveCurrentNavigationDupes(RemoveBFDirection rdDir) override
 	{
 		Assert::Fail(L"Not Implemented");
 	}

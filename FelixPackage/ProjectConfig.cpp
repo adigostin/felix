@@ -290,18 +290,11 @@ public:
 		
 		if (grfLaunch & DBGLAUNCH_NoDebug)
 		{
-			wil::com_ptr_nothrow<IVsUIShell> uiShell;
-			hr = serviceProvider->QueryService(SID_SVsUIShell, &uiShell);
-			if (SUCCEEDED(hr))
-			{
-				HWND parent;
-				hr = uiShell->GetDialogOwnerHwnd(&parent); RETURN_IF_FAILED(hr);
-				::MessageBox (parent, L"Starting without debugging is not yet implemented.\r\n\r\n"
-					L"For now you can Start Debugging (F5 by default) and \"ignore\" the debugger.", L"Felix", 0);
-				return S_OK;
-			}
-
-			return E_NOTIMPL;
+			HWND parent;
+			hr = uiShell->GetDialogOwnerHwnd(&parent); RETURN_IF_FAILED(hr);
+			::MessageBox (parent, L"Starting without debugging is not yet implemented.\r\n\r\n"
+				L"For now you can Start Debugging (F5 by default) and \"ignore\" the debugger.", L"Felix", 0);
+			return S_OK;
 		}
 		else
 		{
@@ -448,8 +441,6 @@ public:
 
 		com_ptr<IProjectNode> project;
 		hr = _hier->QueryInterface(IID_PPV_ARGS(project.addressof())); RETURN_IF_FAILED(hr);
-		com_ptr<IVsShell> shell;
-		hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
 
 		hr = MakeProjectConfigBuilder (project, this, op2, &_pendingBuild); RETURN_IF_FAILED(hr);
 
@@ -686,15 +677,11 @@ static HRESULT ExecuteBuilder_MacroResolver (LONG dispid, VARIANT* pvarValue, VA
 	wil::unique_process_heap_string resolved;
 	hr = ResolveMacros (pvarValue->bstrVal, config, resolved); RETURN_IF_FAILED(hr);
 
-	com_ptr<IVsShell> shell;
-	hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
 	wil::unique_bstr format;
 	hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_PROPERTY_EVALUATES_TO, &format); RETURN_IF_FAILED(hr);
 	wil::unique_process_heap_string message;
 	hr = wil::str_printf_nothrow(message, format.get(), pvarValue->bstrVal, resolved.get());
 
-	com_ptr<IVsUIShell> uiShell;
-	hr = serviceProvider->QueryService(SID_SVsUIShell, IID_PPV_ARGS(&uiShell)); RETURN_IF_FAILED(hr);		
 	LONG res;
 	hr = uiShell->ShowMessageBox (0, IID_NULL, NULL, message.get(), NULL, 0, OLEMSGBUTTON_OK, OLEMSGDEFBUTTON_FIRST, OLEMSGICON_INFO, FALSE, &res); RETURN_IF_FAILED(hr);
 	return S_OK;
@@ -879,8 +866,6 @@ struct GeneralPageProperties
 
 		if (dispid == dispidProjectName)
 		{
-			com_ptr<IVsShell> shell;
-			hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(shell.addressof())); RETURN_IF_FAILED(hr);
 			if (pbstrLocalizedName)
 			{
 				hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERAL_PROPS_PROJ_NAME_NAME, pbstrLocalizedName); LOG_IF_FAILED(hr);
@@ -896,8 +881,6 @@ struct GeneralPageProperties
 
 		if (dispid == dispidOutputDirectory)
 		{
-			com_ptr<IVsShell> shell;
-			hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(shell.addressof())); RETURN_IF_FAILED(hr);
 			if (pbstrLocalizedName)
 			{
 				hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERAL_PROPS_OUTPUT_DIR_NAME, pbstrLocalizedName); LOG_IF_FAILED(hr);
@@ -913,8 +896,6 @@ struct GeneralPageProperties
 
 		if (dispid == dispidOutputName)
 		{
-			com_ptr<IVsShell> shell;
-			hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(shell.addressof())); RETURN_IF_FAILED(hr);
 			if (pbstrLocalizedName)
 			{
 				hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERAL_PROPS_OUTPUT_NAME_NAME, pbstrLocalizedName); LOG_IF_FAILED(hr);
@@ -1118,8 +1099,6 @@ struct AssemblerPageProperties
 
 		if (dispid == dispidEntryPointAddress)
 		{
-			com_ptr<IVsShell> shell;
-			hr = serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(shell.addressof())); RETURN_IF_FAILED(hr);
 			if (pbstrLocalizedName)
 			{
 				hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_ASM_PROPS_ENTRY_POINT_ADDR_NAME, pbstrLocalizedName); LOG_IF_FAILED(hr);
@@ -1587,8 +1566,6 @@ struct PrePostBuildPageProperties
 		{
 			if (pbstrLocalizeDescription)
 			{
-				wil::com_ptr_nothrow<IVsShell> shell;
-				auto hr = serviceProvider->QueryService(SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
 				ULONG resid = _post ? IDS_POST_BUILD_CMD_LINE_DESCRIPTION : IDS_PRE_BUILD_CMD_LINE_DESCRIPTION;
 				return shell->LoadPackageString(CLSID_FelixPackage, resid, pbstrLocalizeDescription);
 			}
@@ -1600,8 +1577,6 @@ struct PrePostBuildPageProperties
 		{
 			if (pbstrLocalizeDescription)
 			{
-				wil::com_ptr_nothrow<IVsShell> shell;
-				auto hr = serviceProvider->QueryService(SID_SVsShell, &shell); RETURN_IF_FAILED(hr);
 				return shell->LoadPackageString(CLSID_FelixPackage, IDS_PRE_POST_BUILD_DESCRIPTION_DESCRIPTION, pbstrLocalizeDescription);
 			}
 
