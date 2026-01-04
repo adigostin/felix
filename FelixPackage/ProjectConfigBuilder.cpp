@@ -3,6 +3,7 @@
 #include "FelixPackage.h"
 #include "shared/com.h"
 #include "shared/inplace_function.h"
+#include "../FelixPackageUi/resource.h"
 
 struct IBuildStep;
 
@@ -189,10 +190,7 @@ public:
 		bres = CreateProcess (NULL, _cmdLine.get(), NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL,
 			_workDir.get(), &startupInfo, &_processInfo);
 		if(!bres)
-		{
-			auto hr = HRESULT_FROM_WIN32(GetLastError());
-			return SetErrorInfo(hr, L"Cannot create process with command line: %s\r\n", _cmdLine.get());
-		}
+			return SetFelixErrorInfo (HRESULT_FROM_WIN32(GetLastError()), IDS_CANNOT_CREATE_PROCESS_S, _cmdLine.get());
 
 		if (pendingSteps.empty())
 		{

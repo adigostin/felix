@@ -547,7 +547,7 @@ public:
 				&& V_VT(&n) == VT_BSTR
 				&& VarBstrCmp(newName.get(), V_BSTR(&n), 0, 0) == VARCMP_EQ)
 			{
-				return SetErrorInfo0(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), IDS_NAME_ALREADY_EXISTS);
+				return SetFelixErrorInfo(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), IDS_NAME_ALREADY_EXISTS);
 			}
 		}
 

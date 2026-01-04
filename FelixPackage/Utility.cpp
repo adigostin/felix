@@ -4,7 +4,6 @@
 #include "shared/com.h"
 #include "shared/inplace_function.h"
 #include "../FelixPackageUi/resource.h"
-#include "guids.h"
 #include <string_view>
 
 const wchar_t MacroOutputName[] = L"OUTPUT_NAME";

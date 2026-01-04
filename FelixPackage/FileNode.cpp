@@ -5,7 +5,6 @@
 #include "shared/com.h"
 #include "../FelixPackageUi/resource.h"
 #include "dispids.h"
-#include "guids.h"
 #include <vsmanaged.h>
 #include <KnownImageIds.h>
 #include <variant>

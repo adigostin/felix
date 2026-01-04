@@ -5,7 +5,6 @@
 #include "shared/unordered_map_nothrow.h"
 #include "shared/com.h"
 #include "dispids.h"
-#include "guids.h"
 #include "Z80Xml.h"
 #include "../FelixPackageUi/resource.h"
 #include <string_view>

@@ -3,7 +3,7 @@
 #include "shared/com.h"
 #include "shared/OtherGuids.h"
 #include "shared/vector_nothrow.h"
-#include "../guids.h"
+#include "../FelixPackageUi/resource.h"
 #include "DebugEngine.h"
 #include "DebugEventBase.h"
 #include "../FelixPackage.h"
@@ -257,7 +257,7 @@ public:
 			}
 			else if (sk == STEP_OUT)
 			{
-				SetErrorInfo(E_NOTIMPL, L"Step Out is not yet implemented.");
+				SetFelixErrorInfo(E_NOTIMPL, IDS_STEP_OUT_NOT_IMPL);
 				uiShell->ReportErrorInfo(E_NOTIMPL);
 				SendStepCompleteEvent();
 				return S_OK;

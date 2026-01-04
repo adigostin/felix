@@ -1,7 +1,6 @@
 
 #include "pch.h"
 #include "FelixPackage.h"
-#include "Guids.h"
 #include "../FelixPackageUi/CommandIds.h"
 #include "../FelixPackageUi/Resource.h"
 #include "shared/com.h"
@@ -18,7 +17,6 @@ IMockServiceProvider : IUnknown
 
 const wchar_t Z80AsmLanguageName[]  = L"Z80Asm";
 const wchar_t SingleDebugPortName[] = L"Single Z80 Port";
-const GUID Z80AsmLanguageGuid = { 0x598BC226, 0x2E96, 0x43AD, { 0xAD, 0x42, 0x67, 0xD9, 0xCC, 0x6F, 0x75, 0xF6 } };
 const wchar_t SettingsCollection[] = L"FelixSettings";
 const wchar_t SettingLoadSavePath[] = L"LoadSavePath";
 const LCID InvariantLCID = LocaleNameToLCID(LOCALE_NAME_INVARIANT, 0);
@@ -838,23 +836,25 @@ HRESULT GetDefaultProjectFileExtension (BSTR* ppExt)
 	return (*ppExt = SysAllocString(cached.get())) ? S_OK : E_OUTOFMEMORY;
 }
 
-HRESULT SetErrorInfo0 (HRESULT errorHR, ULONG packageStringResId)
+HRESULT SetFelixErrorInfo(HRESULT errorHR, ULONG formatPackageStringResId, ...)
 {
-	wil::unique_bstr message;
-	if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, packageStringResId, &message)))
-		uiShell->SetErrorInfo (errorHR, message.get(), 0, nullptr, nullptr);
-
-	return errorHR;
-}
-
-HRESULT SetErrorInfo1 (HRESULT errorHR, ULONG packageStringResId, LPCWSTR arg1)
-{
-	wil::unique_bstr message;
-	if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, packageStringResId, &message)))
+	wil::unique_bstr format;
+	if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, formatPackageStringResId, &format)))
 	{
-		wil::unique_hlocal_string buffer;
-		if (SUCCEEDED(wil::str_printf_nothrow(buffer, message.get(), arg1)))
-			uiShell->SetErrorInfo (errorHR, buffer.get(), 0, nullptr, nullptr);
+		va_list argsVL;
+		va_start(argsVL, formatPackageStringResId);
+		size_t lengthRequiredWithoutNull = _vscwprintf(format.get(), argsVL);
+		va_end(argsVL);
+
+		auto buffer = wil::make_process_heap_string_nothrow(nullptr, lengthRequiredWithoutNull);
+		if (!buffer)
+			return errorHR;
+
+		va_start(argsVL, formatPackageStringResId);
+		auto hr = StringCchVPrintfExW(buffer.get(), lengthRequiredWithoutNull + 1, nullptr, nullptr, STRSAFE_NULL_ON_FAILURE, format.get(), argsVL);
+		va_end(argsVL);
+		if (SUCCEEDED(hr))
+			uiShell->SetErrorInfo(errorHR, buffer.get(), 0, nullptr, nullptr);
 	}
 
 	return errorHR;

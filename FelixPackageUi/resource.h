@@ -40,6 +40,11 @@
 #define IDS_GENERAL_PROPS_OUTPUT_DIR_NAME 134
 #define IDS_GENERAL_PROPS_OUTPUT_DIR_DESC 135
 #define IDS_NO_BUILD_TOOL_ASM_FILES     136
+#define IDS_STEP_OUT_NOT_IMPL           137
+#define IDS_CANNOT_CREATE_PROCESS_S     138
+#define IDS_FILE_NOT_FOUND_S            139
+#define IDS_PATH_TO_FILE_NOT_FOUND_S    140
+#define IDS_CANNOT_MAKE_RELATIVE_PATH_S_S 141
 #define IDB_IMAGES                      300
 #define IDI_PACKAGE_ICON                400
 #define IDI_SPECTRUM                    401

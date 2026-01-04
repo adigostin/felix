@@ -7,7 +7,6 @@
 #include "shared/com.h"
 #include "Z80Xml.h"
 #include "dispids.h"
-#include "guids.h"
 #include "../FelixPackageUi/resource.h"
 #define FORCE_EXPLICIT_DTE_NAMESPACE
 #include <dte.h>
@@ -1027,7 +1026,7 @@ public:
 			if (hFile != INVALID_HANDLE_VALUE)
 			{
 				CloseHandle(hFile);
-				return SetErrorInfo1 (HRESULT_FROM_WIN32(ERROR_FILE_EXISTS), IDS_RENAMEFILEALREADYEXISTS, newFullPath.get());
+				return SetFelixErrorInfo (HRESULT_FROM_WIN32(ERROR_FILE_EXISTS), IDS_RENAMEFILEALREADYEXISTS, newFullPath.get());
 			}
 		}
 
@@ -1751,15 +1750,15 @@ public:
 		com_ptr<IVsUIShellOpenDocument> uiShellOpenDocument;
 		hr = serviceProvider->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED_EXPECTED(hr);
 
-		static const GUID TextEditorFactory = {0x8b382828, 0x6202, 0x11d1, {0x88, 0x70, 0x0, 0x0, 0xf8, 0x75, 0x79, 0xd2}};
+		static const GUID TextEditorFactory = { 0x8B382828, 0x6202, 0x11D1, { 0x88, 0x70, 0x00, 0x00, 0xF8, 0x75, 0x79, 0xD2 } };
 		hr = uiShellOpenDocument->OpenSpecificEditor (0, mkDocument.get(), TextEditorFactory, nullptr, rguidLogicalView, 
 			L"%3", this, itemid, punkDocDataExisting, nullptr, ppWindowFrame);
 		if (FAILED(hr))
 		{
 			if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
-				return SetErrorInfo(hr, L"File not found.\r\n\r\n%s", mkDocument.get());
+				return SetFelixErrorInfo(hr, IDS_FILE_NOT_FOUND_S, mkDocument.get());
 			if (hr == HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND))
-				return SetErrorInfo(hr, L"Path to the file was not found.\r\n\r\n%s", mkDocument.get());
+				return SetFelixErrorInfo(hr, IDS_PATH_TO_FILE_NOT_FOUND_S, mkDocument.get());
 			return hr;
 		}
 
@@ -1829,12 +1828,7 @@ public:
 			wil::unique_variant saveName;
 			hr = c->GetProperty(VSHPROPID_SaveName, &saveName); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_UNEXPECTED, saveName.vt != VT_BSTR);
 			if (saveName.bstrVal && !_wcsicmp(saveName.bstrVal, pszNewFileName))
-			{
-				wil::unique_bstr text;
-				hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_ITEM_ALREADY_EXISTS_IN_LOCATION, &text); RETURN_IF_FAILED(hr);
-
-				return SetErrorInfo(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), text.get());
-			}
+				return SetFelixErrorInfo (HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), IDS_ITEM_ALREADY_EXISTS_IN_LOCATION);
 		}
 
 		// The user chose a hierarchy node as location, but that node may or may not have
@@ -1870,7 +1864,7 @@ public:
 				return S_FALSE;
 			}, nullptr);
 		if (hr == S_OK)
-			return SetErrorInfo1(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), IDS_FILE_ALREADY_IN_PROJECT, path);
+			return SetFelixErrorInfo(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), IDS_FILE_ALREADY_IN_PROJECT, path);
 		return S_OK;
 	}
 
@@ -1889,7 +1883,7 @@ public:
 			wchar_t relativeUgly[MAX_PATH];
 			BOOL bRes = PathRelativePathTo (relativeUgly, _projectDir.get(), FILE_ATTRIBUTE_DIRECTORY, pszFullPathSource, 0);
 			if (!bRes)
-				return SetErrorInfo(E_INVALIDARG, L"Can't make a relative path from '%s' relative to '%s'.", pszFullPathSource, _projectDir.get());
+				return SetFelixErrorInfo (E_INVALIDARG, IDS_CANNOT_MAKE_RELATIVE_PATH_S_S, pszFullPathSource, _projectDir.get());
 
 			for (auto* p = wcschr(relativeUgly, '/'); p; p = wcschr(p, '/'))
 				*p = '\\';
@@ -1913,7 +1907,7 @@ public:
 					parent = ch->AsParentNode(); 
 				}
 				if (FindChildFileByName(parent, ptrComponent))
-					return SetErrorInfo0(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), IDS_FILE_ALREADY_IN_PROJECT);
+					return SetFelixErrorInfo(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), IDS_FILE_ALREADY_IN_PROJECT);
 
 				hr = MakeFileNodeForExistingFile (ptrComponent, &file); RETURN_IF_FAILED(hr);
 				hr = AddFileToParent(file, parent); RETURN_IF_FAILED(hr);

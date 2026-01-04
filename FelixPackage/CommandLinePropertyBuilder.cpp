@@ -1,7 +1,6 @@
 
 #include "pch.h"
 #include "FelixPackage.h"
-#include "guids.h"
 #include "shared/com.h"
 #include "../FelixPackageUi/resource.h"
 #include <optional>

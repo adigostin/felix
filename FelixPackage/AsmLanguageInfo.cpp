@@ -2,7 +2,6 @@
 #include "pch.h"
 #include "shared/OtherGuids.h"
 #include "shared/com.h"
-#include "guids.h"
 #include "FelixPackage.h"
 
 /*

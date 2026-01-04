@@ -1,9 +1,5 @@
-﻿// guids.h: definitions of GUIDs/IIDs/CLSIDs used in this VsPackage
-
-/*
-Do not use #pragma once, as this file needs to be included twice.  Once to declare the externs
-for the GUIDs, and again right after including initguid.h to actually define the GUIDs.
-*/
+﻿
+#pragma once
 
 #define guidFelixPersistenceSlot { 0x6F52DA3A, 0xE13C, 0x4A1E, { 0xA1, 0x78, 0x98, 0x80, 0x5F, 0x35, 0x6A, 0x66 } }
 #ifdef DEFINE_GUID

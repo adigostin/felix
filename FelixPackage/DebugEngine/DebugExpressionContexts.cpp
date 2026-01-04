@@ -2,7 +2,6 @@
 #include "pch.h"
 #include "DebugEngine.h"
 #include "shared/com.h"
-#include "guids.h"
 #include "..\FelixPackageUi\resource.h"
 
 class ExpressionContextNoSource : public IDebugExpressionContext2

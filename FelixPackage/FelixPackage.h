@@ -2,6 +2,7 @@
 #pragma once
 #include "FelixPackage_h.h"
 #include "Simulator.h"
+#include "guids.h"
 
 // We use DLL exports only to be able to call various functions from unit test projects.
 #ifdef FELIX_EXPORTS
@@ -167,7 +168,6 @@ extern wil::com_ptr_nothrow<ISimulator> simulator;
 
 extern const wchar_t Z80AsmLanguageName[];
 extern const wchar_t SingleDebugPortName[];
-extern const GUID Z80AsmLanguageGuid;
 extern const wchar_t SettingsCollection[];
 extern const wchar_t SettingLoadSavePath[];
 extern const LCID InvariantLCID;
@@ -254,8 +254,7 @@ HRESULT MakeDebugPortSupplier (IDebugPortSupplier2** to);
 HRESULT MakeDebugEngine (IDebugEngine2** to);
 HRESULT MakeLaunchOptions (IFelixLaunchOptions** ppOptions);
 HRESULT GetDefaultProjectFileExtension (BSTR* ppExt);
-HRESULT SetErrorInfo0 (HRESULT errorHR, ULONG packageStringResId);
-HRESULT SetErrorInfo1 (HRESULT errorHR, ULONG packageStringResId, LPCWSTR arg1);
+HRESULT SetFelixErrorInfo(HRESULT errorHR, ULONG formatPackageStringResId, ...);
 FELIX_API HRESULT MakeCustomBuildToolProperties (ICustomBuildToolProperties** to);
 FELIX_API HRESULT MakeProjectConfigBuilder (IProjectNode* project, IProjectConfig* config,
 	IVsOutputWindowPane2* outputWindowPane, IProjectConfigBuilder** to);

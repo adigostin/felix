@@ -1,7 +1,6 @@
 
 #include "pch.h"
 #include "FelixPackage.h"
-#include "guids.h"
 #include "dispids.h"
 #include "shared/vector_nothrow.h"
 #include "shared/com.h"

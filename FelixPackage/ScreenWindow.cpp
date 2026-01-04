@@ -5,7 +5,6 @@
 #include "FelixPackage.h"
 #include "../FelixPackageUi/CommandIds.h"
 #include "../FelixPackageUi/resource.h"
-#include "guids.h"
 #include "Simulator.h"
 #include <queue>
 
