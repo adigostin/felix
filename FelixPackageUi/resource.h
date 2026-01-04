@@ -45,6 +45,8 @@
 #define IDS_FILE_NOT_FOUND_S            139
 #define IDS_PATH_TO_FILE_NOT_FOUND_S    140
 #define IDS_CANNOT_MAKE_RELATIVE_PATH_S_S 141
+#define IDS_CANNOT_RESOLVE_ENTRY_POINT_ADDRESS_S_S 142
+#define IDS_WRONG_FORMAT_ENTRY_POINT_ADDRESS_S 143
 #define IDB_IMAGES                      300
 #define IDI_PACKAGE_ICON                400
 #define IDI_SPECTRUM                    401

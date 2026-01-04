@@ -216,6 +216,10 @@ BEGIN
     IDS_PATH_TO_FILE_NOT_FOUND_S "Path to the file not found.\r\n\r\n%s"
     IDS_CANNOT_MAKE_RELATIVE_PATH_S_S 
                             "Can't make a relative path from '%s' relative to '%s'."
+    IDS_CANNOT_RESOLVE_ENTRY_POINT_ADDRESS_S_S 
+                            "Can't resolve entry point address:\r\n%s\r\n\r\nin symbol file:\r\n%s"
+    IDS_WRONG_FORMAT_ENTRY_POINT_ADDRESS_S 
+                            "Wrong format for the entry point address:\r\n%s"
 END
 
 #endif    // English (United States) resources

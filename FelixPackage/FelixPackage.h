@@ -159,6 +159,8 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("32BEBBF2-86DF-4D79-88DF-1123548C4D8E") I
 
 	// Returns S_OK or an error if not found.
 	virtual HRESULT STDMETHODCALLTYPE GetAddressFromSymbol (LPCWSTR symbolName, UINT16* address) = 0;
+
+	virtual HRESULT STDMETHODCALLTYPE GetFilename(BSTR * pbstrFilename) = 0;
 };
 
 FELIX_API extern wil::com_ptr_nothrow<IServiceProvider> serviceProvider;

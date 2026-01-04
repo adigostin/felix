@@ -240,7 +240,7 @@ public:
 			DWORD epAddress;
 			hr = ParseNumber(epAddressStr.get(), &epAddress);
 			if (hr != S_OK)
-				return E_FAIL; // TODO: detailed error message
+				return SetFelixErrorInfo(E_FAIL, IDS_WRONG_FORMAT_ENTRY_POINT_ADDRESS_S, epAddressStr.get());
 			opts->put_EntryPointAddress(epAddress);
 		}
 		else
@@ -248,7 +248,12 @@ public:
 			UINT16 epAddress;
 			hr = symbols->GetAddressFromSymbol(epAddressStr.get(), &epAddress);
 			if (hr != S_OK)
-				return E_FAIL;
+			{
+				wil::unique_bstr filename;
+				symbols->GetFilename(&filename);
+				return SetFelixErrorInfo(E_FAIL, IDS_CANNOT_RESOLVE_ENTRY_POINT_ADDRESS_S_S, epAddressStr.get(), filename ? filename.get() : L"");
+			}
+
 			opts->put_EntryPointAddress(epAddress);
 		}
 
@@ -300,7 +305,7 @@ public:
 			WI_ASSERT(!grfLaunch); // TODO: read these flags and act on them
 
 			wil::unique_bstr options;
-			hr = MakeLaunchOptionsString(symbols, &options); RETURN_IF_FAILED(hr);
+			hr = MakeLaunchOptionsString(symbols, &options); RETURN_IF_FAILED_EXPECTED(hr);
 
 			auto portNameBstr = wil::make_bstr_nothrow(SingleDebugPortName); RETURN_IF_NULL_ALLOC(portNameBstr);
 			VsDebugTargetInfo dti = { };

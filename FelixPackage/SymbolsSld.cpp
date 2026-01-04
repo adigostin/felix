@@ -8,10 +8,12 @@ static const char header[] = "|SLD.data.version|1\r\n";
 struct SldSymbols : IFelixSymbols
 {
 	ULONG _refCount = 0;
+	wil::unique_process_heap_string _filename;
 	wil::unique_hlocal_ansistring _text;
 
 	HRESULT InitInstance (const wchar_t* symbolsFullPath)
 	{
+		_filename = wil::make_process_heap_string_nothrow(symbolsFullPath); RETURN_IF_NULL_ALLOC(_filename);
 		HANDLE hraw = CreateFileW (symbolsFullPath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr); RETURN_LAST_ERROR_IF_EXPECTED(hraw == INVALID_HANDLE_VALUE);
 		wil::unique_hfile h (hraw);
 		DWORD file_size = GetFileSize (hraw, nullptr);
@@ -258,6 +260,12 @@ struct SldSymbols : IFelixSymbols
 		}
 
 		*address = strtoul(entry.value, nullptr, 10);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetFilename (BSTR* pbstrFilename) override
+	{
+		*pbstrFilename = SysAllocString(_filename.get()); RETURN_IF_NULL_ALLOC(*pbstrFilename);
 		return S_OK;
 	}
 	#pragma endregion
