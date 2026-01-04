@@ -290,11 +290,6 @@ public:
 		RETURN_HR(E_NOTIMPL);
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetCanonicalName (BSTR *pbstrName) override
-	{
-		return E_NOTIMPL; // we'll never support this for folders
-	}
-
 	virtual HRESULT STDMETHODCALLTYPE IsItemDirty (IUnknown *punkDocData, BOOL *pfDirty) override
 	{
 		RETURN_HR(E_NOTIMPL);

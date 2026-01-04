@@ -344,13 +344,6 @@ public:
 		#endif
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetCanonicalName (BSTR* pbstrName) override
-	{
-		// Returns a unique, string name for an item in the hierarchy.
-		// Used for workspace persistence, such as remembering window positions.
-		return get_Path(pbstrName);
-	}
-
 	virtual HRESULT STDMETHODCALLTYPE IsItemDirty (IUnknown *punkDocData, BOOL *pfDirty) override
 	{
 		wil::com_ptr_nothrow<IVsPersistDocData> docData;

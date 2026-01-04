@@ -35,6 +35,7 @@ class ProjectNode
 	, IVsUpdateSolutionEvents
 	, IVsHierarchyEvents // this implementation forwards to sinks hierarchy events generated in descendants
 	, VxDTE::Project
+	, VxDTE::ProjectItems
 {
 	ULONG _refCount = 0;
 	GUID _projectInstanceGuid;
@@ -375,6 +376,7 @@ public:
 			|| TryQI<IVsUpdateSolutionEvents>(this, riid, ppvObject)
 			|| TryQI<IVsHierarchyEvents>(this, riid, ppvObject)
 			|| TryQI<VxDTE::Project>(this, riid, ppvObject)
+			|| TryQI<VxDTE::ProjectItems>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -883,6 +885,8 @@ public:
 	// a particular item in the hierarchy from every other item in the hierarchy.
 	virtual HRESULT STDMETHODCALLTYPE GetCanonicalName(VSITEMID itemid, BSTR* pbstrName) override
 	{
+		HRESULT hr;
+
 		if (_closed)
 			return E_UNEXPECTED;
 
@@ -893,7 +897,7 @@ public:
 		{
 			wil::unique_cotaskmem_string buffer;
 			DWORD unused;
-			auto hr = GetCurFile (&buffer, &unused); RETURN_IF_FAILED(hr);
+			hr = GetCurFile (&buffer, &unused); RETURN_IF_FAILED(hr);
 			*pbstrName = SysAllocString (buffer.get()); RETURN_IF_NULL_ALLOC(*pbstrName);
 			return S_OK;
 		}
@@ -903,7 +907,12 @@ public:
 
 		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
-			return d->GetCanonicalName(pbstrName);
+		{
+			wil::unique_process_heap_string path;
+			hr = GetPathOf(d, path, true); RETURN_IF_FAILED(hr);
+			*pbstrName = SysAllocString(path.get()); RETURN_IF_NULL_ALLOC(*pbstrName);
+			return S_OK;
+		}
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
@@ -913,8 +922,12 @@ public:
 		// Note AGO: VS calls this function with full paths, with the call stack to this function showing
 		// parameters with "mk" in their names. This happens for example while renaming a project, during the
 		// call to OnAfterRenameProject.
+
+		wil::unique_process_heap_string pathToFind;
+		auto hr = CanonicalizePath(pszName, pathToFind); RETURN_IF_FAILED(hr);
+
 		wil::unique_bstr projCN;
-		auto hr = this->GetCanonicalName(VSITEMID_ROOT, &projCN); LOG_IF_FAILED(hr);
+		hr = this->GetCanonicalName(VSITEMID_ROOT, &projCN); LOG_IF_FAILED(hr);
 		if (SUCCEEDED(hr) && !_wcsicmp(projCN.get(), pszName))
 		{
 			*pitemid = VSITEMID_ROOT;
@@ -922,14 +935,11 @@ public:
 		}
 
 		com_ptr<IChildNode> c;
-		hr = FindDescendantIf([pszName](IChildNode* c)
+		hr = FindDescendantIf([pathToFind=pathToFind.get()](IChildNode* c)
 			{
-				wil::unique_bstr childCN;
-				auto hr = c->GetCanonicalName(&childCN);
-				if (hr == E_NOTIMPL)
-					return S_FALSE;
-				RETURN_IF_FAILED_EXPECTED(hr);
-				return _wcsicmp(childCN.get(), pszName) ? S_FALSE : S_OK;
+				wil::unique_process_heap_string childCN;
+				auto hr = GetPathOf(c, childCN, true); RETURN_IF_FAILED(hr);
+				return _wcsicmp(childCN.get(), pathToFind) ? S_FALSE : S_OK;
 			}, &c);
 		RETURN_IF_FAILED(hr);
 		if (hr == S_OK)
@@ -1649,32 +1659,48 @@ public:
 	}
 	#pragma endregion
 
+	// <summary>
+	// This function attempt to canonicalize a path which VS passes to various functions of this class.
+	// VS gets these paths from all kinds of places, for example paths from error strings generated
+	// by user-selected build tools in the Output Window or the Error List window.
+	// To be on the safe side, we assume these paths are ugly and need canonicalization.
+	// In addition to calling this, the caller should also perform case-insensitive comparisons.
+	// </summary>
+	static HRESULT CanonicalizePath (const wchar_t* pathIn, wil::unique_process_heap_string& pathOut)
+	{
+		auto temppath = wil::make_process_heap_string_nothrow(pathIn); RETURN_IF_NULL_ALLOC(temppath);
+		for (auto* p = temppath.get(); *p; p++)
+		{
+			if (*p == '/')
+				*p = '\\';
+		}
+
+		pathOut = wil::make_process_heap_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(pathOut);
+		BOOL bres = PathCanonicalize(pathOut.get(), temppath.get()); RETURN_IF_WIN32_BOOL_FALSE(bres);
+		if (pathOut.get()[0] == '\\')
+		{
+			pathOut = wil::make_process_heap_string_nothrow(pathOut.get() + 1); RETURN_IF_NULL_ALLOC(pathOut);
+		}
+
+		return S_OK;
+	}
+
 	#pragma region IVsProject2
 	virtual HRESULT STDMETHODCALLTYPE IsDocumentInProject(LPCOLESTR pszMkDocument, BOOL* pfFound, VSDOCUMENTPRIORITY* pdwPriority, VSITEMID* pitemid) override
 	{
 		RETURN_HR_IF(E_POINTER, !pszMkDocument || !pfFound || !pdwPriority || !pitemid);
 
-		bool isRelative = PathIsRelative(pszMkDocument);
+		wil::unique_process_heap_string pathToFind;
+		auto hr = CanonicalizePath(pszMkDocument, pathToFind); RETURN_IF_FAILED(hr);
+		
+		bool isRelative = PathIsRelative(pathToFind.get());
 
 		wil::com_ptr_nothrow<IChildNode> c;
-		auto hr = FindDescendantIf(
-			[pszMkDocument, isRelative](IChildNode* c)
+		hr = FindDescendantIf ([pathToFind=pathToFind.get(), isRelative](IChildNode* c)
 			{
-				wil::unique_bstr path;
-				if (isRelative)
-				{
-					auto hr = c->GetCanonicalName(&path);
-					if (hr == E_NOTIMPL)
-						return S_FALSE;
-					RETURN_IF_FAILED(hr);
-					return wcscmp(pszMkDocument, path.get()) ? S_FALSE : S_OK;
-				}
-				else
-				{
-					wil::unique_process_heap_string path;
-					auto hr = GetPathOf (c, path); RETURN_IF_FAILED(hr);
-					return wcscmp(pszMkDocument, path.get()) ? S_FALSE : S_OK;
-				}
+				wil::unique_process_heap_string path;
+				auto hr = GetPathOf(c, path, isRelative); RETURN_IF_FAILED(hr);
+				return _wcsicmp(pathToFind, path.get()) ? S_FALSE : S_OK;
 			}, &c); RETURN_IF_FAILED(hr);
 
 		if (hr == S_FALSE)
@@ -2955,7 +2981,9 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE get_ProjectItems (VxDTE::ProjectItems **lppcReturn) override
 	{
-		return E_NOTIMPL;
+		*lppcReturn = this;
+		(*lppcReturn)->AddRef();
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_Properties (VxDTE::Properties **ppObject) override
@@ -3037,6 +3065,63 @@ public:
 		return E_NOTIMPL;
 	}
 
+	#pragma endregion
+
+	#pragma region VxDTE::ProjectItems
+	virtual HRESULT STDMETHODCALLTYPE Item (VARIANT index, VxDTE::ProjectItem **lppcReturn) override
+	{
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_Parent (IDispatch **lppptReturn) override
+	{
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_Count (long* lplReturn) override
+	{
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE _NewEnum (IUnknown **lppiuReturn) override
+	{
+		return E_NOTIMPL;
+	}
+
+	//virtual HRESULT STDMETHODCALLTYPE get_DTE (VxDTE::DTE** lppaReturn) override { return E_NOTIMPL; }
+
+	//virtual HRESULT STDMETHODCALLTYPE get_Kind (BSTR* lpbstrFileName) override { return E_NOTIMPL; }
+
+	virtual HRESULT STDMETHODCALLTYPE AddFromFile (BSTR FileName, VxDTE::ProjectItem **lppcReturn) override
+	{
+		VSADDRESULT addResult;
+		return AddItem (VSITEMID_ROOT, VSADDITEMOP_OPENFILE, NULL, 1, const_cast<LPCOLESTR*>(&FileName), nullptr, &addResult);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE AddFromTemplate (BSTR FileName, BSTR Name, VxDTE::ProjectItem **lppcReturn) override
+	{
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE AddFromDirectory (BSTR Directory, VxDTE::ProjectItem **lppcReturn) override
+	{
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_ContainingProject (VxDTE::Project** ppProject) override
+	{
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE AddFolder (BSTR Name, BSTR Kind, VxDTE::ProjectItem **pProjectItem) override
+	{
+		return E_NOTIMPL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE AddFromFileCopy (BSTR FilePath, VxDTE::ProjectItem** pProjectItem) override
+	{
+		return E_NOTIMPL;
+	}
 	#pragma endregion
 
 	HRESULT RefreshHierarchy()

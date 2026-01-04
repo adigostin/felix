@@ -340,6 +340,9 @@ namespace FelixTests
 			return data.window_handle;
 		}
 
+		// <param name="testDir">The directory in which to create the solution.</param>
+		// <param name="solutionName">The name of the solution to create, without extension.</param>
+		// <param name="projectName">NULL to create a project with the same name as the solution in the same dir, filename without extension to create project in subdir with different name.</param>
 		void CreateSolutionAndProject (PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName, VxDTE::_Solution** ppSln, VxDTE::Project** ppProj)
 		{
 			HRESULT hr;
@@ -350,11 +353,26 @@ namespace FelixTests
 			hr = sln->Create(wil::make_bstr_failfast(testDir).get(), wil::make_bstr_failfast(solutionName).get());
 			Assert::IsTrue(SUCCEEDED(hr));
 
+			wil::unique_process_heap_string projDirBuffer, projName;
+			PCWSTR projDir;
+			if (projectName)
+			{
+				projDirBuffer = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\", projectName);
+				projDir = projDirBuffer.get();
+				projName = wil::str_concat_failfast<wil::unique_process_heap_string>(projectName, L".flx");
+				Assert::IsTrue(CreateDirectory(projDir, nullptr));
+			}
+			else
+			{
+				projDir = testDir;
+				projName = wil::str_concat_failfast<wil::unique_process_heap_string>(solutionName, L".flx");
+			}
+
 			wil::com_ptr_failfast<VxDTE::Project> proj;
 			hr = sln->AddFromTemplate (
 				wil::make_bstr_failfast(templateFullPath.get()).get(),
-				wil::make_bstr_failfast(testDir).get(),
-				wil::make_bstr_failfast(projectName).get(), VARIANT_TRUE, &proj);
+				wil::make_bstr_failfast(projDir).get(),
+				wil::make_bstr_failfast(projName.get()).get(), VARIANT_FALSE, &proj);
 			Assert::IsTrue(SUCCEEDED(hr));
 			hr = sln->SaveAs(wil::make_bstr_failfast(solutionName).get());
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -377,18 +395,10 @@ namespace FelixTests
 			com_ptr<VxDTE::SolutionConfiguration> solConfig;
 			hr = solutionBuild->get_ActiveConfiguration(&solConfig); 
 			Assert::IsTrue(SUCCEEDED(hr));
-			wil::unique_bstr solConfigName;
-			hr = solConfig->get_Name(&solConfigName);
-			Assert::IsTrue(SUCCEEDED(hr));
-			hr = solutionBuild->BuildProject(solConfigName.get(), wil::make_bstr_failfast(L"test.flx").get(), VARIANT_TRUE);
+			hr = solutionBuild->Build(VARIANT_TRUE);
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			// Make sure build completed successfully. LastBuildInfo returns the number of failed projects, despite the parameter name.
-			VxDTE::vsBuildState buildState;
-			hr = solutionBuild->get_BuildState(&buildState);
-			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::AreEqual<int>(VxDTE::vsBuildStateDone, buildState);
-
+			// LastBuildInfo returns the number of failed projects, despite the parameter name.
 			hr = solutionBuild->get_LastBuildInfo(buildFailCount);
 			Assert::IsTrue(SUCCEEDED(hr));
 		}
@@ -455,7 +465,7 @@ namespace FelixTests
 			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
 
 			wil::com_ptr_failfast<VxDTE::_Solution> sln;
-			CreateSolutionAndProject (testPath.get(), L"test.sln", L"test.flx", &sln, nullptr);
+			CreateSolutionAndProject (testPath.get(), L"test", nullptr, &sln, nullptr);
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
 
 			long buildFailCount;
@@ -473,7 +483,7 @@ namespace FelixTests
 
 			wil::com_ptr_failfast<VxDTE::_Solution> sln;
 			wil::com_ptr_failfast<VxDTE::Project> proj;
-			CreateSolutionAndProject (testPath.get(), L"test.sln", L"test.flx", &sln, &proj);
+			CreateSolutionAndProject (testPath.get(), L"test", nullptr, &sln, &proj);
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
 
 			long buildFailCount;
@@ -515,7 +525,7 @@ namespace FelixTests
 
 			wil::com_ptr_failfast<VxDTE::_Solution> sln;
 			wil::com_ptr_failfast<VxDTE::Project> proj;
-			CreateSolutionAndProject(testPath.get(), L"test.sln", L"test.flx", &sln, &proj);
+			CreateSolutionAndProject(testPath.get(), L"test", nullptr, &sln, &proj);
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
 
 			auto hier = proj.query<IVsUIHierarchy>();
@@ -589,7 +599,7 @@ namespace FelixTests
 
 			wil::com_ptr_failfast<VxDTE::_Solution> sln;
 			wil::com_ptr_failfast<VxDTE::Project> proj;
-			CreateSolutionAndProject (testPath.get(), L"test.sln", L"test.flx", &sln, &proj);
+			CreateSolutionAndProject (testPath.get(), L"test", nullptr, &sln, &proj);
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
 
 			com_ptr<IDispatch> aodisp;
@@ -630,6 +640,92 @@ namespace FelixTests
 			fce = nullptr;
 
 			Assert::IsFalse(changed); // this would fail before the fix (IgnoreFile called in ProjectNode::Save)
+		}
+
+		TEST_METHOD(NavigateToErrorInFileInSubdir)
+		{
+			// When the user double-clicks an error in the Error List window, VS goes out of its way to locate the file
+			// and find the project it contains. To repro the bug, we need to put the project file in a subdirectory
+			// (not next to the .sln file), and the offending file in a subdirectory of its own. In this case, when the user
+			// double-clicks the error in the Error List window, VS used to be unable to locate the file due to bugs in
+			// ProjectNode::ParseCanonicalName and ProjectNode::IsDocumentInProject (and ultimately in ParseCanonicalName).
+			// This test verifies the fixes in these functions.
+
+			HRESULT hr;
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"NavigateToErrorInFileInSubdir");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
+
+			wil::com_ptr_failfast<VxDTE::_Solution> sln;
+			wil::com_ptr_failfast<VxDTE::Project> proj;
+			CreateSolutionAndProject (testPath.get(), L"test", L"testproj", &sln, &proj);
+			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
+
+			long buildFailCount;
+			BuildSolution(sln, &buildFailCount);
+			Assert::AreEqual(0l, buildFailCount);
+
+			auto subdirPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath.get(), L"\\testproj\\subdir");
+			Assert::IsTrue(CreateDirectory(subdirPath.get(), nullptr));
+			auto file1Path = wil::str_concat_failfast<wil::unique_process_heap_string>(subdirPath.get(), L"\\file1.asm");
+			auto file1 = wil::unique_hfile(CreateFile(file1Path.get(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
+			Assert::IsTrue(file1.is_valid());
+			Assert::IsTrue(WriteFile(file1.get(), "\t555555", 4, nullptr, nullptr));
+			file1.reset(); 
+			com_ptr<VxDTE::ProjectItems> items;
+			proj->get_ProjectItems(&items);
+			wil::com_ptr_failfast<VxDTE::ProjectItem> item1;
+			hr = items->AddFromFile(wil::make_bstr_failfast(file1Path.get()).get(), &item1);
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = proj->Save();
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			BuildSolution(sln, &buildFailCount);
+			Assert::IsTrue(buildFailCount >= 1);
+
+			hr = _targetVS.dte->ExecuteCommand(wil::make_bstr_failfast(L"View.ErrorList").get());
+			auto dte2 = wil::com_query_failfast<VxDTE::DTE2>(_targetVS.dte);
+			wil::com_ptr_failfast<VxDTE::ToolWindows> toolWindows;
+			hr = dte2->get_ToolWindows(&toolWindows);
+			wil::com_ptr_failfast<VxDTE::ErrorList> errorList;
+			hr = toolWindows->get_ErrorList(&errorList);
+			wil::com_ptr_failfast<VxDTE::ErrorItems> errorItems;
+			hr = errorList->get_ErrorItems(&errorItems);
+			long errorCount;
+			hr = errorItems->get_Count(&errorCount);
+			Assert::IsTrue(errorCount >= 1);
+
+			VARIANT v; v.vt = VT_I4; v.lVal = 1;
+			com_ptr<VxDTE::ErrorItem> errorItem;
+			hr = errorItems->Item(v, &errorItem);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			errorItem->Navigate(); // This call succeeds, even though VS couldn't open the file.
+
+			com_ptr<VxDTE::Document> doc;
+			hr = _targetVS.dte->get_ActiveDocument(&doc);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsNotNull(doc.get()); // This would fail before the fix.
+
+			BOOL found = FALSE;
+			VSDOCUMENTPRIORITY prio = { };
+			VSITEMID itemid = { };
+			hr = proj.query<IVsProject>()->IsDocumentInProject(L"subdir\\file1.asm", &found, &prio, &itemid); // this would fail too
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsTrue(found);
+			hr = proj.query<IVsProject>()->IsDocumentInProject(L"subdir/..\\subdir/.\\file1.asm", &found, &prio, &itemid); // for bonus points
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsTrue(found);
+			hr = proj.query<IVsProject>()->IsDocumentInProject(L"SubDir\\File1.ASM", &found, &prio, &itemid); // for bonus points
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsTrue(found);
+
+			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"subdir\\file1.asm", &itemid); // this would fail too
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"subdir/..\\subdir/.\\file1.asm", &itemid); // for bonus points
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"SubDir\\File1.ASM", &itemid); // for bonus points
+			Assert::IsTrue(SUCCEEDED(hr));
 		}
 	};
 }

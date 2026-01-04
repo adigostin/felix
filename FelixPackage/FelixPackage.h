@@ -82,7 +82,6 @@ IChildNode : INode
 	virtual HRESULT SetProperty (VSHPROPID propid, REFVARIANT var) = 0;
 	virtual HRESULT GetGuidProperty (VSHPROPID propid, GUID* pguid) = 0;
 	virtual HRESULT SetGuidProperty (VSHPROPID propid, REFGUID rguid) = 0;
-	virtual HRESULT GetCanonicalName (BSTR* pbstrName) = 0; // returns the path relative to project if possible, otherwise the full path -- all lowercase
 	virtual HRESULT IsItemDirty (IUnknown *punkDocData, BOOL *pfDirty) = 0;
 	virtual HRESULT QueryStatusCommand (const GUID* pguidCmdGroup, OLECMD* pCmd, OLECMDTEXT *pCmdText) = 0;
 	virtual HRESULT ExecCommand (const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT* pvaIn, VARIANT* pvaOut) = 0;
