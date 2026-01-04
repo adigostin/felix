@@ -19,6 +19,7 @@ wil::unique_process_heap_string templateDir;
 wil::unique_process_heap_string templateFullPath;
 wil::unique_process_heap_string TemplatePath_EmptyProject;
 wil::unique_process_heap_string TemplatePath_EmptyFile;
+com_ptr<IUIAutomation> automation;
 
 const GUID CLSID_FelixPackage = { 0x768BC57B, 0x42A8, 0x42AB, { 0xB3, 0x89, 0x45, 0x79, 0x46, 0xC4, 0xFC, 0x6A } };
 
@@ -101,10 +102,15 @@ namespace FelixTests
 		auto sp = MakeMockServiceProvider();
 		hr = package->SetSite(sp);
 		Assert::IsTrue(SUCCEEDED(hr));
+
+		hr = CoCreateInstance (__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation));
+		Assert::IsTrue(SUCCEEDED(hr));
 	}
 
 	TEST_MODULE_CLEANUP(CleanupModule)
 	{
+		automation.reset();
+
 		if (package)
 		{
 			package->Close();

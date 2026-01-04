@@ -544,6 +544,8 @@ public:
 
 		wil::SetResultTelemetryFallback(nullptr);
 
+		shell = nullptr;
+		uiShell = nullptr;
 		serviceProvider = nullptr;
 
 		return S_OK;

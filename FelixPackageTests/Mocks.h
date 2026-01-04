@@ -12,6 +12,7 @@ extern wil::unique_process_heap_string TemplatePath_EmptyFile;
 extern wchar_t tempPath[MAX_PATH + 1];
 extern const GUID FelixProjectType;
 extern const GUID CLSID_FelixPackage;
+extern com_ptr<IUIAutomation> automation;
 
 namespace FelixTests
 {

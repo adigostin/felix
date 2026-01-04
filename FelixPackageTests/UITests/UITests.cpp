@@ -4,8 +4,6 @@
 #include "../FelixPackage/Z80Xml.h"
 #include "Mocks.h"
 
-#include <UIAutomationClient.h>
-
 #define FORCE_EXPLICIT_DTE_NAMESPACE
 #include <dte.h>
 namespace VxDTE
@@ -16,27 +14,26 @@ namespace VxDTE
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-namespace FelixTests
+namespace UITests
 {
-	struct VSInstance
-	{
-		wil::unique_process_information processInfo;
-		com_ptr<VxDTE::_DTE> dte;
-	};
-
-	static VSInstance _targetVS;
-	static com_ptr<IUIAutomation> automation;
+	com_ptr<VxDTE::_DTE> dte;
 
 	TEST_CLASS(UITests)
 	{
-		static void StartOrRestart (const wchar_t* devenvExe, const wchar_t* devenvArguments, const wchar_t* testDataRoot, const wchar_t* tempRoot)
+		static void StartOrRestart()
 		{
 			HRESULT hr;
+
+			wil::unique_process_heap_string devenvExe;
+			hr = wil::GetEnvironmentVariableW (L"VSAPPIDDIR", devenvExe);
+			Assert::IsTrue(SUCCEEDED(hr));
+			devenvExe = wil::str_concat_failfast<wil::unique_process_heap_string>(devenvExe, L"devenv.exe");
+			const wchar_t* devenvArguments = L"/rootSuffix Exp";
 
 			auto cmdLine = wil::str_concat_failfast<wil::unique_process_heap_string>(L"\"", devenvExe, L"\" ", devenvArguments);
 			STARTUPINFO si = { .cb = sizeof(si) };
 			wil::unique_process_information pi;
-			BOOL bres = CreateProcessW (devenvExe, cmdLine.get(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi);
+			BOOL bres = CreateProcessW (devenvExe.get(), cmdLine.get(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi);
 			Assert::IsTrue(bres);
 			DWORD exitCode;
 			bres = GetExitCodeProcess (pi.hProcess, &exitCode);
@@ -101,39 +98,35 @@ namespace FelixTests
 			if (IsDebuggerPresent())
 				FindAndAttach(pi.dwProcessId, dte);
 
-			_targetVS = { std::move(pi), std::move(dte) };
+			::UITests::dte = std::move(dte);
 		}
 
 		static void CloseCurrentInstance(bool hard = false)
 		{
-			if (_targetVS.processInfo.hProcess)
+			if (dte)
 			{
-				if (hard) {
-					TerminateProcess(_targetVS.processInfo.hProcess, 1234);
-				} else {
-					bool closed = false;
-					com_ptr<VxDTE::Window> dteMainWindow;
-					if (SUCCEEDED(_targetVS.dte->Quit()))//get_MainWindow(&dteMainWindow)))
-					{
-						//long dteMainWindowHWnd;
-						//if (SUCCEEDED(dteMainWindow->get_HWnd(&dteMainWindowHWnd)))
-						//{
-						//	HWND hWnd = (HWND)(size_t)(DWORD)dteMainWindowHWnd;
-						//	if (PostMessageW(hWnd, WM_CLOSE, 0, 0))
-						//	{
-								DWORD waitRes = WaitForSingleObject(_targetVS.processInfo.hProcess, IsDebuggerPresent() ? INFINITE : 10000);
-								if (waitRes == WAIT_OBJECT_0)
-									closed = true;
-						//	}
-						//}
-					}
+				com_ptr<VxDTE::Window> dteMainWindow;
+				auto hr = dte->get_MainWindow(&dteMainWindow);
+				Assert::IsTrue(SUCCEEDED(hr));
+				long dteMainWindowHWnd;
+				hr = dteMainWindow->get_HWnd(&dteMainWindowHWnd);
+				Assert::IsTrue(SUCCEEDED(hr));
+				DWORD processID;
+				GetWindowThreadProcessId((HWND)(size_t)(DWORD)dteMainWindowHWnd, &processID);
+				wil::unique_handle hProcess (OpenProcess (SYNCHRONIZE, FALSE, processID));
 
-					if (!closed)
-						TerminateProcess(_targetVS.processInfo.hProcess, 1234);
+				bool closed = false;
+				if (!hard && SUCCEEDED(dte->Quit()))
+				{
+					DWORD waitRes = WaitForSingleObject(hProcess.get(), IsDebuggerPresent() ? INFINITE : 10000);
+					if (waitRes == WAIT_OBJECT_0)
+						closed = true;
 				}
 
-				_targetVS.dte.reset();
-				_targetVS.processInfo.reset();
+				if (!closed)
+					TerminateProcess(hProcess.get(), 1234);
+
+				dte.reset();
 			}
 		}
 
@@ -347,7 +340,7 @@ namespace FelixTests
 		{
 			HRESULT hr;
 			wil::com_ptr_failfast<IUnknown> solution;
-			hr = _targetVS.dte->get_Solution((VxDTE::Solution**)solution.addressof());
+			hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto sln = solution.query<VxDTE::_Solution>();
 			hr = sln->Create(wil::make_bstr_failfast(testDir).get(), wil::make_bstr_failfast(solutionName).get());
@@ -406,28 +399,18 @@ namespace FelixTests
 	public:
 		TEST_CLASS_INITIALIZE(UITestsInitialize)
 		{
-			HRESULT hr;
-
-			hr = CoCreateInstance (__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation));
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			wil::unique_process_heap_string devenvExe;
-			hr = wil::GetEnvironmentVariableW (L"VSAPPIDDIR", devenvExe);
-			Assert::IsTrue(SUCCEEDED(hr));
-			devenvExe = wil::str_concat_failfast<wil::unique_process_heap_string>(devenvExe, L"devenv.exe");
-			StartOrRestart (devenvExe.get(), L"/rootSuffix Exp", L"", L"");
+			StartOrRestart();
 		}
 
 		TEST_CLASS_CLEANUP(UITestsCleanup)
 		{
 			CloseCurrentInstance();
-			automation = nullptr;
 		}
 
 		TEST_METHOD(LaunchVS)
 		{
 			com_ptr<IUnknown> solution;
-			auto hr = _targetVS.dte->get_Solution((VxDTE::Solution**)solution.addressof());
+			auto hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto sln = wil::com_query_failfast<VxDTE::_Solution>(solution);
 			sln->Close();
@@ -441,7 +424,7 @@ namespace FelixTests
 			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
 
 			com_ptr<IUnknown> solution;
-			hr = _targetVS.dte->get_Solution((VxDTE::Solution**)solution.addressof());
+			hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto sln = wil::com_query_failfast<VxDTE::_Solution>(solution);
 			hr = sln->Create(wil::make_bstr_failfast(testPath.get()).get(), wil::make_bstr_failfast(L"test.sln").get());
@@ -490,13 +473,13 @@ namespace FelixTests
 			BuildSolution(sln, &buildFailCount);
 			Assert::AreEqual(0l, buildFailCount);
 
-			WriteFileOnDisk(testPath.get(), L"file.asm", "\tabcde");
+			FelixTests::WriteFileOnDisk(testPath.get(), L"file.asm", "\tabcde");
 
 			BuildSolution(sln, &buildFailCount);
 			Assert::AreEqual(1l, buildFailCount);
 
-			hr = _targetVS.dte->ExecuteCommand(wil::make_bstr_failfast(L"View.ErrorList").get());
-			auto dte2 = wil::com_query_failfast<VxDTE::DTE2>(_targetVS.dte);
+			hr = dte->ExecuteCommand(wil::make_bstr_failfast(L"View.ErrorList").get());
+			auto dte2 = wil::com_query_failfast<VxDTE::DTE2>(dte);
 			wil::com_ptr_failfast<VxDTE::ToolWindows> toolWindows;
 			hr = dte2->get_ToolWindows(&toolWindows);
 			wil::com_ptr_failfast<VxDTE::ErrorList> errorList;
@@ -603,7 +586,7 @@ namespace FelixTests
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
 
 			com_ptr<IDispatch> aodisp;
-			hr = _targetVS.dte->GetObject(wil::make_bstr_failfast(L"TestHelper").get(), &aodisp);
+			hr = dte->GetObject(wil::make_bstr_failfast(L"TestHelper").get(), &aodisp);
 			Assert::IsTrue(SUCCEEDED(hr));
 			com_ptr<IFelixTestHelper> ao;
 			hr = aodisp->QueryInterface(IID_PPV_ARGS(&ao));
@@ -683,8 +666,8 @@ namespace FelixTests
 			BuildSolution(sln, &buildFailCount);
 			Assert::IsTrue(buildFailCount >= 1);
 
-			hr = _targetVS.dte->ExecuteCommand(wil::make_bstr_failfast(L"View.ErrorList").get());
-			auto dte2 = wil::com_query_failfast<VxDTE::DTE2>(_targetVS.dte);
+			hr = dte->ExecuteCommand(wil::make_bstr_failfast(L"View.ErrorList").get());
+			auto dte2 = wil::com_query_failfast<VxDTE::DTE2>(dte);
 			wil::com_ptr_failfast<VxDTE::ToolWindows> toolWindows;
 			hr = dte2->get_ToolWindows(&toolWindows);
 			wil::com_ptr_failfast<VxDTE::ErrorList> errorList;
@@ -703,7 +686,7 @@ namespace FelixTests
 			errorItem->Navigate(); // This call succeeds, even though VS couldn't open the file.
 
 			com_ptr<VxDTE::Document> doc;
-			hr = _targetVS.dte->get_ActiveDocument(&doc);
+			hr = dte->get_ActiveDocument(&doc);
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::IsNotNull(doc.get()); // This would fail before the fix.
 

@@ -23,6 +23,7 @@
 #include <Shlwapi.h>
 #include <ShObjIdl.h>
 #undef EnumProcesses
+#include <UIAutomationClient.h>
 
 #include <fpstfmt.h>
 #include <ivstrackprojectdocuments2.h>
