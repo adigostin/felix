@@ -1,6 +1,7 @@
 
 #include "pch.h"
 #include "FelixPackageTests.h"
+#include "TestsCommon.h"
 
 #pragma comment (lib, "synchronization.lib")
 
@@ -80,7 +81,7 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			if (asmFileContent)
-				WriteFileOnDisk(tempPath, L"test.asm", asmFileContent);
+				WriteFileOnDisk(CombinePath(tempPath, L"test.asm").get(), asmFileContent);
 			else
 				DeleteFileOnDisk(tempPath, L"test.asm");
 			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"test.asm");
@@ -178,7 +179,7 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			if (sourceFileContent)
-				WriteFileOnDisk(tempPath, sourceFileName, sourceFileContent);
+				WriteFileOnDisk(CombinePath(tempPath, sourceFileName).get(), sourceFileContent);
 			else
 				DeleteFileOnDisk(tempPath, sourceFileName);
 			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, sourceFileName);

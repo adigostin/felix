@@ -2,6 +2,7 @@
 #include "pch.h"
 #include "FelixPackageTests.h"
 #include "dispids.h"
+#include "TestsCommon.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -55,7 +56,7 @@ namespace FelixTests
 			PathCombine(folderFullPath, tempPath, L"folder");
 			BOOL bres = CreateDirectory(folderFullPath, nullptr);
 			Assert::IsTrue(bres || GetLastError() == ERROR_ALREADY_EXISTS);
-			WriteFileOnDisk(tempPath, relativePathOld);
+			WriteFileOnDisk(fullPathOld.get(), "");
 
 			wchar_t fullPathNew[MAX_PATH];
 			PathCombine(fullPathNew, tempPath, L"folder/new.asm");
@@ -178,7 +179,7 @@ namespace FelixTests
 			auto fileFullPath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH);
 			PathCombine(fileFullPath.get(), tempPath, L"folder/test.asm");
 
-			WriteFileOnDisk(tempPath, L"folder/test.asm");
+			WriteFileOnDisk(fileFullPath.get(), "");
 
 			VSADDRESULT addResult;
 			hr = hier.try_query<IVsProject>()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, (LPCOLESTR*)fileFullPath.addressof(), nullptr, &addResult);

@@ -6,13 +6,8 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-extern wil::unique_process_heap_string templateFullPath;
-extern wil::unique_process_heap_string TemplatePath_EmptyProject;
-extern wil::unique_process_heap_string TemplatePath_EmptyFile;
-extern wchar_t tempPath[MAX_PATH + 1];
 extern const GUID FelixProjectType;
 extern const GUID CLSID_FelixPackage;
-extern com_ptr<IUIAutomation> automation;
 
 namespace FelixTests
 {
@@ -23,7 +18,6 @@ namespace FelixTests
 
 	com_ptr<IFileNode> MakeFileNode (const wchar_t* pathRelativeToProjectDir);
 	VSITEMID AddFolderNode (IVsUIHierarchy* hier, VSITEMID addTo, const wchar_t* name);
-	void WriteFileOnDisk(const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir, const char* fileContent = nullptr);
 	void DeleteFileOnDisk(const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir);
 
 	com_ptr<IProjectConfig> AddDebugProjectConfig (IVsHierarchy* hier);

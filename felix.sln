@@ -44,6 +44,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FelixPackageTests", "FelixP
 		{D2FFE9B6-FD8E-4216-9E6B-55A5680DAAEE} = {D2FFE9B6-FD8E-4216-9E6B-55A5680DAAEE}
 	EndProjectSection
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "UITests", "FelixPackageTests\UITests\UITests.vcxproj", "{73D12F8F-AA8F-44CB-A620-DC5D8789DCA4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -78,6 +80,10 @@ Global
 		{82302AB5-B267-77DB-4D7C-6101F2D253E0}.Debug|x64.Build.0 = Debug|x64
 		{82302AB5-B267-77DB-4D7C-6101F2D253E0}.Release|x64.ActiveCfg = Release|x64
 		{82302AB5-B267-77DB-4D7C-6101F2D253E0}.Release|x64.Build.0 = Release|x64
+		{73D12F8F-AA8F-44CB-A620-DC5D8789DCA4}.Debug|x64.ActiveCfg = Debug|x64
+		{73D12F8F-AA8F-44CB-A620-DC5D8789DCA4}.Debug|x64.Build.0 = Debug|x64
+		{73D12F8F-AA8F-44CB-A620-DC5D8789DCA4}.Release|x64.ActiveCfg = Release|x64
+		{73D12F8F-AA8F-44CB-A620-DC5D8789DCA4}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

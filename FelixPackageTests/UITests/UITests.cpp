@@ -1,6 +1,8 @@
 
 #include "pch.h"
-#include "FelixPackageTests.h"
+#include "shared/com.h"
+#include "FelixPackage.h"
+#include "../TestsCommon.h"
 
 #define FORCE_EXPLICIT_DTE_NAMESPACE
 #include <dte.h>
@@ -14,6 +16,7 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace UITests
 {
+	com_ptr<IUIAutomation> automation;
 	com_ptr<VxDTE::_DTE> dte;
 
 	TEST_CLASS(UITests)
@@ -334,7 +337,7 @@ namespace UITests
 		// <param name="testDir">The directory in which to create the solution.</param>
 		// <param name="solutionName">The name of the solution to create, without extension.</param>
 		// <param name="projectName">NULL to create a project with the same name as the solution in the same dir, filename without extension to create project in subdir with different name.</param>
-		void CreateSolutionAndProject (PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName, VxDTE::_Solution** ppSln, VxDTE::Project** ppProj)
+		static void CreateSolutionAndProject (PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName, VxDTE::_Solution** ppSln, VxDTE::Project** ppProj)
 		{
 			HRESULT hr;
 			wil::com_ptr_failfast<IUnknown> solution;
@@ -375,7 +378,7 @@ namespace UITests
 				*ppProj = proj.detach();
 		}
 
-		void BuildSolution (VxDTE::_Solution* sln, long* buildFailCount)
+		static void BuildSolution (VxDTE::_Solution* sln, long* buildFailCount)
 		{
 			HRESULT hr;
 
@@ -397,12 +400,17 @@ namespace UITests
 	public:
 		TEST_CLASS_INITIALIZE(UITestsInitialize)
 		{
+			MakeTemplates (L"FelixTestUI");
+
+			auto hr = CoCreateInstance (__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation));
+			Assert::IsTrue(SUCCEEDED(hr));
 			StartOrRestart();
 		}
 
 		TEST_CLASS_CLEANUP(UITestsCleanup)
 		{
 			CloseCurrentInstance();
+			automation.reset();
 		}
 
 		TEST_METHOD(LaunchVS)
@@ -471,7 +479,7 @@ namespace UITests
 			BuildSolution(sln, &buildFailCount);
 			Assert::AreEqual(0l, buildFailCount);
 
-			FelixTests::WriteFileOnDisk(testPath.get(), L"file.asm", "\tabcde");
+			WriteFileOnDisk (CombinePath(testPath.get(), L"file.asm").get(), "\tabcde");
 
 			BuildSolution(sln, &buildFailCount);
 			Assert::AreEqual(1l, buildFailCount);
@@ -646,13 +654,9 @@ namespace UITests
 			BuildSolution(sln, &buildFailCount);
 			Assert::AreEqual(0l, buildFailCount);
 
-			auto subdirPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath.get(), L"\\testproj\\subdir");
-			Assert::IsTrue(CreateDirectory(subdirPath.get(), nullptr));
-			auto file1Path = wil::str_concat_failfast<wil::unique_process_heap_string>(subdirPath.get(), L"\\file1.asm");
-			auto file1 = wil::unique_hfile(CreateFile(file1Path.get(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
-			Assert::IsTrue(file1.is_valid());
-			Assert::IsTrue(WriteFile(file1.get(), "\t555555", 4, nullptr, nullptr));
-			file1.reset(); 
+			auto file1Path = CombinePath(testPath.get(), L"testproj\\subdir\\file1.asm");
+			WriteFileOnDisk (file1Path.get(), "\t555555");
+
 			com_ptr<VxDTE::ProjectItems> items;
 			proj->get_ProjectItems(&items);
 			wil::com_ptr_failfast<VxDTE::ProjectItem> item1;

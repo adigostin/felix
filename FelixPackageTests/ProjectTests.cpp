@@ -3,6 +3,7 @@
 #include "FelixPackageTests.h"
 #include "../FelixPackage/Z80Xml.h"
 #include "../FelixPackageUi/resource.h"
+#include "TestsCommon.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -426,7 +427,7 @@ namespace FelixTests
 			hr = sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), tempPath, ProjFileName, CPF_CLONEFILE, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			WriteFileOnDisk(tempPath, L"template.asm");
+			WriteFileOnDisk(CombinePath(tempPath, L"template.asm").get(), "");
 			wil::unique_process_heap_string templateFileFullPath;
 			wil::str_concat_nothrow(templateFileFullPath, tempPath, L"\\template.asm");
 			auto proj = hier.try_query<IVsProject>();

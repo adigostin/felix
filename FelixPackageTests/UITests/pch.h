@@ -24,7 +24,6 @@
 #include <ShObjIdl.h>
 #undef EnumProcesses
 #include <UIAutomationClient.h>
-#include <PathCch.h>
 
 #include <fpstfmt.h>
 #include <ivstrackprojectdocuments2.h>
