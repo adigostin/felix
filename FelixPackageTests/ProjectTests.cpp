@@ -1,10 +1,8 @@
 
 #include "pch.h"
-#include "shared/com.h"
-#include "../FelixPackage/FelixPackage.h"
+#include "FelixPackageTests.h"
 #include "../FelixPackage/Z80Xml.h"
 #include "../FelixPackageUi/resource.h"
-#include "Mocks.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 

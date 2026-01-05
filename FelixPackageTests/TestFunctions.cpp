@@ -1,6 +1,6 @@
 
 #include "pch.h"
-#include "Mocks.h"
+#include "FelixPackageTests.h"
 
 namespace FelixTests
 {

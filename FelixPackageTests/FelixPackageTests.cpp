@@ -2,8 +2,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include "shared/com.h"
-#include "../FelixPackage/FelixPackage.h"
-#include "Mocks.h"
+#include "FelixPackageTests.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 

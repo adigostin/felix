@@ -1,9 +1,6 @@
 
 #include "pch.h"
-#include "FelixPackage.h"
-#include "shared/com.h"
-#include "shared/inplace_function.h"
-#include "Mocks.h"
+#include "FelixPackageTests.h"
 
 #pragma comment (lib, "synchronization.lib")
 

@@ -1,7 +1,6 @@
 
 #include "pch.h"
-#include "../Mocks.h"
-#include "shared/vector_nothrow.h"
+#include "FelixPackageTests.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
