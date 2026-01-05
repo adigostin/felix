@@ -12,11 +12,11 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{82302AB5-B267-77DB-4D7C-6101F2D253E0}</ProjectGuid>
-    <RootNamespace>FelixPackageTests</RootNamespace>
+    <RootNamespace>PackageTests</RootNamespace>
     <ProjectSubType>NativeUnitTestProject</ProjectSubType>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
-  <Import Project="..\VsSDK.props" />
+  <Import Project="$(SolutionDir)\VsSDK.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>Unicode</CharacterSet>
@@ -117,7 +117,7 @@ XCOPY /y /s /q $(SolutionDir)FelixPackageVSIX\Templates $(OutDir)Templates\*</Co
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="BuilderTests.cpp" />
-    <ClCompile Include="FelixPackageTests.cpp" />
+    <ClCompile Include="PackageTests.cpp" />
     <ClCompile Include="FolderTests.cpp" />
     <ClCompile Include="Mocks\MockDebugger.cpp" />
     <ClCompile Include="Mocks\MockFileChangeEx.cpp" />
@@ -135,7 +135,7 @@ XCOPY /y /s /q $(SolutionDir)FelixPackageVSIX\Templates $(OutDir)Templates\*</Co
     <ClCompile Include="ProjectTests.cpp" />
     <ClCompile Include="SourceFileTests.cpp" />
     <ClCompile Include="TestFunctions.cpp" />
-    <ClCompile Include="TestsCommon.cpp" />
+    <ClCompile Include="../TestsCommon.cpp" />
     <ClCompile Include="XmlTests.cpp" />
     <ClCompile Include="XmlTests_i.c">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
@@ -143,12 +143,12 @@ XCOPY /y /s /q $(SolutionDir)FelixPackageVSIX\Templates $(OutDir)Templates\*</Co
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="FelixPackageTests.h" />
+    <ClInclude Include="PackageTests.h" />
     <ClInclude Include="pch.h" />
-    <ClInclude Include="TestsCommon.h" />
+    <ClInclude Include="../TestsCommon.h" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\FelixPackage\FelixPackage.vcxproj">
+    <ProjectReference Include="..\..\FelixPackage\FelixPackage.vcxproj">
       <Project>{79203f4b-6f1f-4d65-ade5-d082617da696}</Project>
     </ProjectReference>
   </ItemGroup>
@@ -156,7 +156,7 @@ XCOPY /y /s /q $(SolutionDir)FelixPackageVSIX\Templates $(OutDir)Templates\*</Co
     <Midl Include="XmlTests.idl" />
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="FelixPackageTests.rc" />
+    <ResourceCompile Include="PackageTests.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

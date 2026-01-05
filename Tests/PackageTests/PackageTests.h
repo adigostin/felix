@@ -3,6 +3,7 @@
 #include "shared/com.h"
 #include "shared/inplace_function.h"
 #include "FelixPackage.h"
+#include "../TestsCommon.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 

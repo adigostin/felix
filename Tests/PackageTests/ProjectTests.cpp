@@ -1,9 +1,8 @@
 
 #include "pch.h"
-#include "FelixPackageTests.h"
+#include "PackageTests.h"
 #include "../FelixPackage/Z80Xml.h"
 #include "../FelixPackageUi/resource.h"
-#include "TestsCommon.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 

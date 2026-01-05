@@ -1,6 +1,6 @@
 
 #include "pch.h"
-#include "FelixPackageTests.h"
+#include "PackageTests.h"
 #include "Z80Xml.h"
 #include "FelixPackage.h"
 #include "XmlTests_h.h"

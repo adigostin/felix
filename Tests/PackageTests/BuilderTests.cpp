@@ -1,7 +1,6 @@
 
 #include "pch.h"
-#include "FelixPackageTests.h"
-#include "TestsCommon.h"
+#include "PackageTests.h"
 
 #pragma comment (lib, "synchronization.lib")
 

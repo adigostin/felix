@@ -1,8 +1,7 @@
 
 #include "pch.h"
-#include "FelixPackageTests.h"
 #include "dispids.h"
-#include "TestsCommon.h"
+#include "PackageTests.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 

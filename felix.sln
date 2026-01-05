@@ -38,13 +38,16 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Z80SimulatorTests", "simula
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Simulator", "Simulator\Simulator.vcxproj", "{67A43810-6782-4B2C-9993-707117D1BCC0}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FelixPackageTests", "FelixPackageTests\FelixPackageTests.vcxproj", "{82302AB5-B267-77DB-4D7C-6101F2D253E0}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "PackageTests", "Tests\PackageTests\PackageTests.vcxproj", "{82302AB5-B267-77DB-4D7C-6101F2D253E0}"
 	ProjectSection(ProjectDependencies) = postProject
 		{79203F4B-6F1F-4D65-ADE5-D082617DA696} = {79203F4B-6F1F-4D65-ADE5-D082617DA696}
 		{D2FFE9B6-FD8E-4216-9E6B-55A5680DAAEE} = {D2FFE9B6-FD8E-4216-9E6B-55A5680DAAEE}
 	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "UITests", "FelixPackageTests\UITests\UITests.vcxproj", "{73D12F8F-AA8F-44CB-A620-DC5D8789DCA4}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "UITests", "Tests\UITests\UITests.vcxproj", "{73D12F8F-AA8F-44CB-A620-DC5D8789DCA4}"
+	ProjectSection(ProjectDependencies) = postProject
+		{D2FFE9B6-FD8E-4216-9E6B-55A5680DAAEE} = {D2FFE9B6-FD8E-4216-9E6B-55A5680DAAEE}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
