@@ -629,7 +629,15 @@ public:
 				com_ptr<IProjectNode> proj;
 				if (SUCCEEDED(_hier->QueryInterface(IID_PPV_ARGS(&proj))))
 				{
-					hr = GeneratePrePostIncludeFiles(proj, this); RETURN_IF_FAILED(hr);
+					// If we are the active configuration, regenerate.
+					com_ptr<IVsSolutionBuildManager> buildManager;
+					hr = serviceProvider->QueryService(SID_SVsSolutionBuildManager, IID_PPV_ARGS(&buildManager)); RETURN_IF_FAILED(hr);
+					com_ptr<IVsProjectCfg> activeConfig;
+					hr = buildManager->FindActiveProjectCfg (nullptr, nullptr, proj->AsHierarchy(), &activeConfig); RETURN_IF_FAILED(hr);
+					if (activeConfig.get() == static_cast<IVsProjectCfg*>(this))
+					{
+						hr = GeneratePrePostIncludeFiles(proj); RETURN_IF_FAILED(hr);
+					}
 				}
 			}
 		

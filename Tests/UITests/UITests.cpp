@@ -337,7 +337,8 @@ namespace UITests
 		// <param name="testDir">The directory in which to create the solution.</param>
 		// <param name="solutionName">The name of the solution to create, without extension.</param>
 		// <param name="projectName">NULL to create a project with the same name as the solution in the same dir, filename without extension to create project in subdir with different name.</param>
-		static void CreateSolutionAndProject (PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName, VxDTE::_Solution** ppSln, VxDTE::Project** ppProj)
+		static std::pair<wil::com_ptr_failfast<VxDTE::_Solution>, wil::com_ptr_failfast<VxDTE::Project>>
+			CreateSolutionAndProject (PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName)
 		{
 			HRESULT hr;
 			wil::com_ptr_failfast<IUnknown> solution;
@@ -364,18 +365,14 @@ namespace UITests
 
 			wil::com_ptr_failfast<VxDTE::Project> proj;
 			hr = sln->AddFromTemplate (
-				wil::make_bstr_failfast(templateFullPath.get()).get(),
+				wil::make_bstr_failfast(TemplatePath_TwoConfigsOneFile.get()).get(),
 				wil::make_bstr_failfast(projDir).get(),
 				wil::make_bstr_failfast(projName.get()).get(), VARIANT_FALSE, &proj);
 			Assert::IsTrue(SUCCEEDED(hr));
 			hr = sln->SaveAs(wil::make_bstr_failfast(solutionName).get());
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			if (ppSln)
-				*ppSln = sln.detach();
-
-			if (ppProj)
-				*ppProj = proj.detach();
+			return { std::move(sln), std::move(proj) };
 		}
 
 		static void BuildSolution (VxDTE::_Solution* sln, long* buildFailCount)
@@ -397,9 +394,16 @@ namespace UITests
 			Assert::IsTrue(SUCCEEDED(hr));
 		}
 
+		static void __stdcall WilLoggingCallback (const wil::FailureInfo& fi) noexcept
+		{
+			Assert::Fail(fi.pszMessage);
+		}
+
 	public:
 		TEST_CLASS_INITIALIZE(UITestsInitialize)
 		{
+			wil::SetResultLoggingCallback (WilLoggingCallback);
+
 			MakeTemplates (L"FelixTestUI");
 
 			auto hr = CoCreateInstance (__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation));
@@ -411,6 +415,8 @@ namespace UITests
 		{
 			CloseCurrentInstance();
 			automation.reset();
+
+			wil::SetResultLoggingCallback(nullptr);
 		}
 
 		TEST_METHOD(LaunchVS)
@@ -439,7 +445,7 @@ namespace UITests
 
 			com_ptr<VxDTE::Project> proj;
 			hr = sln->AddFromTemplate (
-				wil::make_bstr_failfast(templateFullPath.get()).get(),
+				wil::make_bstr_failfast(TemplatePath_TwoConfigsOneFile.get()).get(),
 				wil::make_bstr_failfast(testPath.get()).get(),
 				wil::make_bstr_failfast(L"test.flx").get(), VARIANT_TRUE, &proj);
 			Assert::IsTrue(SUCCEEDED(hr), wil::str_printf_failfast<wil::unique_process_heap_string>(L"0x%08x", hr).get());
@@ -453,8 +459,7 @@ namespace UITests
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
 			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
 
-			wil::com_ptr_failfast<VxDTE::_Solution> sln;
-			CreateSolutionAndProject (testPath.get(), L"test", nullptr, &sln, nullptr);
+			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", nullptr);
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
 
 			long buildFailCount;
@@ -470,9 +475,7 @@ namespace UITests
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
 			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
 
-			wil::com_ptr_failfast<VxDTE::_Solution> sln;
-			wil::com_ptr_failfast<VxDTE::Project> proj;
-			CreateSolutionAndProject (testPath.get(), L"test", nullptr, &sln, &proj);
+			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", nullptr);
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
 
 			long buildFailCount;
@@ -512,9 +515,7 @@ namespace UITests
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
 			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
 
-			wil::com_ptr_failfast<VxDTE::_Solution> sln;
-			wil::com_ptr_failfast<VxDTE::Project> proj;
-			CreateSolutionAndProject(testPath.get(), L"test", nullptr, &sln, &proj);
+			auto[sln, proj] = CreateSolutionAndProject(testPath.get(), L"test", nullptr);
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
 
 			auto hier = proj.query<IVsUIHierarchy>();
@@ -586,9 +587,7 @@ namespace UITests
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
 			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
 
-			wil::com_ptr_failfast<VxDTE::_Solution> sln;
-			wil::com_ptr_failfast<VxDTE::Project> proj;
-			CreateSolutionAndProject (testPath.get(), L"test", nullptr, &sln, &proj);
+			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", nullptr);
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
 
 			com_ptr<IDispatch> aodisp;
@@ -645,9 +644,7 @@ namespace UITests
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
 			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
 
-			wil::com_ptr_failfast<VxDTE::_Solution> sln;
-			wil::com_ptr_failfast<VxDTE::Project> proj;
-			CreateSolutionAndProject (testPath.get(), L"test", L"testproj", &sln, &proj);
+			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"testproj");
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
 
 			long buildFailCount;
@@ -711,6 +708,61 @@ namespace UITests
 			Assert::IsTrue(SUCCEEDED(hr));
 			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"SubDir\\File1.ASM", &itemid); // for bonus points
 			Assert::IsTrue(SUCCEEDED(hr));
+		}
+
+		TEST_METHOD(GenPrePostInclude_OnlyActiveCfg)
+		{
+			// Verify that the PreInclude.asm and PostInclude.asm are regenerated when editing the active configuration,
+			// and that they are _not_ regenerated when editing an inactive configuration.
+
+			HRESULT hr;
+
+			auto testPath = std::filesystem::path(tempPath) / "GenPrePostInclude_OnlyActiveCfg";
+			std::filesystem::create_directory(testPath);
+			auto delDir = wil::scope_exit([&testPath] { std::error_code ec; std::filesystem::remove_all(testPath, ec); });
+
+			auto[sln0, proj] = CreateSolutionAndProject (testPath.c_str(), L"test", L"testproj");
+			auto close = wil::scope_exit([sln=sln0.get()] { sln->Close(); });
+
+			// Let's not go through the configuration manager since we haven't implemented Project::get_ConfigurationManager yet.
+			//Microsoft_VisualStudio_Interop::_SolutionPtr sln = sln0.get();
+			//auto configs = sln->SolutionBuild->SolutionConfigurations;
+			//Assert::IsTrue(configs->Count >= 2);
+			//Assert::AreEqual<void*>(configs->Item[1].GetInterfacePtr(), sln->SolutionBuild->ActiveConfiguration.GetInterfacePtr());
+
+			com_ptr<IVsCfg> cfgs[2];
+			ULONG actual;
+			VSCFGFLAGS flags;
+			hr = proj.query<IVsCfgProvider>()->GetCfgs(2, cfgs[0].addressof(), &actual, &flags);
+			Assert::AreEqual(S_OK, hr);
+
+			// Make a change in the active configuration and verify that the Pre/PostInclude files are generated.
+			auto genFilesPath = testPath / L"testproj" / L"GeneratedFiles";
+			Assert::IsTrue(std::filesystem::exists(genFilesPath));
+			std::filesystem::remove_all(genFilesPath);
+
+			com_ptr<IProjectConfigProperties> props;
+			hr = cfgs[0]->QueryInterface(IID_PPV_ARGS(&props));
+			Assert::IsTrue(SUCCEEDED(hr));
+			com_ptr<IProjectConfigAssemblerProperties> asmProps;
+			hr = props->get_AssemblerProperties(&asmProps);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = asmProps->put_BaseAddress(1234);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsTrue(std::filesystem::exists(genFilesPath));
+
+			// Now make a change in the inactive configuration.
+			std::filesystem::remove_all(genFilesPath);
+
+			hr = cfgs[1]->QueryInterface(IID_PPV_ARGS(&props));
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = props->get_AssemblerProperties(&asmProps);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = asmProps->put_BaseAddress(1234);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsTrue(!std::filesystem::exists(genFilesPath));
 		}
 	};
 }

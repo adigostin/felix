@@ -803,7 +803,7 @@ public:
 				hr = project->QueryInterface(IID_PPV_ARGS(&sink)); RETURN_IF_FAILED(hr);
 				sink->OnChanged(DISPID_UNKNOWN);
 
-				hr = GeneratePrePostIncludeFiles (project, nullptr); RETURN_IF_FAILED(hr);
+				hr = GeneratePrePostIncludeFiles (project); RETURN_IF_FAILED(hr);
 			}
 
 			_propNotifyCP->Notify([](IPropertyNotifySink* sink)

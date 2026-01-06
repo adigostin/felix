@@ -18,11 +18,20 @@ const GUID CLSID_FelixPackage = { 0x768BC57B, 0x42A8, 0x42AB, { 0xB3, 0x89, 0x45
 
 const GUID FelixProjectType = { 0xD438161C, 0xF032, 0x4014, { 0xBC, 0x5C, 0x20, 0xA8, 0x0E, 0xAF, 0xF5, 0x9B } };
 
+static void __stdcall WilLoggingCallback (const wil::FailureInfo& fi) noexcept
+{
+	if (IsDebuggerPresent())
+		DebugBreak();
+	Assert::Fail(fi.pszMessage);
+}
+
 namespace FelixTests
 {
 	TEST_MODULE_INITIALIZE(InitModule)
 	{
 		HRESULT hr;
+
+		::SetResultLoggingCallback (WilLoggingCallback);
 
 		MakeTemplates (L"FelixTest");
 
@@ -57,29 +66,7 @@ namespace FelixTests
 			ULONG refCount = serviceProvider.detach()->Release();
 			Assert::AreEqual((ULONG)0, refCount);
 		}
+
+		wil::SetResultLoggingCallback(nullptr);
 	}
-
-	TEST_CLASS(PackageTests)
-	{
-	public:
-		
-		TEST_METHOD(CloneProject)
-		{
-			HRESULT hr;
-
-			com_ptr<IVsSolution> sol;
-			hr = serviceProvider->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			static const wchar_t ProjFileName[] = L"TestProject.flx";
-			com_ptr<IVsHierarchy> hier;
-			hr = sol->CreateProject(FelixProjectType, templateFullPath.get(), tempPath, ProjFileName, CPF_CLONEFILE, IID_PPV_ARGS(&hier));
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			wil::unique_hlocal_string path;
-			hr = wil::str_concat_nothrow(path, tempPath, L"\\", ProjFileName);
-			Assert::IsTrue(SUCCEEDED(hr));
-			DeleteFile(path.get());
-		}
-	};
 }

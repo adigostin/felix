@@ -261,7 +261,7 @@ FELIX_API HRESULT MakeCustomBuildToolProperties (ICustomBuildToolProperties** to
 FELIX_API HRESULT MakeProjectConfigBuilder (IProjectNode* project, IProjectConfig* config,
 	IVsOutputWindowPane2* outputWindowPane, IProjectConfigBuilder** to);
 HRESULT ShowCommandLinePropertyBuilder (HWND hwndParent, BSTR valueBefore, BSTR* valueAfter);
-HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, IProjectConfig* configOrNullForActive);
+HRESULT GeneratePrePostIncludeFiles (IProjectNode* project);
 FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine);
 HRESULT MakeFolderNode (IFolderNode** ppFolder);
 BOOL LUtilFixFilename (wchar_t* strName);
@@ -286,3 +286,4 @@ HRESULT MakeZ80SymSymbols (const wchar_t* symbolsFullPath, IFelixSymbols** to);
 HRESULT GetSldFilename (IProjectConfig* config, wil::unique_process_heap_string& filenameOut);
 const wchar_t* GetOutputExtensionFromOutputType (OutputFileType type);
 HRESULT ResolveMacros (const wchar_t* pszIn, IProjectConfig* config, wil::unique_process_heap_string& out);
+FELIX_API void SetResultLoggingCallback(decltype(wil::details::g_pfnLoggingCallback) callbackFunction);

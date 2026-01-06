@@ -523,8 +523,12 @@ namespace FelixTests
 
 		TEST_METHOD(BuildFilesNotInProjectDir)
 		{
-			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"\\BuildFilesNotInProjectDir");
+			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"BuildFilesNotInProjectDir");
+			Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
+			auto delDir = wil::scope_exit([tp=testDir.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
+			
 			auto projDir = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\projdir");
+			Assert::IsTrue(CreateDirectory(projDir.get(), nullptr));
 
 			com_ptr<IVsHierarchy> hier;
 			auto hr = MakeProjectNode (nullptr, projDir.get(), nullptr, 0, IID_PPV_ARGS(&hier));

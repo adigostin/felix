@@ -2,7 +2,7 @@
 #pragma once
 
 extern wchar_t tempPath[MAX_PATH + 1];
-extern wil::unique_process_heap_string templateFullPath;
+extern wil::unique_process_heap_string TemplatePath_TwoConfigsOneFile;
 extern wil::unique_process_heap_string TemplatePath_EmptyProject;
 extern wil::unique_process_heap_string TemplatePath_EmptyFile;
 

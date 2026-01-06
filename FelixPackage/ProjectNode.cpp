@@ -1930,7 +1930,10 @@ public:
 			hr = AddFileToParent(file, location); RETURN_IF_FAILED(hr);
 		}
 
-		hr = GeneratePrePostIncludeFiles (this, nullptr); LOG_IF_FAILED(hr);
+		if (_configs.size())
+		{
+			hr = GeneratePrePostIncludeFiles (this); LOG_IF_FAILED(hr);
+		}
 
 		_isDirty = true;
 
@@ -2494,7 +2497,10 @@ public:
 			}
 		}
 
-		hr = GeneratePrePostIncludeFiles(this, nullptr); LOG_IF_FAILED(hr);
+		if (_configs.size())
+		{
+			hr = GeneratePrePostIncludeFiles(this); LOG_IF_FAILED(hr);
+		}
 
 		_isDirty = true;
 
@@ -2853,7 +2859,7 @@ public:
 
 		if (pIVsHierarchy == this)
 		{
-			hr = GeneratePrePostIncludeFiles(this, nullptr); RETURN_IF_FAILED(hr);
+			hr = GeneratePrePostIncludeFiles(this); RETURN_IF_FAILED(hr);
 		}
 
 		return S_OK;

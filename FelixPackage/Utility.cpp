@@ -302,20 +302,25 @@ static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* project, IProject
 		hr = CreateFileFromTemplate(templatePath.get(), includePath.get(), macroResolver); RETURN_IF_FAILED(hr);
 	}
 
-	wil::unique_bstr projectMk;
-	hr = project->AsVsProject()->GetMkDocument(VSITEMID_ROOT, &projectMk); RETURN_IF_FAILED(hr);
-	com_ptr<IVsFileChangeEx> fileChange;
-	hr = serviceProvider->QueryService(SID_SVsFileChangeEx, IID_PPV_ARGS(&fileChange)); RETURN_IF_FAILED(hr);
-	hr = fileChange->IgnoreFile(VSCOOKIE_NIL, projectMk.get(), TRUE); RETURN_IF_FAILED(hr);
-	auto unignore = wil::scope_exit([&fileChange, &projectMk] { fileChange->IgnoreFile(0, projectMk.get(), FALSE); });
-	hr = wil::try_com_query_nothrow<IPersistFileFormat>(project)->Save(nullptr, 0, 0); RETURN_IF_FAILED(hr);
-	hr = fileChange->SyncFile(projectMk.get()); (void)hr;
-	unignore.reset();
+	// If the project is titled, save it.
+	wil::unique_variant saveName;
+	if (SUCCEEDED(project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_SaveName, &saveName))
+		&& saveName.vt == VT_BSTR && saveName.bstrVal && saveName.bstrVal[0])
+	{
+		wil::unique_bstr projectMk;
+		hr = project->AsVsProject()->GetMkDocument(VSITEMID_ROOT, &projectMk); RETURN_IF_FAILED(hr);
+		com_ptr<IVsFileChangeEx> fileChange;
+		hr = serviceProvider->QueryService(SID_SVsFileChangeEx, IID_PPV_ARGS(&fileChange)); RETURN_IF_FAILED(hr);
+		hr = fileChange->IgnoreFile(VSCOOKIE_NIL, projectMk.get(), TRUE); RETURN_IF_FAILED(hr);
+		auto unignore = wil::scope_exit([&fileChange, &projectMk] { fileChange->IgnoreFile(0, projectMk.get(), FALSE); });
+		hr = wil::try_com_query_nothrow<IPersistFileFormat>(project)->Save(nullptr, 0, 0); RETURN_IF_FAILED(hr);
+		hr = fileChange->SyncFile(projectMk.get()); (void)hr;
+	}
 
 	return S_OK;
 }
 
-HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, IProjectConfig* configOrNullForActive)
+HRESULT GeneratePrePostIncludeFiles (IProjectNode* project)
 {
 	HRESULT hr;
 
@@ -423,17 +428,12 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project, IProjectConfig* conf
 		return S_OK;
 	}
 
+	com_ptr<IVsSolutionBuildManager> buildManager;
+	hr = serviceProvider->QueryService(SID_SVsSolutionBuildManager, IID_PPV_ARGS(&buildManager)); RETURN_IF_FAILED(hr);
+	com_ptr<IVsProjectCfg> projectConfig;
+	hr = buildManager->FindActiveProjectCfg (nullptr, nullptr, project->AsHierarchy(), &projectConfig); RETURN_IF_FAILED(hr);
 	com_ptr<IProjectConfig> config;
-	if (configOrNullForActive)
-		config = configOrNullForActive;
-	else
-	{
-		com_ptr<IVsSolutionBuildManager> buildManager;
-		hr = serviceProvider->QueryService(SID_SVsSolutionBuildManager, IID_PPV_ARGS(&buildManager)); RETURN_IF_FAILED(hr);
-		com_ptr<IVsProjectCfg> projectConfig;
-		hr = buildManager->FindActiveProjectCfg (nullptr, nullptr, project->AsHierarchy(), &projectConfig); RETURN_IF_FAILED(hr);
-		hr = projectConfig->QueryInterface(IID_PPV_ARGS(&config)); RETURN_IF_FAILED(hr);
-	}
+	hr = projectConfig->QueryInterface(IID_PPV_ARGS(&config)); RETURN_IF_FAILED(hr);
 
 	wil::unique_bstr str;
 	if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_GEN_PRE_POST_MESSAGE, &str)))
