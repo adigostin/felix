@@ -24,9 +24,6 @@ class ProjectNode
 	//, IConnectionPointContainer
 	, IVsHierarchyDeleteHandler3
 	, IXmlParent
-	//, IVsProjectBuildSystem
-	//, IVsBuildPropertyStorage
-	//, IVsBuildPropertyStorage2
 	, IProjectNode
 	, IParentNode
 	, IPropertyNotifySink // this implementation only used to mark the project as dirty
@@ -359,9 +356,6 @@ public:
 			|| TryQI<IVsHierarchyDeleteHandler3>(this, riid, ppvObject)
 			|| TryQI<IVsPersistHierarchyItem>(this, riid, ppvObject)
 			|| TryQI<IXmlParent>(this, riid, ppvObject)
-			//|| TryQI<IVsProjectBuildSystem>(this, riid, ppvObject)
-			//|| TryQI<IVsBuildPropertyStorage>(this, riid, ppvObject)
-			//|| TryQI<IVsBuildPropertyStorage2>(this, riid, ppvObject)
 			|| TryQI<IParentNode>(this, riid, ppvObject)
 			|| TryQI<IProjectNode>(this, riid, ppvObject)
 			|| TryQI<INode>(this, riid, ppvObject)
@@ -417,11 +411,7 @@ public:
 		)
 			return E_NOINTERFACE;
 
-		if (   riid == __uuidof(IVsProjectBuildSystem)
-			|| riid == __uuidof(IVsBuildPropertyStorage)
-			|| riid == __uuidof(IVsBuildPropertyStorage2)
-			|| riid == IID_IVsBooleanSymbolPresenceChecker
-		)
+		if (riid == IID_IVsBooleanSymbolPresenceChecker)
 			return E_NOINTERFACE;
 
 		if (riid == IID_IVsFilterAddProjectItemDlg || riid == IID_IVsSolution)
@@ -2339,85 +2329,7 @@ public:
 		return S_OK;
 	}
 	#pragma endregion
-	/*
-	#pragma region IVsProjectBuildSystem
-	virtual HRESULT STDMETHODCALLTYPE SetHostObject(LPCOLESTR pszTargetName, LPCOLESTR pszTaskName, IUnknown* punkHostObject) override
-	{
-		BreakIntoDebugger();
-		return E_NOTIMPL;
-	}
 
-	virtual HRESULT STDMETHODCALLTYPE StartBatchEdit(void) override
-	{
-		BreakIntoDebugger();
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE EndBatchEdit(void) override
-	{
-		BreakIntoDebugger();
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE CancelBatchEdit(void) override
-	{
-		BreakIntoDebugger();
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE BuildTarget(LPCOLESTR pszTargetName, VARIANT_BOOL* pbSuccess) override
-	{
-		BreakIntoDebugger();
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetBuildSystemKind(BuildSystemKindFlags* pBuildSystemKind) override
-	{
-		BreakIntoDebugger();
-		return E_NOTIMPL;
-	}
-	#pragma endregion
-
-	#pragma region IVsBuildPropertyStorage
-	virtual HRESULT STDMETHODCALLTYPE GetPropertyValue(LPCOLESTR pszPropName, LPCOLESTR pszConfigName, PersistStorageType storage, BSTR* pbstrPropValue) override
-	{
-		BreakIntoDebugger();
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE SetPropertyValue(LPCOLESTR pszPropName, LPCOLESTR pszConfigName, PersistStorageType storage, LPCOLESTR pszPropValue) override
-	{
-		BreakIntoDebugger();
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE RemoveProperty(LPCOLESTR pszPropName, LPCOLESTR pszConfigName, PersistStorageType storage) override
-	{
-		BreakIntoDebugger();
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetItemAttribute(VSITEMID item, LPCOLESTR pszAttributeName, BSTR* pbstrAttributeValue) override
-	{
-		BreakIntoDebugger();
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE SetItemAttribute(VSITEMID item, LPCOLESTR pszAttributeName, LPCOLESTR pszAttributeValue) override
-	{
-		BreakIntoDebugger();
-		return E_NOTIMPL;
-	}
-	#pragma endregion
-
-	#pragma region IVsBuildPropertyStorage2
-	virtual HRESULT STDMETHODCALLTYPE SetPropertyValueEx(LPCOLESTR pszPropName, LPCOLESTR pszPropertyGroupCondition, PersistStorageType storage, LPCOLESTR pszPropValue) override
-	{
-		BreakIntoDebugger();
-		return E_NOTIMPL;
-	}
-	#pragma endregion
-	*/
 	#pragma region IVsHierarchyDeleteHandler3
 	virtual HRESULT STDMETHODCALLTYPE QueryDeleteItems (
 		ULONG cItems,
