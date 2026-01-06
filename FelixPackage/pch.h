@@ -65,6 +65,8 @@
 #include <vsshlids.h>
 #include <sharedids.h>
 #include <ivstrackprojectdocuments2.h>
+#include <KnownImageIds.h>
+#include <KnownMonikers.h>
 
 // WIL
 #define RESULT_DIAGNOSTICS_LEVEL 4

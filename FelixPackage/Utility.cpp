@@ -1461,3 +1461,19 @@ HRESULT ResolveMacros (const wchar_t* pszIn, IProjectConfig* config, wil::unique
 	out.get()[stat.cbSize.LowPart] = 0;
 	return S_OK;
 }
+
+HRESULT IsDescendantOf (IParentNode* possibleAncestor, IChildNode* node)
+{
+	com_ptr<IParentNode> parent;
+	HRESULT hr = node->GetParent(&parent); RETURN_IF_FAILED(hr);
+	while (true)
+	{
+		if (parent == possibleAncestor)
+			return S_OK;
+		if (parent->GetItemId() == VSITEMID_ROOT)
+			return S_FALSE;
+		com_ptr<IChildNode> parentAsChild;
+		hr = parent->QueryInterface(IID_PPV_ARGS(&parentAsChild)); RETURN_IF_FAILED(hr);
+		hr = parentAsChild->GetParent(&parent); RETURN_IF_FAILED(hr);
+	}
+}

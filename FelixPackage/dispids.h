@@ -1,6 +1,6 @@
 
-#ifndef Z80_PACKAGE_DISPIDS_H_INCLDUDED
-#define Z80_PACKAGE_DISPIDS_H_INCLDUDED
+#ifndef Z80_PACKAGE_DISPIDS_H_INCLUDED
+#define Z80_PACKAGE_DISPIDS_H_INCLUDED
 
 // Common to all XxxProperties interfaces.
 // Visual Studio wants a property named "__name" to show it at the top of the Properties Window.
@@ -38,5 +38,6 @@
 #define dispidOutputFilename       30
 #define dispidProjectName          31
 #define dispidLaunchTarget         32
+#define dispidVSItemId             33
 
 #endif

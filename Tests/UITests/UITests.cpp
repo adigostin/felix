@@ -764,5 +764,81 @@ namespace UITests
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::IsTrue(!std::filesystem::exists(genFilesPath));
 		}
+
+		TEST_METHOD(RemoveFileClosesEditor)
+		{
+			HRESULT hr;
+			auto testPath = std::filesystem::path(tempPath) / "RemoveFileClosesEditor";
+			std::filesystem::create_directory(testPath);
+			auto delDir = wil::scope_exit([&testPath] { std::error_code ec; std::filesystem::remove_all(testPath, ec); });
+
+			auto[sln0, proj] = CreateSolutionAndProject (testPath.c_str(), L"test", NULL);
+			auto close = wil::scope_exit([sln=sln0.get()] { sln->Close(); });
+
+			wil::com_ptr_failfast<VxDTE::ProjectItems> items;
+			proj->get_ProjectItems(&items);
+			wil::com_ptr_failfast<VxDTE::ProjectItem> item;
+			items->Item(wil::make_variant_bstr_failfast(L"file.asm"), &item);
+			com_ptr<VxDTE::Window> window;
+			hr = item->Open(wil::make_bstr_failfast(L"{7651A703-06E5-11D1-8EBD-00A0C90F26EA}").get(), &window);
+			Assert::IsTrue(SUCCEEDED(hr));
+			window->put_Visible(VARIANT_TRUE);
+			VARIANT_BOOL visible;
+			hr = window->get_Visible(&visible);
+			Assert::IsTrue(SUCCEEDED(hr) && visible == VARIANT_TRUE);
+
+			item->Remove();
+			window->get_Visible(&visible);
+			Assert::IsTrue(SUCCEEDED(hr) && visible == VARIANT_FALSE);
+		}
+
+		TEST_METHOD(RemoveFolderAndFile_FolderFirstInList)
+		{
+			HRESULT hr;
+			auto testPath = std::filesystem::path(tempPath) / "RemoveFolderAndFile_FolderFirstInList";
+			std::filesystem::create_directory(testPath);
+			auto delDir = wil::scope_exit([&testPath] { std::error_code ec; std::filesystem::remove_all(testPath, ec); });
+
+			auto[sln0, proj] = CreateSolutionAndProject (testPath.c_str(), L"test", NULL);
+			auto close = wil::scope_exit([sln=sln0.get()] { sln->Close(); });
+
+			auto hier = proj.query<IVsHierarchy>();
+			VSITEMID itemIds[2];
+			hr = hier->ParseCanonicalName(L"GeneratedFiles", &itemIds[0]);
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = hier->ParseCanonicalName(L"GeneratedFiles/PreInclude.asm", &itemIds[1]);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = proj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(2, DELITEMOP_DeleteFromStorage, itemIds, DHO_SUPPRESS_UI);
+			Assert::IsTrue(SUCCEEDED(hr));
+		}
+
+		TEST_METHOD(RemoveFolderClosesEditors)
+		{
+			HRESULT hr;
+			auto testPath = std::filesystem::path(tempPath) / "RemoveFolderClosesEditors";
+			std::filesystem::create_directory(testPath);
+			auto delDir = wil::scope_exit([&testPath] { std::error_code ec; std::filesystem::remove_all(testPath, ec); });
+
+			auto[sln0, proj] = CreateSolutionAndProject (testPath.c_str(), L"test", NULL);
+			auto close = wil::scope_exit([sln=sln0.get()] { sln->Close(); });
+
+			wil::com_ptr_failfast<VxDTE::ProjectItems> items;
+			proj->get_ProjectItems(&items);
+			wil::com_ptr_failfast<VxDTE::ProjectItem> item;
+			items->Item(wil::make_variant_bstr_failfast(L"GeneratedFiles/PreInclude.asm"), &item);
+			com_ptr<VxDTE::Window> window;
+			hr = item->Open(wil::make_bstr_failfast(L"{7651A703-06E5-11D1-8EBD-00A0C90F26EA}").get(), &window);
+			Assert::IsTrue(SUCCEEDED(hr));
+			window->put_Visible(VARIANT_TRUE);
+			VARIANT_BOOL visible;
+			hr = window->get_Visible(&visible);
+			Assert::IsTrue(SUCCEEDED(hr) && visible == VARIANT_TRUE);
+
+			items->Item(wil::make_variant_bstr_failfast(L"GeneratedFiles"), &item);
+			item->Remove();
+			window->get_Visible(&visible);
+			Assert::IsTrue(SUCCEEDED(hr) && visible == VARIANT_FALSE);
+		}
 	};
 }

@@ -113,7 +113,7 @@ struct MockRDT : IVsRunningDocumentTable
 	virtual HRESULT STDMETHODCALLTYPE GetRunningDocumentsEnum(
 		/* [out] */ __RPC__deref_out_opt IEnumRunningDocuments** ppenum) override
 	{
-		Assert::Fail(L"Not Implemented");
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE SaveDocuments(

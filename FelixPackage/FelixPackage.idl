@@ -174,6 +174,8 @@ library ATLProject1Lib
 
 		[id(dispidCustomBuildToolProps), propget]
 		HRESULT CustomBuildToolProperties ([out, retval] ICustomBuildToolProperties** ppProps);
+
+		[id(dispidVSItemId), propget] HRESULT VSItemId([out, retval] VSITEMID* pItemId);
 	}
 
 	[object, uuid(9BBC87D3-F9EA-46E4-804F-2E7C0C1D365F), dual, nonextensible, pointer_default(unique)]
@@ -186,6 +188,8 @@ library ATLProject1Lib
 
 		[id(dispidItems), propget] HRESULT Items ([out, ref, retval] SAFEARRAY(IDispatch*)* items);
 		[id(dispidItems), propput] HRESULT Items (SAFEARRAY(IDispatch*) items);
+
+		[id(dispidVSItemId), propget] HRESULT VSItemId([out, retval] VSITEMID* pItemId);
 	}
 
 	[object, uuid(588F7F04-8B74-404D-A80B-F7CCE9FA3E27), dual, nonextensible, pointer_default(unique)]

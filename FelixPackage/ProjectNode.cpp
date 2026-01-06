@@ -2462,30 +2462,96 @@ public:
 			hr = pfo->SetOperationFlags(FOF_NOCONFIRMATION); RETURN_IF_FAILED(hr);
 		}
 
+		// Make a list of nodes to be removed.
+		vector_nothrow<com_ptr<IChildNode>> nodes;
+		bool reserved = nodes.try_resize(cItems); RETURN_HR_IF(E_OUTOFMEMORY, !reserved);
 		for (ULONG i = 0; i < cItems; i++)
 		{
-			com_ptr<IChildNode> d;
-			hr = FindDescendant(itemid[i], &d); 
+			hr = FindDescendant(itemid[i], &nodes[i]); RETURN_IF_FAILED(hr);
 			RETURN_HR_IF(E_INVALIDARG, hr != S_OK);
+		}
 
-			wil::unique_process_heap_string mk;
-			hr = GetPathOf(d, mk); RETURN_IF_FAILED(hr);
-
-			com_ptr<IVsHierarchy> docHier;
-			VSITEMID docItemId;
-			com_ptr<IUnknown> docData;
-			VSCOOKIE docCookie;
-			hr = rdt->FindAndLockDocument (RDT_NoLock, (LPCOLESTR)mk.get(), &docHier, &docItemId, &docData, &docCookie);
-			if (hr == S_OK && docHier.get() == this && docItemId == itemid[i])
+		// Exclude from the list descendants of nodes to be removed.
+	remove_descendants:
+		for (auto& n : nodes)
+		{
+			if (auto folder = n.try_query<IParentNode>())
 			{
-				auto slnCloseOpts = (dwDelItemOp == DELITEMOP_DeleteFromStorage) ? SLNSAVEOPT_NoSave : SLNSAVEOPT_PromptSave;
-				hr = solution->CloseSolutionElement (slnCloseOpts, nullptr, docCookie); RETURN_IF_FAILED_EXPECTED(hr);
+				bool removedAny = false;
+				for (auto it = nodes.begin(); it != nodes.end(); )
+				{
+					hr = IsDescendantOf(folder, it->get()); RETURN_IF_FAILED(hr);
+					if (hr == S_OK)
+					{
+						nodes.erase(it);
+						removedAny = true;
+					}
+					else
+						it++;
+				}
+
+				if (removedAny)
+					goto remove_descendants;
 			}
+		}
 
-			hr = RemoveChildFromParent(this, d); RETURN_IF_FAILED(hr);
+		// Close any open documents corresponding to the items being removed.
+		com_ptr<IEnumRunningDocuments> enumDocs;
+		if (SUCCEEDED(rdt->GetRunningDocumentsEnum(&enumDocs)))
+		{
+			ULONG fetched;
+			VSCOOKIE docCookie;
+			while (enumDocs->Next(1, &docCookie, &fetched) == S_OK && fetched == 1)
+			{
+				wil::unique_bstr docMk;
+				com_ptr<IVsHierarchy> docHier;
+				VSITEMID docItemId;
+				com_ptr<IUnknown> docData;
+				hr = rdt->GetDocumentInfo (docCookie, nullptr, nullptr, nullptr, &docMk, &docHier, &docItemId, &docData); RETURN_IF_FAILED(hr);
+				com_ptr<IChildNode> d;
+				if (docHier.get() == this && FindDescendant(docItemId, &d) == S_OK)
+				{
+					bool closeIt = false;
+					if (nodes.find(d.get()) != nodes.end())
+					{
+						// It's a file being removed.
+						closeIt = true;
+					}
+					else
+					{
+						// Is it a file under a folder being removed?
+						for (auto& n : nodes)
+						{
+							if (auto folder = n.try_query<IParentNode>())
+							{
+								hr = IsDescendantOf(folder, d); RETURN_IF_FAILED(hr);
+								if (hr == S_OK)
+								{
+									closeIt = true;
+									break;
+								}
+							}
+						}
+					}
 
+					if (closeIt)
+					{
+						auto slnCloseOpts = (dwDelItemOp == DELITEMOP_DeleteFromStorage) ? SLNSAVEOPT_NoSave : SLNSAVEOPT_PromptSave;
+						hr = solution->CloseSolutionElement (slnCloseOpts, nullptr, docCookie); RETURN_IF_FAILED_EXPECTED(hr);
+					}
+				}
+			}
+		}
+
+		for (auto& d : nodes)
+		{
 			if (dwDelItemOp == DELITEMOP_DeleteFromStorage)
 			{
+				wil::unique_process_heap_string mk;
+				hr = GetPathOf(d, mk); RETURN_IF_FAILED(hr);
+
+				hr = RemoveChildFromParent(this, d); RETURN_IF_FAILED(hr);
+
 				com_ptr<IShellItem> si;
 				hr = SHCreateItemFromParsingName(mk.get(), nullptr, IID_PPV_ARGS(&si));
 				if (SUCCEEDED(hr))
@@ -2494,6 +2560,10 @@ public:
 					if (SUCCEEDED(hr))
 						hr = pfo->PerformOperations();
 				}
+			}
+			else
+			{
+				hr = RemoveChildFromParent(this, d); RETURN_IF_FAILED(hr);
 			}
 		}
 
@@ -3049,9 +3119,26 @@ public:
 	#pragma endregion
 
 	#pragma region VxDTE::ProjectItems
-	virtual HRESULT STDMETHODCALLTYPE Item (VARIANT index, VxDTE::ProjectItem **lppcReturn) override
+	virtual HRESULT STDMETHODCALLTYPE Item (VARIANT index, VxDTE::ProjectItem** lppcReturn) override
 	{
-		return E_NOTIMPL;
+		HRESULT hr;
+
+		RETURN_HR_IF(E_INVALIDARG, index.vt != VT_BSTR);
+		wil::unique_process_heap_string pathToFind;
+		hr = CanonicalizePath(index.bstrVal, pathToFind); RETURN_IF_FAILED(hr);
+
+		com_ptr<IChildNode> node;
+		hr = FindDescendantIf([n=pathToFind.get()](IChildNode* c)
+			{
+				wil::unique_process_heap_string path;
+				auto hr = GetPathOf(c, path, true); RETURN_IF_FAILED(hr);
+				return _wcsicmp(path.get(), n) ? S_FALSE : S_OK;
+			}, &node);
+		RETURN_IF_FAILED(hr);
+		RETURN_HR_IF(E_INVALIDARG, hr == S_FALSE);
+
+		hr = node->QueryInterface(IID_PPV_ARGS(lppcReturn)); RETURN_IF_FAILED(hr);
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_Parent (IDispatch **lppptReturn) override

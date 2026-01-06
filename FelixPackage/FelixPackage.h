@@ -287,3 +287,4 @@ HRESULT GetSldFilename (IProjectConfig* config, wil::unique_process_heap_string&
 const wchar_t* GetOutputExtensionFromOutputType (OutputFileType type);
 HRESULT ResolveMacros (const wchar_t* pszIn, IProjectConfig* config, wil::unique_process_heap_string& out);
 FELIX_API void SetResultLoggingCallback(decltype(wil::details::g_pfnLoggingCallback) callbackFunction);
+HRESULT IsDescendantOf (IParentNode* possibleAncestor, IChildNode* node);
