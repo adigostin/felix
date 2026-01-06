@@ -202,7 +202,7 @@ public:
 		RETURN_HR_IF(E_POINTER, !ppvObject);
 		*ppvObject = NULL;
 
-		if (TryQI<IUnknown>(this, riid, ppvObject)
+		if (   TryQI<IUnknown>(this, riid, ppvObject)
 			|| TryQI<IDebugDisassemblyStream2>(this, riid, ppvObject))
 			return S_OK;
 
@@ -215,7 +215,11 @@ public:
 			|| riid == IID_IRpcOptions)
 			return E_NOINTERFACE;
 
+		#ifdef _DEBUG
 		RETURN_HR(E_NOINTERFACE);
+		#else
+		return E_NOINTERFACE;
+		#endif
 	}
 
 	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
