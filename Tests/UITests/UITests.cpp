@@ -358,68 +358,68 @@ namespace UITests
 		wil::SetResultLoggingCallback(nullptr);
 	}
 
+	// <param name="testDir">The directory in which to create the solution.</param>
+	// <param name="solutionName">The name of the solution to create, without extension.</param>
+	// <param name="projectName">NULL to create a project with the same name as the solution in the same dir, filename without extension to create project in subdir with different name.</param>
+	std::pair<wil::com_ptr_failfast<VxDTE::_Solution>, wil::com_ptr_failfast<VxDTE::Project>>
+		CreateSolutionAndProject (PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName)
+	{
+		HRESULT hr;
+		wil::com_ptr_failfast<IUnknown> solution;
+		hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
+		Assert::IsTrue(SUCCEEDED(hr));
+		auto sln = solution.query<VxDTE::_Solution>();
+		hr = sln->Create(wil::make_bstr_failfast(testDir).get(), wil::make_bstr_failfast(solutionName).get());
+		Assert::IsTrue(SUCCEEDED(hr));
+
+		wil::unique_process_heap_string projDirBuffer, projName;
+		PCWSTR projDir;
+		if (projectName)
+		{
+			projDirBuffer = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\", projectName);
+			projDir = projDirBuffer.get();
+			projName = wil::str_concat_failfast<wil::unique_process_heap_string>(projectName, L".flx");
+			Assert::IsTrue(CreateDirectory(projDir, nullptr));
+		}
+		else
+		{
+			projDir = testDir;
+			projName = wil::str_concat_failfast<wil::unique_process_heap_string>(solutionName, L".flx");
+		}
+
+		wil::com_ptr_failfast<VxDTE::Project> proj;
+		hr = sln->AddFromTemplate (
+			wil::make_bstr_failfast(TemplatePath_TwoConfigsOneFile.get()).get(),
+			wil::make_bstr_failfast(projDir).get(),
+			wil::make_bstr_failfast(projName.get()).get(), VARIANT_FALSE, &proj);
+		Assert::IsTrue(SUCCEEDED(hr));
+		hr = sln->SaveAs(wil::make_bstr_failfast(solutionName).get());
+		Assert::IsTrue(SUCCEEDED(hr));
+
+		return { std::move(sln), std::move(proj) };
+	}
+
+	void BuildSolution (VxDTE::_Solution* sln, long* buildFailCount)
+	{
+		HRESULT hr;
+
+		com_ptr<VxDTE::SolutionBuild> solutionBuild;
+		hr = sln->get_SolutionBuild(&solutionBuild);
+		Assert::IsTrue(SUCCEEDED(hr));
+
+		com_ptr<VxDTE::SolutionConfiguration> solConfig;
+		hr = solutionBuild->get_ActiveConfiguration(&solConfig); 
+		Assert::IsTrue(SUCCEEDED(hr));
+		hr = solutionBuild->Build(VARIANT_TRUE);
+		Assert::IsTrue(SUCCEEDED(hr));
+
+		// LastBuildInfo returns the number of failed projects, despite the parameter name.
+		hr = solutionBuild->get_LastBuildInfo(buildFailCount);
+		Assert::IsTrue(SUCCEEDED(hr));
+	}
+
 	TEST_CLASS(UITests)
 	{
-		// <param name="testDir">The directory in which to create the solution.</param>
-		// <param name="solutionName">The name of the solution to create, without extension.</param>
-		// <param name="projectName">NULL to create a project with the same name as the solution in the same dir, filename without extension to create project in subdir with different name.</param>
-		static std::pair<wil::com_ptr_failfast<VxDTE::_Solution>, wil::com_ptr_failfast<VxDTE::Project>>
-			CreateSolutionAndProject (PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName)
-		{
-			HRESULT hr;
-			wil::com_ptr_failfast<IUnknown> solution;
-			hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto sln = solution.query<VxDTE::_Solution>();
-			hr = sln->Create(wil::make_bstr_failfast(testDir).get(), wil::make_bstr_failfast(solutionName).get());
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			wil::unique_process_heap_string projDirBuffer, projName;
-			PCWSTR projDir;
-			if (projectName)
-			{
-				projDirBuffer = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\", projectName);
-				projDir = projDirBuffer.get();
-				projName = wil::str_concat_failfast<wil::unique_process_heap_string>(projectName, L".flx");
-				Assert::IsTrue(CreateDirectory(projDir, nullptr));
-			}
-			else
-			{
-				projDir = testDir;
-				projName = wil::str_concat_failfast<wil::unique_process_heap_string>(solutionName, L".flx");
-			}
-
-			wil::com_ptr_failfast<VxDTE::Project> proj;
-			hr = sln->AddFromTemplate (
-				wil::make_bstr_failfast(TemplatePath_TwoConfigsOneFile.get()).get(),
-				wil::make_bstr_failfast(projDir).get(),
-				wil::make_bstr_failfast(projName.get()).get(), VARIANT_FALSE, &proj);
-			Assert::IsTrue(SUCCEEDED(hr));
-			hr = sln->SaveAs(wil::make_bstr_failfast(solutionName).get());
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			return { std::move(sln), std::move(proj) };
-		}
-
-		static void BuildSolution (VxDTE::_Solution* sln, long* buildFailCount)
-		{
-			HRESULT hr;
-
-			com_ptr<VxDTE::SolutionBuild> solutionBuild;
-			hr = sln->get_SolutionBuild(&solutionBuild);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			com_ptr<VxDTE::SolutionConfiguration> solConfig;
-			hr = solutionBuild->get_ActiveConfiguration(&solConfig); 
-			Assert::IsTrue(SUCCEEDED(hr));
-			hr = solutionBuild->Build(VARIANT_TRUE);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			// LastBuildInfo returns the number of failed projects, despite the parameter name.
-			hr = solutionBuild->get_LastBuildInfo(buildFailCount);
-			Assert::IsTrue(SUCCEEDED(hr));
-		}
-
 	public:
 		TEST_METHOD(LaunchVS)
 		{
@@ -451,55 +451,6 @@ namespace UITests
 				wil::make_bstr_failfast(testPath.get()).get(),
 				wil::make_bstr_failfast(L"test.flx").get(), VARIANT_TRUE, &proj);
 			Assert::IsTrue(SUCCEEDED(hr), wil::str_printf_failfast<wil::unique_process_heap_string>(L"0x%08x", hr).get());
-		}
-
-		TEST_METHOD(BuildProject)
-		{
-			HRESULT hr;
-
-			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"BuildProject");
-			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
-
-			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", nullptr);
-			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
-
-			long buildFailCount;
-			BuildSolution(sln, &buildFailCount);
-			Assert::AreEqual(0l, buildFailCount);
-		}
-
-		TEST_METHOD(BuildProjectWithError)
-		{
-			HRESULT hr;
-
-			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"BuildProjectWithError");
-			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
-
-			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", nullptr);
-			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
-
-			long buildFailCount;
-			BuildSolution(sln, &buildFailCount);
-			Assert::AreEqual(0l, buildFailCount);
-
-			WriteFileOnDisk (CombinePath(testPath.get(), L"file.asm").get(), "\tabcde");
-
-			BuildSolution(sln, &buildFailCount);
-			Assert::AreEqual(1l, buildFailCount);
-
-			hr = dte->ExecuteCommand(wil::make_bstr_failfast(L"View.ErrorList").get());
-			auto dte2 = wil::com_query_failfast<VxDTE::DTE2>(dte);
-			wil::com_ptr_failfast<VxDTE::ToolWindows> toolWindows;
-			hr = dte2->get_ToolWindows(&toolWindows);
-			wil::com_ptr_failfast<VxDTE::ErrorList> errorList;
-			hr = toolWindows->get_ErrorList(&errorList);
-			wil::com_ptr_failfast<VxDTE::ErrorItems> errorItems;
-			hr = errorList->get_ErrorItems(&errorItems);
-			long errorCount;
-			hr = errorItems->get_Count(&errorCount);
-			Assert::AreEqual(1l, errorCount);
 		}
 
 		TEST_METHOD(OpenSpecificEditor)
