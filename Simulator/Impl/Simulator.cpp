@@ -1351,7 +1351,9 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE SetRegisters (const z80_register_set* buffer, uint32_t size) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		RETURN_HR_IF(E_UNEXPECTED, _running);
+		_cpu->SetZ80Registers(buffer);
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetShowCRTSnapshot() override
