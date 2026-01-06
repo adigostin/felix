@@ -1,7 +1,6 @@
 
 #include "pch.h"
 #include "DebugEngine.h"
-#include "../FelixPackage.h"
 #include "shared/z80_register_set.h"
 #include "shared/ula_register_set.h"
 #include "shared/com.h"
@@ -32,6 +31,7 @@ static HRESULT reg_to_string (reg_enum_t reg, const register_set_t& regs, BSTR* 
 template<>
 static HRESULT reg_to_string (Reg reg, const z80_register_set& regs, BSTR* value)
 {
+	wchar_t str[9];
 	switch (reg)
 	{
 		case Reg::A:    *value = ToString(regs.main.a); break;
@@ -45,8 +45,13 @@ static HRESULT reg_to_string (Reg reg, const z80_register_set& regs, BSTR* value
 		case Reg::F:    *value = ToString(regs.main.f.val); break;
 		case Reg::I:    *value = ToString(regs.i); break;
 		case Reg::R:    *value = ToString(regs.r); break;
-		case Reg::IM:   *value = ToString(regs.im); break;
-		case Reg::IFF1: *value = SysAllocString(regs.iff1 ? L"1" : L"0"); break;
+		case Reg::IM:
+			swprintf_s(str, L"%u", regs.im);
+			*value = SysAllocString(str);
+			break;
+		case Reg::IFF1:
+			*value = SysAllocString(regs.iff1 ? L"1" : L"0");
+			break;
 		default:
 			RETURN_HR(E_NOTIMPL);
 	}
@@ -85,7 +90,7 @@ HRESULT string_to_u8 (const wchar_t* str, uint8_t& value)
 		return S_OK;
 	}
 	
-	RETURN_HR(E_INVALIDARG);
+	return E_INVALIDARG;
 }
 
 HRESULT string_to_u16 (const wchar_t* str, uint16_t& value)
@@ -98,7 +103,7 @@ HRESULT string_to_u16 (const wchar_t* str, uint16_t& value)
 		return S_OK;
 	}
 
-	RETURN_HR(E_INVALIDARG);
+	return E_INVALIDARG;
 }
 
 class RegisterDebugProperty : IDebugProperty2
@@ -185,26 +190,40 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE SetValueAsString(LPCOLESTR pszValue, DWORD dwRadix, DWORD dwTimeout) override
 	{
-		uint16_t value;
-		auto hr = string_to_u16 (pszValue, value); RETURN_IF_FAILED(hr);
-
 		z80_register_set regs;
-		hr = simulator->GetRegisters(&regs, sizeof(regs)); RETURN_IF_FAILED(hr);
+		auto hr = simulator->GetRegisters(&regs, sizeof(regs)); RETURN_IF_FAILED(hr);
 
 		switch(_reg)
 		{
-			case Reg::A:  hr = string_to_u8(pszValue, regs.main.a); RETURN_IF_FAILED(hr); break;
-			case Reg::BC: hr = string_to_u16(pszValue, regs.main.bc); RETURN_IF_FAILED(hr); break;
-			case Reg::DE: hr = string_to_u16(pszValue, regs.main.de); RETURN_IF_FAILED(hr); break;
-			case Reg::HL: hr = string_to_u16(pszValue, regs.main.hl); RETURN_IF_FAILED(hr); break;
-			case Reg::SP: hr = string_to_u16(pszValue, regs.sp); RETURN_IF_FAILED(hr); break;
-			case Reg::PC: hr = string_to_u16(pszValue, regs.pc); RETURN_IF_FAILED(hr); break;
-			case Reg::IX: hr = string_to_u16(pszValue, regs.ix); RETURN_IF_FAILED(hr); break;
-			case Reg::IY: hr = string_to_u16(pszValue, regs.iy); RETURN_IF_FAILED(hr); break;
-			case Reg::F:  hr = string_to_u8(pszValue, regs.main.f.val); RETURN_IF_FAILED(hr); break;
-			case Reg::I:  hr = string_to_u8(pszValue, regs.i); RETURN_IF_FAILED(hr); break;
-			case Reg::R:  hr = string_to_u8(pszValue, regs.r); RETURN_IF_FAILED(hr); break;
-			case Reg::IM: hr = string_to_u8(pszValue, regs.im); RETURN_IF_FAILED(hr); break;
+			case Reg::A:  hr = string_to_u8(pszValue, regs.main.a); RETURN_IF_FAILED_EXPECTED(hr); break;
+			case Reg::BC: hr = string_to_u16(pszValue, regs.main.bc); RETURN_IF_FAILED_EXPECTED(hr); break;
+			case Reg::DE: hr = string_to_u16(pszValue, regs.main.de); RETURN_IF_FAILED_EXPECTED(hr); break;
+			case Reg::HL: hr = string_to_u16(pszValue, regs.main.hl); RETURN_IF_FAILED_EXPECTED(hr); break;
+			case Reg::SP: hr = string_to_u16(pszValue, regs.sp); RETURN_IF_FAILED_EXPECTED(hr); break;
+			case Reg::PC: hr = string_to_u16(pszValue, regs.pc); RETURN_IF_FAILED_EXPECTED(hr); break;
+			case Reg::IX: hr = string_to_u16(pszValue, regs.ix); RETURN_IF_FAILED_EXPECTED(hr); break;
+			case Reg::IY: hr = string_to_u16(pszValue, regs.iy); RETURN_IF_FAILED_EXPECTED(hr); break;
+			case Reg::F:  hr = string_to_u8(pszValue, regs.main.f.val); RETURN_IF_FAILED_EXPECTED(hr); break;
+			case Reg::I:  hr = string_to_u8(pszValue, regs.i); RETURN_IF_FAILED_EXPECTED(hr); break;
+			case Reg::R:  hr = string_to_u8(pszValue, regs.r); RETURN_IF_FAILED_EXPECTED(hr); break;
+			case Reg::IM:
+				if (pszValue[0] == '0' && !pszValue[1])
+					regs.im = 0;
+				else if (pszValue[0] == '1' && !pszValue[1])
+					regs.im = 1;
+				else if (pszValue[0] == '2' && !pszValue[1])
+					regs.im = 2;
+				else
+					return E_INVALIDARG;
+				break;
+			case Reg::IFF1:
+				if (pszValue[0] == '0' && !pszValue[1])
+					regs.iff1 = 0;
+				else if (pszValue[0] == '1' && !pszValue[1])
+					regs.iff1 = 1;
+				else
+					return E_INVALIDARG;
+				break;
 			default:
 				RETURN_HR(E_NOTIMPL);
 		}
