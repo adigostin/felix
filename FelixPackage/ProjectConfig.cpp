@@ -1166,6 +1166,7 @@ struct AssemblerPageProperties
 		{
 			case dispidSaveListing:
 			case dispidListingFilename:
+			case dispidEntryPointAddress:
 				*pfCanReset = TRUE;
 				return S_OK;
 			default:
@@ -1180,6 +1181,9 @@ struct AssemblerPageProperties
 
 		if (dispid == dispidListingFilename)
 			return put_ListingFilename(nullptr);
+
+		if (dispid == dispidEntryPointAddress)
+			return put_EntryPointAddress(wil::make_bstr_nothrow(EntryPointAddressDefaultValue).get());
 
 		return E_NOTIMPL;
 	}

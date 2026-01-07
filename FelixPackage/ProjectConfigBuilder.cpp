@@ -646,7 +646,7 @@ public:
 		com_ptr<IProjectConfigAssemblerProperties> asmProps;
 		hr = _config->AsProjectConfigProperties()->get_AssemblerProperties(&asmProps); RETURN_IF_FAILED(hr);
 		wil::unique_bstr cmdLine;
-		hr = MakeSjasmCommandLine (_project->AsHierarchy(), _config, asmProps, &cmdLine); RETURN_IF_FAILED(hr);
+		hr = MakeSjasmCommandLine (_project, _config, asmProps, &cmdLine); RETURN_IF_FAILED(hr);
 		if (SysStringLen(cmdLine.get()) > 0)
 		{
 			com_ptr<IBuildStep> buildStep;

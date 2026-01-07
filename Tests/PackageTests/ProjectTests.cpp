@@ -356,7 +356,7 @@ namespace FelixTests
 		{
 			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"AddItemNewToExistingFolder");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([&testPath] { RemoveDirectoryTree(testPath); });
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
 
 			com_ptr<IVsUIHierarchy> hier;
 			auto hr = MakeProjectNode (nullptr, testPath.get(), nullptr, 0, IID_PPV_ARGS(&hier));
@@ -461,7 +461,7 @@ namespace FelixTests
 		{
 			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"GetItemsPutItems_WithFolders");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([&testPath] { RemoveDirectoryTree(testPath); });
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
 
 			com_ptr<IVsUIHierarchy> hier1;
 			auto hr = MakeProjectNode (nullptr, testPath.get(), nullptr, 0, IID_PPV_ARGS(&hier1));
@@ -842,7 +842,7 @@ namespace FelixTests
 
 			auto findGenFilesFolder = [project=project.get(), genFilesStr=genFilesStr.get()]() -> com_ptr<IFolderNode>
 				{
-					for (auto c = project->AsParentNode()->FirstChild(); c; c = c->Next())
+					for (auto c = project->FirstChild(); c; c = c->Next())
 					{
 						wil::unique_bstr name;
 						if (auto f = wil::try_com_query_nothrow<IFolderNode>(c);
@@ -862,7 +862,7 @@ namespace FelixTests
 			hr = project->AsVsProject()->AddItem (VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, FileName, 1, (LPCOLESTR*)TemplatePath_EmptyFile.addressof(), nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 			com_ptr<IFileNode> fn;
-			for (auto c = project->AsParentNode()->FirstChild(); c != nullptr; c = c->Next())
+			for (auto c = project->FirstChild(); c != nullptr; c = c->Next())
 			{
 				wil::unique_variant n;
 				if (fn = wil::try_com_query_nothrow<IFileNode>(c); fn && SUCCEEDED(fn->GetProperty(VSHPROPID_SaveName, &n)) && V_VT(&n) == VT_BSTR && !wcscmp(FileName, V_BSTR(&n)))

@@ -529,13 +529,13 @@ public:
 		com_ptr<IProjectConfig> config;
 		auto hr = _objects.front().GetParent()->QueryInterface(&config); RETURN_IF_FAILED(hr);
 		
-		com_ptr<IVsHierarchy> hier;
-		hr = config->GetSite(IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
+		com_ptr<IProjectNode> project;
+		hr = config->GetSite(IID_PPV_ARGS(project.addressof())); RETURN_IF_FAILED(hr);
 
 		com_ptr<IProjectConfigAssemblerProperties> asmProps;
 		hr = _objects.front().GetChild()->QueryInterface(&asmProps); RETURN_IF_FAILED(hr);
 
-		hr = MakeSjasmCommandLine(hier, config, asmProps, pText); RETURN_IF_FAILED(hr);
+		hr = MakeSjasmCommandLine(project, config, asmProps, pText); RETURN_IF_FAILED(hr);
 		if (hr == S_FALSE)
 		{
 			wil::unique_bstr message;

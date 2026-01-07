@@ -792,7 +792,7 @@ namespace UITests
 			HRESULT hr;
 			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"AddNewFile_SameNameAsFileOutsideProjectDir");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([&testPath] { RemoveDirectoryTree(testPath); });
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
 
 			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"proj");
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
@@ -851,7 +851,7 @@ namespace UITests
 			HRESULT hr;
 			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"CloneFile_SameNameAsFileOutsideProjectDir");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([&testPath] { RemoveDirectoryTree(testPath); });
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
 
 			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"proj");
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
@@ -879,7 +879,7 @@ namespace UITests
 			HRESULT hr;
 			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"CloneFileToFolderMissingOnDisk");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([&testPath] { RemoveDirectoryTree(testPath); });
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
 
 			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"proj");
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });

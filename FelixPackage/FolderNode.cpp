@@ -44,7 +44,7 @@ public:
 			|| TryQI<IFolderNode>(this, riid, ppvObject)
 			|| TryQI<IChildNode>(this, riid, ppvObject)
 			|| TryQI<IParentNode>(this, riid, ppvObject)
-			|| TryQI<INode>(this, riid, ppvObject)
+			|| TryQI<INode>(static_cast<IParentNode*>(this), riid, ppvObject)
 			|| TryQI<IXmlParent>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 			|| TryQI<VxDTE::ProjectItem>(this, riid, ppvObject)

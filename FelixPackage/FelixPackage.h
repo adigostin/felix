@@ -52,7 +52,7 @@ INode : IUnknown
 };
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("D930CCA1-E515-4569-8DC6-959CD6367654")
-IParentNode : IUnknown
+IParentNode : INode
 {
 	virtual VSITEMID GetItemId() = 0;
 	virtual IChildNode* FirstChild() = 0;
@@ -60,11 +60,10 @@ IParentNode : IUnknown
 };
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("F36A3A6C-01AF-423B-86FD-DB071AA47E97")
-IProjectNode : INode
+IProjectNode : IParentNode
 {
 	virtual VSITEMID MakeItemId() = 0;
 	virtual HRESULT GetAutoOpenFiles (BSTR* pbstrFilenames) = 0;
-	virtual IParentNode* AsParentNode() = 0;
 	virtual IVsUIHierarchy* AsHierarchy() = 0;
 	virtual IVsProject* AsVsProject() = 0;
 	virtual IVsHierarchyDeleteHandler3* AsHierarchyDeleteHandler3() = 0;
@@ -263,7 +262,7 @@ FELIX_API HRESULT MakeProjectConfigBuilder (IProjectNode* project, IProjectConfi
 	IVsOutputWindowPane2* outputWindowPane, IProjectConfigBuilder** to);
 HRESULT ShowCommandLinePropertyBuilder (HWND hwndParent, BSTR valueBefore, BSTR* valueAfter);
 HRESULT GeneratePrePostIncludeFiles (IProjectNode* project);
-FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine);
+FELIX_API HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine);
 HRESULT MakeFolderNode (IFolderNode** ppFolder);
 BOOL LUtilFixFilename (wchar_t* strName);
 HRESULT QueryEditProjectFile (IVsHierarchy* hier);

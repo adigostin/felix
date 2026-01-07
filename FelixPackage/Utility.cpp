@@ -275,7 +275,7 @@ static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* project, IProject
 	wil::unique_bstr genFilesStr;
 	hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERATED_FILES, &genFilesStr); RETURN_IF_FAILED(hr);
 	com_ptr<IFolderNode> folder;
-	hr = GetOrCreateChildFolder(project->AsParentNode(), genFilesStr.get(), true, &folder); RETURN_IF_FAILED(hr);
+	hr = GetOrCreateChildFolder(project, genFilesStr.get(), true, &folder); RETURN_IF_FAILED(hr);
 
 	wil::unique_process_heap_string packageDir;
 	hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, packageDir); RETURN_IF_FAILED(hr);
@@ -338,7 +338,7 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project)
 	wil::unique_bstr genFilesStr;
 	hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERATED_FILES, &genFilesStr); RETURN_IF_FAILED(hr);
 	com_ptr<IFolderNode> genFilesFolder;
-	for (auto c = project->AsParentNode()->FirstChild(); c; c = c->Next())
+	for (auto c = project->FirstChild(); c; c = c->Next())
 	{
 		wil::unique_bstr name;
 		if (auto f = wil::try_com_query_nothrow<IFolderNode>(c);
@@ -374,7 +374,7 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project)
 
 			return S_FALSE;
 		};
-	hr = enumDescendants(project->AsParentNode()); RETURN_IF_FAILED(hr);
+	hr = enumDescendants(project); RETURN_IF_FAILED(hr);
 	if (hr == S_FALSE)
 	{
 		// No file in project with BuildTool=Assembler. Delete the GeneratedFiles folder, if any, then return.
@@ -465,12 +465,12 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project)
 };
 
 // Returns S_FALSE when there are no files with BuildTool=Assembler.
-FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine)
+FELIX_API HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine)
 {
 	HRESULT hr;
 
 	wil::unique_variant projectDir;
-	hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, projectDir.addressof()); RETURN_IF_FAILED(hr);
+	hr = project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, projectDir.addressof()); RETURN_IF_FAILED(hr);
 	RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
 
 	wil::unique_process_heap_string packageDir;
@@ -488,7 +488,7 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 	hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERATED_FILES, &generatedFilesName); RETURN_IF_FAILED(hr);
 	com_ptr<IFolderNode> genFilesFolder;
 	com_ptr<IFileNodeProperties> preIncludeFile, postIncludeFile;
-	for (auto c = wil::try_com_query_nothrow<IParentNode>(hier)->FirstChild(); c; c = c->Next())
+	for (auto c = project->FirstChild(); c; c = c->Next())
 	{
 		com_ptr<IFolderNode> folder;
 		wil::unique_variant folderName;
@@ -540,7 +540,7 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 		};
 	if (preIncludeFile)
 		asmFiles.try_push_back(std::move(preIncludeFile));
-	hr = enumDescendants(wil::try_com_query_nothrow<IParentNode>(hier)); RETURN_IF_FAILED(hr);
+	hr = enumDescendants(project); RETURN_IF_FAILED(hr);
 	if (postIncludeFile)
 		asmFiles.try_push_back(std::move(postIncludeFile));
 

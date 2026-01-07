@@ -25,7 +25,6 @@ class ProjectNode
 	, IVsHierarchyDeleteHandler3
 	, IXmlParent
 	, IProjectNode
-	, IParentNode
 	, IPropertyNotifySink // this implementation only used to mark the project as dirty
 	, IVsPerPropertyBrowsing
 	, IVsUpdateSolutionEvents
@@ -2735,8 +2734,6 @@ public:
 		*pbstrFilenames = f;
 		return S_OK;
 	}
-
-	virtual IParentNode* AsParentNode() override { return this; }
 
 	virtual IVsUIHierarchy* AsHierarchy() override { return this; }
 

@@ -184,7 +184,7 @@ namespace FelixTests
 			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, sourceFileName);
 			hr = project->AsVsProject()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, (LPCOLESTR*)filePath.addressof(), nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto sourceFile = wil::try_com_query_nothrow<IFileNodeProperties>(project->AsParentNode()->FirstChild());
+			auto sourceFile = wil::try_com_query_nothrow<IFileNodeProperties>(project->FirstChild());
 
 			hr = sourceFile->put_BuildTool(BuildToolKind::CustomBuildTool);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -484,37 +484,37 @@ namespace FelixTests
 
 		TEST_METHOD(BuildFilesInFoldersAndSubfolders)
 		{
-			com_ptr<IVsUIHierarchy> hier;
+			com_ptr<IProjectNode> proj;
 			auto hr = MakeProjectNode (TemplatePath_EmptyProject.get(), tempPath, L"BuildFilesInFoldersAndSubfolders.flx",
-				CPF_CLONEFILE | CPF_OVERWRITE | CPF_SILENT, IID_PPV_ARGS(&hier));
+				CPF_CLONEFILE | CPF_OVERWRITE | CPF_SILENT, IID_PPV_ARGS(&proj));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto config = FelixTests::AddDebugProjectConfig(hier);
+			auto config = FelixTests::AddDebugProjectConfig(proj->AsHierarchy());
 
 			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
 
 			wil::unique_variant folder;
-			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &folder);
+			hr = proj->AsHierarchy()->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &folder);
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::AreEqual<VARTYPE>(VT_VSITEMID, folder.vt);
-			hr = hier->SetProperty (V_VSITEMID(&folder), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"folder"));
+			hr = proj->AsHierarchy()->SetProperty (V_VSITEMID(&folder), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"folder"));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			hr = hier.try_query<IVsProject>()->AddItem (V_VSITEMID(&folder), VSADDITEMOP_CLONEFILE, L"file1.asm", 1, templateasm, NULL, NULL);
+			hr = proj->AsVsProject()->AddItem (V_VSITEMID(&folder), VSADDITEMOP_CLONEFILE, L"file1.asm", 1, templateasm, NULL, NULL);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			wil::unique_variant subfolder;
-			hr = hier->ExecCommand (V_VSITEMID(&folder), &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &subfolder);
+			hr = proj->AsHierarchy()->ExecCommand (V_VSITEMID(&folder), &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &subfolder);
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::AreEqual<VARTYPE>(VT_VSITEMID, subfolder.vt);
-			hr = hier->SetProperty (V_VSITEMID(&subfolder), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"subfolder"));
+			hr = proj->AsHierarchy()->SetProperty (V_VSITEMID(&subfolder), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"subfolder"));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			hr = hier.try_query<IVsProject>()->AddItem (V_VSITEMID(&subfolder), VSADDITEMOP_CLONEFILE, L"file2.asm", 1, templateasm, NULL, NULL);
+			hr = proj->AsVsProject()->AddItem (V_VSITEMID(&subfolder), VSADDITEMOP_CLONEFILE, L"file2.asm", 1, templateasm, NULL, NULL);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			wil::unique_bstr cmdLine;
-			hr = MakeSjasmCommandLine (hier, config, nullptr, &cmdLine);
+			hr = MakeSjasmCommandLine (proj, config, nullptr, &cmdLine);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			Assert::IsNotNull(wcsstr(cmdLine.get(), L" folder\\file1.asm"));
@@ -530,12 +530,11 @@ namespace FelixTests
 			auto projDir = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\projdir");
 			Assert::IsTrue(CreateDirectory(projDir.get(), nullptr));
 
-			com_ptr<IVsHierarchy> hier;
-			auto hr = MakeProjectNode (nullptr, projDir.get(), nullptr, 0, IID_PPV_ARGS(&hier));
+			com_ptr<IProjectNode> proj;
+			auto hr = MakeProjectNode (nullptr, projDir.get(), nullptr, 0, IID_PPV_ARGS(&proj));
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto project = hier.try_query<IVsProject>();
 
-			auto config = FelixTests::AddDebugProjectConfig(hier);
+			auto config = FelixTests::AddDebugProjectConfig(proj->AsHierarchy());
 
 			// file 1 in project dir
 			auto file1FullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(projDir, L"\\file1.asm");
@@ -548,11 +547,11 @@ namespace FelixTests
 			
 			LPCOLESTR files[] = { file1FullPath.get(), file2FullPath.get(), file3FullPath.get(), file4FullPath.get() };
 			
-			hr = project->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, (ULONG)_countof(files), files, nullptr, nullptr);
+			hr = proj->AsVsProject()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, (ULONG)_countof(files), files, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			wil::unique_bstr cmdLine;
-			hr = MakeSjasmCommandLine (hier, config, nullptr, &cmdLine);
+			hr = MakeSjasmCommandLine (proj, config, nullptr, &cmdLine);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			Assert::IsNotNull(wcsstr(cmdLine.get(), L" file1.asm"));
