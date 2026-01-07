@@ -407,8 +407,6 @@ namespace UITests
 		hr = sln->get_SolutionBuild(&solutionBuild);
 		Assert::IsTrue(SUCCEEDED(hr));
 
-		com_ptr<VxDTE::SolutionConfiguration> solConfig;
-		hr = solutionBuild->get_ActiveConfiguration(&solConfig); 
 		Assert::IsTrue(SUCCEEDED(hr));
 		hr = solutionBuild->Build(VARIANT_TRUE);
 		Assert::IsTrue(SUCCEEDED(hr));
@@ -435,7 +433,7 @@ namespace UITests
 			HRESULT hr;
 			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"CloneProject");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
 
 			com_ptr<IUnknown> solution;
 			hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
@@ -466,7 +464,7 @@ namespace UITests
 			HRESULT hr;
 			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"OpenSpecificEditor");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
 
 			auto[sln, proj] = CreateSolutionAndProject(testPath.get(), L"test", nullptr);
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
@@ -538,7 +536,7 @@ namespace UITests
 			HRESULT hr;
 			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"AdviseFileChangeNotCalledOnProjectSave");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
 
 			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", nullptr);
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
@@ -595,7 +593,7 @@ namespace UITests
 			HRESULT hr;
 			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"NavigateToErrorInFileInSubdir");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
 
 			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"testproj");
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
@@ -668,11 +666,11 @@ namespace UITests
 
 			HRESULT hr;
 
-			auto testPath = std::filesystem::path(tempPath) / "GenPrePostInclude_OnlyActiveCfg";
-			std::filesystem::create_directory(testPath);
-			auto delDir = wil::scope_exit([&testPath] { std::error_code ec; std::filesystem::remove_all(testPath, ec); });
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"GenPrePostInclude_OnlyActiveCfg");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
 
-			auto[sln0, proj] = CreateSolutionAndProject (testPath.c_str(), L"test", L"testproj");
+			auto[sln0, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"testproj");
 			auto close = wil::scope_exit([sln=sln0.get()] { sln->Close(); });
 
 			// Let's not go through the configuration manager since we haven't implemented Project::get_ConfigurationManager yet.
@@ -688,9 +686,9 @@ namespace UITests
 			Assert::AreEqual(S_OK, hr);
 
 			// Make a change in the active configuration and verify that the Pre/PostInclude files are generated.
-			auto genFilesPath = testPath / L"testproj" / L"GeneratedFiles";
-			Assert::IsTrue(std::filesystem::exists(genFilesPath));
-			std::filesystem::remove_all(genFilesPath);
+			auto genFilesPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\testproj\\GeneratedFiles");
+			Assert::IsTrue(PathFileExists(genFilesPath.get()));
+			RemoveDirectoryTree(genFilesPath.get());
 
 			com_ptr<IProjectConfigProperties> props;
 			hr = cfgs[0]->QueryInterface(IID_PPV_ARGS(&props));
@@ -701,10 +699,10 @@ namespace UITests
 
 			hr = asmProps->put_BaseAddress(1234);
 			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::IsTrue(std::filesystem::exists(genFilesPath));
+			Assert::IsTrue(PathFileExists(genFilesPath.get()));
 
 			// Now make a change in the inactive configuration.
-			std::filesystem::remove_all(genFilesPath);
+			RemoveDirectoryTree(genFilesPath.get());
 
 			hr = cfgs[1]->QueryInterface(IID_PPV_ARGS(&props));
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -713,17 +711,17 @@ namespace UITests
 
 			hr = asmProps->put_BaseAddress(1234);
 			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::IsTrue(!std::filesystem::exists(genFilesPath));
+			Assert::IsTrue(!PathFileExists(genFilesPath.get()));
 		}
 
 		TEST_METHOD(RemoveFileClosesEditor)
 		{
 			HRESULT hr;
-			auto testPath = std::filesystem::path(tempPath) / "RemoveFileClosesEditor";
-			std::filesystem::create_directory(testPath);
-			auto delDir = wil::scope_exit([&testPath] { std::error_code ec; std::filesystem::remove_all(testPath, ec); });
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"RemoveFileClosesEditor");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
 
-			auto[sln0, proj] = CreateSolutionAndProject (testPath.c_str(), L"test", NULL);
+			auto[sln0, proj] = CreateSolutionAndProject (testPath.get(), L"test", NULL);
 			auto close = wil::scope_exit([sln=sln0.get()] { sln->Close(); });
 
 			VSITEMID itemId;
@@ -744,11 +742,11 @@ namespace UITests
 		TEST_METHOD(RemoveFolderAndFile_FolderFirstInList)
 		{
 			HRESULT hr;
-			auto testPath = std::filesystem::path(tempPath) / "RemoveFolderAndFile_FolderFirstInList";
-			std::filesystem::create_directory(testPath);
-			auto delDir = wil::scope_exit([&testPath] { std::error_code ec; std::filesystem::remove_all(testPath, ec); });
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"RemoveFolderAndFile_FolderFirstInList");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
 
-			auto[sln0, proj] = CreateSolutionAndProject (testPath.c_str(), L"test", NULL);
+			auto[sln0, proj] = CreateSolutionAndProject (testPath.get(), L"test", NULL);
 			auto close = wil::scope_exit([sln=sln0.get()] { sln->Close(); });
 
 			auto hier = proj.query<IVsHierarchy>();
@@ -765,11 +763,11 @@ namespace UITests
 		TEST_METHOD(RemoveFolderClosesEditors)
 		{
 			HRESULT hr;
-			auto testPath = std::filesystem::path(tempPath) / "RemoveFolderClosesEditors";
-			std::filesystem::create_directory(testPath);
-			auto delDir = wil::scope_exit([&testPath] { std::error_code ec; std::filesystem::remove_all(testPath, ec); });
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"RemoveFolderClosesEditors");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
 
-			auto[sln0, proj] = CreateSolutionAndProject (testPath.c_str(), L"test", NULL);
+			auto[sln0, proj] = CreateSolutionAndProject (testPath.get(), L"test", NULL);
 			auto close = wil::scope_exit([sln=sln0.get()] { sln->Close(); });
 
 			VSITEMID itemId;

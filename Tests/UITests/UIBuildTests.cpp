@@ -30,7 +30,7 @@ namespace UITests
 
 			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"BuildProject");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
 
 			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", nullptr);
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
@@ -46,7 +46,7 @@ namespace UITests
 
 			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"BuildProjectWithError");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { std::error_code ec; std::filesystem::remove_all(tp, ec); });
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
 
 			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", nullptr);
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });

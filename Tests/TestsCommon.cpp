@@ -30,7 +30,7 @@ void MakeTemplates (const wchar_t* tempDirName)
 	GetTempPathW (MAX_PATH + 1, tempPath);
 	swprintf_s (tempPath, L"%s%s\\%c", tempPath, tempDirName, '\0');
 	if (PathFileExists(tempPath))
-		std::filesystem::remove_all(tempPath);
+		RemoveDirectoryTree(tempPath);
 	Assert::IsTrue(CreateDirectory(tempPath, 0));
 
 	auto templateDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"TemplateTwoConfigsOneFile\\");

@@ -13,7 +13,7 @@ void WriteFileOnDisk (wchar_t* path, const char* fileContent);
 template <typename string_type>
 void RemoveDirectoryTree (const string_type& dir)
 {
-	SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = str_raw_ptr(dir), .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
+	SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = wil::str_raw_ptr(dir), .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
 	int ires = SHFileOperation(&file_op);
 	Microsoft::VisualStudio::CppUnitTestFramework::Assert::AreEqual(0, ires);
 }
