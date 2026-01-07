@@ -18,8 +18,10 @@
 
 // Windows Platform headers
 #include <Windows.h>
+#include <windowsx.h>
 #undef GetClassName
 #undef GetClassInfo
+#undef GetObject
 #include <Shlobj.h>
 #include <Shlwapi.h>
 #include <propvarutil.h>

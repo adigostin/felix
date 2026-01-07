@@ -31,6 +31,9 @@
 #define cmdidSaveFileGroup 0x109
 #define cmdidSaveFile 0x10A
 #define cmdidSaveRAM 0x10B
-#define cmdidScreenWindowDebug 0x109
+#define cmdidScreenWindowDebug 0x10C
+#define cmdidPropertyPageContextMenu 0x10D
+#define cmdidPropertyPageGroup 0x10E
+#define cmdidPropertyPageReset 0x10F
 
 #endif // __COMMANDIDS_H_

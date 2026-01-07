@@ -6,6 +6,7 @@
 #include "shared/com.h"
 #include "Z80Xml.h"
 #include "../FelixPackageUi/resource.h"
+#include "../FelixPackageUi/CommandIds.h"
 #include <vsmanaged.h>
 
 class ObjInfo
@@ -151,7 +152,131 @@ static HRESULT SetSelectedObjects (const vector_nothrow<ObjInfo>& objects, IVSMD
 	return grid->SetSelectedObjects ((int)temp.size(), temp.data());
 }
 
-class PGPropertyPage : public IPropertyPage, IPropertyNotifySink
+static LRESULT CALLBACK PropertyGridSubclassProc (HWND hWnd, UINT uMsg, WPARAM wParam,
+	LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+{
+	if (uMsg == WM_CONTEXTMENU)
+	{
+		POINTS pts = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+		IOleCommandTarget* cmdTarget = (IOleCommandTarget*)dwRefData;
+		uiShell->ShowContextMenu (0, CLSID_FelixPackageCmdSet, cmdidPropertyPageContextMenu, pts, cmdTarget);
+		return 0;
+	}
+
+	return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+}
+
+static HRESULT QueryStatusInternal (const GUID* pguidCmdGroup, OLECMD* pCmd, OLECMDTEXT* pCmdText,
+	IVSMDPropertyGrid* _grid, const vector_nothrow<ObjInfo>& _objects)
+{
+	if (*pguidCmdGroup != CLSID_FelixPackageCmdSet)
+		return OLECMDERR_E_UNKNOWNGROUP;
+
+	if (pCmd->cmdID == cmdidPropertyPageReset)
+	{
+		wil::unique_bstr propName;
+		auto hr = _grid->get_SelectedPropertyName(&propName); RETURN_IF_FAILED(hr);
+
+		pCmd->cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
+		for (const ObjInfo& o : _objects)
+		{
+			com_ptr<IDispatch> cd;
+			com_ptr<ITypeInfo> ti;
+			MEMBERID memId;
+			com_ptr<IVsPerPropertyBrowsing> ppb;
+			BOOL canReset;
+			if (auto ch = o.GetChild(); ch
+				&& SUCCEEDED(ch->QueryInterface(IID_PPV_ARGS(&cd)))
+				&& SUCCEEDED(cd->GetTypeInfo(0, InvariantLCID, &ti))
+				&& SUCCEEDED(ti->GetIDsOfNames(propName.addressof(), 1, &memId))
+				&& SUCCEEDED(ch->QueryInterface(IID_PPV_ARGS(&ppb)))
+				&& SUCCEEDED(ppb->CanResetPropertyValue(memId, &canReset))
+				&& canReset)
+			{
+			}
+			else
+			{
+				pCmd->cmdf &= ~OLECMDF_ENABLED;
+				break;
+			}
+		}
+
+		return S_OK;
+	}
+
+	return OLECMDERR_E_NOTSUPPORTED;
+}
+
+static HRESULT ExecInternal (const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT *pvaIn, VARIANT *pvaOut,
+	IVSMDPropertyGrid* _grid, const vector_nothrow<ObjInfo>& _objects)
+{
+	if (*pguidCmdGroup != CLSID_FelixPackageCmdSet)
+		return OLECMDERR_E_UNKNOWNGROUP;
+
+	if (nCmdID == cmdidPropertyPageReset)
+	{
+		wil::unique_bstr propName;
+		auto hr = _grid->get_SelectedPropertyName(&propName); RETURN_IF_FAILED(hr);
+
+		for (const ObjInfo& o : _objects)
+		{
+			com_ptr<IDispatch> cd;
+			com_ptr<ITypeInfo> ti;
+			MEMBERID memId;
+			com_ptr<IVsPerPropertyBrowsing> ppb;
+			if (auto ch = o.GetChild(); ch
+				&& SUCCEEDED(ch->QueryInterface(IID_PPV_ARGS(&cd)))
+				&& SUCCEEDED(cd->GetTypeInfo(0, InvariantLCID, &ti))
+				&& SUCCEEDED(ti->GetIDsOfNames(propName.addressof(), 1, &memId))
+				&& SUCCEEDED(ch->QueryInterface(IID_PPV_ARGS(&ppb))))
+			{
+				ppb->ResetPropertyValue(memId);
+			}
+		}
+
+		return S_OK;
+	}
+
+	return OLECMDERR_E_NOTSUPPORTED;
+}
+
+static HRESULT ActivateInternal (HWND hWndParent, LPCRECT pRect, IOleCommandTarget* commandTarget, 
+	const vector_nothrow<ObjInfo>& _objects, IVSMDPropertyGrid** ppGrid)
+{
+	com_ptr<IVSMDPropertyBrowser> browser;
+	auto hr = serviceProvider->QueryService(SID_SVSMDPropertyBrowser, &browser); RETURN_IF_FAILED(hr);
+
+	com_ptr<IVSMDPropertyGrid> grid;
+	hr = browser->CreatePropertyGrid(&grid); RETURN_IF_FAILED(hr);
+	grid->put_GridSort(PGSORT_NOSORT);
+
+	HWND hwnd;
+	hr = grid->get_Handle(&hwnd); RETURN_IF_FAILED(hr);
+
+	BOOL bres = SetWindowSubclass(hwnd, &PropertyGridSubclassProc, 0, (DWORD_PTR)commandTarget);
+	auto removeSubclass = wil::scope_exit([hwnd] { RemoveWindowSubclass (hwnd, &PropertyGridSubclassProc, 0); });
+
+	HWND op = ::SetParent (hwnd, hWndParent); RETURN_LAST_ERROR_IF(!op);
+
+	// When switching between pages, VS calls Activate but not Move. Need to arrange the page here too.
+	bres = ::MoveWindow (hwnd, pRect->left, pRect->top, pRect->right - pRect->left, pRect->bottom - pRect->top, TRUE);
+	RETURN_LAST_ERROR_IF(!bres);
+
+	hr = SetSelectedObjects (_objects, grid); RETURN_IF_FAILED(hr);
+
+	removeSubclass.release();
+	*ppGrid = grid.detach();
+	return S_OK;
+}
+
+static void DeactivateInternal (IOleCommandTarget* commandTarget, IVSMDPropertyGrid* _grid)
+{
+	HWND hwnd;
+	if (SUCCEEDED(_grid->get_Handle(&hwnd)))
+		RemoveWindowSubclass (hwnd, &PropertyGridSubclassProc, 0);
+}
+
+class PGPropertyPage : public IPropertyPage, IPropertyNotifySink, IOleCommandTarget
 {
 	ULONG _refCount = 0;
 	GUID _pageGuid;
@@ -181,6 +306,7 @@ public:
 		if (   TryQI<IUnknown>(static_cast<IPropertyPage*>(this), riid, ppvObject)
 			|| TryQI<IPropertyPage>(this, riid, ppvObject)
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
+			|| TryQI<IOleCommandTarget>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -210,32 +336,14 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE Activate(HWND hWndParent, LPCRECT pRect, BOOL bModal) override
+	virtual HRESULT STDMETHODCALLTYPE Activate (HWND hWndParent, LPCRECT pRect, BOOL bModal) override
 	{
-		com_ptr<IVSMDPropertyBrowser> browser;
-		auto hr = serviceProvider->QueryService(SID_SVSMDPropertyBrowser, &browser); RETURN_IF_FAILED(hr);
-
-		com_ptr<IVSMDPropertyGrid> grid;
-		hr = browser->CreatePropertyGrid(&grid); RETURN_IF_FAILED(hr);
-		grid->put_GridSort(PGSORT_NOSORT);
-
-		HWND hwnd;
-		hr = grid->get_Handle(&hwnd); RETURN_IF_FAILED(hr);
-
-		HWND op = ::SetParent (hwnd, hWndParent); RETURN_LAST_ERROR_IF(!op);
-
-		// When switching between pages, VS calls Activate but not Move. Need to arrange the page here too.
-		BOOL bRes = ::MoveWindow (hwnd, pRect->left, pRect->top, pRect->right - pRect->left, pRect->bottom - pRect->top, TRUE);
-		RETURN_LAST_ERROR_IF(!bRes);
-
-		hr = SetSelectedObjects (_objects, grid); RETURN_IF_FAILED(hr);
-
-		_grid = std::move(grid);
-		return S_OK;
+		return ActivateInternal (hWndParent, pRect, this, _objects, &_grid);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE Deactivate() override
 	{
+		DeactivateInternal(this, _grid);
 		_grid->Dispose();
 		_grid = nullptr;
 		return S_OK;
@@ -317,6 +425,19 @@ public:
 		RETURN_HR(E_NOTIMPL);
 	}
 	#pragma endregion
+
+	#pragma region IOleCommandTarget
+	virtual HRESULT STDMETHODCALLTYPE QueryStatus (const GUID *pguidCmdGroup, ULONG cCmds, OLECMD prgCmds[], OLECMDTEXT *pCmdText) override
+	{
+		RETURN_HR_IF(E_NOTIMPL, cCmds != 1);
+		return QueryStatusInternal(pguidCmdGroup, prgCmds, pCmdText, _grid, _objects);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE Exec (const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT *pvaIn, VARIANT *pvaOut) override
+	{
+		return ExecInternal(pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut, _grid, _objects);
+	}
+	#pragma endregion
 };
 
 HRESULT MakePGPropertyPage (UINT titleStringResId, REFGUID pageGuid, DISPID dispidChildObj, IPropertyPage** to)
@@ -329,8 +450,7 @@ HRESULT MakePGPropertyPage (UINT titleStringResId, REFGUID pageGuid, DISPID disp
 
 // ============================================================================
 
-class AsmPropertyPage : public IPropertyPage, IPropertyNotifySink
-	//, IVsPropertyPage, IVsPropertyPage2, IVsPropertyPageNotify
+class AsmPropertyPage : public IPropertyPage, IPropertyNotifySink, IOleCommandTarget
 {
 	ULONG _refCount = 0;
 	vector_nothrow<ObjInfo> _objects;
@@ -380,7 +500,8 @@ public:
 		if (   TryQI<IUnknown>(static_cast<IPropertyPage*>(this), riid, ppvObject)
 			|| TryQI<IPropertyPage>(this, riid, ppvObject)
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
-			)
+			|| TryQI<IOleCommandTarget>(this, riid, ppvObject)
+		)
 			return S_OK;
 
 		return E_NOINTERFACE;
@@ -435,22 +556,9 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE Activate(HWND hWndParent, LPCRECT pRect, BOOL bModal) override
 	{
-		com_ptr<IVSMDPropertyBrowser> browser;
-		auto hr = serviceProvider->QueryService(SID_SVSMDPropertyBrowser, &browser); RETURN_IF_FAILED(hr);
-
 		com_ptr<IVSMDPropertyGrid> grid;
-		hr = browser->CreatePropertyGrid(&grid); RETURN_IF_FAILED(hr);
-		grid->put_GridSort(PGSORT_NOSORT);
-
-		HWND gridHWnd;
-		hr = grid->get_Handle(&gridHWnd); RETURN_IF_FAILED(hr);
-
-		HWND op = ::SetParent (gridHWnd, hWndParent); RETURN_LAST_ERROR_IF(!op);
-
-		// When switching between pages, VS calls Activate but not Move. Need to arrange the page here too.
-		BOOL bres = ::MoveWindow (gridHWnd, pRect->left, pRect->top, pRect->right - pRect->left, 
-			pRect->bottom - pRect->top - _editHeight - _staticHeight - _staticHeight / 2, TRUE);
-		RETURN_LAST_ERROR_IF(!bres);
+		RECT rc = { pRect->left, pRect->top, pRect->right, pRect->bottom - _editHeight - _staticHeight - _staticHeight / 2 };
+		auto hr = ActivateInternal (hWndParent, &rc, this, _objects, &grid); RETURN_IF_FAILED(hr);
 
 		HWND staticHWnd = CreateWindowW (L"STATIC", L"Assembler Command Line", WS_VISIBLE | WS_CHILD,
 			pRect->left, pRect->bottom - _editHeight - _staticHeight, pRect->right - pRect->left, _staticHeight,
@@ -464,8 +572,6 @@ public:
 			hWndParent, NULL, NULL, NULL); RETURN_LAST_ERROR_IF(!editHWnd);
 		::SendMessage (editHWnd, WM_SETFONT, (WPARAM)_font, TRUE);
 
-		hr = SetSelectedObjects (_objects, grid); RETURN_IF_FAILED(hr);
-
 		_grid = std::move(grid);
 		_staticHWnd = staticHWnd;
 		_editHWnd = editHWnd;
@@ -474,6 +580,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE Deactivate() override
 	{
+		DeactivateInternal(this, _grid);
 		_grid->Dispose();
 		_grid = nullptr;
 		return S_OK;
@@ -574,6 +681,19 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE OnRequestEdit (DISPID dispID) override
 	{
 		RETURN_HR(E_NOTIMPL);
+	}
+	#pragma endregion
+
+	#pragma region IOleCommandTarget
+	virtual HRESULT STDMETHODCALLTYPE QueryStatus (const GUID *pguidCmdGroup, ULONG cCmds, OLECMD prgCmds[], OLECMDTEXT *pCmdText) override
+	{
+		RETURN_HR_IF(E_NOTIMPL, cCmds != 1);
+		return QueryStatusInternal(pguidCmdGroup, prgCmds, pCmdText, _grid, _objects);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE Exec (const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT *pvaIn, VARIANT *pvaOut) override
+	{
+		return ExecInternal(pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut, _grid, _objects);
 	}
 	#pragma endregion
 };

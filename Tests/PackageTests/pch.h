@@ -15,6 +15,7 @@
 #include <filesystem>
 
 #include <Windows.h>
+#include <windowsx.h>
 #undef GetClassName
 #undef GetClassInfo
 #undef GetObject

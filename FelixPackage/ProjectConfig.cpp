@@ -1178,6 +1178,9 @@ struct AssemblerPageProperties
 		if (dispid == dispidSaveListing)
 			return put_SaveListing(VARIANT_FALSE);
 
+		if (dispid == dispidListingFilename)
+			return put_ListingFilename(nullptr);
+
 		return E_NOTIMPL;
 	}
 	#pragma endregion
@@ -1285,7 +1288,11 @@ struct AssemblerPageProperties
 	{
 		if (VarBstrCmp(_listingFilename.get(), filename, 0, 0) != VARCMP_EQ)
 		{
-			auto fn = wil::make_bstr_nothrow(filename); RETURN_IF_NULL_ALLOC(fn);
+			wil::unique_bstr fn;
+			if (filename)
+			{
+				fn = wil::make_bstr_nothrow(filename); RETURN_IF_NULL_ALLOC(fn);
+			}
 			_listingFilename = std::move(fn);
 			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidListingFilename); });
 		}

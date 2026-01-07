@@ -57,6 +57,10 @@
 			<Group guid="guidFelixPackageCmdSet" id="cmdidSaveFileGroup" priority="0x0001">
 				<Parent guid="guidFelixPackageCmdSet" id="cmdidSaveFileSubMenu" />
 			</Group>
+
+			<Group guid="guidFelixPackageCmdSet" id="cmdidPropertyPageGroup" priority="0">
+				<Parent guid="guidFelixPackageCmdSet" id="cmdidPropertyPageContextMenu"/>
+			</Group>
     </Groups>
     
     <!--Buttons section. -->
@@ -145,6 +149,14 @@ parts that the beam hasn't reached yet.
 					<ButtonText>Show Debug Aids</ButtonText>
 				</Strings>
 			</Button>
+
+			<Button guid="guidFelixPackageCmdSet" id="cmdidPropertyPageReset" priority="0x0106" type="Button">
+				<Parent guid="guidFelixPackageCmdSet" id="cmdidPropertyPageGroup" />
+				<Strings>
+					<ButtonText>Reset</ButtonText>
+				</Strings>
+			</Button>
+
 		</Buttons>
 
 		<!--The bitmaps section is used to define the bitmaps that are used for the commands.-->
@@ -170,6 +182,13 @@ parts that the beam hasn't reached yet.
 			<Menu guid="guidFelixPackageCmdSet" id="cmdidSaveFileSubMenu" type="MenuController" priority="0x0106">
 				<Parent guid="guidFelixPackageCmdSet" id="TWToolbarGroup" />
 				<CommandFlag>IconAndText</CommandFlag>
+				<CommandFlag>AlwaysCreate</CommandFlag>
+				<Strings>
+					<ButtonText>Save</ButtonText>
+				</Strings>
+			</Menu>
+
+			<Menu guid="guidFelixPackageCmdSet" id="cmdidPropertyPageContextMenu" type="Context">
 				<CommandFlag>AlwaysCreate</CommandFlag>
 				<Strings>
 					<ButtonText>Save</ButtonText>
