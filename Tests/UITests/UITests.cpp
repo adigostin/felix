@@ -726,21 +726,19 @@ namespace UITests
 			auto[sln0, proj] = CreateSolutionAndProject (testPath.c_str(), L"test", NULL);
 			auto close = wil::scope_exit([sln=sln0.get()] { sln->Close(); });
 
-			wil::com_ptr_failfast<VxDTE::ProjectItems> items;
-			proj->get_ProjectItems(&items);
-			wil::com_ptr_failfast<VxDTE::ProjectItem> item;
-			items->Item(wil::make_variant_bstr_failfast(L"file.asm"), &item);
-			com_ptr<VxDTE::Window> window;
-			hr = item->Open(wil::make_bstr_failfast(L"{7651A703-06E5-11D1-8EBD-00A0C90F26EA}").get(), &window);
+			VSITEMID itemId;
+			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"file.asm", &itemId);
 			Assert::IsTrue(SUCCEEDED(hr));
-			window->put_Visible(VARIANT_TRUE);
-			VARIANT_BOOL visible;
-			hr = window->get_Visible(&visible);
-			Assert::IsTrue(SUCCEEDED(hr) && visible == VARIANT_TRUE);
+			com_ptr<IVsWindowFrame> wf;
+			hr = proj.query<IVsProject2>()->OpenItem(itemId, LOGVIEWID_Code, nullptr, &wf);
+			wf->Show();
+			hr = wf->IsVisible();
+			Assert::AreEqual (S_OK, hr);
 
-			item->Remove();
-			window->get_Visible(&visible);
-			Assert::IsTrue(SUCCEEDED(hr) && visible == VARIANT_FALSE);
+			hr = proj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(1, DELITEMOP_DeleteFromStorage, &itemId, DHO_SUPPRESS_UI);
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = wf->IsVisible();
+			Assert::AreNotEqual (S_OK, hr);
 		}
 
 		TEST_METHOD(RemoveFolderAndFile_FolderFirstInList)
@@ -774,22 +772,21 @@ namespace UITests
 			auto[sln0, proj] = CreateSolutionAndProject (testPath.c_str(), L"test", NULL);
 			auto close = wil::scope_exit([sln=sln0.get()] { sln->Close(); });
 
-			wil::com_ptr_failfast<VxDTE::ProjectItems> items;
-			proj->get_ProjectItems(&items);
-			wil::com_ptr_failfast<VxDTE::ProjectItem> item;
-			items->Item(wil::make_variant_bstr_failfast(L"GeneratedFiles\\PreInclude.asm"), &item);
-			com_ptr<VxDTE::Window> window;
-			hr = item->Open(wil::make_bstr_failfast(L"{7651A703-06E5-11D1-8EBD-00A0C90F26EA}").get(), &window);
+			VSITEMID itemId;
+			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"GeneratedFiles\\PreInclude.asm", &itemId);
 			Assert::IsTrue(SUCCEEDED(hr));
-			window->put_Visible(VARIANT_TRUE);
-			VARIANT_BOOL visible;
-			hr = window->get_Visible(&visible);
-			Assert::IsTrue(SUCCEEDED(hr) && visible == VARIANT_TRUE);
+			com_ptr<IVsWindowFrame> wf;
+			hr = proj.query<IVsProject2>()->OpenItem(itemId, LOGVIEWID_Code, nullptr, &wf);
+			wf->Show();
+			hr = wf->IsVisible();
+			Assert::AreEqual (S_OK, hr);
 
-			items->Item(wil::make_variant_bstr_failfast(L"GeneratedFiles"), &item);
-			item->Remove();
-			window->get_Visible(&visible);
-			Assert::IsTrue(SUCCEEDED(hr) && visible == VARIANT_FALSE);
+			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"GeneratedFiles", &itemId);
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = proj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(1, DELITEMOP_DeleteFromStorage, &itemId, DHO_SUPPRESS_UI);
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = wf->IsVisible();
+			Assert::AreNotEqual (S_OK, hr);
 		}
 
 		TEST_METHOD(AddNewFile_SameNameAsFileOutsideProjectDir)

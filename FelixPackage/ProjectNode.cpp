@@ -31,7 +31,6 @@ class ProjectNode
 	, IVsUpdateSolutionEvents
 	, IVsHierarchyEvents // this implementation forwards to sinks hierarchy events generated in descendants
 	, VxDTE::Project
-	, VxDTE::ProjectItems
 {
 	ULONG _refCount = 0;
 	GUID _projectInstanceGuid;
@@ -364,7 +363,6 @@ public:
 			|| TryQI<IVsUpdateSolutionEvents>(this, riid, ppvObject)
 			|| TryQI<IVsHierarchyEvents>(this, riid, ppvObject)
 			|| TryQI<VxDTE::Project>(this, riid, ppvObject)
-			|| TryQI<VxDTE::ProjectItems>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -2935,9 +2933,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE get_ProjectItems (VxDTE::ProjectItems **lppcReturn) override
 	{
-		*lppcReturn = this;
-		(*lppcReturn)->AddRef();
-		return S_OK;
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_Properties (VxDTE::Properties **ppObject) override
@@ -3015,78 +3011,6 @@ public:
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE Delete() override
-	{
-		return E_NOTIMPL;
-	}
-
-	#pragma endregion
-
-	#pragma region VxDTE::ProjectItems
-	virtual HRESULT STDMETHODCALLTYPE Item (VARIANT index, VxDTE::ProjectItem** lppcReturn) override
-	{
-		HRESULT hr;
-
-		RETURN_HR_IF(E_INVALIDARG, index.vt != VT_BSTR);
-
-		com_ptr<IChildNode> node;
-		hr = FindDescendantIf([n=index.bstrVal](IChildNode* c)
-			{
-				wil::unique_bstr cn;
-				auto hr = c->GetCanonicalName(&cn); RETURN_IF_FAILED(hr);
-				return _wcsicmp(cn.get(), n) ? S_FALSE : S_OK;
-			}, &node);
-		RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(E_INVALIDARG, hr == S_FALSE);
-
-		hr = node->QueryInterface(IID_PPV_ARGS(lppcReturn)); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE get_Parent (IDispatch **lppptReturn) override
-	{
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE get_Count (long* lplReturn) override
-	{
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE _NewEnum (IUnknown **lppiuReturn) override
-	{
-		return E_NOTIMPL;
-	}
-
-	//virtual HRESULT STDMETHODCALLTYPE get_DTE (VxDTE::DTE** lppaReturn) override { return E_NOTIMPL; }
-
-	//virtual HRESULT STDMETHODCALLTYPE get_Kind (BSTR* lpbstrFileName) override { return E_NOTIMPL; }
-
-	virtual HRESULT STDMETHODCALLTYPE AddFromFile (BSTR FileName, VxDTE::ProjectItem **lppcReturn) override
-	{
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE AddFromTemplate (BSTR FileName, BSTR Name, VxDTE::ProjectItem **lppcReturn) override
-	{
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE AddFromDirectory (BSTR Directory, VxDTE::ProjectItem **lppcReturn) override
-	{
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE get_ContainingProject (VxDTE::Project** ppProject) override
-	{
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE AddFolder (BSTR Name, BSTR Kind, VxDTE::ProjectItem **pProjectItem) override
-	{
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE AddFromFileCopy (BSTR FilePath, VxDTE::ProjectItem** pProjectItem) override
 	{
 		return E_NOTIMPL;
 	}
