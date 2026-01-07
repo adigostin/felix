@@ -33,7 +33,7 @@ class ProjectNode
 {
 	ULONG _refCount = 0;
 	GUID _projectInstanceGuid;
-	wil::unique_hlocal_string _projectDir; // ends with backslash
+	wil::unique_process_heap_string _projectDir; // ends with backslash
 	wil::unique_hlocal_string _filename;
 	wil::unique_hlocal_string _caption;
 	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsHierarchyEvents>> _hierarchyEventSinks;
@@ -164,6 +164,9 @@ public:
 
 		if (grfCreateFlags & CPF_CLONEFILE)
 		{
+			RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), !pszLocation || !pszLocation[0]);
+			RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), PathIsRelative(pszLocation));
+
 			hr = EnsureDirHasBackslash (pszLocation, _projectDir); RETURN_IF_FAILED(hr);
 
 			_filename = wil::make_hlocal_string_nothrow(pszName); RETURN_IF_NULL_ALLOC(_filename);
@@ -189,7 +192,7 @@ public:
 			// pszFilename is the full path of the file to open, the others are NULL.
 			const wchar_t* fn = PathFindFileName(pszFilename);
 			
-			_projectDir = wil::make_hlocal_string_nothrow(pszFilename, fn - pszFilename); RETURN_IF_NULL_ALLOC(_projectDir);
+			_projectDir = wil::make_process_heap_string_nothrow(pszFilename, fn - pszFilename); RETURN_IF_NULL_ALLOC(_projectDir);
 			
 			_filename = wil::make_hlocal_string_nothrow(fn); RETURN_IF_NULL_ALLOC(_filename);
 			const wchar_t* ext = PathFindExtension(pszFilename);
@@ -204,7 +207,8 @@ public:
 			// Neither clone nor open. So far I haven't found a scenario where VS calls us like this.
 			// It's useful for tests, where we need a blank project.
 			RETURN_HR_IF(E_UNEXPECTED, !!pszFilename);
-			RETURN_HR_IF(E_UNEXPECTED, !pszLocation);
+			RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), !pszLocation || !pszLocation[0]);
+			RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), PathIsRelative(pszLocation));
 			hr = EnsureDirHasBackslash (pszLocation, _projectDir); RETURN_IF_FAILED(hr);
 		}
 
@@ -223,32 +227,6 @@ public:
 	{
 		WI_ASSERT (_updateBuildSolutionEventsCookie == VSCOOKIE_NIL);
 		WI_ASSERT (_cfgProviderEventSinks.empty());
-	}
-
-	static HRESULT EnsureDirHasBackslash (LPCOLESTR pszLocation, wil::unique_hlocal_string& dir)
-	{
-		RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), !pszLocation);
-		RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), !pszLocation[0]);
-		RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), PathIsRelative(pszLocation));
-
-		size_t len = wcslen(pszLocation);
-		if (pszLocation[len - 1] == '\\')
-		{
-			dir = wil::make_hlocal_string_nothrow(pszLocation, len); RETURN_IF_NULL_ALLOC(dir);
-		}
-		else if (pszLocation[len - 1] == '/')
-		{
-			dir = wil::make_hlocal_string_nothrow(pszLocation, len); RETURN_IF_NULL_ALLOC(dir);
-			dir.get()[len - 1] = '\\';
-		}
-		else
-		{
-			dir = wil::make_hlocal_string_failfast(pszLocation, len + 1); RETURN_IF_NULL_ALLOC(dir);
-			dir.get()[len] = '\\';
-			dir.get()[len + 1] = 0;
-		}
-
-		return S_OK;
 	}
 
 	// If found, returns S_OK and ppItem is non-null.

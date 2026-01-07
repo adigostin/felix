@@ -608,11 +608,6 @@ public:
 		auto hr = _project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, projectDir.addressof()); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
 
-		wil::unique_bstr outputDirUnresolved;
-		hr = _config->GeneralProps()->get_OutputDirectory(&outputDirUnresolved); RETURN_IF_FAILED(hr);
-		wil::unique_process_heap_string output_dir;
-		hr = ResolveMacros (outputDirUnresolved.get(), _config, output_dir); RETURN_IF_FAILED(hr);
-
 		// Pre-Build Event
 		com_ptr<IProjectConfigPrePostBuildProperties> preBuildProps;
 		hr = _config->AsProjectConfigProperties()->get_PreBuildProperties(&preBuildProps); RETURN_IF_FAILED(hr);
@@ -666,6 +661,17 @@ public:
 			return HRESULT_FROM_WIN32(ERROR_NO_MORE_FILES);
 		}
 
+		// Create output directory.
+		wil::unique_bstr outputDirUnresolved;
+		hr = _config->GeneralProps()->get_OutputDirectory(&outputDirUnresolved); RETURN_IF_FAILED(hr);
+		wil::unique_process_heap_string output_dir;
+		hr = ResolveMacros (outputDirUnresolved.get(), _config, output_dir); RETURN_IF_FAILED(hr);
+		if (PathIsRelative(output_dir.get()))
+		{
+			wchar_t combined[MAX_PATH];
+			auto pres = PathCombine (combined, projectDir.bstrVal, output_dir.get()); RETURN_HR_IF(ERROR_PATH_NOT_FOUND, !pres);
+			output_dir = wil::make_process_heap_string_nothrow(combined); RETURN_IF_NULL_ALLOC(output_dir);
+		}
 		int win32err = SHCreateDirectoryExW (nullptr, output_dir.get(), nullptr);
 		if (win32err != ERROR_SUCCESS && win32err != ERROR_ALREADY_EXISTS)
 			RETURN_WIN32(win32err);

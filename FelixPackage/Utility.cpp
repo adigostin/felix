@@ -481,6 +481,7 @@ FELIX_API HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* c
 	hr = config->GeneralProps()->get_OutputDirectory(&outputDirUnresolved); RETURN_IF_FAILED(hr);
 	wil::unique_process_heap_string output_dir;
 	hr = ResolveMacros(outputDirUnresolved.get(), config, output_dir); RETURN_IF_FAILED(hr);
+	hr = EnsureDirHasBackslash (output_dir.get(), output_dir); RETURN_IF_FAILED(hr);
 
 	vector_nothrow<com_ptr<IFileNodeProperties>> asmFiles;
 
@@ -563,18 +564,33 @@ FELIX_API HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* c
 	}
 	hr = Write(cmdLine, L" --fullpath"); RETURN_IF_FAILED(hr);
 
+	// We launch sjasmplus in the project directory, so that's the CWD of the sjasmplus.exe process.
+	// It looks for its input files, and generates its output files, in directories relative to the CWD.
+	// But we gave our user a way to specify a different output directory - the property "OutputDirectory".
+	// Thus for output files we must first construct a full path of the output files, then try to make it relative to the project directory;
+	// If it's not possible to make it relative to the project directory, then we pass it to sjasmplus as an absolute path.
 	auto addOutputPathParam = [&cmdLine, output_dir=output_dir.get(), project_dir=projectDir.bstrVal](const wchar_t* paramName, const wchar_t* output_filename) -> HRESULT
 		{
-			auto outputFilePath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(outputFilePath);
-			auto pres = PathCombine (outputFilePath.get(), output_dir, output_filename); RETURN_HR_IF(CO_E_BAD_PATH, !pres);
-			auto outputFilePathRelativeUgly = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(outputFilePathRelativeUgly);
-			BOOL bRes = PathRelativePathToW (outputFilePathRelativeUgly.get(), project_dir, FILE_ATTRIBUTE_DIRECTORY, outputFilePath.get(), 0);
-			if (!bRes)
-				return SetFelixErrorInfo (E_INVALIDARG, IDS_CANNOT_MAKE_RELATIVE_PATH_S_S, outputFilePath.get(), project_dir);
-			auto outputFilePathRelative = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(outputFilePathRelative);
-			BOOL bres = PathCanonicalize (outputFilePathRelative.get(), outputFilePathRelativeUgly.get()); RETURN_IF_WIN32_BOOL_FALSE(bres);
-			auto hr = Write(cmdLine, paramName); RETURN_IF_FAILED(hr);
-			hr = Write(cmdLine, outputFilePathRelative.get()); RETURN_IF_FAILED(hr);
+			RETURN_HR_IF(ERROR_BAD_PATHNAME, output_dir[wcslen(output_dir) - 1] != L'\\');
+			if (!PathIsRelative(output_dir) && PathIsSameRootW(output_dir, project_dir))
+			{
+				// Output dir is an absolute path on same drive as the project dir. We can generate an output path relative to the project dir.
+				auto outputFilePath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(outputFilePath);
+				auto pres = PathCombine (outputFilePath.get(), output_dir, output_filename); RETURN_HR_IF(ERROR_BAD_PATHNAME, !pres);
+				auto outputFilePathRelative = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(outputFilePathRelative);
+				BOOL bRes = PathRelativePathToW (outputFilePathRelative.get(), project_dir, FILE_ATTRIBUTE_DIRECTORY, outputFilePath.get(), 0);
+				if (!bRes)
+					return SetFelixErrorInfo (E_INVALIDARG, IDS_CANNOT_MAKE_RELATIVE_PATH_S_S, outputFilePath.get(), project_dir);
+				auto hr = Write(cmdLine, paramName); RETURN_IF_FAILED(hr);
+				hr = Write(cmdLine, outputFilePathRelative.get()); RETURN_IF_FAILED(hr);
+			}
+			else
+			{
+				// Output dir is a relative path (which we consider to be relative to the project dir), or it is a path on a different drive.
+				auto hr = Write(cmdLine, paramName); RETURN_IF_FAILED(hr);
+				hr = Write(cmdLine, output_dir); RETURN_IF_FAILED(hr);
+				hr = Write(cmdLine, output_filename); RETURN_IF_FAILED(hr);
+			}
 			return S_OK;
 		};
 
@@ -598,7 +614,11 @@ FELIX_API HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* c
 
 	// --sld=...
 	wil::unique_process_heap_string sld_filename;
-	hr = GetSldFilename (config, sld_filename); RETURN_IF_FAILED(hr);
+	wil::unique_bstr outputName;
+	hr = config->GeneralProps()->get_OutputName(&outputName); RETURN_IF_FAILED(hr);
+	hr = wil::str_printf_nothrow(sld_filename, L"%s.sld", outputName.get()); RETURN_IF_FAILED(hr);
+	hr = ResolveMacros (sld_filename.get(), config, sld_filename); RETURN_IF_FAILED(hr);
+
 	hr = addOutputPathParam (L" --sld=", sld_filename.get()); RETURN_IF_FAILED(hr);
 
 	// --outprefix
@@ -1303,15 +1323,6 @@ HRESULT ParseNumber (LPCWSTR str, DWORD* value)
 	return S_OK;
 }
 
-HRESULT GetSldFilename (IProjectConfig* config, wil::unique_process_heap_string& filenameOut)
-{
-	wil::unique_bstr outputName;
-	auto hr = config->GeneralProps()->get_OutputName(&outputName); RETURN_IF_FAILED(hr);
-	hr = wil::str_printf_nothrow(filenameOut, L"%s.sld", outputName.get()); RETURN_IF_FAILED(hr);
-	hr = ResolveMacros(filenameOut.get(), config, filenameOut); RETURN_IF_FAILED(hr);
-	return S_OK;
-}
-
 const wchar_t* GetOutputExtensionFromOutputType (OutputFileType type)
 {
 	if (type == OutputFileType::Binary)
@@ -1450,3 +1461,26 @@ HRESULT IsDescendantOf (IParentNode* possibleAncestor, IChildNode* node)
 		hr = parentAsChild->GetParent(&parent); RETURN_IF_FAILED(hr);
 	}
 }
+
+HRESULT EnsureDirHasBackslash (LPCOLESTR pszLocation, wil::unique_process_heap_string& dir)
+{
+	size_t len = wcslen(pszLocation);
+	if (pszLocation[len - 1] == '\\')
+	{
+		dir = wil::make_process_heap_string_nothrow(pszLocation, len); RETURN_IF_NULL_ALLOC(dir);
+	}
+	else if (pszLocation[len - 1] == '/')
+	{
+		dir = wil::make_process_heap_string_nothrow(pszLocation, len); RETURN_IF_NULL_ALLOC(dir);
+		dir.get()[len - 1] = '\\';
+	}
+	else
+	{
+		dir = wil::make_process_heap_string_nothrow(pszLocation, len + 1); RETURN_IF_NULL_ALLOC(dir);
+		dir.get()[len] = '\\';
+		dir.get()[len + 1] = 0;
+	}
+
+	return S_OK;
+}
+

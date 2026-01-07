@@ -12,7 +12,7 @@
 // Useful doc: https://learn.microsoft.com/en-us/visualstudio/extensibility/internals/managing-configuration-options?view=vs-2022
 
 static constexpr DWORD BaseAddressDefaultValue = 0x8000;
-static constexpr wchar_t EntryPointAddressDefaultValue[] = L"32768";
+static constexpr wchar_t EntryPointAddressDefaultValue[] = L"start";
 
 HRESULT GeneralPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigGeneralProperties** to);
 HRESULT AssemblerPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigAssemblerProperties** to);
@@ -714,9 +714,9 @@ struct GeneralPageProperties
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _config;
 	com_ptr<ConnectionPointImpl<IPropertyNotifySink>> _propNotifyCP;
-	wil::unique_process_heap_string _outputName;
+	wil::unique_process_heap_string _outputName; // cannot be empty, must be usable as file name (no special characters)
 	OutputFileType _outputFileType = OutputTypeDefaultValue;
-	wil::unique_process_heap_string _outputDirectory;
+	wil::unique_process_heap_string _outputDirectory; // cannot be empty
 
 	HRESULT InitInstance (IProjectConfig* config)
 	{
@@ -792,18 +792,20 @@ struct GeneralPageProperties
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_OutputName (BSTR* pbstrTargetName) override
+	virtual HRESULT STDMETHODCALLTYPE get_OutputName (BSTR* pbstrOutputName) override
 	{
-		*pbstrTargetName = SysAllocString(_outputName.get()); RETURN_IF_NULL_ALLOC(*pbstrTargetName);
+		*pbstrOutputName = SysAllocString(_outputName.get()); RETURN_IF_NULL_ALLOC(*pbstrOutputName);
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_OutputName (BSTR bstrTargetName) override
+	virtual HRESULT STDMETHODCALLTYPE put_OutputName (BSTR bstrOutputName) override
 	{
-		const wchar_t* tn = bstrTargetName ? bstrTargetName : L"";
-		if (wcscmp(_outputName.get(), tn))
+		if (!bstrOutputName || !bstrOutputName[0] || !PathIsFileSpecW(bstrOutputName))
+			return E_INVALIDARG;
+
+		if (wcscmp(_outputName.get(), bstrOutputName))
 		{
-			_outputName = wil::make_process_heap_string_nothrow(tn); RETURN_IF_NULL_ALLOC(_outputName);
+			_outputName = wil::make_process_heap_string_nothrow(bstrOutputName); RETURN_IF_NULL_ALLOC(_outputName);
 			_propNotifyCP->Notify([](IPropertyNotifySink* sink)
 				{
 					sink->OnChanged(dispidOutputName);
@@ -856,10 +858,12 @@ struct GeneralPageProperties
 
 	virtual HRESULT STDMETHODCALLTYPE put_OutputDirectory (BSTR bstrOutputDirectory) override
 	{
+		if (!bstrOutputDirectory || !bstrOutputDirectory[0])
+			return E_INVALIDARG;
+
 		if (wcscmp(_outputDirectory.get(), bstrOutputDirectory))
 		{
-			auto od = wil::make_process_heap_string_nothrow(bstrOutputDirectory); RETURN_IF_NULL_ALLOC(od);
-			_outputDirectory = std::move(od);
+			_outputDirectory = wil::make_process_heap_string_nothrow(bstrOutputDirectory); RETURN_IF_NULL_ALLOC(_outputDirectory);
 			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidOutputDirectory); });
 		}
 

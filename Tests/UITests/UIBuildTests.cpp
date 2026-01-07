@@ -70,7 +70,120 @@ namespace UITests
 			hr = errorList->get_ErrorItems(&errorItems);
 			long errorCount;
 			hr = errorItems->get_Count(&errorCount);
-			Assert::AreEqual(1l, errorCount);
+			Assert::IsTrue(errorCount > 1);
+		}
+
+		TEST_METHOD(BuildOutDirNoBackslash)
+		{
+			HRESULT hr;
+
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"BuildOutDirNoBackslash");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
+
+			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"proj");
+			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
+
+			wil::com_ptr_failfast<IVsCfg> cfg;
+			ULONG actual;
+			VSCFGFLAGS flags;
+			proj.query<IVsCfgProvider>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
+
+			com_ptr<IProjectConfigGeneralProperties> generalProps;
+			cfg.query<IProjectConfigProperties>()->get_GeneralProperties(&generalProps);
+			generalProps->put_OutputDirectory(wil::make_bstr_failfast(L"%PROJECT_DIR%Out").get());
+			generalProps->put_OutputFileType(OutputFileType::Sna);
+
+			com_ptr<VxDTE::SolutionBuild> solutionBuild;
+			sln->get_SolutionBuild(&solutionBuild);
+			hr = solutionBuild->Build(VARIANT_TRUE);
+			Assert::IsTrue(SUCCEEDED(hr));
+			long buildFailCount;
+			hr = solutionBuild->get_LastBuildInfo(&buildFailCount);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual(0l, buildFailCount);
+			Assert::IsTrue(PathFileExists(wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\proj\\Out\\proj.sna").get()));
+		}
+
+		TEST_METHOD(BuildOutDirOutsideProjectDir)
+		{
+			HRESULT hr;
+
+			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"BuildOutDirOutsideProjectDir");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
+
+			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"proj");
+			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
+
+			com_ptr<VxDTE::SolutionBuild> solutionBuild;
+			sln->get_SolutionBuild(&solutionBuild);
+
+			wil::com_ptr_failfast<IVsCfg> cfg;
+			ULONG actual;
+			VSCFGFLAGS flags;
+			proj.query<IVsCfgProvider>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
+
+			com_ptr<IProjectConfigGeneralProperties> generalProps;
+			cfg.query<IProjectConfigProperties>()->get_GeneralProperties(&generalProps);
+
+			auto buildIt = [&generalProps, &solutionBuild](const wchar_t* outputDirExpected)
+				{
+					// Sna
+					generalProps->put_OutputFileType(OutputFileType::Sna);
+					auto hr = solutionBuild->Build(VARIANT_TRUE);
+					Assert::IsTrue(SUCCEEDED(hr));
+					long buildFailCount;
+					hr = solutionBuild->get_LastBuildInfo(&buildFailCount);
+					Assert::IsTrue(SUCCEEDED(hr));
+					Assert::AreEqual(0l, buildFailCount);
+					auto outputFile = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s\\proj.sna", outputDirExpected);
+					Assert::IsTrue(PathFileExists(outputFile.get()));
+					Assert::IsTrue(DeleteFile(outputFile.get()));
+
+					// Binary
+					generalProps->put_OutputFileType(OutputFileType::Binary);
+					hr = solutionBuild->Build(VARIANT_TRUE);
+					Assert::IsTrue(SUCCEEDED(hr));
+					hr = solutionBuild->get_LastBuildInfo(&buildFailCount);
+					Assert::IsTrue(SUCCEEDED(hr));
+					Assert::AreEqual(0l, buildFailCount);
+					outputFile = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s\\proj.bin", outputDirExpected);
+					Assert::IsTrue(PathFileExists(outputFile.get()));
+					Assert::IsTrue(DeleteFile(outputFile.get()));
+				};
+
+			// Outside project dir but on same drive, full path.
+			generalProps->put_OutputDirectory(wil::make_bstr_failfast(L"%PROJECT_DIR%..").get());
+			buildIt(testPath.get());
+
+			// Outside project dir but on same drive, relative path.
+			generalProps->put_OutputDirectory(wil::make_bstr_failfast(L"..").get());
+			buildIt(testPath.get());
+
+			// Different drive
+			wchar_t volPathName[50];
+			BOOL bres = GetVolumePathNameW(testPath.get(), volPathName, _countof(volPathName));
+			Assert::IsTrue(bres);
+			wchar_t volumeName[50];
+			bres = GetVolumeNameForVolumeMountPointW (volPathName, volumeName, _countof(volumeName));
+			Assert::IsTrue(bres);
+			auto pathWithoutDrive = PathSkipRootW(testPath.get());
+			wchar_t testPathOtherDrive[MAX_PATH];
+			PathCombine(testPathOtherDrive, volumeName, pathWithoutDrive);
+			wchar_t outputPathOtherDrive[MAX_PATH];
+			PathCombine(outputPathOtherDrive, testPathOtherDrive, L"newdir");
+			{
+				// Quick test that the path is writeable, before asking the build system to write to it
+				wil::CreateDirectoryDeep(outputPathOtherDrive);
+				wchar_t test[MAX_PATH];
+				PathCombine(test, outputPathOtherDrive, L"test.txt");
+				Assert::IsTrue(wil::unique_hfile(CreateFile(test, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL)).is_valid());
+				Assert::IsTrue(DeleteFile(test));
+				Assert::IsTrue(RemoveDirectory(outputPathOtherDrive));
+			}
+			generalProps->put_OutputDirectory(wil::make_bstr_failfast(outputPathOtherDrive).get());
+			buildIt(outputPathOtherDrive);
 		}
 	};
 }

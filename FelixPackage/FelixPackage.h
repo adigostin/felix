@@ -282,8 +282,8 @@ HRESULT MakeFileNodeForExistingFile (LPCWSTR path, IFileNode** ppFile);
 HRESULT ParseNumber (LPCWSTR str, DWORD* value); // returns S_OK or S_FALSE
 HRESULT MakeSldSymbols (const wchar_t* symbolsFullPath, IFelixSymbols** to);
 HRESULT MakeZ80SymSymbols (const wchar_t* symbolsFullPath, IFelixSymbols** to);
-HRESULT GetSldFilename (IProjectConfig* config, wil::unique_process_heap_string& filenameOut);
 const wchar_t* GetOutputExtensionFromOutputType (OutputFileType type);
 HRESULT ResolveMacros (const wchar_t* pszIn, IProjectConfig* config, wil::unique_process_heap_string& out);
 FELIX_API void SetResultLoggingCallback(decltype(wil::details::g_pfnLoggingCallback) callbackFunction);
 HRESULT IsDescendantOf (IParentNode* possibleAncestor, IChildNode* node);
+HRESULT EnsureDirHasBackslash (LPCOLESTR pszLocation, wil::unique_process_heap_string& dir);

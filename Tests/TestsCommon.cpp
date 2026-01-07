@@ -38,7 +38,7 @@ void MakeTemplates (const wchar_t* tempDirName)
 	WriteFileOnDisk(TemplatePath_TwoConfigsOneFile.get(), TemplateTwoConfigsOneFileXML);
 
 	auto file = wil::str_concat_failfast<wil::unique_process_heap_string>(templateDir, L"file.asm");
-	WriteFileOnDisk(file.get(), "\tend");
+	WriteFileOnDisk(file.get(), "start:\tret");
 
 	wil::str_concat_nothrow(TemplatePath_EmptyProject, tempPath, L"TemplateEmpty\\proj.flx");
 	WriteFileOnDisk(TemplatePath_EmptyProject.get(), TemplateXML_EmptyProject);
