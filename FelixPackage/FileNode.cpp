@@ -1069,9 +1069,8 @@ public:
 
 		// Check if the document is in the cache and rename document in the cache.
 		com_ptr<IVsRunningDocumentTable> pRDT;
-		hr = serviceProvider->QueryService(SID_SVsRunningDocumentTable, &pRDT);
 		VSCOOKIE dwCookie = VSCOOKIE_NIL;
-		if (SUCCEEDED(hr))
+		if (SUCCEEDED(serviceProvider->QueryService(SID_SVsRunningDocumentTable, &pRDT)))
 		{
 			pRDT->FindAndLockDocument (RDT_NoLock, oldFullPath.get(), nullptr, nullptr, nullptr, &dwCookie); // ignore returned HRESULT as we're only interested in dwCookie
 		}

@@ -12,7 +12,6 @@ IMockServiceProvider : IUnknown
 };
 
 com_ptr<IVsSolution> MakeMockSolution();
-com_ptr<IVsRunningDocumentTable> MakeMockRDT();
 com_ptr<IVsShell> MakeMockShell();
 
 namespace FelixTests
@@ -21,7 +20,6 @@ namespace FelixTests
 	{
 		ULONG _refCount = 0;
 		com_ptr<IVsSolution> _solution = MakeMockSolution();
-		com_ptr<IVsRunningDocumentTable> _rdt = MakeMockRDT();
 		com_ptr<IVsShell> _shell = MakeMockShell();
 		com_ptr<IVsOutputWindowPane2> _generalOutputWindowPane = MakeMockOutputWindowPane(nullptr);
 		com_ptr<IVsDebugger> _shellDebugger = MakeMockDebugger();
@@ -54,7 +52,7 @@ namespace FelixTests
 				return E_NOTIMPL;
 
 			if (guidService == SID_SVsRunningDocumentTable)
-				return _rdt->QueryInterface(riid, ppvObject);
+				return E_NOTIMPL;
 
 			if (guidService == SID_SVsTrackProjectDocuments)
 				return E_NOTIMPL;

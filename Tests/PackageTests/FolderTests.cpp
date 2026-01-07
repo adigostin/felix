@@ -34,7 +34,7 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto unadvise = wil::scope_exit([hier=hier.get(), hierEventsCookie]() { hier->UnadviseHierarchyEvents(hierEventsCookie); });
 
-			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
+			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			wil::unique_variant child;
@@ -74,7 +74,7 @@ namespace FelixTests
 			hr = MakeProjectNode (nullptr, projDir, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
+			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			wil::unique_variant folderItemId;
@@ -143,10 +143,10 @@ namespace FelixTests
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
+			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
+			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 		}
 
@@ -156,7 +156,7 @@ namespace FelixTests
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
+			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			wil::unique_variant child;
@@ -168,7 +168,7 @@ namespace FelixTests
 			dh->DeleteItems(1, DELITEMOP_RemoveFromProject, (VSITEMID*)&child.lVal, DHO_SUPPRESS_UI);
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
+			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 		}
 
@@ -183,7 +183,7 @@ namespace FelixTests
 			hr = sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), tempPath, ProjFileName, CPF_CLONEFILE, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
+			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			wil::unique_variant folderItemId;
@@ -199,7 +199,7 @@ namespace FelixTests
 			BOOL bres = RemoveDirectoryW(folderPath.get());
 			Assert::IsTrue(bres);
 
-			hr = hier->ExecCommand(V_VSITEMID(&folderItemId), &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, nullptr);
+			hr = hier->ExecCommand(V_VSITEMID(&folderItemId), &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 		}
 
@@ -217,7 +217,7 @@ namespace FelixTests
 
 			// Add folder named "NewFolder1".
 			wil::unique_variant one;
-			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &one);
+			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &one);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			// Rename it to "B".
@@ -229,7 +229,7 @@ namespace FelixTests
 
 			// Add folder named "NewFolder1".
 			wil::unique_variant other;
-			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &other);
+			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &other);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			// First one should be "B", second one should be "NewFolder1"

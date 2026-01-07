@@ -388,19 +388,21 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project)
 			}
 
 			com_ptr<IVsRunningDocumentTable> rdt;
-			hr = serviceProvider->QueryService(SID_SVsRunningDocumentTable, IID_PPV_ARGS(&rdt)); RETURN_IF_FAILED(hr);
-			com_ptr<IVsSolution> solution;
-			hr = serviceProvider->QueryService(SID_SVsSolution, &solution); RETURN_IF_FAILED(hr);
-
-			for (auto c = genFilesFolder->AsParentNode()->FirstChild(); c; c = c->Next())
+			if (SUCCEEDED(serviceProvider->QueryService(SID_SVsRunningDocumentTable, IID_PPV_ARGS(&rdt))))
 			{
-				wil::unique_process_heap_string path;
-				hr = GetPathOf (c, path); RETURN_IF_FAILED(hr);
-				VSDOCCOOKIE docCookie;
-				hr = rdt->FindAndLockDocument(RDT_NoLock, path.get(), nullptr, nullptr, nullptr, &docCookie);
-				if (SUCCEEDED(hr) && docCookie != VSDOCCOOKIE_NIL)
+				com_ptr<IVsSolution> solution;
+				hr = serviceProvider->QueryService(SID_SVsSolution, &solution); RETURN_IF_FAILED(hr);
+
+				for (auto c = genFilesFolder->AsParentNode()->FirstChild(); c; c = c->Next())
 				{
-					hr = solution->CloseSolutionElement (SLNSAVEOPT_NoSave, project->AsHierarchy(), docCookie); LOG_IF_FAILED(hr);
+					wil::unique_process_heap_string path;
+					hr = GetPathOf (c, path); RETURN_IF_FAILED(hr);
+					VSDOCCOOKIE docCookie;
+					hr = rdt->FindAndLockDocument(RDT_NoLock, path.get(), nullptr, nullptr, nullptr, &docCookie);
+					if (SUCCEEDED(hr) && docCookie != VSDOCCOOKIE_NIL)
+					{
+						hr = solution->CloseSolutionElement (SLNSAVEOPT_NoSave, project->AsHierarchy(), docCookie); LOG_IF_FAILED(hr);
+					}
 				}
 			}
 

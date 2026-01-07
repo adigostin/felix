@@ -2346,7 +2346,7 @@ public:
 		hr = serviceProvider->QueryService(SID_SVsSolution, &solution); RETURN_IF_FAILED(hr);
 
 		com_ptr<IVsRunningDocumentTable> rdt;
-		hr = serviceProvider->QueryService(SID_SVsRunningDocumentTable, &rdt); RETURN_IF_FAILED(hr);
+		serviceProvider->QueryService(SID_SVsRunningDocumentTable, &rdt);
 
 		wil::com_ptr_nothrow<IFileOperation> pfo;
 		hr = CoCreateInstance(__uuidof(FileOperation), NULL, CLSCTX_ALL, IID_PPV_ARGS(&pfo)); RETURN_IF_FAILED(hr);
@@ -2398,7 +2398,7 @@ public:
 
 		// Close any open documents corresponding to the items being removed.
 		com_ptr<IEnumRunningDocuments> enumDocs;
-		if (SUCCEEDED(rdt->GetRunningDocumentsEnum(&enumDocs)))
+		if (rdt && SUCCEEDED(rdt->GetRunningDocumentsEnum(&enumDocs)))
 		{
 			ULONG fetched;
 			VSCOOKIE docCookie;

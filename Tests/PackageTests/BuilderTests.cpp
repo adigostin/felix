@@ -494,7 +494,7 @@ namespace FelixTests
 			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
 
 			wil::unique_variant folder;
-			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &folder);
+			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &folder);
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::AreEqual<VARTYPE>(VT_VSITEMID, folder.vt);
 			hr = hier->SetProperty (V_VSITEMID(&folder), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"folder"));
@@ -504,7 +504,7 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			wil::unique_variant subfolder;
-			hr = hier->ExecCommand (V_VSITEMID(&folder), &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &subfolder);
+			hr = hier->ExecCommand (V_VSITEMID(&folder), &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &subfolder);
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::AreEqual<VARTYPE>(VT_VSITEMID, subfolder.vt);
 			hr = hier->SetProperty (V_VSITEMID(&subfolder), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"subfolder"));
