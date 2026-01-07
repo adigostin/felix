@@ -354,7 +354,9 @@ namespace FelixTests
 
 		TEST_METHOD(AddItemNewToExistingFolder)
 		{
-			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"\\AddItemNewToExistingFolder");
+			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"AddItemNewToExistingFolder");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([&testPath] { RemoveDirectoryTree(testPath); });
 
 			com_ptr<IVsUIHierarchy> hier;
 			auto hr = MakeProjectNode (nullptr, testPath.get(), nullptr, 0, IID_PPV_ARGS(&hier));
@@ -457,7 +459,10 @@ namespace FelixTests
 
 		TEST_METHOD(GetItemsPutItems_WithFolders)
 		{
-			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"\\GetItemsPutItems_WithFolders");
+			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"GetItemsPutItems_WithFolders");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([&testPath] { RemoveDirectoryTree(testPath); });
+
 			com_ptr<IVsUIHierarchy> hier1;
 			auto hr = MakeProjectNode (nullptr, testPath.get(), nullptr, 0, IID_PPV_ARGS(&hier1));
 			Assert::IsTrue(SUCCEEDED(hr));

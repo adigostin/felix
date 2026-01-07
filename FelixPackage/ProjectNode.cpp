@@ -35,7 +35,7 @@ class ProjectNode
 {
 	ULONG _refCount = 0;
 	GUID _projectInstanceGuid;
-	wil::unique_hlocal_string _projectDir;
+	wil::unique_hlocal_string _projectDir; // ends with backslash
 	wil::unique_hlocal_string _filename;
 	wil::unique_hlocal_string _caption;
 	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsHierarchyEvents>> _hierarchyEventSinks;
@@ -879,10 +879,7 @@ public:
 
 		if (itemid == VSITEMID_ROOT)
 		{
-			wil::unique_cotaskmem_string buffer;
-			DWORD unused;
-			hr = GetCurFile (&buffer, &unused); RETURN_IF_FAILED(hr);
-			*pbstrName = SysAllocString (buffer.get()); RETURN_IF_NULL_ALLOC(*pbstrName);
+			*pbstrName = SysAllocString(_filename.get()); RETURN_IF_NULL_ALLOC(*pbstrName);
 			return S_OK;
 		}
 
@@ -891,12 +888,7 @@ public:
 
 		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
-		{
-			wil::unique_process_heap_string path;
-			hr = GetPathOf(d, path, true); RETURN_IF_FAILED(hr);
-			*pbstrName = SysAllocString(path.get()); RETURN_IF_NULL_ALLOC(*pbstrName);
-			return S_OK;
-		}
+			return d->GetCanonicalName(pbstrName);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
@@ -907,30 +899,21 @@ public:
 		// parameters with "mk" in their names. This happens for example while renaming a project, during the
 		// call to OnAfterRenameProject.
 
-		wil::unique_process_heap_string pathToFind;
-		auto hr = CanonicalizePath(pszName, pathToFind); RETURN_IF_FAILED(hr);
-
 		wil::unique_bstr projCN;
-		hr = this->GetCanonicalName(VSITEMID_ROOT, &projCN); LOG_IF_FAILED(hr);
-		if (SUCCEEDED(hr) && !_wcsicmp(projCN.get(), pszName))
-		{
-			*pitemid = VSITEMID_ROOT;
-			return S_OK;
-		}
+		auto hr = this->GetCanonicalName(VSITEMID_ROOT, &projCN); RETURN_IF_FAILED(hr);
+		if (!_wcsicmp(projCN.get(), pszName))
+			return *pitemid = VSITEMID_ROOT, S_OK;
 
 		com_ptr<IChildNode> c;
-		hr = FindDescendantIf([pathToFind=pathToFind.get()](IChildNode* c)
+		hr = FindDescendantIf([pszName](IChildNode* c)
 			{
-				wil::unique_process_heap_string childCN;
-				auto hr = GetPathOf(c, childCN, true); RETURN_IF_FAILED(hr);
-				return _wcsicmp(childCN.get(), pathToFind) ? S_FALSE : S_OK;
+				wil::unique_bstr childCN;
+				auto hr = c->GetCanonicalName(&childCN); RETURN_IF_FAILED(hr);
+				return _wcsicmp(childCN.get(), pszName) ? S_FALSE : S_OK;
 			}, &c);
 		RETURN_IF_FAILED(hr);
 		if (hr == S_OK)
-		{
-			*pitemid = c->GetItemId();
-			return S_OK;
-		}
+			return *pitemid = c->GetItemId(), S_OK;
 
 		return E_FAIL;
 	}
@@ -1417,7 +1400,7 @@ public:
 			return RefreshHierarchy();
 
 		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97 && nCmdID == cmdidNewFolder)
-			return ProcessCommandAddNewFolder(itemid, pvaOut);
+			return ProcessCommandAddNewFolder(itemid, (OLECMDEXECOPT)nCmdexecopt, pvaOut);
 
 		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97 && nCmdID == cmdidAddNewItem)
 			return ProcessCommandAddItem(itemid, TRUE);
@@ -1638,48 +1621,47 @@ public:
 	}
 	#pragma endregion
 
-	// <summary>
-	// This function attempt to canonicalize a path which VS passes to various functions of this class.
-	// VS gets these paths from all kinds of places, for example paths from error strings generated
-	// by user-selected build tools in the Output Window or the Error List window.
-	// To be on the safe side, we assume these paths are ugly and need canonicalization.
-	// In addition to calling this, the caller should also perform case-insensitive comparisons.
-	// </summary>
-	static HRESULT CanonicalizePath (const wchar_t* pathIn, wil::unique_process_heap_string& pathOut)
-	{
-		auto temppath = wil::make_process_heap_string_nothrow(pathIn); RETURN_IF_NULL_ALLOC(temppath);
-		for (auto* p = temppath.get(); *p; p++)
-		{
-			if (*p == '/')
-				*p = '\\';
-		}
-
-		pathOut = wil::make_process_heap_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(pathOut);
-		BOOL bres = PathCanonicalize(pathOut.get(), temppath.get()); RETURN_IF_WIN32_BOOL_FALSE(bres);
-		if (pathOut.get()[0] == '\\')
-		{
-			pathOut = wil::make_process_heap_string_nothrow(pathOut.get() + 1); RETURN_IF_NULL_ALLOC(pathOut);
-		}
-
-		return S_OK;
-	}
-
 	#pragma region IVsProject2
 	virtual HRESULT STDMETHODCALLTYPE IsDocumentInProject(LPCOLESTR pszMkDocument, BOOL* pfFound, VSDOCUMENTPRIORITY* pdwPriority, VSITEMID* pitemid) override
 	{
+		HRESULT hr;
 		RETURN_HR_IF(E_POINTER, !pszMkDocument || !pfFound || !pdwPriority || !pitemid);
 
-		wil::unique_process_heap_string pathToFind;
-		auto hr = CanonicalizePath(pszMkDocument, pathToFind); RETURN_IF_FAILED(hr);
-		
-		bool isRelative = PathIsRelative(pathToFind.get());
+		wil::unique_process_heap_string temp;
+		if (PathIsRelative(pszMkDocument))
+		{
+			// Although the "Mk" in the name of the pszMkDocument parameter means full paths,
+			// VS sometimes passes us relative paths, for example when double-clicking error messages
+			// in the Error List window. So we have to handle relative paths too. (The relative paths
+			// VS gets from the Error List are those we pass ourselves to build tools; so not some VS bug.)
+
+			temp = wil::make_process_heap_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(temp);
+			auto pres = PathCombine(temp.get(), _projectDir.get(), pszMkDocument); RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), !pres);
+		}
+		else
+		{
+			temp = wil::make_process_heap_string_nothrow(pszMkDocument); RETURN_IF_NULL_ALLOC(temp);
+		}
+
+		// We might get paths with forward slashes from the build tools.
+		for (auto* p = wcschr(temp.get(), '/'); p; p = wcschr(p, '/'))
+			*p = '\\';
+
+		// Now that the path is absolute, we can call PathCanonicalize.
+		auto fullPath = wil::make_process_heap_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(fullPath);
+		BOOL bres = PathCanonicalize(fullPath.get(), temp.get()); RETURN_IF_WIN32_BOOL_FALSE(bres);
 
 		wil::com_ptr_nothrow<IChildNode> c;
-		hr = FindDescendantIf ([pathToFind=pathToFind.get(), isRelative](IChildNode* c)
+		hr = FindDescendantIf ([fullPath=fullPath.get(), this](IChildNode* c)
 			{
-				wil::unique_process_heap_string path;
-				auto hr = GetPathOf(c, path, isRelative); RETURN_IF_FAILED(hr);
-				return _wcsicmp(pathToFind, path.get()) ? S_FALSE : S_OK;
+				if (auto file = wil::try_com_query_nothrow<IFileNode>(c))
+				{
+					wil::unique_bstr path;
+					auto hr = file->GetMkDocument(&path); RETURN_IF_FAILED(hr);
+					return _wcsicmp(fullPath, path.get()) ? S_FALSE : S_OK;
+				}
+				else
+					return S_FALSE;
 			}, &c); RETURN_IF_FAILED(hr);
 
 		if (hr == S_FALSE)
@@ -1714,12 +1696,7 @@ public:
 
 		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
-		{
-			if (auto file = d.try_query<IFileNode>())
-				return file->GetMkDocument(this, pbstrMkDocument);
-
-			return E_INVALIDARG;
-		}
+			return d->GetMkDocument(pbstrMkDocument);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
@@ -1735,7 +1712,7 @@ public:
 		com_ptr<IFileNode> file;
 		hr = d->QueryInterface(IID_PPV_ARGS(&file)); RETURN_IF_FAILED(hr);
 		wil::unique_bstr mkDocument;
-		hr = file->GetMkDocument(this, &mkDocument); RETURN_IF_FAILED(hr);
+		hr = file->GetMkDocument(&mkDocument); RETURN_IF_FAILED(hr);
 
 		com_ptr<IVsUIShellOpenDocument> uiShellOpenDocument;
 		hr = serviceProvider->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED_EXPECTED(hr);
@@ -1810,39 +1787,38 @@ public:
 		RETURN_HR_IF(E_INVALIDARG, !!wcspbrk(pszNewFileName, L":/\\"));
 		RETURN_HR_IF_NULL(E_POINTER, ppNewNode);
 
-		// Do we already have an item with the same name under the selected location? If yes, we give an
-		// error message and return. Let's not bother asking the user whether to replace the existing item;
-		// that existing item might be a folder, and our replacing code would have to be really complicated.
-		for (auto c = location->FirstChild(); c; c = c->Next())
+		wil::unique_hlocal_string dest;
+		if (location == this)
 		{
-			wil::unique_variant saveName;
-			hr = c->GetProperty(VSHPROPID_SaveName, &saveName); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_UNEXPECTED, saveName.vt != VT_BSTR);
-			if (saveName.bstrVal && !_wcsicmp(saveName.bstrVal, pszNewFileName))
-				return SetFelixErrorInfo (HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), IDS_ITEM_ALREADY_EXISTS_IN_LOCATION);
+			hr = wil::str_concat_nothrow (dest, _projectDir, pszNewFileName); RETURN_IF_FAILED(hr);
+		}
+		else
+		{
+			wil::unique_bstr locationDir;
+			hr = wil::try_com_query_nothrow<IChildNode>(location)->GetMkDocument(&locationDir); RETURN_IF_FAILED(hr);
+			hr = wil::str_concat_nothrow (dest, locationDir, L"\\", pszNewFileName); RETURN_IF_FAILED(hr);
 		}
 
-		// The user chose a hierarchy node as location, but that node may or may not have
-		// a corresponding directory in the file system. Let's make sure the directory exists.
-		wil::unique_process_heap_string locationDir;
-		hr = CreatePathOfNode(location, locationDir); RETURN_IF_FAILED_EXPECTED(hr);
-		size_t locationDirLen = wcslen(locationDir.get());
-		WI_ASSERT(locationDirLen && locationDir.get()[locationDirLen - 1] == L'\\');
+		if (PathFileExists(dest.get()))
+			return SetFelixErrorInfo (HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), IDS_ITEM_ALREADY_EXISTS_IN_LOCATION);
 
-		wil::unique_hlocal_string dest;
-		hr = wil::str_concat_nothrow (dest, locationDir, pszNewFileName); RETURN_IF_FAILED(hr);
+		// Let's call AddExistingFile first, as that function creates in the file system the subdirectories that might be missing.
+		hr = AddExistingFile (location, dest.get(), ppNewNode); RETURN_IF_FAILED(hr);
+		auto removeNewNode = wil::scope_exit([newNode=*ppNewNode, this] { RemoveChildFromParent(this, newNode); });
 
 		BOOL bres = CopyFile(pszFullPathSource, dest.get(), TRUE);
 		if (!bres)
 			return HRESULT_FROM_WIN32(GetLastError());
+		SetFileAttributes(dest.get(), FILE_ATTRIBUTE_ARCHIVE); // template was read-only, but our file should not be
 
-		// template was read-only, but our file should not be
-		SetFileAttributes(dest.get(), FILE_ATTRIBUTE_ARCHIVE);
-
-		return AddExistingFile (location, dest.get(), ppNewNode);
+		removeNewNode.release();
+		return S_OK;
 	}
 
 	HRESULT EnsureFilePathUniqueInProject (LPCWSTR path)
 	{
+		RETURN_HR_IF(E_INVALIDARG, PathIsFileSpec(path)); // this function is meant only for cases (2) and (3) of FileNode::put_Path().
+
 		auto hr = FindDescendantIf([path](IChildNode* node)
 			{
 				if (auto fn = wil::try_com_query_nothrow<IFileNodeProperties>(node))
@@ -1878,13 +1854,13 @@ public:
 			for (auto* p = wcschr(relativeUgly, '/'); p; p = wcschr(p, '/'))
 				*p = '\\';
 
-			if (wcsncmp(relativeUgly, L"..\\", 3))
-			{
-				// File is under the project dir.
-				const wchar_t* relative = relativeUgly;
-				while (relative[0] == '.' && relative[1] == '\\')
-					relative += 2;
+			const wchar_t* relative = relativeUgly;
+			while (relative[0] == '.' && relative[1] == '\\')
+				relative += 2;
 
+			if (wcsncmp(relative, L"..\\", 3))
+			{
+				// (1) File is under the project dir.
 				// Find or create path of directories where we need to add our file node.
 				IParentNode* parent = this;
 				auto ptrComponent = relative;
@@ -1893,27 +1869,38 @@ public:
 					auto dir = wil::make_process_heap_string_nothrow (ptrComponent, nextComp - ptrComponent); RETURN_IF_NULL_ALLOC(dir);
 					ptrComponent = nextComp + 1;
 					com_ptr<IFolderNode> ch;
-					hr = GetOrCreateChildFolder(parent, dir.get(), false, &ch); RETURN_IF_FAILED(hr);
+					hr = GetOrCreateChildFolder(parent, dir.get(), true, &ch); RETURN_IF_FAILED(hr);
 					parent = ch->AsParentNode(); 
 				}
-				if (FindChildFileByName(parent, ptrComponent))
-					return SetFelixErrorInfo(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), IDS_FILE_ALREADY_IN_PROJECT);
+
+				// Do we already have an item with the same name under the selected location? If yes, we give an
+				// error message and return. Let's not bother asking the user whether to replace the existing item;
+				// that existing item might be a folder, and our replacing code would have to be really complicated.
+				for (auto c = parent->FirstChild(); c; c = c->Next())
+				{
+					if (auto file = wil::try_com_query_nothrow<IFileNodeProperties>(c))
+					{
+						wil::unique_bstr path;
+						if (SUCCEEDED(file->get_Path(&path)) && path && !_wcsicmp(path.get(), ptrComponent))
+							return SetFelixErrorInfo (HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), IDS_ITEM_ALREADY_EXISTS_IN_LOCATION);
+					}
+				}
 
 				hr = MakeFileNodeForExistingFile (ptrComponent, &file); RETURN_IF_FAILED(hr);
 				hr = AddFileToParent(file, parent); RETURN_IF_FAILED(hr);
 			}
 			else
 			{
-				// File is outside the project dir, but on the same drive.
+				// (2) File is outside the project dir, but on the same drive.
 				// Add as link to the folder selected by the user when starting the UI command.
-				hr = EnsureFilePathUniqueInProject(relativeUgly); RETURN_IF_FAILED_EXPECTED(hr);
-				hr = MakeFileNodeForExistingFile (relativeUgly, &file); RETURN_IF_FAILED(hr);
+				hr = EnsureFilePathUniqueInProject(relative); RETURN_IF_FAILED_EXPECTED(hr);
+				hr = MakeFileNodeForExistingFile (relative, &file); RETURN_IF_FAILED(hr);
 				hr = AddFileToParent(file, location); RETURN_IF_FAILED(hr);
 			}
 		}
 		else
 		{
-			// File is on different drive, not on the project's drive. We keep it absolute.
+			// (3) File is on different drive, not on the project's drive. We keep it absolute.
 			// Add as link to the folder selected by the user when starting the UI command.
 			hr = EnsureFilePathUniqueInProject(pszFullPathSource); RETURN_IF_FAILED_EXPECTED(hr);
 			hr = MakeFileNodeForExistingFile (pszFullPathSource, &file); RETURN_IF_FAILED(hr);
@@ -1962,6 +1949,10 @@ public:
 			hr = cn->QueryInterface(IID_PPV_ARGS(&location)); RETURN_IF_FAILED(hr);
 		}
 
+		// This is a tell from our tests that we shouldn't return ADDRESULT_Success since that value is not remoteable.
+		bool fromTest = dwAddItemOperation & 0x1000u;
+		dwAddItemOperation = (VSADDITEMOPERATION)(dwAddItemOperation & ~0x1000u);
+
 		switch(dwAddItemOperation)
 		{
 			case VSADDITEMOP_CLONEFILE:
@@ -1971,7 +1962,7 @@ public:
 				com_ptr<IChildNode> pNewNode;
 				hr = AddNewFile (location, rgpszFilesToOpen[0], pszItemName, &pNewNode); RETURN_IF_FAILED_EXPECTED(hr);
 				if (pResult)
-					*pResult = ADDRESULT_Success;
+					*pResult = fromTest ? (VSADDRESULT)10 : ADDRESULT_Success;
 
 				com_ptr<IVsWindowFrame> frame;
 				hr = this->OpenItem (pNewNode->GetItemId(), LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &frame);
@@ -1988,7 +1979,7 @@ public:
 			case VSADDITEMOP_OPENFILE:
 			{
 				// Add Existing File
-				RETURN_HR_IF(E_INVALIDARG, pszItemName != nullptr);
+				RETURN_HR_IF(E_INVALIDARG, pszItemName && pszItemName[0]);
 				for (DWORD i = 0; i < cFilesToOpen; i++)
 				{
 					com_ptr<IChildNode> pNewNode;
@@ -1996,7 +1987,7 @@ public:
 				}
 
 				if (pResult)
-					*pResult = ADDRESULT_Success;
+					*pResult = fromTest ? (VSADDRESULT)10 : ADDRESULT_Success;
 				return hr;
 			}
 
@@ -2021,7 +2012,7 @@ public:
 		com_ptr<IFileNode> file;
 		hr = d->QueryInterface(IID_PPV_ARGS(&file)); RETURN_IF_FAILED_EXPECTED(hr);
 		wil::unique_bstr mkDocument;
-		hr = file->GetMkDocument(this, &mkDocument); RETURN_IF_FAILED_EXPECTED(hr);
+		hr = file->GetMkDocument(&mkDocument); RETURN_IF_FAILED_EXPECTED(hr);
 
 		com_ptr<IVsUIShellOpenDocument> uiShellOpenDocument;
 		hr = serviceProvider->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED(hr);
@@ -3036,15 +3027,13 @@ public:
 		HRESULT hr;
 
 		RETURN_HR_IF(E_INVALIDARG, index.vt != VT_BSTR);
-		wil::unique_process_heap_string pathToFind;
-		hr = CanonicalizePath(index.bstrVal, pathToFind); RETURN_IF_FAILED(hr);
 
 		com_ptr<IChildNode> node;
-		hr = FindDescendantIf([n=pathToFind.get()](IChildNode* c)
+		hr = FindDescendantIf([n=index.bstrVal](IChildNode* c)
 			{
-				wil::unique_process_heap_string path;
-				auto hr = GetPathOf(c, path, true); RETURN_IF_FAILED(hr);
-				return _wcsicmp(path.get(), n) ? S_FALSE : S_OK;
+				wil::unique_bstr cn;
+				auto hr = c->GetCanonicalName(&cn); RETURN_IF_FAILED(hr);
+				return _wcsicmp(cn.get(), n) ? S_FALSE : S_OK;
 			}, &node);
 		RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_INVALIDARG, hr == S_FALSE);
@@ -3074,8 +3063,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE AddFromFile (BSTR FileName, VxDTE::ProjectItem **lppcReturn) override
 	{
-		VSADDRESULT addResult;
-		return AddItem (VSITEMID_ROOT, VSADDITEMOP_OPENFILE, NULL, 1, const_cast<LPCOLESTR*>(&FileName), nullptr, &addResult);
+		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE AddFromTemplate (BSTR FileName, BSTR Name, VxDTE::ProjectItem **lppcReturn) override
@@ -3112,7 +3100,7 @@ public:
 		return S_OK;
 	}
 
-	HRESULT ProcessCommandAddNewFolder (VSITEMID parentItemId, VARIANT* pvaOut)
+	HRESULT ProcessCommandAddNewFolder (VSITEMID parentItemId, OLECMDEXECOPT opt, VARIANT* pvaOut)
 	{
 		HRESULT hr;
 
@@ -3156,10 +3144,8 @@ public:
 			{
 				wil::unique_hlocal_string dirPath;
 				hr = wil::str_concat_nothrow(dirPath, parentPath, L"\\", dirName); RETURN_IF_FAILED(hr);
-				int ires = SHCreateDirectoryExW(nullptr, dirPath.get(), nullptr);
-				if (ires == 0 || ires == ERROR_ALREADY_EXISTS)
+				if (!PathFileExists(dirPath.get()))
 					break;
-				RETURN_WIN32(ires);
 			}
 
 			i++;
@@ -3168,21 +3154,24 @@ public:
 		}
 
 		com_ptr<IFolderNode> newFolder;
-		hr = GetOrCreateChildFolder (parent, dirName, false, &newFolder); RETURN_IF_FAILED(hr);
+		hr = GetOrCreateChildFolder (parent, dirName, true, &newFolder); RETURN_IF_FAILED(hr);
 
 		_isDirty = true;
 
-		com_ptr<IVsUIHierarchyWindow> uiWindow;
-		if (SUCCEEDED(GetHierarchyWindow(uiWindow.addressof())))
+		if (opt != OLECMDEXECOPT_DONTPROMPTUSER)
 		{
-			// we need to get into label edit mode now...
-			// so first select the new guy...
-			if (SUCCEEDED(uiWindow->ExpandItem(this, newFolder->GetItemId(), EXPF_SelectItem)))
+			com_ptr<IVsUIHierarchyWindow> uiWindow;
+			if (SUCCEEDED(GetHierarchyWindow(uiWindow.addressof())))
 			{
-				// them post the rename command to the shell. Folder verification and creation will
-				// happen in the setlabel code...
-				wil::unique_variant dummy;
-				uiShell->PostExecCommand (&CMDSETID_StandardCommandSet97, cmdidRename, 0, &dummy);
+				// we need to get into label edit mode now...
+				// so first select the new guy...
+				if (SUCCEEDED(uiWindow->ExpandItem(this, newFolder->GetItemId(), EXPF_SelectItem)))
+				{
+					// them post the rename command to the shell. Folder verification and creation will
+					// happen in the setlabel code...
+					wil::unique_variant dummy;
+					uiShell->PostExecCommand (&CMDSETID_StandardCommandSet97, cmdidRename, 0, &dummy);
+				}
 			}
 		}
 

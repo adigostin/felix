@@ -86,12 +86,13 @@ IChildNode : INode
 	virtual HRESULT IsItemDirty (IUnknown *punkDocData, BOOL *pfDirty) = 0;
 	virtual HRESULT QueryStatusCommand (const GUID* pguidCmdGroup, OLECMD* pCmd, OLECMDTEXT *pCmdText) = 0;
 	virtual HRESULT ExecCommand (const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT* pvaIn, VARIANT* pvaOut) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetCanonicalName (BSTR* pbstrName) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (BSTR* pbstrMkDocument) = 0;
 };
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("5F6EA158-4DA8-469A-8FD8-E8C04F31244E")
 IFileNode : IChildNode
 {
-	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (IVsHierarchy* hier, BSTR* pbstrMkDocument) = 0;
 };
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("E5498B79-7C01-4F49-B5EC-8D1C98FF935D")
@@ -274,7 +275,6 @@ HRESULT FindHier (IParentNode* from, REFIID riid, void** ppvHier);
 HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo);
 FELIX_API HRESULT GetOrCreateChildFolder (IParentNode* parent, const wchar_t* folderName, bool createDirectoryOnFileSystem, IFolderNode** ppFolder);
 HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* child);
-HRESULT CreatePathOfNode (IParentNode* node, wil::unique_process_heap_string& pathOut);
 HRESULT GetItems (IParentNode* itemsIn, SAFEARRAY** itemsOut);
 HRESULT PutItems (SAFEARRAY* sa, IParentNode* items);
 HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectConfig* config);

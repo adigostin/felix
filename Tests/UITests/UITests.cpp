@@ -607,10 +607,9 @@ namespace UITests
 			auto file1Path = CombinePath(testPath.get(), L"testproj\\subdir\\file1.asm");
 			WriteFileOnDisk (file1Path.get(), "\t555555");
 
-			com_ptr<VxDTE::ProjectItems> items;
-			proj->get_ProjectItems(&items);
-			wil::com_ptr_failfast<VxDTE::ProjectItem> item1;
-			hr = items->AddFromFile(wil::make_bstr_failfast(file1Path.get()).get(), &item1);
+			VSADDRESULT addResult;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
+			hr = proj.query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(file1Path.addressof()), NULL, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
 			hr = proj->Save();
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -655,9 +654,8 @@ namespace UITests
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::IsTrue(found);
 
+			// For the canonical name, we don't bother with tricky paths such as "subdir/..\\subdir/.\\file1.asm".
 			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"subdir\\file1.asm", &itemid); // this would fail too
-			Assert::IsTrue(SUCCEEDED(hr));
-			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"subdir/..\\subdir/.\\file1.asm", &itemid); // for bonus points
 			Assert::IsTrue(SUCCEEDED(hr));
 			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"SubDir\\File1.ASM", &itemid); // for bonus points
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -759,7 +757,7 @@ namespace UITests
 			VSITEMID itemIds[2];
 			hr = hier->ParseCanonicalName(L"GeneratedFiles", &itemIds[0]);
 			Assert::IsTrue(SUCCEEDED(hr));
-			hr = hier->ParseCanonicalName(L"GeneratedFiles/PreInclude.asm", &itemIds[1]);
+			hr = hier->ParseCanonicalName(L"GeneratedFiles\\PreInclude.asm", &itemIds[1]);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			hr = proj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(2, DELITEMOP_DeleteFromStorage, itemIds, DHO_SUPPRESS_UI);
@@ -779,7 +777,7 @@ namespace UITests
 			wil::com_ptr_failfast<VxDTE::ProjectItems> items;
 			proj->get_ProjectItems(&items);
 			wil::com_ptr_failfast<VxDTE::ProjectItem> item;
-			items->Item(wil::make_variant_bstr_failfast(L"GeneratedFiles/PreInclude.asm"), &item);
+			items->Item(wil::make_variant_bstr_failfast(L"GeneratedFiles\\PreInclude.asm"), &item);
 			com_ptr<VxDTE::Window> window;
 			hr = item->Open(wil::make_bstr_failfast(L"{7651A703-06E5-11D1-8EBD-00A0C90F26EA}").get(), &window);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -792,6 +790,129 @@ namespace UITests
 			item->Remove();
 			window->get_Visible(&visible);
 			Assert::IsTrue(SUCCEEDED(hr) && visible == VARIANT_FALSE);
+		}
+
+		TEST_METHOD(AddNewFile_SameNameAsFileOutsideProjectDir)
+		{
+			HRESULT hr;
+			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"AddNewFile_SameNameAsFileOutsideProjectDir");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([&testPath] { RemoveDirectoryTree(testPath); });
+
+			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"proj");
+			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
+
+			auto projPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\proj\\");
+
+			const wchar_t file1RelPath[] = L"test.asm";
+			auto file1Path = wil::str_concat_failfast<wil::unique_process_heap_string>(projPath, file1RelPath);
+			WriteFileOnDisk (file1Path.get(), "; comment");
+			const wchar_t file2RelPath[] = L"..\\test.asm";
+			auto file2Path = wil::str_concat_failfast<wil::unique_process_heap_string>(projPath, file2RelPath);
+			WriteFileOnDisk (file2Path.get(), "; comment");
+			wchar_t file3Path[] = L"D:\\FelixTest\\test.asm";
+			WriteFileOnDisk (file3Path, "; comment");
+
+			LPCOLESTR filesToOpen[] = { file1Path.get(), file2Path.get(), file3Path };
+			VSADDRESULT addResult;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
+			hr = proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 3, filesToOpen, nullptr, &addResult);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			// Adding them again should fail.
+			for (const wchar_t* fileToOpen : filesToOpen)
+			{
+				hr = proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 1, &fileToOpen, nullptr, &addResult);
+				Assert::AreEqual(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), hr);
+			}
+
+			VSITEMID itemids[3];
+			for (int i = 0; i < 3; i++)
+			{
+				BOOL found;
+				VSDOCUMENTPRIORITY prio;
+				hr = proj.query<IVsProject>()->IsDocumentInProject(filesToOpen[i], &found, &prio, &itemids[i]);
+				Assert::IsTrue(SUCCEEDED(hr) && found);
+			}
+
+			wil::unique_bstr canonicalNames[3];
+			for (int i = 0; i < 3; i++)
+			{
+				hr = proj.query<IVsHierarchy>()->GetCanonicalName(itemids[i], &canonicalNames[i]);
+				Assert::IsTrue(SUCCEEDED(hr));
+			}
+
+			for (int i = 0; i < 3; i++)
+			{
+				VSITEMID itemidx;
+				hr = proj.query<IVsHierarchy>()->ParseCanonicalName(canonicalNames[i].get(), &itemidx);
+				Assert::IsTrue(SUCCEEDED(hr));
+				Assert::AreEqual(itemids[i], itemidx);
+			}
+		}
+
+		TEST_METHOD(CloneFile_SameNameAsFileOutsideProjectDir)
+		{
+			HRESULT hr;
+			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"CloneFile_SameNameAsFileOutsideProjectDir");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([&testPath] { RemoveDirectoryTree(testPath); });
+
+			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"proj");
+			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
+
+			auto templatePath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\template.asm");
+			WriteFileOnDisk (templatePath.get(), "; comment");
+
+			auto projPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\proj\\");
+
+			static const wchar_t file1RelPath[] = L"..\\test.asm";
+			auto file1Path = wil::str_concat_failfast<wil::unique_process_heap_string>(projPath, file1RelPath);
+			WriteFileOnDisk(file1Path.get(), "; comment");
+			VSADDRESULT addResult;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
+			hr = proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(file1Path.addressof()), nullptr, &addResult);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
+			hr = proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"test.asm", 1, const_cast<LPCOLESTR*>(templatePath.addressof()), nullptr, &addResult);
+			Assert::IsTrue(SUCCEEDED(hr));
+		}
+
+		TEST_METHOD(CloneFileToFolderMissingOnDisk)
+		{
+			HRESULT hr;
+			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"CloneFileToFolderMissingOnDisk");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([&testPath] { RemoveDirectoryTree(testPath); });
+
+			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"proj");
+			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
+
+			auto templatePath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\template.asm");
+			WriteFileOnDisk (templatePath.get(), "; comment");
+
+			wil::unique_variant folderItemId;
+			hr = proj.query<IVsUIHierarchy>()->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &folderItemId);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			// Delete the folder on disk, then try to clone a file into it. We must at least not crash.
+
+			wil::unique_bstr folderMk;
+			hr = proj.query<IVsProject>()->GetMkDocument(V_VSITEMID(&folderItemId), &folderMk);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			if (PathFileExists(folderMk.get()))
+			{
+				BOOL bres = RemoveDirectory(folderMk.get());
+				Assert::IsTrue(bres);
+			}
+
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
+			VSADDRESULT addResult;
+			hr = proj.query<IVsProject>()->AddItem(V_VSITEMID(&folderItemId), oper, L"file.asm", 1, const_cast<LPCOLESTR*>(templatePath.addressof()), nullptr, &addResult);
+			Assert::IsTrue(SUCCEEDED(hr));
+
 		}
 	};
 }

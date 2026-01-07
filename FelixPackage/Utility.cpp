@@ -566,7 +566,9 @@ FELIX_API HRESULT MakeSjasmCommandLine (IVsHierarchy* hier, IProjectConfig* conf
 			auto outputFilePath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(outputFilePath);
 			auto pres = PathCombine (outputFilePath.get(), output_dir, output_filename); RETURN_HR_IF(CO_E_BAD_PATH, !pres);
 			auto outputFilePathRelativeUgly = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(outputFilePathRelativeUgly);
-			BOOL bRes = PathRelativePathToW (outputFilePathRelativeUgly.get(), project_dir, FILE_ATTRIBUTE_DIRECTORY, outputFilePath.get(), 0); RETURN_HR_IF(CS_E_INVALID_PATH, !bRes);
+			BOOL bRes = PathRelativePathToW (outputFilePathRelativeUgly.get(), project_dir, FILE_ATTRIBUTE_DIRECTORY, outputFilePath.get(), 0);
+			if (!bRes)
+				return SetFelixErrorInfo (E_INVALIDARG, IDS_CANNOT_MAKE_RELATIVE_PATH_S_S, outputFilePath.get(), project_dir);
 			auto outputFilePathRelative = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(outputFilePathRelative);
 			BOOL bres = PathCanonicalize (outputFilePathRelative.get(), outputFilePathRelativeUgly.get()); RETURN_IF_WIN32_BOOL_FALSE(bres);
 			auto hr = Write(cmdLine, paramName); RETURN_IF_FAILED(hr);
@@ -716,6 +718,10 @@ HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir, bool 
 {
 	HRESULT hr;
 
+	wil::unique_bstr filePath;
+	if (auto fileNode = wil::try_com_query_nothrow<IFileNodeProperties>(node); fileNode && SUCCEEDED(fileNode->get_Path(&filePath)))
+		WI_ASSERT(PathIsFileSpec(filePath.get())); // Only case (1) supported in this function
+
 	com_ptr<IParentNode> parent;
 	hr = node->GetParent(&parent); RETURN_IF_FAILED(hr);
 	if (auto hier = parent.try_query<IVsHierarchy>())
@@ -746,8 +752,7 @@ HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir, bool 
 
 HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path, bool relativeToProjectDir)
 {
-	com_ptr<IVsHierarchy> hier;
-	auto hr = FindHier(node, IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
+	HRESULT hr;
 	hr = GetPathTo (node, path, relativeToProjectDir); RETURN_IF_FAILED(hr);
 	if (!relativeToProjectDir)
 		WI_ASSERT(path && path.get()[0] && wcschr(path.get(), 0)[-1] == L'\\');
@@ -883,17 +888,35 @@ FELIX_API HRESULT GetOrCreateChildFolder (IParentNode* parent, const wchar_t* fo
 {
 	HRESULT hr;
 
-	auto createDir = [](IFolderNode* f) -> HRESULT
+	stdext::inplace_function<HRESULT(IFolderNode*)> createDir;
+	createDir = [&createDir](IFolderNode* f) -> HRESULT
 		{
 			wil::unique_process_heap_string path;
 			auto hr = GetPathOf (f, path); RETURN_IF_FAILED(hr);
-			BOOL bres = ::CreateDirectoryW (path.get(), nullptr);
-			if (bres)
-				return S_OK;
-			DWORD le = GetLastError();
-			if (le == ERROR_ALREADY_EXISTS)
-				return S_OK;
-			RETURN_WIN32(le);
+			if (!CreateDirectoryW (path.get(), nullptr))
+			{
+				DWORD lastError = ::GetLastError();
+				if (lastError == ERROR_ALREADY_EXISTS && (GetFileAttributes(path.get()) & FILE_ATTRIBUTE_DIRECTORY))
+					return S_OK;
+
+				if (lastError == ERROR_PATH_NOT_FOUND)
+				{
+					com_ptr<IParentNode> parent;
+					hr = f->GetParent(&parent); RETURN_IF_FAILED(hr);
+					if (parent.try_query<IProjectNode>())
+						return HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND);
+					com_ptr<IFolderNode> parentfn;
+					hr = parent->QueryInterface(IID_PPV_ARGS(&parentfn)); RETURN_IF_FAILED(hr);
+					hr = createDir(parentfn); RETURN_IF_FAILED_EXPECTED(hr);
+					if (!CreateDirectoryW(path.get(), nullptr))
+						return HRESULT_FROM_WIN32(GetLastError());
+					return S_OK;
+				}
+
+				return HRESULT_FROM_WIN32(lastError);
+			}
+
+			return S_OK;
 		};
 
 	com_ptr<IChildNode> insertAfter;
@@ -1000,58 +1023,6 @@ HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* node)
 	node->SetNext(nullptr);
 
 	return S_OK;
-}
-
-HRESULT CreatePathOfNode (IParentNode* node, wil::unique_process_heap_string& path)
-{
-	stdext::inplace_function<HRESULT(IParentNode* pn)> createDirRecursively;
-	createDirRecursively = [&createDirRecursively, &path](IParentNode* node) -> HRESULT
-		{
-			if (node->GetItemId() == VSITEMID_ROOT)
-			{
-				com_ptr<IVsHierarchy> hier;
-				auto hr = node->QueryInterface(IID_PPV_ARGS(&hier)); RETURN_IF_FAILED(hr);
-				wil::unique_variant projectDir;
-				hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr);
-				if (!PathFileExists(projectDir.bstrVal))
-					return HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND);
-				path = wil::make_process_heap_string_nothrow(projectDir.bstrVal); RETURN_IF_NULL_ALLOC(path);
-				return S_OK;
-			}
-			else
-			{
-				com_ptr<IChildNode> cn;
-				auto hr = node->QueryInterface(IID_PPV_ARGS(&cn)); RETURN_IF_FAILED(hr);
-				com_ptr<IParentNode> parent;
-				hr = cn->GetParent(&parent); RETURN_IF_FAILED(hr);
-				hr = createDirRecursively(parent);
-				if (FAILED(hr))
-					return hr;
-				wil::unique_variant saveName;
-				hr = cn->GetProperty(VSHPROPID_SaveName, &saveName); RETURN_IF_FAILED(hr);
-				hr = wil::str_concat_nothrow(path, saveName.bstrVal, L"\\"); RETURN_IF_FAILED(hr);
-				DWORD attrs = GetFileAttributes(path.get());
-				if (attrs == INVALID_FILE_ATTRIBUTES)
-				{
-					DWORD gle = GetLastError();
-					if (gle != ERROR_FILE_NOT_FOUND)
-						return HRESULT_FROM_WIN32(gle);
-
-					BOOL bres = CreateDirectory(path.get(), nullptr);
-					if (!bres)
-						return HRESULT_FROM_WIN32(GetLastError());
-					return S_OK;
-				}
-				else
-				{
-					if ((attrs & FILE_ATTRIBUTE_DIRECTORY) == 0)
-						return HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME);
-					return S_OK;
-				}
-			}
-		};
-
-	return createDirRecursively(node);
 }
 
 HRESULT GetItems (IParentNode* parent, SAFEARRAY** itemsOut)

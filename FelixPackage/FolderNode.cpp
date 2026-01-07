@@ -332,6 +332,22 @@ public:
 
 		return OLECMDERR_E_NOTSUPPORTED;
 	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetCanonicalName (BSTR* pbstrName) override
+	{
+		wil::unique_process_heap_string path;
+		auto hr = GetPathOf(this, path, true); RETURN_IF_FAILED(hr);
+		*pbstrName = SysAllocString(path.get()); RETURN_IF_NULL_ALLOC(*pbstrName);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (BSTR* pbstrMkDocument) override
+	{
+		wil::unique_process_heap_string path;
+		auto hr = GetPathOf(this, path, false); RETURN_IF_FAILED(hr);
+		*pbstrMkDocument = SysAllocString(path.get()); RETURN_IF_NULL_ALLOC(*pbstrMkDocument);
+		return S_OK;
+	}
 	#pragma endregion
 
 	#pragma region IParentNode

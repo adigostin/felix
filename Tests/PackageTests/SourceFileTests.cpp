@@ -192,7 +192,7 @@ namespace FelixTests
 
 		TEST_METHOD(GetMkDocument_FileInProjectDir)
 		{
-			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"\\GetMkDocument_FileInProjectDir");
+			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"GetMkDocument_FileInProjectDir");
 
 			com_ptr<IVsHierarchy> hier;
 			auto hr = MakeProjectNode (nullptr, testDir.get(), nullptr, 0, IID_PPV_ARGS(&hier));

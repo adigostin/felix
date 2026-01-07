@@ -235,7 +235,7 @@ public:
 				com_ptr<IVsHierarchy> hier;
 				auto hr = FindHier(this, IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
 				wil::unique_bstr path;
-				hr = GetMkDocument(hier, &path); RETURN_IF_FAILED(hr);
+				hr = GetMkDocument(&path); RETURN_IF_FAILED(hr);
 				pvar->vt = VT_BSTR;
 				pvar->bstrVal = path.release();
 				return S_OK;
@@ -261,8 +261,6 @@ public:
 			}
 
 			case VSHPROPID_OverlayIconIndex: // -2048
-				// Since this code executes only while this file node in a hierarchy, a filename means the file
-				// is under the project dir. Any directory component means the file is a link outside the project dir.
 				return InitVariantFromUInt32(PathIsFileSpec(_path.get()) ? OVERLAYICON_NONE : OVERLAYICON_SHORTCUT, pvar);
 
 			case VSHPROPID_IconIndex: // -2005
@@ -672,10 +670,29 @@ public:
 
 		return OLECMDERR_E_UNKNOWNGROUP;
 	}
-	#pragma endregion
 
-	#pragma region IFileNode
-	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (IVsHierarchy* hier, BSTR* pbstrMkDocument) override
+	virtual HRESULT STDMETHODCALLTYPE GetCanonicalName (BSTR* pbstrName) override
+	{
+		HRESULT hr;
+
+		if (PathIsFileSpec(_path.get()))
+		{
+			// (1)
+			wil::unique_process_heap_string path;
+			hr = GetPathOf(this, path, true); RETURN_IF_FAILED(hr);
+			*pbstrName = SysAllocString(path.get()); RETURN_IF_NULL_ALLOC(*pbstrName);
+			return S_OK;
+		}
+		else
+		{
+			// (2) and (3)
+			auto bstr = SysAllocString(_path.get()); RETURN_IF_NULL_ALLOC(bstr);
+			*pbstrName = bstr;
+			return S_OK;
+		}
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (BSTR* pbstrMkDocument) override
 	{
 		HRESULT hr;
 
@@ -691,6 +708,10 @@ public:
 		else if (!wcsncmp(_path.get(), L"..\\", 3))
 		{
 			// (2)
+			com_ptr<IParentNode> parent;
+			hr = _parent->QueryInterface(IID_PPV_ARGS(&parent)); RETURN_IF_FAILED(hr);
+			com_ptr<IVsHierarchy> hier;
+			hr = FindHier(parent, IID_PPV_ARGS(&hier)); RETURN_IF_FAILED(hr);
 			wil::unique_variant projectDir;
 			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_UNEXPECTED, projectDir.vt != VT_BSTR);
 			auto mk = wil::make_process_heap_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(mk);
@@ -1042,7 +1063,7 @@ public:
 		hr = hier->QueryInterface(&project); RETURN_IF_FAILED(hr);
 
 		wil::unique_bstr oldFullPath;
-		hr = GetMkDocument(hier, &oldFullPath); RETURN_IF_FAILED(hr);
+		hr = GetMkDocument(&oldFullPath); RETURN_IF_FAILED(hr);
 
 		hr = QueryEditProjectFile(hier); RETURN_IF_FAILED_EXPECTED(hr);
 
