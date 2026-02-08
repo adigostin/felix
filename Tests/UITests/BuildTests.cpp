@@ -21,7 +21,7 @@ namespace UITests
 		CreateSolutionAndProject (PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName);
 	extern void BuildSolution (VxDTE::_Solution* sln, long* buildFailCount);
 
-	TEST_CLASS(UIBuildTests)
+	TEST_CLASS(BuildTests)
 	{
 	public:
 		TEST_METHOD(BuildProject)
