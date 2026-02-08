@@ -114,11 +114,6 @@
     <ClInclude Include="..\TestsCommon.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\FelixPackage\FelixPackage.vcxproj">
-      <Project>{79203f4b-6f1f-4d65-ade5-d082617da696}</Project>
-    </ProjectReference>
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
