@@ -3,6 +3,7 @@
 #include "shared/com.h"
 #include "FelixPackage.h"
 #include "../TestsCommon.h"
+#include "UITests_h.h"
 
 #define FORCE_EXPLICIT_DTE_NAMESPACE
 #include <dte.h>
@@ -341,11 +342,19 @@ namespace UITests
 
 	TEST_MODULE_INITIALIZE(UITestsInitialize)
 	{
+		HRESULT hr;
+
 		wil::SetResultLoggingCallback (WilLoggingCallback);
+
+		wil::unique_process_heap_string fn;
+		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, fn); THROW_IF_FAILED(hr);
+		com_ptr<ITypeLib> _typeLib;
+		hr = LoadTypeLibEx(fn.get(), REGKIND_NONE, &_typeLib); THROW_IF_FAILED(hr);
+		hr = RegisterTypeLibForUser(_typeLib, fn.get(), nullptr); THROW_IF_FAILED(hr);
 
 		MakeTemplates (L"FelixTestUI");
 
-		auto hr = CoCreateInstance (__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation));
+		hr = CoCreateInstance (__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation));
 		Assert::IsTrue(SUCCEEDED(hr));
 		StartOrRestart();
 	}
@@ -354,6 +363,12 @@ namespace UITests
 	{
 		CloseCurrentInstance();
 		automation.reset();
+
+		// To easy debugging, delete only the contents of the test directory, not the test directory itself.
+		auto buffer = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s*.*%c", tempPath, L'\0');
+		SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = buffer.get(), .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
+		int ires = SHFileOperation(&file_op);
+		Microsoft::VisualStudio::CppUnitTestFramework::Assert::AreEqual(0, ires);
 
 		wil::SetResultLoggingCallback(nullptr);
 	}
@@ -414,5 +429,74 @@ namespace UITests
 		// LastBuildInfo returns the number of failed projects, despite the parameter name.
 		hr = solutionBuild->get_LastBuildInfo(buildFailCount);
 		Assert::IsTrue(SUCCEEDED(hr));
+	}
+
+	wil::unique_process_heap_string MakeVolumeGuidPath (const wchar_t* path)
+	{
+		wchar_t volPathName[50];
+		BOOL bres = GetVolumePathNameW(path, volPathName, _countof(volPathName));
+		Assert::IsTrue(bres);
+		wchar_t volumeName[50];
+		bres = GetVolumeNameForVolumeMountPointW (volPathName, volumeName, _countof(volumeName));
+		Assert::IsTrue(bres);
+		auto pathWithoutDrive = PathSkipRootW(path);
+		auto testPathOtherDrive = wil::make_process_heap_string_failfast(nullptr, MAX_PATH);
+		auto pres = PathCombine(testPathOtherDrive.get(), volumeName, pathWithoutDrive);
+		Assert::IsNotNull(pres);
+		return testPathOtherDrive;
+	}
+
+	struct TestPropertyNotifySink : IPropertyNotifySink, ITestPropertyNotifySink
+	{
+		ULONG _refCount = 0;
+		vector_nothrow<DISPID> _changed;
+
+		#pragma region IUnknown
+		virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
+		{
+			if (   TryQI<IUnknown>(static_cast<IPropertyNotifySink*>(this), riid, ppvObject)
+				|| TryQI<IDispatch>(this, riid, ppvObject)
+				|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
+				|| TryQI<ITestPropertyNotifySink>(this, riid, ppvObject)
+			)
+				return S_OK;
+
+			*ppvObject = nullptr;
+			return E_NOINTERFACE;
+		}
+
+		virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
+
+		virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
+		#pragma endregion
+
+		IMPLEMENT_IDISPATCH(ITestPropertyNotifySink)
+
+		#pragma region IPropertyNotifySink
+		virtual HRESULT STDMETHODCALLTYPE OnChanged (DISPID dispID) override
+		{
+			auto it = _changed.find(dispID);
+			if (it == _changed.end())
+				_changed.try_push_back(dispID);
+			return S_OK;
+		}
+
+		virtual HRESULT STDMETHODCALLTYPE OnRequestEdit (DISPID dispID) override
+		{
+			return E_NOTIMPL;
+		}
+		#pragma endregion
+
+		#pragma region IMockPropertyNotifySink
+		virtual HRESULT STDMETHODCALLTYPE IsChanged (DISPID dispid) override
+		{
+			return _changed.find(dispid) != _changed.end();
+		}
+		#pragma endregion
+	};
+
+	com_ptr<ITestPropertyNotifySink> MakeTestPropertyNotifySink()
+	{
+		return new (std::nothrow) TestPropertyNotifySink();
 	}
 }

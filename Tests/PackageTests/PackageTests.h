@@ -12,11 +12,6 @@ extern const GUID CLSID_FelixPackage;
 
 namespace FelixTests
 {
-	struct DECLSPEC_NOVTABLE DECLSPEC_UUID("B82AFB90-FF61-4B05-AD2F-760CD09443E2") IMockPropertyNotifySink : IUnknown
-	{
-		virtual bool IsChanged (DISPID dispid) const = 0;
-	};
-
 	com_ptr<IFileNode> MakeFileNode (const wchar_t* pathRelativeToProjectDir);
 	VSITEMID AddFolderNode (IVsUIHierarchy* hier, VSITEMID addTo, const wchar_t* name);
 	void DeleteFileOnDisk(const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir);
@@ -24,7 +19,6 @@ namespace FelixTests
 	com_ptr<IProjectConfig> AddDebugProjectConfig (IVsHierarchy* hier);
 	com_ptr<IVsOutputWindowPane2> MakeMockOutputWindowPane (IStream* outputStreamUTF16);
 	com_ptr<IServiceProvider> MakeMockServiceProvider();
-	com_ptr<IMockPropertyNotifySink> MakeMockPropertyNotifySink();
 	com_ptr<IVsDebugger> MakeMockDebugger();
 	com_ptr<IVsFileChangeEx> MakeMockFileChangeEx();
 }

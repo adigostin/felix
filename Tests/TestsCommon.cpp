@@ -64,13 +64,14 @@ wil::unique_hlocal_string CombinePath (const wchar_t* projectDir, const wchar_t*
 
 void WriteFileOnDisk (wchar_t* path, const char* fileContent)
 {
-	wchar_t* lastsep = wcsrchr(path, L'\\');
-	Assert::IsNotNull(lastsep);
-	*lastsep = L'\0'; // temporarily terminate to get the directory path
+	Assert::IsFalse(PathIsRelativeW(path));
+	auto fn = PathFindFileName(path);
+	Assert::IsTrue(fn > path);
+	fn[-1] = L'\0'; // temporarily terminate to get the directory path
 	auto hr = wil::CreateDirectoryDeepNoThrow(path);
 	Assert::IsTrue(SUCCEEDED(hr));
 
-	*lastsep = L'\\'; // restore full path
+	fn[-1] = L'\\'; // restore full path
 	wil::unique_hfile handle (CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL));
 	Assert::IsTrue(handle.is_valid());
 	if (fileContent)

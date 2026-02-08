@@ -20,6 +20,7 @@ namespace UITests
 	extern std::pair<wil::com_ptr_failfast<VxDTE::_Solution>, wil::com_ptr_failfast<VxDTE::Project>>
 		CreateSolutionAndProject (PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName);
 	extern void BuildSolution (VxDTE::_Solution* sln, long* buildFailCount);
+	extern wil::unique_process_heap_string MakeVolumeGuidPath (const wchar_t* path);
 
 	TEST_CLASS(BuildTests)
 	{
@@ -162,17 +163,9 @@ namespace UITests
 			buildIt(testPath.get());
 
 			// Different drive
-			wchar_t volPathName[50];
-			BOOL bres = GetVolumePathNameW(testPath.get(), volPathName, _countof(volPathName));
-			Assert::IsTrue(bres);
-			wchar_t volumeName[50];
-			bres = GetVolumeNameForVolumeMountPointW (volPathName, volumeName, _countof(volumeName));
-			Assert::IsTrue(bres);
-			auto pathWithoutDrive = PathSkipRootW(testPath.get());
-			wchar_t testPathOtherDrive[MAX_PATH];
-			PathCombine(testPathOtherDrive, volumeName, pathWithoutDrive);
+			auto testPathOtherDrive = MakeVolumeGuidPath(testPath.get());
 			wchar_t outputPathOtherDrive[MAX_PATH];
-			PathCombine(outputPathOtherDrive, testPathOtherDrive, L"newdir");
+			PathCombine(outputPathOtherDrive, testPathOtherDrive.get(), L"newdir");
 			{
 				// Quick test that the path is writeable, before asking the build system to write to it
 				wil::CreateDirectoryDeep(outputPathOtherDrive);

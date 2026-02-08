@@ -1503,7 +1503,7 @@ public:
 
 		// "If the object is in the untitled state and null is passed as the pszFilename, the object returns E_INVALIDARG."
 		bool isTitled = _filename && _filename.get()[0] && _projectDir && _projectDir.get()[0];
-		RETURN_HR_IF_EXPECTED(E_INVALIDARG, !isTitled && !pszFilename);
+		RETURN_HR_IF_EXPECTED(E_INVALIDARG, !isTitled && (!pszFilename || !pszFilename[0]));
 
 		wil::unique_hlocal_string currentFilePath;
 		if (isTitled)
@@ -1512,7 +1512,7 @@ public:
 			PathCombine(currentFilePath.get(), _projectDir.get(), _filename.get());
 		}
 
-		if (!pszFilename || (currentFilePath && !wcscmp(pszFilename, currentFilePath.get())))
+		if (!pszFilename || !pszFilename[0] || (currentFilePath && !wcscmp(pszFilename, currentFilePath.get())))
 		{
 			// "Save" operation (save under existing name)
 
