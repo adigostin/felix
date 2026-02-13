@@ -23,9 +23,6 @@ namespace FelixTests
 	com_ptr<IVsFileChangeEx> MakeMockFileChangeEx();
 }
 
-using PropChangedCallback = stdext::inplace_function<void(VSITEMID itemid, VSHPROPID propid, DWORD flags)>;
-com_ptr<IVsHierarchyEvents> MakeMockHierarchyEventSink (PropChangedCallback propChanged);
-
 inline VSITEMID GetProperty_VSITEMID (IVsHierarchy* hier, VSITEMID itemid, VSHPROPID propid)
 {
 	wil::unique_variant var;

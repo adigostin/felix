@@ -403,7 +403,7 @@ namespace FelixTests
 		{
 			com_ptr<IVsHierarchy> hier;
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
-			auto sink = MakeMockHierarchyEventSink(nullptr);
+			auto sink = MakeMockHierarchyEventSink();
 			VSCOOKIE cookie;
 			hr = hier->AdviseHierarchyEvents(sink, &cookie);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -415,6 +415,8 @@ namespace FelixTests
 			hr = hier.try_query<IVsProject>()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, (LPCOLESTR*)fullPathSource.addressof(), nullptr, &result);
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::AreEqual<DWORD>(ADDRESULT_Success, result);
+
+			// TODO: fill this out
 		}
 
 		TEST_METHOD(AddItemNew_NameAlreadyExists)

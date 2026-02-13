@@ -1,6 +1,9 @@
 
 #include "pch.h"
 #include "TestsCommon.h"
+#include "shared/com.h"
+#include <unordered_map>
+#include <set>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -87,4 +90,74 @@ void RemoveDirectoryTree (const wchar_t* dir)
 	SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = buffer.get(), .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
 	int ires = SHFileOperation(&file_op);
 	Microsoft::VisualStudio::CppUnitTestFramework::Assert::AreEqual(0, ires);
+}
+
+struct MockHierarchyEventSink : IMockHierarchyEventSink
+{
+	ULONG _refCount = 0;
+	std::unordered_map<VSITEMID, std::set<VSHPROPID>> _changedProps;
+
+	#pragma region IUnknown
+	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
+	{
+		if (   TryQI<IUnknown>(this, riid, ppvObject)
+			|| TryQI<IVsHierarchyEvents>(this, riid, ppvObject)
+			|| TryQI<IMockHierarchyEventSink>(this, riid, ppvObject)
+		)
+			return S_OK;
+
+		*ppvObject = nullptr;
+		return E_NOINTERFACE;
+	}
+	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
+	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
+	#pragma endregion
+
+	#pragma region IVsHierarchyEvents
+	virtual HRESULT STDMETHODCALLTYPE OnItemAdded (VSITEMID itemidParent, VSITEMID itemidSiblingPrev, VSITEMID itemidAdded) override
+	{
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnItemsAppended (VSITEMID itemidParent) override
+	{
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnItemDeleted (VSITEMID itemid) override
+	{
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged (VSITEMID itemid, VSHPROPID propid, DWORD flags) override
+	{
+		_changedProps[itemid].insert(propid);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnInvalidateItems (VSITEMID itemidParent) override
+	{
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnInvalidateIcon (HICON hicon) override
+	{
+		return S_OK;
+	}
+	#pragma endregion
+
+	#pragma region IMockHierarchyEventSink
+	virtual bool PropertyChanged (VSITEMID itemid, VSHPROPID propid) const override
+	{
+		auto it = _changedProps.find(itemid);
+		if (it == _changedProps.end())
+			return false;
+		return it->second.contains(propid);
+	}
+	#pragma endregion
+};
+
+wil::com_ptr_failfast<IMockHierarchyEventSink> MakeMockHierarchyEventSink()
+{
+	return wil::com_ptr_failfast(new (std::nothrow) MockHierarchyEventSink());
 }

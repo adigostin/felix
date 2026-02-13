@@ -512,7 +512,23 @@ namespace UITests
 			VSADDRESULT addResult;
 			hr = proj.query<IVsProject>()->AddItem(V_VSITEMID(&folderItemId), oper, L"file.asm", 1, const_cast<LPCOLESTR*>(templatePath.addressof()), nullptr, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
+		}
 
+		TEST_METHOD(NotifyPropertyChangedFileFolderNodes)
+		{
+			HRESULT hr;
+			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"NotifyPropertyChangedFileFolderNodes");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
+
+			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"proj");
+			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
+
+			//auto sink = MakeMockHierarchyEventSink(std::move(propChanged));
+			//VSCOOKIE hierEventsCookie;
+			//hr = hier->AdviseHierarchyEvents(sink, &hierEventsCookie);
+			//Assert::IsTrue(SUCCEEDED(hr));
+			//auto unadvise = wil::scope_exit([hier=hier.get(), hierEventsCookie]() { hier->UnadviseHierarchyEvents(hierEventsCookie); });
 		}
 	};
 }

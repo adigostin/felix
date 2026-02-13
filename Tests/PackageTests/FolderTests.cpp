@@ -21,14 +21,7 @@ namespace FelixTests
 			Assert::AreEqual<VARTYPE>(VT_BOOL, expandable.vt);
 			Assert::AreEqual(VARIANT_FALSE, expandable.boolVal);
 
-			bool expandableChanged = false;
-			auto propChanged = [&expandableChanged](VSITEMID itemid, VSHPROPID propid, DWORD flags)
-				{
-					if (itemid == VSITEMID_ROOT && propid == VSHPROPID_Expandable)
-						expandableChanged = true;
-				};
-
-			auto sink = MakeMockHierarchyEventSink(std::move(propChanged));
+			auto sink = MakeMockHierarchyEventSink();
 			VSCOOKIE hierEventsCookie;
 			hr = hier->AdviseHierarchyEvents(sink, &hierEventsCookie);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -47,7 +40,7 @@ namespace FelixTests
 			hr = childDisp.pdispVal->QueryInterface(IID_PPV_ARGS(&folderProps));
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			Assert::IsTrue(expandableChanged);
+			Assert::IsTrue(sink->PropertyChanged(VSITEMID_ROOT, VSHPROPID_Expandable));
 
 			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_Expandable, &expandable);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -97,13 +90,7 @@ namespace FelixTests
 			Assert::AreEqual<VARTYPE>(VT_BOOL, expandable.vt);
 			Assert::AreEqual(VARIANT_FALSE, expandable.boolVal);
 
-			bool expandableChanged = false;
-			auto propChanged = [&expandableChanged, id=V_VSITEMID(&folderItemId)](VSITEMID itemid, VSHPROPID propid, DWORD flags)
-				{
-					if (itemid == id && propid == VSHPROPID_Expandable)
-						expandableChanged = true;
-				};
-			auto sink = MakeMockHierarchyEventSink(std::move(propChanged));
+			auto sink = MakeMockHierarchyEventSink();
 			VSCOOKIE hierEventsCookie;
 			hr = hier->AdviseHierarchyEvents(sink, &hierEventsCookie);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -129,7 +116,7 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::IsTrue(PathFileExists(subFolderPath.get()));
 
-			Assert::IsTrue(expandableChanged);
+			Assert::IsTrue(sink->PropertyChanged(V_VSITEMID(&folderItemId), VSHPROPID_Expandable));
 
 			hr = hier->GetProperty(V_VSITEMID(&subFolderItemId), VSHPROPID_Expandable, &expandable);
 			Assert::IsTrue(SUCCEEDED(hr));
