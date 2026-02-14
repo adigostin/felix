@@ -28,7 +28,6 @@ class ProjectNode
 	, IPropertyNotifySink // this implementation only used to mark the project as dirty
 	, IVsPerPropertyBrowsing
 	, IVsUpdateSolutionEvents
-	, IVsHierarchyEvents // this implementation forwards to sinks hierarchy events generated in descendants
 	, VxDTE::Project
 {
 	ULONG _refCount = 0;
@@ -338,7 +337,6 @@ public:
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 			|| TryQI<IVsUpdateSolutionEvents>(this, riid, ppvObject)
-			|| TryQI<IVsHierarchyEvents>(this, riid, ppvObject)
 			|| TryQI<VxDTE::Project>(this, riid, ppvObject)
 		)
 			return S_OK;
@@ -479,7 +477,8 @@ public:
 
 		_parentHierarchy = nullptr;
 		_parentHierarchyItemId = VSITEMID_NIL;
-		_firstChild = nullptr;
+		while(_firstChild)
+			RemoveChildFromParent(this, _firstChild);
 		_configs.clear();
 		_closed = true;
 		return S_OK;
@@ -755,6 +754,11 @@ public:
 		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
 			return d->GetProperty(propid, pvar);
+
+		// VS 17.14.26 seems to have a bug in Microsoft.VisualStudio.PlatformUI.HierarchyItem.StateIconMoniker.get:
+		// due to a race condition, it requests VSHPROPID_StateIconIndex on a disposed HierarchyItem.
+		// The race condition is reproducible by stepping in the test NotifyItemInsertedRemoved.
+		RETURN_HR_IF_EXPECTED(E_INVALIDARG, propid == VSHPROPID_StateIconIndex);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
@@ -2042,27 +2046,6 @@ public:
 		return GetTypeInfo(0, 0, ppTI);
 	}
 	#pragma endregion
-	/*
-	#pragma region IConnectionPointContainer
-	virtual HRESULT STDMETHODCALLTYPE EnumConnectionPoints (IEnumConnectionPoints **ppEnum) override
-	{
-		BreakIntoDebugger();
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE FindConnectionPoint (REFIID riid, IConnectionPoint **ppCP) override
-	{
-		if (riid == IID_IPropertyNotifySink)
-		{
-			BreakIntoDebugger();
-			return E_NOTIMPL;
-		}
-
-		BreakIntoDebugger();
-		return E_NOTIMPL;
-	}
-	#pragma endregion
-	*/
 
 	#pragma region IVsCfgProvider2
 	virtual HRESULT STDMETHODCALLTYPE GetCfgNames(ULONG celt, BSTR rgbstr[], ULONG* pcActual) override
@@ -2718,6 +2701,50 @@ public:
 	virtual IVsProject* AsVsProject() override { return this; }
 
 	virtual IVsHierarchyDeleteHandler3* AsHierarchyDeleteHandler3() override { return this; }
+
+	virtual HRESULT STDMETHODCALLTYPE NotifyNodeInsertingIntoHier (IChildNode* node) override
+	{
+		WI_ASSERT(node->GetItemId() == VSITEMID_NIL);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE NotifyNodeInsertedIntoHier (IParentNode* parent, IChildNode* prevSibling, IChildNode* node) override
+	{
+		WI_ASSERT(node->GetItemId() != VSITEMID_NIL);
+		VSITEMID itemidSiblingPrev = prevSibling ? prevSibling->GetItemId() : VSITEMID_NIL;
+		for (auto& sink : _hierarchyEventSinks)
+			sink.second->OnItemAdded (parent->GetItemId(), itemidSiblingPrev, node->GetItemId());
+
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE NotifyNodeRemovingFromHier (IChildNode* node) override
+	{
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE NotifyNodeRemovedFromHier (IChildNode* node, VSITEMID oldItemID) override
+	{
+		WI_ASSERT(node->GetItemId() == VSITEMID_NIL);
+		WI_ASSERT(oldItemID != VSITEMID_NIL);
+		for (auto& sink : _hierarchyEventSinks)
+			sink.second->OnItemDeleted(oldItemID);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE NotifyPropertyChangedHierNode (VSITEMID itemid, VSHPROPID propid) override
+	{
+		for (auto& sink : _hierarchyEventSinks)
+			sink.second->OnPropertyChanged(itemid, propid, 0);
+		return S_OK;
+	}
+	
+	virtual HRESULT STDMETHODCALLTYPE NotifyInvalidateItems (VSITEMID itemidParent) override
+	{
+		for (auto& sink : _hierarchyEventSinks)
+			sink.second->OnInvalidateItems(itemidParent);
+		return S_OK;
+	}
 	#pragma endregion
 
 	#pragma region IPropertyNotifySink
@@ -2808,50 +2835,6 @@ public:
 			hr = GeneratePrePostIncludeFiles(this); RETURN_IF_FAILED(hr);
 		}
 
-		return S_OK;
-	}
-	#pragma endregion
-
-	#pragma region IVsHierarchyEvents
-	virtual HRESULT STDMETHODCALLTYPE OnItemAdded (VSITEMID itemidParent, VSITEMID itemidSiblingPrev, VSITEMID itemidAdded) override
-	{
-		for (auto& sink : _hierarchyEventSinks)
-			sink.second->OnItemAdded (itemidParent, itemidSiblingPrev, itemidAdded);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE OnItemsAppended (VSITEMID itemidParent) override
-	{
-		for (auto& sink : _hierarchyEventSinks)
-			sink.second->OnItemsAppended(itemidParent);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE OnItemDeleted (VSITEMID itemid) override
-	{
-		for (auto& sink : _hierarchyEventSinks)
-			sink.second->OnItemDeleted(itemid);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged (VSITEMID itemid, VSHPROPID propid, DWORD flags) override
-	{
-		for (auto& sink : _hierarchyEventSinks)
-			sink.second->OnPropertyChanged(itemid, propid, flags);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE OnInvalidateItems (VSITEMID itemidParent) override
-	{
-		for (auto& sink : _hierarchyEventSinks)
-			sink.second->OnInvalidateItems(itemidParent);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE OnInvalidateIcon (HICON hicon) override
-	{
-		for (auto& sink : _hierarchyEventSinks)
-			sink.second->OnInvalidateIcon(hicon);
 		return S_OK;
 	}
 	#pragma endregion

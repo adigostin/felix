@@ -809,17 +809,14 @@ HRESULT FindHier (IParentNode* from, REFIID riid, void** ppvHier)
 }
 
 // Enum depth-first (just because it's simpler) pre-order mode (so that parents get their ItemId before children).
-static HRESULT SetItemIdsTree (IChildNode* child, IChildNode* childPrevSibling, IParentNode* addTo)
+static HRESULT SetItemIdsTree (IProjectNode* root, IChildNode* child, IChildNode* childPrevSibling, IParentNode* addTo)
 {
-	com_ptr<IProjectNode> root;
-	auto hr = FindHier(addTo, IID_PPV_ARGS(&root)); RETURN_IF_FAILED(hr);
-	com_ptr<IVsHierarchyEvents> rootEvents;
-	hr = root->QueryInterface(IID_PPV_ARGS(&rootEvents)); RETURN_IF_FAILED(hr);
-
 	stdext::inplace_function<HRESULT(IChildNode*, IChildNode*, IParentNode*)> enumNodeAndChildren;
 
-	enumNodeAndChildren = [root=root.get(), rootEvents=rootEvents.get(), &enumNodeAndChildren](IChildNode* node, IChildNode* nodePrevSibling, IParentNode* nodeParent) -> HRESULT
+	enumNodeAndChildren = [root, &enumNodeAndChildren](IChildNode* node, IChildNode* nodePrevSibling, IParentNode* nodeParent) -> HRESULT
 		{
+			root->NotifyNodeInsertingIntoHier(node);
+
 			auto hr = node->SetItemId(nodeParent, root->MakeItemId()); RETURN_IF_FAILED(hr);
 
 			com_ptr<IParentNode> nodeAsParent;
@@ -833,12 +830,7 @@ static HRESULT SetItemIdsTree (IChildNode* child, IChildNode* childPrevSibling, 
 				}
 			}
 
-			VSITEMID itemidSiblingPrev = nodePrevSibling ? nodePrevSibling->GetItemId() : VSITEMID_NIL;
-			rootEvents->OnItemAdded (nodeParent->GetItemId(), itemidSiblingPrev, node->GetItemId());
-
-			// Since our expandable status may have changed, we need to refresh it in the UI.
-			rootEvents->OnPropertyChanged (nodeParent->GetItemId(), VSHPROPID_Expandable, 0);
-
+			root->NotifyNodeInsertedIntoHier (nodeParent, nodePrevSibling, node);
 			return S_OK;
 		};
 
@@ -900,7 +892,12 @@ HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo)
 	if (addTo->GetItemId() != VSITEMID_NIL)
 	{
 		// Adding it to a hierarchy.
-		hr = SetItemIdsTree(child, prevChild, addTo); RETURN_IF_FAILED(hr);
+		com_ptr<IProjectNode> root;
+		auto hr = FindHier(addTo, IID_PPV_ARGS(&root)); RETURN_IF_FAILED(hr);
+		hr = SetItemIdsTree (root, child, prevChild, addTo); RETURN_IF_FAILED(hr);
+
+		// Since our expandable status may have changed, we need to refresh it in the UI.
+		root->NotifyPropertyChangedHierNode (addTo->GetItemId(), VSHPROPID_Expandable);
 	}
 
 	return S_OK;
@@ -981,7 +978,19 @@ FELIX_API HRESULT GetOrCreateChildFolder (IParentNode* parent, const wchar_t* fo
 		parent->SetFirstChild(newFolder);
 	else
 		insertAfter->SetNext(newFolder);
-	hr = SetItemIdsTree(newFolder, insertAfter, parent); RETURN_IF_FAILED(hr);
+
+	if (parent->GetItemId() != VSITEMID_NIL)
+	{
+		// Adding it to a hierarchy.
+		com_ptr<IProjectNode> root;
+		auto hr = FindHier(parent, IID_PPV_ARGS(&root)); RETURN_IF_FAILED(hr);
+
+		hr = SetItemIdsTree (root, newFolder, insertAfter, parent); RETURN_IF_FAILED(hr);
+
+		// Since our expandable status may have changed, we need to refresh it in the UI.
+		root->NotifyPropertyChangedHierNode (parent->GetItemId(), VSHPROPID_Expandable);
+	}
+
 	if (createDirectoryOnFileSystem)
 	{
 		hr = createDir(newFolder); RETURN_IF_FAILED(hr);
@@ -993,14 +1002,14 @@ FELIX_API HRESULT GetOrCreateChildFolder (IParentNode* parent, const wchar_t* fo
 // Enum depth-first (just because it's simpler) post-order mode (so that children clear their ItemId before parent).
 static HRESULT ClearItemIdsTree (IProjectNode* root, IChildNode* child)
 {
-	com_ptr<IVsHierarchyEvents> rootEvents;
-	auto hr = root->QueryInterface(IID_PPV_ARGS(&rootEvents)); RETURN_IF_FAILED(hr);
-
 	stdext::inplace_function<HRESULT(IChildNode*)> enumNodeAndChildren;
 
-	enumNodeAndChildren = [root, rootEvents=rootEvents.get(), &enumNodeAndChildren](IChildNode* node) -> HRESULT
+	enumNodeAndChildren = [root, &enumNodeAndChildren](IChildNode* node) -> HRESULT
 		{
 			HRESULT hr;
+			
+			VSITEMID oldItemID = node->GetItemId();
+			root->NotifyNodeRemovingFromHier(node);
 
 			com_ptr<IParentNode> nodeAsParent;
 			if (SUCCEEDED(node->QueryInterface(&nodeAsParent)))
@@ -1011,10 +1020,9 @@ static HRESULT ClearItemIdsTree (IProjectNode* root, IChildNode* child)
 				}
 			}
 
-			VSITEMID itemId = node->GetItemId();
 			hr = node->ClearItemId(); RETURN_IF_FAILED(hr);
 
-			rootEvents->OnItemDeleted(itemId);
+			root->NotifyNodeRemovedFromHier(node, oldItemID);
 
 			return S_OK;
 		};
@@ -1030,6 +1038,8 @@ HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* node)
 	hr = node->GetParent(&parent); RETURN_IF_FAILED(hr);
 
 	hr = ClearItemIdsTree(root, node); RETURN_IF_FAILED(hr);
+
+	auto keepAlive = com_ptr(node);
 
 	if (parent->FirstChild() == node)
 		parent->SetFirstChild(node->Next());
@@ -1119,7 +1129,11 @@ HRESULT PutItems (SAFEARRAY* sa, IParentNode* parent)
 			}
 
 			if (parent->GetItemId() != VSITEMID_NIL)
-				hr = SetItemIdsTree(node, insertAfter, parent); RETURN_IF_FAILED(hr);
+			{
+				com_ptr<IProjectNode> root;
+				auto hr = FindHier (parent, IID_PPV_ARGS(&root)); RETURN_IF_FAILED(hr);
+				hr = SetItemIdsTree (root, node, insertAfter, parent); RETURN_IF_FAILED(hr);
+			}
 		}
 		else
 			RETURN_HR(E_NOTIMPL);

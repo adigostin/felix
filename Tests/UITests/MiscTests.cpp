@@ -524,11 +524,70 @@ namespace UITests
 			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"proj");
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
 
-			//auto sink = MakeMockHierarchyEventSink(std::move(propChanged));
-			//VSCOOKIE hierEventsCookie;
-			//hr = hier->AdviseHierarchyEvents(sink, &hierEventsCookie);
-			//Assert::IsTrue(SUCCEEDED(hr));
-			//auto unadvise = wil::scope_exit([hier=hier.get(), hierEventsCookie]() { hier->UnadviseHierarchyEvents(hierEventsCookie); });
+			auto hier = proj.query<IVsUIHierarchy>();
+			auto sink = MakeMockHierarchyEventSink();
+			VSCOOKIE hierEventsCookie;
+			hier->AdviseHierarchyEvents(sink, &hierEventsCookie);
+			auto unadvise = wil::scope_exit([hier=hier.get(), hierEventsCookie]() { hier->UnadviseHierarchyEvents(hierEventsCookie); });
+
+			// VSHPROPID_Name on file
+			VSITEMID fileItemId = VSITEMID_NIL;
+			hier->ParseCanonicalName (L"file.asm", &fileItemId);
+			hier->SetProperty(fileItemId, VSHPROPID_EditLabel, wil::make_variant_bstr_failfast(L"file1.asm"));
+			Assert::IsTrue(sink->PropertyChanged(fileItemId, VSHPROPID_Name));
+
+			// VSHPROPID_Name on folder
+			wil::unique_variant tf1;
+			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &tf1);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<VARTYPE>(VT_VSITEMID, tf1.vt);
+			hr = hier->SetProperty (V_VSITEMID(&tf1), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"testfolder1"));
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsTrue(sink->PropertyChanged(V_VSITEMID(&tf1), VSHPROPID_Name));
+		}
+
+		TEST_METHOD(NotifyItemInsertedRemoved)
+		{
+			HRESULT hr;
+			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"NotifyItemInsertedRemoved");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
+
+			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"proj");
+			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
+
+			auto hier = proj.query<IVsUIHierarchy>();
+			auto sink = MakeMockHierarchyEventSink();
+			VSCOOKIE hierEventsCookie;
+			hier->AdviseHierarchyEvents(sink, &hierEventsCookie);
+			auto unadvise = wil::scope_exit([hier=hier.get(), hierEventsCookie]() { hier->UnadviseHierarchyEvents(hierEventsCookie); });
+
+			// Add file
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
+			VSADDRESULT addResult;
+			hr = proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"1.asm", 1, const_cast<LPCOLESTR*>(TemplatePath_EmptyFile.addressof()), nullptr, &addResult);
+			Assert::IsTrue(SUCCEEDED(hr));
+			VSITEMID itemIdFileAdded;
+			hr = hier->ParseCanonicalName(L"1.asm", &itemIdFileAdded);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsTrue(sink->ItemAdded(VSITEMID_ROOT, itemIdFileAdded));
+
+			// Add folder
+			wil::unique_variant tf1;
+			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &tf1);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<VARTYPE>(VT_VSITEMID, tf1.vt);
+			Assert::IsTrue(sink->ItemAdded(VSITEMID_ROOT, V_VSITEMID(&tf1)));
+
+			// Remove file
+			hr = proj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(1, DELITEMOP_DeleteFromStorage, &itemIdFileAdded, DHO_SUPPRESS_UI);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsTrue(sink->ItemRemoved(itemIdFileAdded));
+
+			// Remove folder
+			hr = proj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(1, DELITEMOP_DeleteFromStorage, (VSITEMID*)&V_VSITEMID(&tf1), DHO_SUPPRESS_UI);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsTrue(sink->ItemRemoved(V_VSITEMID(&tf1)));	
 		}
 	};
 }

@@ -159,10 +159,8 @@ library ATLProject1Lib
 	{
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
 
-		[id(dispidPath), propget, helpstring("Path relative to the project directory.")]
-		HRESULT Path ([out, retval] BSTR* value);
-		[id(dispidPath), propput]
-		HRESULT Path (BSTR value);
+		[id(dispidPath), propget] HRESULT Path ([out, retval] BSTR* value);
+		[id(dispidPath), propput] HRESULT Path (BSTR value);
 
 		[id(dispidIsGenerated), propget] HRESULT IsGenerated ([out, retval] DWORD* is);
 		[id(dispidIsGenerated), propput] HRESULT IsGenerated (DWORD is);

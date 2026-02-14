@@ -67,6 +67,12 @@ IProjectNode : IParentNode
 	virtual IVsUIHierarchy* AsHierarchy() = 0;
 	virtual IVsProject* AsVsProject() = 0;
 	virtual IVsHierarchyDeleteHandler3* AsHierarchyDeleteHandler3() = 0;
+	virtual HRESULT STDMETHODCALLTYPE NotifyNodeInsertingIntoHier (IChildNode* node) = 0;
+	virtual HRESULT STDMETHODCALLTYPE NotifyNodeInsertedIntoHier (IParentNode* parent, IChildNode* prevSibling, IChildNode* node) = 0;
+	virtual HRESULT STDMETHODCALLTYPE NotifyNodeRemovingFromHier (IChildNode* node) = 0;
+	virtual HRESULT STDMETHODCALLTYPE NotifyNodeRemovedFromHier (IChildNode* node, VSITEMID oldItemID) = 0;
+	virtual HRESULT STDMETHODCALLTYPE NotifyPropertyChangedHierNode (VSITEMID itemid, VSHPROPID propid) = 0;
+	virtual HRESULT STDMETHODCALLTYPE NotifyInvalidateItems (VSITEMID itemidParent) = 0;
 };
 
 // This is the base interface for every node except IProjectNode.

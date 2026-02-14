@@ -5,10 +5,6 @@
 #include "shared/com.h"
 #include "../FelixPackageUi/resource.h"
 #include "dispids.h"
-#include <vsmanaged.h>
-#include <variant>
-#define FORCE_EXPLICIT_DTE_NAMESPACE
-#include <dte.h>
 
 using namespace Microsoft::VisualStudio::Imaging;
 
@@ -18,7 +14,6 @@ struct FileNode
 	, IVsPerPropertyBrowsing
 	, IConnectionPointContainer
 	, IPropertyNotifySink
-	, VxDTE::ProjectItem
 {
 	ULONG _refCount = 0;
 	VSITEMID _itemId = VSITEMID_NIL;
@@ -44,14 +39,6 @@ public:
 		return S_OK;
 	}
 
-	FileNode()
-	{
-	}
-
-	~FileNode()
-	{
-	}
-
 	#pragma region IUnknown
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface (REFIID riid, void** ppvObject) override
 	{
@@ -66,7 +53,6 @@ public:
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
-			|| TryQI<VxDTE::ProjectItem>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -85,7 +71,6 @@ public:
 			|| riid == IID_ICustomTypeDescriptor
 			|| riid == IID_IComponent
 			|| riid == IID_IPerPropertyBrowsing
-			|| riid == IID_IVSMDPerPropertyBrowsing
 			|| riid == IID_ISpecifyPropertyPages
 			|| riid == IID_ISupportErrorInfo
 			|| riid == IID_IVsAggregatableProject // will never support
@@ -970,102 +955,19 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region VxDTE::ProjectItem
-	virtual HRESULT STDMETHODCALLTYPE get_IsDirty (VARIANT_BOOL *lpfReturn) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE put_IsDirty (VARIANT_BOOL DirtyFlag) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_FileNames (short Index, BSTR *lpbstrReturn) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE SaveAs (BSTR NewFileName, VARIANT_BOOL *lpfReturn) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_FileCount (short* lpsReturn) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_Name (BSTR* pbstrReturn) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE put_Name (BSTR bstrName) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_Collection (VxDTE::ProjectItems **lppcReturn) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_Properties (VxDTE::Properties **ppObject) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_DTE (VxDTE::DTE** lppaReturn) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_Kind (BSTR *lpbstrFileName) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_ProjectItems (VxDTE::ProjectItems **lppcReturn) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_IsOpen (BSTR ViewKind, VARIANT_BOOL *lpfReturn) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE Open (BSTR ViewKind, VxDTE::Window **lppfReturn) override
-	{
-		com_ptr<IProjectNode> proj;
-		auto hr = FindHier (this, IID_PPV_ARGS(&proj)); RETURN_IF_FAILED(hr);
-
-		GUID guid;
-		hr = IIDFromString(ViewKind, &guid); RETURN_IF_FAILED(hr);
-		com_ptr<IVsWindowFrame> wf;
-		hr = proj->AsVsProject()->OpenItem(_itemId, guid, DOCDATAEXISTING_UNKNOWN, &wf); RETURN_IF_FAILED(hr);
-
-		wil::unique_variant cvar;
-		hr = wf->GetProperty(VSFPROPID_ExtWindowObject, &cvar); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(E_UNEXPECTED, cvar.vt != VT_DISPATCH || !cvar.pdispVal);
-		hr = cvar.pdispVal->QueryInterface(IID_PPV_ARGS(lppfReturn)); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE Remove() override
-	{
-		com_ptr<IProjectNode> proj;
-		auto hr = _parent->QueryInterface(IID_PPV_ARGS(&proj)); RETURN_IF_FAILED(hr);
-		hr = proj->AsHierarchyDeleteHandler3()->DeleteItems(1, DELITEMOP_RemoveFromProject, &_itemId, DHO_SUPPRESS_UI); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE ExpandView() override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_Object (IDispatch **ProjectItemModel) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_Extender (BSTR ExtenderName, IDispatch **Extender) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_ExtenderNames (VARIANT *ExtenderNames) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_ExtenderCATID (BSTR *pRetval) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_Saved (VARIANT_BOOL *lpfReturn) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE put_Saved (VARIANT_BOOL SavedFlag) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_ConfigurationManager (VxDTE::ConfigurationManager **ppConfigurationManager) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_FileCodeModel (VxDTE::FileCodeModel **ppFileCodeModel) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE Save (BSTR FileName) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_Document (VxDTE::Document **ppDocument) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_SubProject (VxDTE::Project **ppProject) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE get_ContainingProject (VxDTE::Project **ppProject) override { RETURN_HR(E_NOTIMPL); }
-
-	virtual HRESULT STDMETHODCALLTYPE Delete() override { RETURN_HR(E_NOTIMPL); }
-	#pragma endregion
-
 	HRESULT RenameFile (BSTR newName)
 	{
 		HRESULT hr;
 
 		RETURN_HR_IF(E_UNEXPECTED, _itemId == VSITEMID_NIL);
 		
-		com_ptr<IVsHierarchy> hier;
-		hr = FindHier(this, IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
-		com_ptr<IVsProject> project;
-		hr = hier->QueryInterface(&project); RETURN_IF_FAILED(hr);
+		com_ptr<IProjectNode> proj;
+		hr = FindHier(this, IID_PPV_ARGS(proj.addressof())); RETURN_IF_FAILED(hr);
 
 		wil::unique_bstr oldFullPath;
 		hr = GetMkDocument(&oldFullPath); RETURN_IF_FAILED(hr);
 
-		hr = QueryEditProjectFile(hier); RETURN_IF_FAILED_EXPECTED(hr);
+		hr = QueryEditProjectFile(proj->AsHierarchy()); RETURN_IF_FAILED_EXPECTED(hr);
 
 		// Check if the document is in the cache and rename document in the cache.
 		com_ptr<IVsRunningDocumentTable> pRDT;
@@ -1098,7 +1000,7 @@ public:
 		if (SUCCEEDED(hr))
 		{
 			fRenameCanContinue = FALSE;
-			hr = trackProjectDocs->OnQueryRenameFile (project, oldFullPath.get(), newFullPath.get(), VSRENAMEFILEFLAGS_NoFlags, &fRenameCanContinue);
+			hr = trackProjectDocs->OnQueryRenameFile (proj->AsVsProject(), oldFullPath.get(), newFullPath.get(), VSRENAMEFILEFLAGS_NoFlags, &fRenameCanContinue);
 			if (FAILED(hr) || !fRenameCanContinue)
 				return OLE_E_PROMPTSAVECANCELLED;
 		}
@@ -1133,28 +1035,26 @@ public:
 
 		// Tell packages that care that it happened. No error checking here.
 		if (trackProjectDocs)
-			trackProjectDocs->OnAfterRenameFile (project, oldFullPath.get(), newFullPath.get(), VSRENAMEFILEFLAGS_NoFlags);
+			trackProjectDocs->OnAfterRenameFile (proj->AsVsProject(), oldFullPath.get(), newFullPath.get(), VSRENAMEFILEFLAGS_NoFlags);
 
 		// This line was changing the build tool when the user renamed the file.
 		// I eventually commented it out, to get behavior similar to that in VS projects
 		// (build tool remains unchanged when renaming for example from .cpp to .h)
 		//_buildTool = _wcsicmp(PathFindExtension(_pathRelativeToProjectDir.get()), L".asm") ? BuildToolKind::None : BuildToolKind::Assembler;
 
-		com_ptr<IVsHierarchyEvents> sink;
-		hr = hier->QueryInterface(IID_PPV_ARGS(&sink)); RETURN_IF_FAILED(hr);
-		sink->OnPropertyChanged(_itemId, VSHPROPID_Caption, 0);
-		sink->OnPropertyChanged(_itemId, VSHPROPID_Name, 0);
-		sink->OnPropertyChanged(_itemId, VSHPROPID_SaveName, 0);
-		sink->OnPropertyChanged(_itemId, VSHPROPID_DescriptiveName, 0);
-		sink->OnPropertyChanged(_itemId, VSHPROPID_StateIconIndex, 0);
-		sink->OnPropertyChanged(_itemId, VSHPROPID_IconMonikerId, 0);
+		proj->NotifyPropertyChangedHierNode(_itemId, VSHPROPID_Caption);
+		proj->NotifyPropertyChangedHierNode(_itemId, VSHPROPID_Name);
+		proj->NotifyPropertyChangedHierNode(_itemId, VSHPROPID_SaveName);
+		proj->NotifyPropertyChangedHierNode(_itemId, VSHPROPID_DescriptiveName);
+		proj->NotifyPropertyChangedHierNode(_itemId, VSHPROPID_StateIconIndex);
+		proj->NotifyPropertyChangedHierNode(_itemId, VSHPROPID_IconMonikerId);
 
 		// Make sure the property browser is updated.
 		uiShell->RefreshPropertyBrowser(DISPID_UNKNOWN); // refresh all properties
 
 		// Mark project as dirty.
 		com_ptr<IPropertyNotifySink> pns;
-		hr = hier->QueryInterface(&pns); LOG_IF_FAILED(hr);
+		hr = proj->QueryInterface(&pns); LOG_IF_FAILED(hr);
 		if (SUCCEEDED(hr))
 			pns->OnChanged(dispidItems);
 

@@ -7,7 +7,6 @@
 #include "dispids.h"
 #include "Z80Xml.h"
 #include "../FelixPackageUi/resource.h"
-#include <string_view>
 
 // Useful doc: https://learn.microsoft.com/en-us/visualstudio/extensibility/internals/managing-configuration-options?view=vs-2022
 
@@ -1037,10 +1036,6 @@ struct AssemblerPageProperties
 		hr = ConnectionPointImpl<IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
 		_entryPointAddress = wil::make_bstr_nothrow(EntryPointAddressDefaultValue); RETURN_IF_NULL_ALLOC(_entryPointAddress);
 		return S_OK;
-	}
-
-	~AssemblerPageProperties()
-	{
 	}
 
 	#pragma region IUnknown

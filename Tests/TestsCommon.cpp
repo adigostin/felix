@@ -97,6 +97,11 @@ struct MockHierarchyEventSink : IMockHierarchyEventSink
 	ULONG _refCount = 0;
 	std::unordered_map<VSITEMID, std::set<VSHPROPID>> _changedProps;
 
+	struct Added { VSITEMID itemidParent; VSITEMID itemidSiblingPrev; VSITEMID itemidAdded; };
+	std::vector<Added> _added;
+
+	std::set<VSITEMID> _removed;
+
 	#pragma region IUnknown
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
 	{
@@ -116,16 +121,18 @@ struct MockHierarchyEventSink : IMockHierarchyEventSink
 	#pragma region IVsHierarchyEvents
 	virtual HRESULT STDMETHODCALLTYPE OnItemAdded (VSITEMID itemidParent, VSITEMID itemidSiblingPrev, VSITEMID itemidAdded) override
 	{
+		_added.push_back({ itemidParent, itemidSiblingPrev, itemidAdded });
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE OnItemsAppended (VSITEMID itemidParent) override
 	{
-		return S_OK;
+		Assert::Fail();
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE OnItemDeleted (VSITEMID itemid) override
 	{
+		_removed.insert(itemid);
 		return S_OK;
 	}
 
@@ -153,6 +160,22 @@ struct MockHierarchyEventSink : IMockHierarchyEventSink
 		if (it == _changedProps.end())
 			return false;
 		return it->second.contains(propid);
+	}
+
+	virtual bool ItemAdded (VSITEMID itemidParent, VSITEMID itemidAdded) const override
+	{
+		for (auto& a : _added)
+		{
+			if (a.itemidParent == itemidParent && a.itemidAdded == itemidAdded)
+				return true;
+		}
+
+		return false;
+	}
+
+	virtual bool ItemRemoved (VSITEMID itemid) const override
+	{
+		return _removed.contains(itemid);
 	}
 	#pragma endregion
 };

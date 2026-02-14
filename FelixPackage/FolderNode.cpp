@@ -557,7 +557,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE Delete() override { RETURN_HR(E_NOTIMPL); }
 	#pragma endregion
 
-	HRESULT SortAfterRename (IVsHierarchy* hier, IParentNode* parent)
+	HRESULT SortAfterRename (IProjectNode* proj, IParentNode* parent)
 	{
 		HRESULT hr;
 
@@ -565,9 +565,6 @@ public:
 		if (first->Next() && wil::try_com_query_nothrow<IFolderNode>(first->Next()))
 		{
 			// We're not the only folder. Need to attempt reordering.
-			com_ptr<IVsHierarchyEvents> hierEvents;
-			hr = hier->QueryInterface(IID_PPV_ARGS(&hierEvents)); RETURN_IF_FAILED(hr);
-
 			wil::unique_variant n;
 
 			// Special cases at the beginning of the list: Are we the first folder? 
@@ -594,7 +591,7 @@ public:
 					_next = moveAfter->Next();
 					moveAfter->SetNext(this);
 
-					hierEvents->OnInvalidateItems(parent->GetItemId());
+					proj->NotifyInvalidateItems(parent->GetItemId());
 				}
 			}
 			// If we're not the first folder, do we need to become the first?
@@ -611,7 +608,7 @@ public:
 				_next = parent->FirstChild();
 				parent->SetFirstChild(this);
 
-				hierEvents->OnInvalidateItems(parent->GetItemId());
+				proj->NotifyInvalidateItems(parent->GetItemId());
 			}
 			else
 			{
@@ -636,7 +633,7 @@ public:
 					_next = moveAfter->Next();
 					moveAfter->SetNext(this);
 
-					hierEvents->OnInvalidateItems(parent->GetItemId());
+					proj->NotifyInvalidateItems(parent->GetItemId());
 				}
 			}
 		}
@@ -668,10 +665,10 @@ public:
 			}
 		}
 
-		com_ptr<IVsHierarchy> hier;
-		hr = FindHier(static_cast<IChildNode*>(this), IID_PPV_ARGS(&hier)); RETURN_IF_FAILED(hr);
+		com_ptr<IProjectNode> proj;
+		hr = FindHier(static_cast<IChildNode*>(this), IID_PPV_ARGS(&proj)); RETURN_IF_FAILED(hr);
 
-		hr = QueryEditProjectFile(hier); RETURN_IF_FAILED_EXPECTED(hr);
+		hr = QueryEditProjectFile(proj->AsHierarchy()); RETURN_IF_FAILED_EXPECTED(hr);
 
 		// TODO: there's a lot that needs to be called in IVsTrackProjectDocumentsEvents2
 
@@ -734,20 +731,18 @@ public:
 				rdt->RenameDocument(od.second.get(), newPath.get(), HIERARCHY_DONTCHANGE, VSITEMID_NIL);
 		}
 
-		SortAfterRename(hier, parent);
+		SortAfterRename(proj, parent);
 
-		com_ptr<IVsHierarchyEvents> sink;
-		hr = hier->QueryInterface(IID_PPV_ARGS(&sink)); RETURN_IF_FAILED(hr);
-		sink->OnPropertyChanged (_itemId, VSHPROPID_SaveName, 0);
-		sink->OnPropertyChanged (_itemId, VSHPROPID_Caption, 0);
-		sink->OnPropertyChanged (_itemId, VSHPROPID_Name, 0);
-		sink->OnPropertyChanged (_itemId, VSHPROPID_EditLabel, 0);
-		sink->OnPropertyChanged (_itemId, VSHPROPID_DescriptiveName, 0);
+		proj->NotifyPropertyChangedHierNode (_itemId, VSHPROPID_SaveName);
+		proj->NotifyPropertyChangedHierNode (_itemId, VSHPROPID_Caption);
+		proj->NotifyPropertyChangedHierNode (_itemId, VSHPROPID_Name);
+		proj->NotifyPropertyChangedHierNode (_itemId, VSHPROPID_EditLabel);
+		proj->NotifyPropertyChangedHierNode (_itemId, VSHPROPID_DescriptiveName);
 
 		// Make sure the property browser is updated.
 		uiShell->RefreshPropertyBrowser(DISPID_UNKNOWN); // refresh all properties
 
-		hier.try_query<IPropertyNotifySink>()->OnChanged(dispidItems);
+		proj.try_query<IPropertyNotifySink>()->OnChanged(dispidItems);
 
 		return S_OK;
 	}
