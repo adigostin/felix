@@ -26,7 +26,7 @@ public:
 	};
 
 public:
-	vector_nothrow() = default;
+	vector_nothrow() noexcept = default;
 
 	vector_nothrow (const vector_nothrow&) = delete;
 	vector_nothrow& operator= (const vector_nothrow&) = delete;
@@ -39,7 +39,7 @@ public:
 		from._capacity = 0;
 	}
 
-	vector_nothrow& operator= (vector_nothrow&& from)
+	vector_nothrow& operator= (vector_nothrow&& from) noexcept
 	{
 		if (_ptr)
 		{
@@ -53,7 +53,7 @@ public:
 		return *this;
 	}
 
-	~vector_nothrow()
+	~vector_nothrow() noexcept
 	{
 		if (_ptr)
 		{
@@ -122,7 +122,7 @@ public:
 		remove(it);
 	}
 
-	bool try_push_back (const T& from)
+	bool try_push_back (const T& from) noexcept
 	{
 		if (_size == _capacity)
 		{
@@ -135,7 +135,7 @@ public:
 		return true;
 	}
 
-	bool try_push_back (T&& from)
+	bool try_push_back (T&& from) noexcept
 	{
 		if (_size == _capacity)
 		{
@@ -148,7 +148,7 @@ public:
 		return true;
 	}
 
-	bool try_push_back (std::initializer_list<T> ilist)
+	bool try_push_back (std::initializer_list<T> ilist) noexcept
 	{
 		bool reserved = try_reserve (_size + (uint32_t)ilist.size());
 		if (!reserved)

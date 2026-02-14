@@ -10,7 +10,6 @@
 
 // Useful doc: https://learn.microsoft.com/en-us/visualstudio/extensibility/internals/managing-configuration-options?view=vs-2022
 
-static constexpr DWORD BaseAddressDefaultValue = 0x8000;
 static constexpr wchar_t EntryPointAddressDefaultValue[] = L"start";
 
 HRESULT GeneralPageProperties_CreateInstance (IProjectConfig* config, IProjectConfigGeneralProperties** to);
@@ -1025,6 +1024,7 @@ struct AssemblerPageProperties
 	com_ptr<IWeakRef> _config;
 	com_ptr<ConnectionPointImpl<IPropertyNotifySink>> _propNotifyCP;
 	wil::unique_bstr _entryPointAddress;
+	static constexpr DWORD BaseAddressDefaultValue = 0x8000;
 	DWORD _baseAddress = BaseAddressDefaultValue;
 	bool _saveListing = false;
 	wil::unique_bstr _listingFilename;

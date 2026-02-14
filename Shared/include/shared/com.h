@@ -302,6 +302,20 @@ public:
 	AdviseSinkToken(const AdviseSinkToken&) = delete;
 	AdviseSinkToken& operator=(const AdviseSinkToken&) = delete;
 
+	AdviseSinkToken (AdviseSinkToken&& from) noexcept
+		: _cp(std::move(from._cp)), _dwCookie(from._dwCookie)
+	{
+		from._dwCookie = 0;
+	}
+
+	AdviseSinkToken& operator=(AdviseSinkToken&& from) noexcept
+	{
+		reset();
+		std::swap(_cp, from._cp);
+		std::swap(_dwCookie, from._dwCookie);
+		return *this;
+	}
+
 	~AdviseSinkToken() noexcept
 	{
 		reset();

@@ -62,7 +62,6 @@
     <Midl>
       <TypeLibraryName>$(IntDir)%(FileName).tlb</TypeLibraryName>
       <HeaderFileName>%(RelativeDir)%(Filename)_h.h</HeaderFileName>
-      <InterfaceIdentifierFileName>%(RelativeDir)%(FileName)_i.c</InterfaceIdentifierFileName>
     </Midl>
     <ResourceCompile>
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -95,7 +94,6 @@
     <Midl>
       <TypeLibraryName>$(IntDir)%(FileName).tlb</TypeLibraryName>
       <HeaderFileName>%(RelativeDir)%(Filename)_h.h</HeaderFileName>
-      <InterfaceIdentifierFileName>%(RelativeDir)%(FileName)_i.c</InterfaceIdentifierFileName>
     </Midl>
     <ResourceCompile>
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
