@@ -11,7 +11,7 @@
 
 using namespace Microsoft::VisualStudio::Imaging;
 
-struct FolderNode : IFolderNode, IParentNode, IFolderNodeProperties, IXmlParent, IVsPerPropertyBrowsing
+struct FolderNode : IFolderNode, IParentNode, IFolderNodeProperties, IXmlParent, IVsPerPropertyBrowsing, IConnectionPointContainer
 {
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _parent;
@@ -19,17 +19,17 @@ struct FolderNode : IFolderNode, IParentNode, IFolderNodeProperties, IXmlParent,
 	com_ptr<IChildNode> _next;
 	com_ptr<IChildNode> _firstChild;
 	wil::unique_bstr _name; // directory name, no path components needed
+	com_ptr<ConnectionPointImpl<IPropertyNotifySink>> _propNotifyCP;
+	com_ptr<ConnectionPointImpl<IPropertyChangeSink>> _propChangeCP;
 	WeakRefToThis _weakRefToThis;
 
 public:
 	HRESULT InitInstance()
 	{
 		auto hr = _weakRefToThis.InitInstance(static_cast<IFolderNode*>(this)); RETURN_IF_FAILED(hr);
+		hr = ConnectionPointImpl<IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
+		hr = ConnectionPointImpl<IPropertyChangeSink>::CreateInstance(this, &_propChangeCP); RETURN_IF_FAILED(hr);
 		return S_OK;
-	}
-
-	~FolderNode()
-	{
 	}
 
 	#pragma region IUnknown
@@ -47,6 +47,7 @@ public:
 			|| TryQI<INode>(static_cast<IParentNode*>(this), riid, ppvObject)
 			|| TryQI<IXmlParent>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
+			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -475,6 +476,25 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE ResetPropertyValue (DISPID dispid) override { return E_NOTIMPL; }
 	#pragma endregion
 
+	#pragma region IConnectionPointContainer
+	virtual HRESULT STDMETHODCALLTYPE EnumConnectionPoints (IEnumConnectionPoints **ppEnum) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE FindConnectionPoint (REFIID riid, IConnectionPoint **ppCP) override
+	{
+		// This is requested by the property grid.
+		if (riid == IID_IPropertyNotifySink)
+			return wil::com_query_to_nothrow(_propNotifyCP, ppCP);
+
+		if (riid == IID_IPropertyChangeSink)
+			return _propChangeCP.query_to(ppCP);
+
+		RETURN_HR(E_NOTIMPL);
+	}
+	#pragma endregion
+
 	HRESULT SortAfterRename (IProjectNode* proj, IParentNode* parent)
 	{
 		HRESULT hr;
@@ -635,8 +655,11 @@ public:
 		BOOL bres = MoveFile(oldFullPath.get(), newFullPath.get());
 		if (!bres)
 			return HRESULT_FROM_WIN32(GetLastError());
+		NotifyPropertyChanging(_propChangeCP, this, { dispidFolderName });
 		auto oldName = std::move(_name);
 		_name = std::move(newName);
+		NotifyPropertyChanged(_propChangeCP, this, { dispidFolderName });
+		NotifyPropertyChanged(_propNotifyCP, { dispidFolderName });
 
 		// We finished the renaming; now try to reorder the nodes and to send notifications.
 		// we don't fail the renaming if these operations fail.

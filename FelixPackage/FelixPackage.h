@@ -3,6 +3,7 @@
 #include "FelixPackage_h.h"
 #include "Simulator.h"
 #include "guids.h"
+#include "shared/com.h"
 
 // We use DLL exports only to be able to call various functions from unit test projects.
 #ifdef FELIX_EXPORTS
@@ -293,3 +294,9 @@ HRESULT ResolveMacros (const wchar_t* pszIn, IProjectConfig* config, wil::unique
 FELIX_API void SetResultLoggingCallback(decltype(wil::details::g_pfnLoggingCallback) callbackFunction);
 HRESULT IsDescendantOf (IParentNode* possibleAncestor, IChildNode* node);
 HRESULT EnsureDirHasBackslash (LPCOLESTR pszLocation, wil::unique_process_heap_string& dir);
+HRESULT NotifyPropertyChanging (ConnectionPointImpl<IPropertyChangeSink>* cp, IDispatch* pDisp, DISPID dispid);
+HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyChangeSink>* cp, IDispatch* pDisp, DISPID dispid);
+HRESULT NotifyPropertyChanging (ConnectionPointImpl<IPropertyChangeSink>* cp, IDispatch* pDisp, std::initializer_list<DISPID> dispids);
+HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyChangeSink>* cp, IDispatch* pDisp, std::initializer_list<DISPID> dispids);
+HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyNotifySink>* cp, DISPID dispid);
+HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyNotifySink>* cp, std::initializer_list<DISPID> dispids);

@@ -14,6 +14,7 @@ namespace FelixTests
 			com_ptr<IVsUIHierarchy> hier;
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
+			auto close = wil::scope_exit([&hier] { hier->Close(); });
 
 			wil::unique_variant expandable;
 			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_Expandable, &expandable);
@@ -66,6 +67,7 @@ namespace FelixTests
 			com_ptr<IVsUIHierarchy> hier;
 			hr = MakeProjectNode (nullptr, projDir, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
+			auto close = wil::scope_exit([&hier] { hier->Close(); });
 
 			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -129,6 +131,7 @@ namespace FelixTests
 			com_ptr<IVsUIHierarchy> hier;
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
+			auto close = wil::scope_exit([&hier] { hier->Close(); });
 
 			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -142,6 +145,7 @@ namespace FelixTests
 			com_ptr<IVsUIHierarchy> hier;
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
+			auto close = wil::scope_exit([&hier] { hier->Close(); });
 
 			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -169,6 +173,7 @@ namespace FelixTests
 			com_ptr<IVsUIHierarchy> hier;
 			hr = sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), tempPath, ProjFileName, CPF_CLONEFILE, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
+			auto close = wil::scope_exit([&hier] { hier->Close(); });
 
 			hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -201,6 +206,7 @@ namespace FelixTests
 
 			com_ptr<IVsUIHierarchy> hier;
 			sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), testPath.get(), L"TestProject.flx", CPF_CLONEFILE, IID_PPV_ARGS(&hier));
+			auto close = wil::scope_exit([&hier] { hier->Close(); });
 
 			// Add folder named "NewFolder1".
 			wil::unique_variant one;
@@ -240,6 +246,7 @@ namespace FelixTests
 			com_ptr<IVsUIHierarchy> hier;
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
+			auto close = wil::scope_exit([&hier] { hier->Close(); });
 
 			com_ptr<IFolderNode> folder1;
 			hr = GetOrCreateChildFolder (hier.try_query<IParentNode>(), L"ABC", true, &folder1);

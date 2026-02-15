@@ -60,7 +60,7 @@ public:
 
 		// Stuff which we may implement
 		if (   riid == IID_IDebugEngine110
-			|| riid == IID_IDebugEngine150
+			//|| riid == IID_IDebugEngine150
 			|| riid == IID_IDebugEngine3
 			|| riid == IID_IDebugEngineLaunch100
 			|| riid == IID_IDebugProgramProvider2

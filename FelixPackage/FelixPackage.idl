@@ -211,4 +211,29 @@ library ATLProject1Lib
 		HRESULT AdviseProjectFileChange ([in] IDispatch* project, IVsFileChangeEvents* pFCE, VSCOOKIE* pvsCookie);
 		HRESULT UnadviseProjectFileChange (VSCOOKIE vsCookie);
 	};
+
+	enum PropertyChangeType { PCT_Value = 0, PCT_Array };
+
+	typedef struct
+	{
+		enum PropertyChangeType type;
+		// TODO:
+	} PropertyChangeArgs;
+
+
+	[object, uuid(F17E683D-2FB0-4350-BB55-FAD30B10F82C), oleautomation, nonextensible]
+	interface IPropertyChangeSink : IUnknown
+	{
+		HRESULT OnPropertyChanging (
+			[in] UINT cObjects, 
+			[in, size_is(cObjects)] IDispatch* const rgpObjects[],
+			[in] DISPID dispID,
+			[in] PropertyChangeArgs args);
+
+		HRESULT OnPropertyChanged (
+			[in] UINT cObjects, 
+			[in, size_is(cObjects)] IDispatch* const rgpObjects[],
+			[in] DISPID dispID,
+			[in] PropertyChangeArgs args);
+	}
 };

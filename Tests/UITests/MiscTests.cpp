@@ -3,6 +3,7 @@
 #include "shared/com.h"
 #include "FelixPackage.h"
 #include "../TestsCommon.h"
+#include "../FelixPackage/dispids.h"
 
 #define FORCE_EXPLICIT_DTE_NAMESPACE
 #include <dte.h>
@@ -154,32 +155,19 @@ namespace UITests
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			auto fce = com_ptr(new (std::nothrow) FileChangeEvents()); FAIL_FAST_IF_NULL_ALLOC(fce);
+			auto disconnect = wil::scope_exit([&fce] { CoDisconnectObject(fce, 0); });
+
 			DWORD cookie;
 			hr = ao->AdviseProjectFileChange(proj, fce, &cookie);
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto unadvise = wil::scope_exit([ao=ao.get(), cookie]() {
-				ao->UnadviseProjectFileChange(cookie);
-				});
+			auto unadvise = wil::scope_exit([ao=ao.get(), cookie]() { ao->UnadviseProjectFileChange(cookie); });
 
 			hr = proj->Save(nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			// give it some time to notice the file changed on disk, and to call our callback
-			DWORD tickStart = GetTickCount();
-			while (!fce->_changed && GetTickCount() - tickStart < 1000)
-			{
-				MSG msg;
-				while(PeekMessage(&msg,0,0,0,PM_NOREMOVE))
-				{
-					if (::GetMessage(&msg, NULL, 0, 0) > 0)
-						::DispatchMessage(&msg);
-				}
+			bool changed = WaitWithMessageLoop([&fce] { return fce->_changed; }, 1000);
 
-				Sleep(10);
-			}
-
-			bool changed = fce->_changed;
-			hr = CoDisconnectObject(fce, 0);
 			Assert::IsTrue(SUCCEEDED(hr));
 			fce = nullptr;
 
@@ -588,6 +576,130 @@ namespace UITests
 			hr = proj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(1, DELITEMOP_DeleteFromStorage, (VSITEMID*)&V_VSITEMID(&tf1), DHO_SUPPRESS_UI);
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::IsTrue(sink->ItemRemoved(V_VSITEMID(&tf1)));	
+		}
+
+		TEST_METHOD(NotifyPropertyChangingChanged_File)
+		{
+			// Tests how well these events are propagated, not necessarily if they are generated for every single property.
+
+			HRESULT hr;
+			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"NotifyPropertyChangingChanged_File");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
+
+			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", nullptr);
+			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
+
+			auto changeSink = MakeTestPropertyChangeSink();
+			auto notifySink = MakeTestPropertyNotifySink();
+			auto disconnectSinks = wil::scope_exit([&changeSink, &notifySink]
+				{
+					CoDisconnectObject(changeSink, 0);
+					CoDisconnectObject(notifySink, 0);
+				});
+
+			VSITEMID fileItemID;
+			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"file.asm", &fileItemID);
+			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_variant filevar;
+			hr = proj.query<IVsHierarchy>()->GetProperty(fileItemID, VSHPROPID_BrowseObject, &filevar);
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto fileProps = wil::com_query_failfast<IFileNodeProperties>(filevar.pdispVal);
+			AdviseSinkToken fileChangeSinkToken;
+			hr = AdviseSink<IPropertyChangeSink>(fileProps, changeSink, &fileChangeSinkToken);
+			AdviseSinkToken fileNotifySinkToken;
+			hr = AdviseSink<IPropertyNotifySink>(fileProps, notifySink, &fileNotifySinkToken);
+			Assert::IsTrue(SUCCEEDED(hr));
+			fileProps->put_BuildTool(BuildToolKind::CustomBuildTool);
+			bool called = WaitWithMessageLoop([&changeSink, &notifySink, fileDisp=filevar.pdispVal]
+				{
+					return changeSink->Called(fileDisp, { dispidBuildToolKind })
+						&& notifySink->Called({ dispidBuildToolKind });
+				}, 1000);
+			Assert::IsTrue(called);
+			BOOL projectDirty = FALSE;
+			proj.query<IPersistFileFormat>()->IsDirty(&projectDirty);
+			Assert::IsTrue(projectDirty);
+			proj->Save(nullptr);
+			proj.query<IPersistFileFormat>()->IsDirty(&projectDirty);
+			Assert::IsFalse(projectDirty);
+
+			wil::com_ptr_failfast<ICustomBuildToolProperties> cbtProps;
+			hr = fileProps->get_CustomBuildToolProperties(&cbtProps);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			AdviseSinkToken cbtChangeSinkToken;
+			hr = AdviseSink<IPropertyChangeSink>(cbtProps, changeSink, &cbtChangeSinkToken);
+			AdviseSinkToken cbtNotifySinkToken;
+			hr = AdviseSink<IPropertyNotifySink>(cbtProps, notifySink, &cbtNotifySinkToken);
+			Assert::IsTrue(SUCCEEDED(hr));
+			auto cbtDisp = cbtProps.query<IDispatch>();
+
+			cbtProps->put_CommandLine(wil::make_bstr_failfast(L"CmdLine").get());
+			cbtProps->put_Description(wil::make_bstr_failfast(L"Desc").get());
+			cbtProps->put_Outputs(wil::make_bstr_failfast(L"Outputs").get());
+			called = WaitWithMessageLoop([&changeSink, &notifySink, &cbtDisp]
+				{ 
+					return changeSink->Called(cbtDisp, { dispidCommandLine, dispidDescription, dispidOutputs })
+						&& notifySink->Called({ dispidCommandLine, dispidDescription, dispidOutputs });
+				}, 1000);
+			Assert::IsTrue(called);
+			wil::unique_bstr value;
+			cbtProps->get_CommandLine(&value);
+			Assert::AreEqual(L"CmdLine", (wchar_t*)value.get());
+			cbtProps->get_Description(&value);
+			Assert::AreEqual(L"Desc", (wchar_t*)value.get());
+			cbtProps->get_Outputs(&value);
+			Assert::AreEqual(L"Outputs", (wchar_t*)value.get());
+
+			proj.query<IPersistFileFormat>()->IsDirty(&projectDirty);
+			Assert::IsTrue(projectDirty);
+		}
+
+		TEST_METHOD(NotifyPropertyChangingChanged_Folder)
+		{
+			// Tests how well these events are propagated, not necessarily if they are generated for every single property.
+
+			HRESULT hr;
+			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"NotifyPropertyChangingChanged_Folder");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
+
+			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", nullptr);
+			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
+
+			auto changeSink = MakeTestPropertyChangeSink();
+			auto notifySink = MakeTestPropertyNotifySink();
+			auto disconnectSinks = wil::scope_exit([&changeSink, &notifySink]
+				{
+					CoDisconnectObject(changeSink, 0);
+					CoDisconnectObject(notifySink, 0);
+				});
+
+			wil::unique_variant itemId;
+			hr = proj.query<IVsUIHierarchy>()->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &itemId);
+			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_variant var;
+			hr = proj.query<IVsHierarchy>()->GetProperty(V_VSITEMID(&itemId), VSHPROPID_BrowseObject, &var);
+			Assert::IsTrue(SUCCEEDED(hr));
+			AdviseSinkToken changeSinkToken;
+			hr = AdviseSink<IPropertyChangeSink>(var.pdispVal, changeSink, &changeSinkToken);
+			AdviseSinkToken notifySinkToken;
+			hr = AdviseSink<IPropertyNotifySink>(var.pdispVal, notifySink, &notifySinkToken);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = proj.query<IVsHierarchy>()->SetProperty(V_VSITEMID(&itemId), VSHPROPID_EditLabel, wil::make_variant_bstr_failfast(L"newname"));
+			Assert::IsTrue(SUCCEEDED(hr));
+			bool called = WaitWithMessageLoop([&changeSink, &notifySink, &var]
+				{
+					return changeSink->Called(var.pdispVal, { dispidFolderName })
+						&& notifySink->Called({ dispidFolderName });
+				}, 1000);
+			Assert::IsTrue(called);
+
+			BOOL projectDirty = FALSE;
+			proj.query<IPersistFileFormat>()->IsDirty(&projectDirty);
+			Assert::IsTrue(projectDirty);
 		}
 	};
 }

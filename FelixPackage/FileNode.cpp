@@ -25,6 +25,7 @@ struct FileNode
 	bool _isGenerated = false;
 	com_ptr<ICustomBuildToolProperties> _customBuildToolProps;
 	com_ptr<ConnectionPointImpl<IPropertyNotifySink>> _propNotifyCP;
+	com_ptr<ConnectionPointImpl<IPropertyChangeSink>> _propChangeCP;
 	AdviseSinkToken _cbtPropNotifyToken;
 	WeakRefToThis _weakRefToThis;
 
@@ -34,6 +35,7 @@ public:
 		HRESULT hr;
 		hr = _weakRefToThis.InitInstance(static_cast<IFileNode*>(this)); RETURN_IF_FAILED(hr);
 		hr = ConnectionPointImpl<IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
+		hr = ConnectionPointImpl<IPropertyChangeSink>::CreateInstance(this, &_propChangeCP); RETURN_IF_FAILED(hr);
 		hr = MakeCustomBuildToolProperties(&_customBuildToolProps); RETURN_IF_FAILED(hr);
 		hr = AdviseSink<IPropertyNotifySink>(_customBuildToolProps, _weakRefToThis, &_cbtPropNotifyToken); RETURN_IF_FAILED(hr);
 		return S_OK;
@@ -799,27 +801,18 @@ public:
 	{
 		if (_buildTool != value)
 		{
-			bool regeneratePrePostInclude = (_buildTool == Assembler || value == Assembler);
-
+			NotifyPropertyChanging(_propChangeCP, this, { dispidBuildToolKind, dispidCustomBuildToolProps });
 			_buildTool = value;
 
 			if (_parent)
 			{
 				com_ptr<IProjectNode> project;
 				auto hr = FindHier(this, IID_PPV_ARGS(&project)); RETURN_IF_FAILED(hr);
-
-				com_ptr<IPropertyNotifySink> sink;
-				hr = project->QueryInterface(IID_PPV_ARGS(&sink)); RETURN_IF_FAILED(hr);
-				sink->OnChanged(DISPID_UNKNOWN);
-
 				hr = GeneratePrePostIncludeFiles (project); RETURN_IF_FAILED(hr);
 			}
 
-			_propNotifyCP->Notify([](IPropertyNotifySink* sink)
-				{
-					sink->OnChanged(dispidBuildToolKind);
-					sink->OnChanged(dispidCustomBuildToolProps);
-				});
+			NotifyPropertyChanged(_propChangeCP, this, { dispidCustomBuildToolProps, dispidBuildToolKind });
+			NotifyPropertyChanged(_propNotifyCP, { dispidCustomBuildToolProps, dispidBuildToolKind });
 		}
 
 		return S_OK;
@@ -929,8 +922,12 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE FindConnectionPoint (REFIID riid, IConnectionPoint **ppCP) override
 	{
+		// This is requested by the property grid.
 		if (riid == IID_IPropertyNotifySink)
 			return wil::com_query_to_nothrow(_propNotifyCP, ppCP);
+
+		if (riid == IID_IPropertyChangeSink)
+			return _propChangeCP.query_to(ppCP);
 
 		RETURN_HR(E_NOTIMPL);
 	}
@@ -1012,7 +1009,10 @@ public:
 
 		if (!::MoveFile (oldFullPath.get(), newFullPath.get()))
 			return HRESULT_FROM_WIN32(GetLastError());
+		NotifyPropertyChanging(_propChangeCP, this, dispidPath);
 		std::swap(_path, otherPathValue);
+		auto notifyChanged = wil::scope_exit([this] { NotifyPropertyChanged(_propChangeCP, this, dispidPath); });
+
 		auto undoRename = wil::scope_exit([this, &otherPathValue, &newFullPath, &oldFullPath]
 			{
 				std::swap (_path, otherPathValue);
@@ -1052,11 +1052,7 @@ public:
 		// Make sure the property browser is updated.
 		uiShell->RefreshPropertyBrowser(DISPID_UNKNOWN); // refresh all properties
 
-		// Mark project as dirty.
-		com_ptr<IPropertyNotifySink> pns;
-		hr = proj->QueryInterface(&pns); LOG_IF_FAILED(hr);
-		if (SUCCEEDED(hr))
-			pns->OnChanged(dispidItems);
+		NotifyPropertyChanged(_propNotifyCP, dispidPath);
 
 		//~CSuspendFileChanges
 

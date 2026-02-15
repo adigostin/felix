@@ -12,14 +12,16 @@ struct CustomBuildToolProperties
 	, IConnectionPointContainer
 {
 	ULONG _refCount = 0;
+	com_ptr<ConnectionPointImpl<IPropertyChangeSink>> _propChangeCP;
 	com_ptr<ConnectionPointImpl<IPropertyNotifySink>> _propNotifyCP;
-	wil::unique_bstr _commandLine;
-	wil::unique_bstr _description;
-	wil::unique_bstr _outputs;
+	wil::unique_process_heap_string _commandLine;
+	wil::unique_process_heap_string _description;
+	wil::unique_process_heap_string _outputs;
 
 	HRESULT InitInstance()
 	{
 		auto hr = ConnectionPointImpl<IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
+		hr = ConnectionPointImpl<IPropertyChangeSink>::CreateInstance(this, &_propChangeCP); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
@@ -72,17 +74,19 @@ struct CustomBuildToolProperties
 	#pragma region ICustomBuildToolProperties
 	virtual HRESULT STDMETHODCALLTYPE get_CommandLine (BSTR *value) override
 	{
-		// Although a NULL BSTR has identical semantics as "", the Properties Window
-		// handles a NULL BSTR by hiding the property, and "" by showing it empty.
-		return (*value = SysAllocString(_commandLine ? _commandLine.get() : L"")) ? S_OK : E_OUTOFMEMORY;
+		return GetBSTR(_commandLine, value);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_CommandLine (BSTR value) override
 	{
-		if (VarBstrCmp(_commandLine.get(), value, 0, 0) != VARCMP_EQ)
+		if (!Equals(_commandLine, value))
 		{
-			_commandLine = (value && value[0]) ? wil::make_bstr_nothrow(value) : nullptr;
-			_propNotifyCP->Notify([](auto* sink) { sink->OnChanged(dispidCommandLine); });
+			wil::unique_process_heap_string _new;
+			auto hr = PutBSTR(value, _new); RETURN_IF_FAILED(hr);
+			NotifyPropertyChanging(_propChangeCP, this, dispidCommandLine);
+			_commandLine = std::move(_new);
+			NotifyPropertyChanged(_propChangeCP, this, dispidCommandLine);
+			NotifyPropertyChanged(_propNotifyCP, dispidCommandLine);
 		}
 
 		return S_OK;
@@ -90,17 +94,19 @@ struct CustomBuildToolProperties
 	
 	virtual HRESULT STDMETHODCALLTYPE get_Description (BSTR *value) override
 	{
-		// Although a NULL BSTR has identical semantics as "", the Properties Window
-		// handles a NULL BSTR by hiding the property, and "" by showing it empty.
-		return (*value = SysAllocString(_description ? _description.get() : L"")) ? S_OK : E_OUTOFMEMORY;
+		return GetBSTR(_description, value);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_Description (BSTR value) override
 	{
-		if (VarBstrCmp(_description.get(), value, 0, 0) != VARCMP_EQ)
+		if (!Equals(_description, value))
 		{
-			_description = (value && value[0]) ? wil::make_bstr_nothrow(value) : nullptr;
-			_propNotifyCP->Notify([](auto* sink) { sink->OnChanged(dispidDescription); });
+			wil::unique_process_heap_string _new;
+			auto hr = PutBSTR(value, _new); RETURN_IF_FAILED(hr);
+			NotifyPropertyChanging(_propChangeCP, this, dispidDescription);
+			_description = std::move(_new);
+			NotifyPropertyChanged(_propChangeCP, this, dispidDescription);
+			NotifyPropertyChanged(_propNotifyCP, dispidDescription);
 		}
 
 		return S_OK;
@@ -108,17 +114,19 @@ struct CustomBuildToolProperties
 
 	virtual HRESULT STDMETHODCALLTYPE get_Outputs (BSTR *value) override
 	{
-		// Although a NULL BSTR has identical semantics as "", the Properties Window
-		// handles a NULL BSTR by hiding the property, and "" by showing it empty.
-		return (*value = SysAllocString(_outputs ? _outputs.get() : L"")) ? S_OK : E_OUTOFMEMORY;
+		return GetBSTR(_outputs, value);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_Outputs (BSTR value) override
 	{
-		if (VarBstrCmp(_outputs.get(), value, 0, 0) != VARCMP_EQ)
+		if (!Equals(_outputs, value))
 		{
-			_outputs = (value && value[0]) ? wil::make_bstr_nothrow(value) : nullptr;
-			_propNotifyCP->Notify([](auto* sink) { sink->OnChanged(dispidOutputs); });
+			wil::unique_process_heap_string _new;
+			auto hr = PutBSTR(value, _new); RETURN_IF_FAILED(hr);
+			NotifyPropertyChanging(_propChangeCP, this, dispidOutputs);
+			_outputs = std::move(_new);
+			NotifyPropertyChanged(_propChangeCP, this, dispidOutputs);
+			NotifyPropertyChanged(_propNotifyCP, dispidOutputs);
 		}
 
 		return S_OK;
@@ -168,7 +176,8 @@ struct CustomBuildToolProperties
 	{
 		if (riid == IID_IPropertyNotifySink)
 			return wil::com_query_to_nothrow(_propNotifyCP, ppCP);
-
+		if (riid == IID_IPropertyChangeSink)
+			return wil::com_query_to_nothrow(_propChangeCP, ppCP);
 		RETURN_HR(E_NOTIMPL);
 	}
 	#pragma endregion

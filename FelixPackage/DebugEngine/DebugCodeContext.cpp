@@ -47,10 +47,6 @@ struct Z80CodeContext : public IDebugCodeContext2, IFelixCodeContext
 			|| TryQI<IFelixCodeContext>(this, riid, ppvObject))
 			return S_OK;
 
-		if (   riid == IID_IDebugCodeContext100
-			|| riid == IID_IDebugCodeContext150)
-			return E_NOINTERFACE;
-
 		if (   riid == IID_IMarshal
 			|| riid == IID_INoMarshal
 			|| riid == IID_IManagedObject

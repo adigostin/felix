@@ -3,7 +3,6 @@
 #include "shared/com.h"
 #include "FelixPackage.h"
 #include "../TestsCommon.h"
-#include "UITests_h.h"
 
 #define FORCE_EXPLICIT_DTE_NAMESPACE
 #include <dte.h>
@@ -444,59 +443,5 @@ namespace UITests
 		auto pres = PathCombine(testPathOtherDrive.get(), volumeName, pathWithoutDrive);
 		Assert::IsNotNull(pres);
 		return testPathOtherDrive;
-	}
-
-	struct TestPropertyNotifySink : IPropertyNotifySink, ITestPropertyNotifySink
-	{
-		ULONG _refCount = 0;
-		vector_nothrow<DISPID> _changed;
-
-		#pragma region IUnknown
-		virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
-		{
-			if (   TryQI<IUnknown>(static_cast<IPropertyNotifySink*>(this), riid, ppvObject)
-				|| TryQI<IDispatch>(this, riid, ppvObject)
-				|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
-				|| TryQI<ITestPropertyNotifySink>(this, riid, ppvObject)
-			)
-				return S_OK;
-
-			*ppvObject = nullptr;
-			return E_NOINTERFACE;
-		}
-
-		virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
-
-		virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
-		#pragma endregion
-
-		IMPLEMENT_IDISPATCH(ITestPropertyNotifySink)
-
-		#pragma region IPropertyNotifySink
-		virtual HRESULT STDMETHODCALLTYPE OnChanged (DISPID dispID) override
-		{
-			auto it = _changed.find(dispID);
-			if (it == _changed.end())
-				_changed.try_push_back(dispID);
-			return S_OK;
-		}
-
-		virtual HRESULT STDMETHODCALLTYPE OnRequestEdit (DISPID dispID) override
-		{
-			return E_NOTIMPL;
-		}
-		#pragma endregion
-
-		#pragma region IMockPropertyNotifySink
-		virtual HRESULT STDMETHODCALLTYPE IsChanged (DISPID dispid) override
-		{
-			return _changed.find(dispid) != _changed.end();
-		}
-		#pragma endregion
-	};
-
-	com_ptr<ITestPropertyNotifySink> MakeTestPropertyNotifySink()
-	{
-		return new (std::nothrow) TestPropertyNotifySink();
 	}
 }

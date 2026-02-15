@@ -808,6 +808,7 @@ struct GeneralPageProperties
 				{
 					sink->OnChanged(dispidOutputName);
 					sink->OnChanged(dispidOutputFilename);
+					return S_OK;
 				});
 		}
 		
@@ -829,6 +830,7 @@ struct GeneralPageProperties
 				{
 					sink->OnChanged(dispidOutputFileType);
 					sink->OnChanged(dispidOutputFilename);
+					return S_OK;
 				});
 		}
 
@@ -862,7 +864,7 @@ struct GeneralPageProperties
 		if (wcscmp(_outputDirectory.get(), bstrOutputDirectory))
 		{
 			_outputDirectory = wil::make_process_heap_string_nothrow(bstrOutputDirectory); RETURN_IF_NULL_ALLOC(_outputDirectory);
-			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidOutputDirectory); });
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { return sink->OnChanged(dispidOutputDirectory); });
 		}
 
 		return S_OK;
@@ -975,7 +977,7 @@ struct GeneralPageProperties
 			{
 				auto tn = wil::make_process_heap_string_nothrow(OutputNameDefaultValue); RETURN_IF_NULL_ALLOC(tn);
 				_outputName = std::move(tn);
-				_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidOutputName); });
+				_propNotifyCP->Notify([](IPropertyNotifySink* sink) { return sink->OnChanged(dispidOutputName); });
 			}
 
 			return S_OK;
@@ -1226,7 +1228,7 @@ struct AssemblerPageProperties
 		if (_baseAddress != value)
 		{
 			_baseAddress = value;
-			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidBaseAddress); });
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { return sink->OnChanged(dispidBaseAddress); });
 		}
 
 		return S_OK;
@@ -1252,7 +1254,7 @@ struct AssemblerPageProperties
 			}
 
 			_entryPointAddress.reset(newStr);
-			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidEntryPointAddress); });
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { return sink->OnChanged(dispidEntryPointAddress); });
 		}
 
 		return S_OK;
@@ -1270,7 +1272,7 @@ struct AssemblerPageProperties
 		if (_saveListing != s)
 		{
 			_saveListing = s;
-			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidSaveListing); });
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { return sink->OnChanged(dispidSaveListing); });
 		}
 
 		return S_OK;
@@ -1297,7 +1299,7 @@ struct AssemblerPageProperties
 				fn = wil::make_bstr_nothrow(filename); RETURN_IF_NULL_ALLOC(fn);
 			}
 			_listingFilename = std::move(fn);
-			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidListingFilename); });
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { return sink->OnChanged(dispidListingFilename); });
 		}
 
 		return S_OK;
@@ -1480,7 +1482,7 @@ struct DebuggingPageProperties
 		{
 			auto n = wil::make_process_heap_string_nothrow(from); RETURN_IF_NULL_ALLOC(n);
 			_launchTarget = std::move(n);
-			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidLaunchTarget); });
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { return sink->OnChanged(dispidLaunchTarget); });
 		}
 		
 		return S_OK;
@@ -1497,7 +1499,7 @@ struct DebuggingPageProperties
 		if (_launchType != value)
 		{
 			_launchType = value;
-			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidLaunchType); });
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { return sink->OnChanged(dispidLaunchType); });
 		}
 
 		return S_OK;
@@ -1719,7 +1721,7 @@ struct PrePostBuildPageProperties
 			}
 			else
 				_commandLine = nullptr;
-			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidCommandLine); });
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { return sink->OnChanged(dispidCommandLine); });
 		}
 
 		return S_OK;
@@ -1743,7 +1745,7 @@ struct PrePostBuildPageProperties
 			}
 			else
 				_description = nullptr;
-			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { sink->OnChanged(dispidDescription); });
+			_propNotifyCP->Notify([](IPropertyNotifySink* sink) { return sink->OnChanged(dispidDescription); });
 		}
 
 		return S_OK;

@@ -446,7 +446,7 @@ public:
 					bpEvent && SUCCEEDED(bpEvent->InitInstance(BreakpointType::Code, bps->address, bps->bps, bps->size)))
 				{
 					_eventHandlers->Notify([bpEvent=bpEvent.get()](ISimulatorEventNotifySink* sink)
-						{ sink->NotifySimulatorEvent(bpEvent, __uuidof(ISimulatorBreakpointEvent)); });
+						{ return sink->NotifySimulatorEvent(bpEvent, __uuidof(ISimulatorBreakpointEvent)); });
 				}
 
 				_screenComplete = nullptr;
@@ -507,7 +507,7 @@ public:
 		auto event = com_ptr(new (std::nothrow) SimulateOneEvent()); RETURN_IF_NULL_ALLOC(event);
 
 		_eventHandlers->Notify([&event](ISimulatorEventNotifySink* sink)
-			{ sink->NotifySimulatorEvent(event, __uuidof(event)); });
+			{ return sink->NotifySimulatorEvent(event, __uuidof(event)); });
 
 		return S_OK;
 	}
@@ -615,7 +615,7 @@ public:
 		using BreakEvent = SimulatorEvent<ISimulatorBreakEvent>;
 		if (auto event = com_ptr(new (std::nothrow) BreakEvent()))
 			_eventHandlers->Notify([&event] (ISimulatorEventNotifySink* sink)
-				{ sink->NotifySimulatorEvent(event, __uuidof(event)); });
+				{ return sink->NotifySimulatorEvent(event, __uuidof(event)); });
 
 		_screenComplete = nullptr;
 		if (_screenCompleteHandler)
@@ -662,7 +662,7 @@ public:
 		auto event = com_ptr(new (std::nothrow) ResumeEvent()); RETURN_IF_NULL_ALLOC(event);
 
 		_eventHandlers->Notify([&event](ISimulatorEventNotifySink* sink)
-			{ sink->NotifySimulatorEvent(event, __uuidof(event)); });
+			{ return sink->NotifySimulatorEvent(event, __uuidof(event)); });
 
 		return S_OK;
 	}

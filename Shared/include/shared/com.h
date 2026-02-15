@@ -190,16 +190,16 @@ public:
 
 	bool empty() const { return _cps.empty(); }
 
-	template<typename predicate_t> requires wistd::is_invocable_v<predicate_t, ISink*>
-	void Notify (const predicate_t& pred)
+	template<typename predicate_t> requires wistd::is_invocable_r_v<HRESULT, predicate_t, ISink*>
+	HRESULT Notify (const predicate_t& pred)
 	{
 		for (auto& c : _cps)
 		{
 			com_ptr<ISink> sink;
-			auto hr = c.pUnk->QueryInterface(IID_PPV_ARGS(&sink)); LOG_IF_FAILED(hr);
-			if (SUCCEEDED(hr) && sink)
-				pred(sink.get());
+			auto hr = c.pUnk->QueryInterface(IID_PPV_ARGS(&sink)); RETURN_IF_FAILED(hr);
+			hr = pred(sink.get()); RETURN_IF_FAILED(hr);
 		}
+		return S_OK;
 	}
 };
 
@@ -657,3 +657,36 @@ public:
 };
 #pragma endregion
 
+template<typename string_type>
+HRESULT GetBSTR (const string_type& from, BSTR* to)
+{
+	if (!from)
+		return (*to = nullptr), S_OK;
+	*to = SysAllocString(wil::str_raw_ptr(from)); RETURN_HR_IF(E_OUTOFMEMORY, !*to);
+	return S_OK;
+}
+
+template<typename string_type>
+HRESULT PutBSTR (BSTR from, string_type& to)
+{
+	if (!from || !from[0])
+	{
+		to.reset();
+		return S_OK;
+	}
+
+	wil::details::string_maker<string_type> maker;
+	RETURN_IF_FAILED(maker.make(SysAllocString(from), SysStringLen(from)));
+	to = maker.release();
+	return S_OK;
+}
+
+template<typename string_type>
+bool Equals (string_type& other, BSTR one)
+{
+	if (!one || !one[0])
+		return !other.get() || !other.get()[0];
+	if (!other.get() || !other.get()[0])
+		return false;
+	return !wcscmp(one, wil::str_raw_ptr(other));
+}

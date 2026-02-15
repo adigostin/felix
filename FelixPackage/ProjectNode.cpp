@@ -25,6 +25,7 @@ class ProjectNode
 	, IVsHierarchyDeleteHandler3
 	, IXmlParent
 	, IProjectNode
+	, IPropertyChangeSink 
 	, IPropertyNotifySink // this implementation only used to mark the project as dirty
 	, IVsPerPropertyBrowsing
 	, IVsUpdateSolutionEvents
@@ -58,6 +59,7 @@ class ProjectNode
 	WeakRefToThis _weakRefToThis;
 	wil::unique_bstr _autoOpenFiles;
 	VSCOOKIE _updateBuildSolutionEventsCookie = VSCOOKIE_NIL;
+	unordered_map_nothrow<IChildNode*, AdviseSinkToken> _nodePropertyChangeTokens;
 
 	static HRESULT CreateProjectFilesFromTemplate (const wchar_t* fromProjFilePath, const wchar_t* location, const wchar_t* filename)
 	{
@@ -145,7 +147,7 @@ class ProjectNode
 			hr = SHCreateShellItemArray (nullptr, projectTemplateDir.get(), (UINT)itemIDListCount, const_cast<LPCITEMIDLIST*>(itemIDList[0].addressof()), &sourceFiles); RETURN_IF_FAILED(hr);
 
 			hr = pfo->CopyItems (sourceFiles.get(), destinationFolder.get()); RETURN_IF_FAILED(hr);
-
+			hr = pfo->SetOperationFlags(FOF_NOERRORUI | FOFX_EARLYFAILURE); RETURN_IF_FAILED(hr);
 			hr = pfo->PerformOperations(); RETURN_IF_FAILED(hr);
 		}
 
@@ -226,6 +228,7 @@ public:
 	{
 		WI_ASSERT (_updateBuildSolutionEventsCookie == VSCOOKIE_NIL);
 		WI_ASSERT (_cfgProviderEventSinks.empty());
+		WI_ASSERT (_nodePropertyChangeTokens.empty());
 	}
 
 	// If found, returns S_OK and ppItem is non-null.
@@ -334,6 +337,7 @@ public:
 			|| TryQI<IParentNode>(this, riid, ppvObject)
 			|| TryQI<IProjectNode>(this, riid, ppvObject)
 			|| TryQI<INode>(this, riid, ppvObject)
+			|| TryQI<IPropertyChangeSink>(this, riid, ppvObject)
 			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 			|| TryQI<IVsUpdateSolutionEvents>(this, riid, ppvObject)
@@ -2715,11 +2719,22 @@ public:
 		for (auto& sink : _hierarchyEventSinks)
 			sink.second->OnItemAdded (parent->GetItemId(), itemidSiblingPrev, node->GetItemId());
 
+		// Listen for property changes in the node.
+		AdviseSinkToken token;
+		auto hr = AdviseSink<IPropertyChangeSink>(node, _weakRefToThis, &token); LOG_IF_FAILED(hr);
+		if (SUCCEEDED(hr))
+			(void)_nodePropertyChangeTokens.try_insert({ node, std::move(token) });
+
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE NotifyNodeRemovingFromHier (IChildNode* node) override
 	{
+		WI_ASSERT(node->GetItemId() != VSITEMID_NIL);
+		auto it = _nodePropertyChangeTokens.find(node);
+		WI_ASSERT(it != _nodePropertyChangeTokens.end());
+		if (it != _nodePropertyChangeTokens.end())
+			_nodePropertyChangeTokens.erase(it);
 		return S_OK;
 	}
 
@@ -2757,6 +2772,27 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE OnRequestEdit (DISPID dispID) override
 	{
 		RETURN_HR(E_NOTIMPL);
+	}
+	#pragma endregion
+
+	#pragma region IPropertyChangeSink
+	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanging( 
+		/* [in] */ UINT cObjects,
+		/* [size_is][in] */ IDispatch *const rgpObjects[  ],
+		/* [in] */ DISPID dispID,
+		/* [in] */ PropertyChangeArgs args) override
+	{
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged( 
+		/* [in] */ UINT cObjects,
+		/* [size_is][in] */ IDispatch *const rgpObjects[  ],
+		/* [in] */ DISPID dispID,
+		/* [in] */ PropertyChangeArgs args) override
+	{
+		_isDirty = true;
+		return S_OK;
 	}
 	#pragma endregion
 

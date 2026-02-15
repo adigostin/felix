@@ -72,7 +72,7 @@ namespace FelixTests
 			Assert::IsNotNull(props.get());
 		}
 
-		static com_ptr<IProjectConfigBuilder> MakeSjasmProjectBuilder (const char* asmFileContent)
+		static std::pair<wil::com_ptr_failfast<IProjectNode>, wil::com_ptr_failfast<IProjectConfigBuilder>> MakeSjasmProjectBuilder (const char* asmFileContent)
 		{
 			HRESULT hr;
 			com_ptr<IProjectNode> project;
@@ -93,7 +93,7 @@ namespace FelixTests
 			com_ptr<IProjectConfigBuilder> builder;
 			hr = MakeProjectConfigBuilder (project, config, pane, &builder);
 			Assert::IsTrue(SUCCEEDED(hr));
-			return builder;
+			return { std::move(project), std::move(builder) };
 		}
 
 		static void WaitCallbackWithMessageLoop (DWORD milliseconds, TestBuildCallback* callback)
@@ -125,7 +125,8 @@ namespace FelixTests
 			BOOL bres = MoveFileExW (sjasmOrigPath.get(), sjasmTempPath.get(), MOVEFILE_REPLACE_EXISTING);
 			Assert::IsTrue(bres);
 
-			auto builder = MakeSjasmProjectBuilder({ });
+			auto [proj, builder] = MakeSjasmProjectBuilder({ });
+			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild (callback);
 
@@ -137,7 +138,8 @@ namespace FelixTests
 
 		TEST_METHOD(Test_SjasmCommandLine_ExitCodeZero)
 		{
-			auto builder = MakeSjasmProjectBuilder("\tend\r\n");
+			auto [proj, builder] = MakeSjasmProjectBuilder("\tend\r\n");
+			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild (callback);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -150,7 +152,8 @@ namespace FelixTests
 
 		TEST_METHOD(Test_SjasmCommandLine_ExitCodeNonzero)
 		{
-			auto builder = MakeSjasmProjectBuilder({ });
+			auto [proj, builder] = MakeSjasmProjectBuilder({ });
+			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild (callback);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -166,14 +169,14 @@ namespace FelixTests
 		}
 
 		// sourceFileContent - empty string view to skip creating the file on disk
-		static com_ptr<IProjectConfigBuilder> MakeProjectWithCustomBuildTool (
+		static std::pair<wil::com_ptr_failfast<IProjectNode>, wil::com_ptr_failfast<IProjectConfigBuilder>> MakeProjectWithCustomBuildTool (
 			const wchar_t* sourceFileName, const char* sourceFileContent,
 			const wchar_t* cbtDescription,
 			const wchar_t* cbtCmdLine, IStream* outputStreamUTF16)
 		{
 			HRESULT hr;
 
-			com_ptr<IProjectNode> project;
+			wil::com_ptr_failfast<IProjectNode> project;
 			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&project));
 			Assert::IsTrue(SUCCEEDED(hr));
 
@@ -199,10 +202,10 @@ namespace FelixTests
 			auto config = AddDebugProjectConfig(project->AsHierarchy());
 			auto pane = MakeMockOutputWindowPane(outputStreamUTF16);
 
-			com_ptr<IProjectConfigBuilder> builder;
+			wil::com_ptr_failfast<IProjectConfigBuilder> builder;
 			hr = MakeProjectConfigBuilder (project, config, pane, &builder);
 			Assert::IsTrue(SUCCEEDED(hr));
-			return builder;
+			return { std::move(project), std::move(builder) };
 		}
 
 		TEST_METHOD(TestCustomBuildToolOutputWithNoEOL)
@@ -212,7 +215,9 @@ namespace FelixTests
 			com_ptr<IStream> outputStream;
 			auto hr = CreateStreamOnHGlobal (NULL, TRUE, &outputStream);
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", "content", nullptr, L"cmd /c type test.xxx", outputStream);
+			auto [proj, builder] = MakeProjectWithCustomBuildTool(L"test.xxx", "content", nullptr, L"cmd /c type test.xxx", outputStream);
+			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
+
 			auto callback = com_ptr(new TestBuildCallback());
 			hr = builder->StartBuild(callback);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -236,7 +241,8 @@ namespace FelixTests
 			com_ptr<IStream> outputStream;
 			auto hr = CreateStreamOnHGlobal (NULL, TRUE, &outputStream);
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", "content\r\n", nullptr, L"cmd /c type test.xxx", outputStream);
+			auto [proj, builder] = MakeProjectWithCustomBuildTool(L"test.xxx", "content\r\n", nullptr, L"cmd /c type test.xxx", outputStream);
+			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto callback = com_ptr(new TestBuildCallback());
 			hr = builder->StartBuild(callback);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -257,7 +263,8 @@ namespace FelixTests
 
 		TEST_METHOD(TestBuilderDestroyedWhenReleasedWithPendingBuild)
 		{
-			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", { }, nullptr, L"cmd /c pause", nullptr);
+			auto [proj, builder] = MakeProjectWithCustomBuildTool(L"test.xxx", { }, nullptr, L"cmd /c pause", nullptr);
+			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild(callback);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -269,7 +276,8 @@ namespace FelixTests
 
 		TEST_METHOD(TestCustomBuildToolWaitingUserInput)
 		{
-			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", { }, nullptr, L"cmd /c pause", nullptr);
+			auto [proj, builder] = MakeProjectWithCustomBuildTool(L"test.xxx", { }, nullptr, L"cmd /c pause", nullptr);
+			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild(callback);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -299,7 +307,8 @@ namespace FelixTests
 		*/
 		static void CancelAfterAsyncBuildProcessExited (const wchar_t* command, BOOL* complete, BOOL* success)
 		{
-			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", "content", nullptr, command, nullptr);
+			auto [proj, builder] = MakeProjectWithCustomBuildTool(L"test.xxx", "content", nullptr, command, nullptr);
+			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild(callback);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -406,7 +415,8 @@ namespace FelixTests
 
 		TEST_METHOD(TestCustomBuildToolOnlyWhitespaceCommands)
 		{
-			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", { }, nullptr, L"   \r\n   \t   ", nullptr);
+			auto [proj, builder] = MakeProjectWithCustomBuildTool(L"test.xxx", { }, nullptr, L"   \r\n   \t   ", nullptr);
+			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild(callback);
 			Assert::AreEqual(HRESULT_FROM_WIN32(ERROR_NO_MORE_FILES), hr);
@@ -418,7 +428,8 @@ namespace FelixTests
 			auto hr = CreateStreamOnHGlobal (NULL, TRUE, &outputStream);
 			Assert::IsTrue(SUCCEEDED(hr));
 			static const wchar_t cmdLine[] = L"  cmd /c type test.xxx  \t\r\n   \t   ";
-			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", "content", nullptr, cmdLine, outputStream);
+			auto [proj, builder] = MakeProjectWithCustomBuildTool(L"test.xxx", "content", nullptr, cmdLine, outputStream);
+			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto callback = com_ptr(new TestBuildCallback());
 			hr = builder->StartBuild(callback);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -477,7 +488,8 @@ namespace FelixTests
 
 		TEST_METHOD(BuildOnlySynchronousSteps)
 		{
-			auto builder = MakeProjectWithCustomBuildTool (L"test.asm", { }, L"CBT Description", nullptr, nullptr);
+			auto [proj, builder] = MakeProjectWithCustomBuildTool (L"test.asm", { }, L"CBT Description", nullptr, nullptr);
+			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto hr = builder->StartBuild(nullptr);
 			Assert::AreEqual(S_OK, hr);
 		}
@@ -488,6 +500,7 @@ namespace FelixTests
 			auto hr = MakeProjectNode (TemplatePath_EmptyProject.get(), tempPath, L"BuildFilesInFoldersAndSubfolders.flx",
 				CPF_CLONEFILE | CPF_OVERWRITE | CPF_SILENT, IID_PPV_ARGS(&proj));
 			Assert::IsTrue(SUCCEEDED(hr));
+			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 
 			auto config = FelixTests::AddDebugProjectConfig(proj->AsHierarchy());
 
@@ -533,6 +546,7 @@ namespace FelixTests
 			com_ptr<IProjectNode> proj;
 			auto hr = MakeProjectNode (nullptr, projDir.get(), nullptr, 0, IID_PPV_ARGS(&proj));
 			Assert::IsTrue(SUCCEEDED(hr));
+			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 
 			auto config = FelixTests::AddDebugProjectConfig(proj->AsHierarchy());
 

@@ -4,7 +4,6 @@
 #include "../TestsCommon.h"
 #include "dispids.h"
 #include "FelixPackage_h.h"
-#include "UITests_h.h"
 
 #define FORCE_EXPLICIT_DTE_NAMESPACE
 #include <dte.h>
@@ -21,7 +20,6 @@ namespace UITests
 	extern std::pair<wil::com_ptr_failfast<VxDTE::_Solution>, wil::com_ptr_failfast<VxDTE::Project>>
 		CreateSolutionAndProject (PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName);
 	extern wil::unique_process_heap_string MakeVolumeGuidPath (const wchar_t* path);
-	extern com_ptr<ITestPropertyNotifySink> MakeTestPropertyNotifySink();
 
 	TEST_CLASS(FileTests)
 	{
@@ -237,7 +235,7 @@ namespace UITests
 			hr = wil::com_query_failfast<IFileNodeProperties>(fileBO.pdispVal)->put_BuildTool(BuildToolKind::CustomBuildTool);
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			Assert::IsTrue(sink->IsChanged(dispidBuildToolKind));
+			Assert::IsTrue(sink->Called({ dispidBuildToolKind }));
 		}
 		
 		TEST_METHOD(ProjectDirtyOnFilePropertyChange)

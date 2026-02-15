@@ -1498,3 +1498,62 @@ HRESULT EnsureDirHasBackslash (LPCOLESTR pszLocation, wil::unique_process_heap_s
 	return S_OK;
 }
 
+HRESULT NotifyPropertyChanging (ConnectionPointImpl<IPropertyChangeSink>* cp, IDispatch* pDisp, DISPID dispid)
+{
+	return cp->Notify([pDisp,dispid](IPropertyChangeSink* sink)
+		{
+			auto hr = sink->OnPropertyChanging(1, &pDisp, dispid, { }); RETURN_HR(hr);
+		});
+}
+
+HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyChangeSink>* cp, IDispatch* pDisp, DISPID dispid)
+{
+	return cp->Notify([pDisp, dispid](IPropertyChangeSink* sink)
+		{
+			auto hr = sink->OnPropertyChanged(1, &pDisp, dispid, { }); RETURN_HR(hr);
+		});
+}
+
+HRESULT NotifyPropertyChanging (ConnectionPointImpl<IPropertyChangeSink>* cp, IDispatch* pDisp, std::initializer_list<DISPID> dispids)
+{
+	return cp->Notify([pDisp,&dispids](IPropertyChangeSink* sink)
+		{
+			for (auto it = std::begin(dispids); it != std::end(dispids); it++)
+			{
+				auto hr = sink->OnPropertyChanging(1, &pDisp, *it, { }); RETURN_IF_FAILED(hr);
+			}
+			return S_OK;
+		});
+}
+
+HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyChangeSink>* cp, IDispatch* pDisp, std::initializer_list<DISPID> dispids)
+{
+	return cp->Notify([pDisp,&dispids](IPropertyChangeSink* sink)
+		{
+			for (auto it = std::rbegin(dispids); it != std::rend(dispids); it++)
+			{
+				auto hr = sink->OnPropertyChanged(1, &pDisp, *it, { }); RETURN_IF_FAILED(hr);
+			}
+			return S_OK;
+		});
+}
+
+HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyNotifySink>* cp, DISPID dispid)
+{
+	return cp->Notify([dispid](IPropertyNotifySink* sink)
+		{ 
+			auto hr = sink->OnChanged(dispid); RETURN_HR(hr);
+		});
+}
+
+HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyNotifySink>* cp, std::initializer_list<DISPID> dispids)
+{
+	return cp->Notify([&dispids](IPropertyNotifySink* sink)
+		{
+			for (auto dispid : dispids)
+			{
+				auto hr = sink->OnChanged(dispid); RETURN_IF_FAILED(hr);
+			}
+			return S_OK;
+		});
+}

@@ -41,6 +41,7 @@ namespace FelixTests
 				Assert::AreEqual<VSITEMID>(VSITEMID_ROOT, V_VSITEMID(&parentID));
 			}
 
+			hier->Close();
 			ULONG refCount = hier.detach()->Release();
 			Assert::AreEqual<ULONG>(0, refCount);
 
@@ -173,6 +174,7 @@ namespace FelixTests
 				Assert::AreEqual<VSITEMID>(VSITEMID_NIL, GetProperty_VSITEMID(hier, file2ItemId, VSHPROPID_NextSibling));
 			}
 
+			hier->Close();
 			Assert::AreEqual<ULONG>(0, hier.detach()->Release());
 			Assert::AreEqual<ULONG>(0, folder1.detach()->Release());
 			Assert::AreEqual<ULONG>(0, folder2.detach()->Release());
@@ -226,6 +228,7 @@ namespace FelixTests
 				Assert::AreEqual(L"file4.asm", GetProperty_String(hier, file4ItemId, VSHPROPID_SaveName).get());
 			}
 
+			hier->Close();
 			Assert::AreEqual<ULONG>(0, hier.detach()->Release());
 			Assert::AreEqual<ULONG>(0, file1.detach()->Release());
 			Assert::AreEqual<ULONG>(0, file2.detach()->Release());
@@ -288,6 +291,7 @@ namespace FelixTests
 
 			com_ptr<IVsUIHierarchy> hier;
 			hr = sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), tempPath, L"TestProject.flx", CPF_CLONEFILE, IID_PPV_ARGS(&hier)); Assert::IsTrue(SUCCEEDED(hr));
+			auto close = wil::scope_exit([&hier] { hier->Close(); });
 
 			com_ptr<IVsProject> proj;
 			hr = hier->QueryInterface(IID_PPV_ARGS(&proj)); Assert::IsTrue(SUCCEEDED(hr));
@@ -345,6 +349,7 @@ namespace FelixTests
 			pip.reset();
 			proj.reset();
 
+			hier->Close();
 			ULONG refCount = hier.detach()->Release();
 			Assert::AreEqual<ULONG>(0, refCount);
 
@@ -395,6 +400,7 @@ namespace FelixTests
 				Assert::AreEqual(L"file.asm", fileName.bstrVal);
 			}
 
+			hier->Close();
 			ULONG refCount = hier.detach()->Release();
 			Assert::AreEqual<ULONG>(0, refCount);
 		}
@@ -403,6 +409,7 @@ namespace FelixTests
 		{
 			com_ptr<IVsHierarchy> hier;
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			auto close = wil::scope_exit([&hier] { hier->Close(); });
 			auto sink = MakeMockHierarchyEventSink();
 			VSCOOKIE cookie;
 			hr = hier->AdviseHierarchyEvents(sink, &cookie);
@@ -429,6 +436,7 @@ namespace FelixTests
 			com_ptr<IVsUIHierarchy> hier;
 			hr = sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), tempPath, ProjFileName, CPF_CLONEFILE, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
+			auto close = wil::scope_exit([&hier] { hier->Close(); });
 
 			WriteFileOnDisk(CombinePath(tempPath, L"template.asm").get(), "");
 			wil::unique_process_heap_string templateFileFullPath;
@@ -468,6 +476,7 @@ namespace FelixTests
 			com_ptr<IVsUIHierarchy> hier1;
 			auto hr = MakeProjectNode (nullptr, testPath.get(), nullptr, 0, IID_PPV_ARGS(&hier1));
 			Assert::IsTrue(SUCCEEDED(hr));
+			auto close1 = wil::scope_exit([&hier1] { hier1->Close(); });
 
 			wil::unique_variant folder1;
 			hr = hier1->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &folder1);
@@ -488,6 +497,7 @@ namespace FelixTests
 			com_ptr<IVsHierarchy> hier2;
 			hr = MakeProjectNode (nullptr, testPath.get(), nullptr, 0, IID_PPV_ARGS(&hier2));
 			Assert::IsTrue(SUCCEEDED(hr));
+			auto close2 = wil::scope_exit([&hier2] { hier2->Close(); });
 
 			hr = stream->Seek({ 0 }, STREAM_SEEK_SET, nullptr);
 			hr = LoadFromXml(hier2.try_query<IProjectNodeProperties>(), L"Temp", stream);
@@ -524,6 +534,7 @@ namespace FelixTests
 			com_ptr<IProjectNode> project;
 			hr = sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), testPath.get(), L"TestProject.flx", CPF_CLONEFILE, IID_PPV_ARGS(&project));
 			Assert::IsTrue(SUCCEEDED(hr));
+			auto close = wil::scope_exit([&project] { project->AsHierarchy()->Close(); });
 			auto config = AddDebugProjectConfig(project->AsHierarchy());
 
 			auto proj = wil::try_com_query_failfast<IVsProject2>(project);
@@ -623,6 +634,7 @@ namespace FelixTests
 			com_ptr<IVsHierarchy> hier;
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
+			auto close = wil::scope_exit([&hier] { hier->Close(); });
 
 			hr = LoadFromXml(hier.try_query<IProjectNodeProperties>(), ProjectElementName, stream);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -673,6 +685,7 @@ namespace FelixTests
 
 			com_ptr<IVsUIHierarchy> hier;
 			sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), testPath.get(), L"TestProject.flx", CPF_CLONEFILE, IID_PPV_ARGS(&hier));
+			auto close = wil::scope_exit([&hier] { hier->Close(); });
 			auto hierAsParent = hier.try_query<IParentNode>();
 
 			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
