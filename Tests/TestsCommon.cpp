@@ -50,19 +50,19 @@ void MakeTemplates (const wchar_t* tempDirName)
 	wil::unique_hfile (CreateFile(TemplatePath_EmptyFile.get(), GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL));
 }
 
-wil::unique_hlocal_string CombinePath (const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir)
+wil::unique_process_heap_string CombinePath (const wchar_t* dir, const wchar_t* pathRelativeToDir)
 {
-	Assert::IsTrue(!PathIsRelative(projectDir));
-	Assert::IsTrue(PathIsRelative(pathRelativeToProjectDir));
+	Assert::IsTrue(!PathIsRelative(dir));
+	Assert::IsTrue(PathIsRelative(pathRelativeToDir));
 	wil::unique_hlocal_string path;
-	auto hr = PathAllocCombine (projectDir, pathRelativeToProjectDir, PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS, path.addressof());
+	auto hr = PathAllocCombine (dir, pathRelativeToDir, PATHCCH_ALLOW_LONG_PATHS | PATHCCH_FORCE_ENABLE_LONG_NAME_PROCESS, path.addressof());
 	Assert::IsTrue(SUCCEEDED(hr));
 	for (wchar_t* p = path.get(); *p; ++p)
 	{
 		if (*p == L'/')
 			*p = L'\\';
 	}
-	return path;
+	return wil::make_process_heap_string_failfast(path.get());
 }
 
 void WriteFileOnDisk (wchar_t* path, const char* fileContent)

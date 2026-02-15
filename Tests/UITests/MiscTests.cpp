@@ -24,22 +24,40 @@ namespace UITests
 
 	TEST_CLASS(MiscTests)
 	{
-	public:
-		TEST_METHOD(LaunchVS)
+		wil::unique_process_heap_string testPath;
+		wil::unique_process_heap_string slnFilePath;
+		wil::unique_process_heap_string projPath;
+		wil::com_ptr_failfast<VxDTE::_Solution> sln;
+		wil::com_ptr_failfast<VxDTE::Project> proj;
+
+		TEST_METHOD_INITIALIZE(FileTestInit)
 		{
-			com_ptr<IUnknown> solution;
-			auto hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto sln = wil::com_query_failfast<VxDTE::_Solution>(solution);
-			sln->Close();
+			testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"MiscTests");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			std::tie(sln, proj) = CreateSolutionAndProject(testPath.get(), L"test", L"proj");
+			slnFilePath = CombinePath(testPath.get(), L"test.sln");
+			projPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\proj");
+		}
+
+		TEST_METHOD_CLEANUP(FileTestCleanup)
+		{
+			if (sln)
+			{
+				sln->Close();
+				sln.reset();
+				proj.reset();
+			}
+
+			if (testPath)
+			{
+				RemoveDirectoryTree(testPath.get());
+				testPath.reset();
+			}
 		}
 
 		TEST_METHOD(CloneProject)
 		{
 			HRESULT hr;
-			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"CloneProject");
-			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
 
 			com_ptr<IUnknown> solution;
 			hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
@@ -68,13 +86,6 @@ namespace UITests
 			// and succeeds with the new code that calls OpenSpecificEditor.
 
 			HRESULT hr;
-			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"OpenSpecificEditor");
-			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
-
-			auto[sln, proj] = CreateSolutionAndProject(testPath.get(), L"test", nullptr);
-			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
-
 			auto hier = proj.query<IVsUIHierarchy>();
 			VSITEMID itemid;
 			hr = hier->ParseCanonicalName(L"file.asm", &itemid);
@@ -88,13 +99,12 @@ namespace UITests
 			hr = sln->Close();
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto fullSlnPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\test.sln");
-			hr = sln->Open(wil::make_bstr_failfast(fullSlnPath.get()).get()); 
+			hr = sln->Open(wil::make_bstr_failfast(slnFilePath.get()).get()); 
 			Assert::IsTrue(SUCCEEDED(hr));
 			com_ptr<VxDTE::Projects> projects;
 			hr = sln->get_Projects(&projects);
 			Assert::IsTrue(SUCCEEDED(hr));
-			hr = projects->Item(wil::make_variant_bstr_failfast(L"test.flx"), &proj);
+			hr = projects->Item(wil::make_variant_bstr_failfast(L"proj.flx"), &proj);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			hier = proj.query<IVsUIHierarchy>();
@@ -140,13 +150,6 @@ namespace UITests
 		TEST_METHOD(AdviseFileChangeNotCalledOnProjectSave)
 		{
 			HRESULT hr;
-			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"AdviseFileChangeNotCalledOnProjectSave");
-			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
-
-			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", nullptr);
-			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
-
 			com_ptr<IDispatch> aodisp;
 			hr = dte->GetObject(wil::make_bstr_failfast(L"TestHelper").get(), &aodisp);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -184,18 +187,11 @@ namespace UITests
 			// This test verifies the fixes in these functions.
 
 			HRESULT hr;
-			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"NavigateToErrorInFileInSubdir");
-			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
-
-			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"testproj");
-			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
-
 			long buildFailCount;
 			BuildSolution(sln, &buildFailCount);
 			Assert::AreEqual(0l, buildFailCount);
 
-			auto file1Path = CombinePath(testPath.get(), L"testproj\\subdir\\file1.asm");
+			auto file1Path = CombinePath(projPath.get(), L"subdir\\file1.asm");
 			WriteFileOnDisk (file1Path.get(), "\t555555");
 
 			VSADDRESULT addResult;
@@ -258,14 +254,6 @@ namespace UITests
 			// and that they are _not_ regenerated when editing an inactive configuration.
 
 			HRESULT hr;
-
-			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"GenPrePostInclude_OnlyActiveCfg");
-			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
-
-			auto[sln0, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"testproj");
-			auto close = wil::scope_exit([sln=sln0.get()] { sln->Close(); });
-
 			// Let's not go through the configuration manager since we haven't implemented Project::get_ConfigurationManager yet.
 			//Microsoft_VisualStudio_Interop::_SolutionPtr sln = sln0.get();
 			//auto configs = sln->SolutionBuild->SolutionConfigurations;
@@ -279,7 +267,7 @@ namespace UITests
 			Assert::AreEqual(S_OK, hr);
 
 			// Make a change in the active configuration and verify that the Pre/PostInclude files are generated.
-			auto genFilesPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\testproj\\GeneratedFiles");
+			auto genFilesPath = CombinePath(projPath.get(), L"GeneratedFiles");
 			Assert::IsTrue(PathFileExists(genFilesPath.get()));
 			RemoveDirectoryTree(genFilesPath.get());
 
@@ -310,13 +298,6 @@ namespace UITests
 		TEST_METHOD(RemoveFileClosesEditor)
 		{
 			HRESULT hr;
-			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"RemoveFileClosesEditor");
-			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
-
-			auto[sln0, proj] = CreateSolutionAndProject (testPath.get(), L"test", NULL);
-			auto close = wil::scope_exit([sln=sln0.get()] { sln->Close(); });
-
 			VSITEMID itemId;
 			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"file.asm", &itemId);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -335,13 +316,6 @@ namespace UITests
 		TEST_METHOD(RemoveFolderAndFile_FolderFirstInList)
 		{
 			HRESULT hr;
-			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"RemoveFolderAndFile_FolderFirstInList");
-			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
-
-			auto[sln0, proj] = CreateSolutionAndProject (testPath.get(), L"test", NULL);
-			auto close = wil::scope_exit([sln=sln0.get()] { sln->Close(); });
-
 			auto hier = proj.query<IVsHierarchy>();
 			VSITEMID itemIds[2];
 			hr = hier->ParseCanonicalName(L"GeneratedFiles", &itemIds[0]);
@@ -356,13 +330,6 @@ namespace UITests
 		TEST_METHOD(RemoveFolderClosesEditors)
 		{
 			HRESULT hr;
-			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"RemoveFolderClosesEditors");
-			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
-
-			auto[sln0, proj] = CreateSolutionAndProject (testPath.get(), L"test", NULL);
-			auto close = wil::scope_exit([sln=sln0.get()] { sln->Close(); });
-
 			VSITEMID itemId;
 			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"GeneratedFiles\\PreInclude.asm", &itemId);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -383,20 +350,11 @@ namespace UITests
 		TEST_METHOD(AddNewFile_SameNameAsFileOutsideProjectDir)
 		{
 			HRESULT hr;
-			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"AddNewFile_SameNameAsFileOutsideProjectDir");
-			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
-
-			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"proj");
-			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
-
-			auto projPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\proj\\");
-
 			const wchar_t file1RelPath[] = L"test.asm";
-			auto file1Path = wil::str_concat_failfast<wil::unique_process_heap_string>(projPath, file1RelPath);
+			auto file1Path = CombinePath(projPath.get(), file1RelPath);
 			WriteFileOnDisk (file1Path.get(), "; comment");
 			const wchar_t file2RelPath[] = L"..\\test.asm";
-			auto file2Path = wil::str_concat_failfast<wil::unique_process_heap_string>(projPath, file2RelPath);
+			auto file2Path = CombinePath (projPath.get(), file2RelPath);
 			WriteFileOnDisk (file2Path.get(), "; comment");
 			wchar_t file3Path[] = L"D:\\FelixTest\\test.asm";
 			WriteFileOnDisk (file3Path, "; comment");
@@ -442,20 +400,11 @@ namespace UITests
 		TEST_METHOD(CloneFile_SameNameAsFileOutsideProjectDir)
 		{
 			HRESULT hr;
-			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"CloneFile_SameNameAsFileOutsideProjectDir");
-			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
-
-			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"proj");
-			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
-
-			auto templatePath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\template.asm");
+			auto templatePath = CombinePath(testPath.get(), L"template.asm");
 			WriteFileOnDisk (templatePath.get(), "; comment");
 
-			auto projPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\proj\\");
-
 			static const wchar_t file1RelPath[] = L"..\\test.asm";
-			auto file1Path = wil::str_concat_failfast<wil::unique_process_heap_string>(projPath, file1RelPath);
+			auto file1Path = CombinePath(projPath.get(), file1RelPath);
 			WriteFileOnDisk(file1Path.get(), "; comment");
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
@@ -470,14 +419,7 @@ namespace UITests
 		TEST_METHOD(CloneFileToFolderMissingOnDisk)
 		{
 			HRESULT hr;
-			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"CloneFileToFolderMissingOnDisk");
-			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
-
-			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"proj");
-			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
-
-			auto templatePath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\template.asm");
+			auto templatePath = CombinePath (testPath.get(), L"template.asm");
 			WriteFileOnDisk (templatePath.get(), "; comment");
 
 			wil::unique_variant folderItemId;
@@ -505,13 +447,6 @@ namespace UITests
 		TEST_METHOD(NotifyPropertyChangedFileFolderNodes)
 		{
 			HRESULT hr;
-			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"NotifyPropertyChangedFileFolderNodes");
-			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
-
-			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"proj");
-			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
-
 			auto hier = proj.query<IVsUIHierarchy>();
 			auto sink = MakeMockHierarchyEventSink();
 			VSCOOKIE hierEventsCookie;
@@ -537,13 +472,6 @@ namespace UITests
 		TEST_METHOD(NotifyItemInsertedRemoved)
 		{
 			HRESULT hr;
-			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"NotifyItemInsertedRemoved");
-			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
-
-			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", L"proj");
-			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
-
 			auto hier = proj.query<IVsUIHierarchy>();
 			auto sink = MakeMockHierarchyEventSink();
 			VSCOOKIE hierEventsCookie;
@@ -583,13 +511,6 @@ namespace UITests
 			// Tests how well these events are propagated, not necessarily if they are generated for every single property.
 
 			HRESULT hr;
-			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"NotifyPropertyChangingChanged_File");
-			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
-
-			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", nullptr);
-			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
-
 			auto changeSink = MakeTestPropertyChangeSink();
 			auto notifySink = MakeTestPropertyNotifySink();
 			auto disconnectSinks = wil::scope_exit([&changeSink, &notifySink]
@@ -661,13 +582,6 @@ namespace UITests
 			// Tests how well these events are propagated, not necessarily if they are generated for every single property.
 
 			HRESULT hr;
-			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"NotifyPropertyChangingChanged_Folder");
-			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
-
-			auto[sln, proj] = CreateSolutionAndProject (testPath.get(), L"test", nullptr);
-			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
-
 			auto changeSink = MakeTestPropertyChangeSink();
 			auto notifySink = MakeTestPropertyNotifySink();
 			auto disconnectSinks = wil::scope_exit([&changeSink, &notifySink]
