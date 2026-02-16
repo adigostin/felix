@@ -676,7 +676,7 @@ HRESULT PutBSTR (BSTR from, string_type& to)
 	}
 
 	wil::details::string_maker<string_type> maker;
-	RETURN_IF_FAILED(maker.make(SysAllocString(from), SysStringLen(from)));
+	RETURN_IF_FAILED(maker.make(from, SysStringLen(from)));
 	to = maker.release();
 	return S_OK;
 }

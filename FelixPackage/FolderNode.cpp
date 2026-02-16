@@ -683,8 +683,6 @@ public:
 		// Make sure the property browser is updated.
 		uiShell->RefreshPropertyBrowser(DISPID_UNKNOWN); // refresh all properties
 
-		proj.try_query<IPropertyNotifySink>()->OnChanged(dispidItems);
-
 		return S_OK;
 	}
 };
