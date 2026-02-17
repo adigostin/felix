@@ -1502,7 +1502,7 @@ HRESULT NotifyPropertyChanging (ConnectionPointImpl<IPropertyChangeSink>* cp, ID
 {
 	return cp->Notify([pDisp,dispid](IPropertyChangeSink* sink)
 		{
-			auto hr = sink->OnPropertyChanging(1, &pDisp, dispid, { }); RETURN_HR(hr);
+			auto hr = sink->OnPropertyChanging(pDisp, dispid, { }); RETURN_HR(hr);
 		});
 }
 
@@ -1510,7 +1510,7 @@ HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyChangeSink>* cp, IDi
 {
 	return cp->Notify([pDisp, dispid](IPropertyChangeSink* sink)
 		{
-			auto hr = sink->OnPropertyChanged(1, &pDisp, dispid, { }); RETURN_HR(hr);
+			auto hr = sink->OnPropertyChanged(pDisp, dispid, { }); RETURN_HR(hr);
 		});
 }
 
@@ -1520,7 +1520,7 @@ HRESULT NotifyPropertyChanging (ConnectionPointImpl<IPropertyChangeSink>* cp, ID
 		{
 			for (auto it = std::begin(dispids); it != std::end(dispids); it++)
 			{
-				auto hr = sink->OnPropertyChanging(1, &pDisp, *it, { }); RETURN_IF_FAILED(hr);
+				auto hr = sink->OnPropertyChanging(pDisp, *it, { }); RETURN_IF_FAILED(hr);
 			}
 			return S_OK;
 		});
@@ -1532,7 +1532,7 @@ HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyChangeSink>* cp, IDi
 		{
 			for (auto it = std::rbegin(dispids); it != std::rend(dispids); it++)
 			{
-				auto hr = sink->OnPropertyChanged(1, &pDisp, *it, { }); RETURN_IF_FAILED(hr);
+				auto hr = sink->OnPropertyChanged(pDisp, *it, { }); RETURN_IF_FAILED(hr);
 			}
 			return S_OK;
 		});

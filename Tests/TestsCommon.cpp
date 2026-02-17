@@ -208,25 +208,15 @@ struct TestPropertyChangeSink : ITestPropertyChangeSink
 	#pragma endregion
 
 	#pragma region IPropertyChangeSink
-	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanging( 
-		/* [in] */ UINT cObjects,
-		/* [size_is][in] */ IDispatch *const rgpObjects[  ],
-		/* [in] */ DISPID dispID,
-		/* [in] */ PropertyChangeArgs args) override
+	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanging (IDispatch* pObject, DISPID dispID, PropertyChangeArgs args) override
 	{
-		for (UINT i = 0; i < cObjects; i++)
-			_changing[rgpObjects[i]].insert(dispID);
+		_changing[pObject].insert(dispID);
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged( 
-		/* [in] */ UINT cObjects,
-		/* [size_is][in] */ IDispatch *const rgpObjects[  ],
-		/* [in] */ DISPID dispID,
-		/* [in] */ PropertyChangeArgs args) override
+	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged (IDispatch* pObject, DISPID dispID, PropertyChangeArgs args) override
 	{
-		for (UINT i = 0; i < cObjects; i++)
-			_changed[rgpObjects[i]].insert(dispID);
+		_changed[pObject].insert(dispID);
 		return S_OK;
 	}
 	#pragma endregion

@@ -633,32 +633,32 @@ public:
 	#pragma endregion
 	
 	#pragma region IPropertyChangeSink
-	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanging (UINT cObjects, IDispatch* const rgpObjects[], DISPID dispID, PropertyChangeArgs args) override
+	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanging (IDispatch* pObject, DISPID dispID, PropertyChangeArgs args) override
 	{
-		if (rgpObjects[0] == _generalProps)
+		if (pObject == _generalProps)
 			return NotifyPropertyChanging(_propChangeCP, this, { dispidGeneralProperties });
-		if (rgpObjects[0] == _assemblerProps)
+		if (pObject == _assemblerProps)
 			return NotifyPropertyChanging(_propChangeCP, this, { dispidAssemblerProperties });
-		if (rgpObjects[0] == _debugProps)
+		if (pObject == _debugProps)
 			return NotifyPropertyChanging(_propChangeCP, this, { dispidDebuggingProperties });
-		if (rgpObjects[0] == _preBuildProps)
+		if (pObject == _preBuildProps)
 			return NotifyPropertyChanging(_propChangeCP, this, { dispidPreBuildProperties });
-		if (rgpObjects[0] == _postBuildProps)
+		if (pObject == _postBuildProps)
 			return NotifyPropertyChanging(_propChangeCP, this, { dispidPostBuildProperties });
 		RETURN_HR(E_NOTIMPL);
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged (UINT cObjects, IDispatch* const rgpObjects[], DISPID dispID, PropertyChangeArgs args) override
+	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged (IDispatch* pObject, DISPID dispID, PropertyChangeArgs args) override
 	{
-		if (rgpObjects[0] == _generalProps)
+		if (pObject == _generalProps)
 			return NotifyPropertyChanged(_propChangeCP, this, { dispidGeneralProperties });
-		if (rgpObjects[0] == _assemblerProps)
+		if (pObject == _assemblerProps)
 			return NotifyPropertyChanged(_propChangeCP, this, { dispidAssemblerProperties });
-		if (rgpObjects[0] == _debugProps)
+		if (pObject == _debugProps)
 			return NotifyPropertyChanged(_propChangeCP, this, { dispidDebuggingProperties });
-		if (rgpObjects[0] == _preBuildProps)
+		if (pObject == _preBuildProps)
 			return NotifyPropertyChanged(_propChangeCP, this, { dispidPreBuildProperties });
-		if (rgpObjects[0] == _postBuildProps)
+		if (pObject == _postBuildProps)
 			return NotifyPropertyChanged(_propChangeCP, this, { dispidPostBuildProperties });
 		RETURN_HR(E_NOTIMPL);
 	}

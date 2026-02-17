@@ -933,26 +933,17 @@ public:
 	}
 	#pragma endregion
 
-
 	#pragma region IPropertyChangeSink
-	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanging( 
-		/* [in] */ UINT cObjects,
-		/* [size_is][in] */ IDispatch *const rgpObjects[  ],
-		/* [in] */ DISPID dispID,
-		/* [in] */ PropertyChangeArgs args) override
+	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanging (IDispatch* pObject, DISPID dispID, PropertyChangeArgs args) override
 	{
-		if (cObjects == 1 && rgpObjects[0] == _customBuildToolProps)
+		if (pObject == _customBuildToolProps)
 			return NotifyPropertyChanging(_propChangeCP, this, { dispidCustomBuildToolProps });
 		RETURN_HR(E_NOTIMPL);
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged( 
-		/* [in] */ UINT cObjects,
-		/* [size_is][in] */ IDispatch *const rgpObjects[  ],
-		/* [in] */ DISPID dispID,
-		/* [in] */ PropertyChangeArgs args) override
+	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged (IDispatch* pObject, DISPID dispID, PropertyChangeArgs args) override
 	{
-		if (cObjects == 1 && rgpObjects[0] == _customBuildToolProps)
+		if (pObject == _customBuildToolProps)
 			return NotifyPropertyChanged(_propChangeCP, this, { dispidCustomBuildToolProps });
 		RETURN_HR(E_NOTIMPL);
 	}

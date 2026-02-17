@@ -2771,28 +2771,20 @@ public:
 	#pragma endregion
 
 	#pragma region IPropertyChangeSink
-	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanging( 
-		/* [in] */ UINT cObjects,
-		/* [size_is][in] */ IDispatch *const rgpObjects[  ],
-		/* [in] */ DISPID dispID,
-		/* [in] */ PropertyChangeArgs args) override
+	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanging (IDispatch* pObject, DISPID dispID, PropertyChangeArgs args) override
 	{
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged( 
-		/* [in] */ UINT cObjects,
-		/* [size_is][in] */ IDispatch *const rgpObjects[  ],
-		/* [in] */ DISPID dispID,
-		/* [in] */ PropertyChangeArgs args) override
+	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged (IDispatch* pObject, DISPID dispID, PropertyChangeArgs args) override
 	{
 		HRESULT hr;
 		com_ptr<IProjectConfig> config;
 		com_ptr<IProjectConfigAssemblerProperties> asmProps;
 		com_ptr<IProjectConfigGeneralProperties> generalProps;
-		if ((config = wil::try_com_query_nothrow<IProjectConfig>(rgpObjects[0]))
-			|| (asmProps = wil::try_com_query_nothrow<IProjectConfigAssemblerProperties>(rgpObjects[0]))
-			|| (generalProps = wil::try_com_query_nothrow<IProjectConfigGeneralProperties>(rgpObjects[0])))
+		if ((config = wil::try_com_query_nothrow<IProjectConfig>(pObject))
+			|| (asmProps = wil::try_com_query_nothrow<IProjectConfigAssemblerProperties>(pObject))
+			|| (generalProps = wil::try_com_query_nothrow<IProjectConfigGeneralProperties>(pObject)))
 		{
 			com_ptr<IVsSolutionBuildManager> buildManager;
 			hr = serviceProvider->QueryService(SID_SVsSolutionBuildManager, IID_PPV_ARGS(&buildManager)); RETURN_IF_FAILED(hr);
