@@ -758,7 +758,7 @@ public:
 
 		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
-			return d->GetProperty(propid, pvar);
+			return d->GetProperty(this, propid, pvar);
 
 		// VS 17.14.26 seems to have a bug in Microsoft.VisualStudio.PlatformUI.HierarchyItem.StateIconMoniker.get:
 		// due to a race condition, it requests VSHPROPID_StateIconIndex on a disposed HierarchyItem.
@@ -834,7 +834,7 @@ public:
 
 		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
-			return d->SetProperty(propid, var);
+			return d->SetProperty(this, propid, var);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
@@ -872,7 +872,7 @@ public:
 
 		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
-			return d->GetCanonicalName(pbstrName);
+			return d->GetCanonicalName(this, pbstrName);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
@@ -889,10 +889,10 @@ public:
 			return *pitemid = VSITEMID_ROOT, S_OK;
 
 		com_ptr<IChildNode> c;
-		hr = FindDescendantIf([pszName](IChildNode* c)
+		hr = FindDescendantIf([this, pszName](IChildNode* c)
 			{
 				wil::unique_bstr childCN;
-				auto hr = c->GetCanonicalName(&childCN); RETURN_IF_FAILED(hr);
+				auto hr = c->GetCanonicalName(this, &childCN); RETURN_IF_FAILED(hr);
 				return _wcsicmp(childCN.get(), pszName) ? S_FALSE : S_OK;
 			}, &c);
 		RETURN_IF_FAILED(hr);
@@ -1367,7 +1367,7 @@ public:
 		if (FindDescendant(itemid, &d) == S_OK)
 		{
 			if (cCmds == 1)
-				return d->QueryStatusCommand (pguidCmdGroup, prgCmds, pCmdText);
+				return d->QueryStatusCommand (this, pguidCmdGroup, prgCmds, pCmdText);
 			RETURN_HR(E_NOTIMPL);
 		}
 
@@ -1403,7 +1403,7 @@ public:
 
 		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
-			return d->ExecCommand (pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
+			return d->ExecCommand (this, pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
@@ -1641,7 +1641,7 @@ public:
 				if (auto file = wil::try_com_query_nothrow<IFileNode>(c))
 				{
 					wil::unique_bstr path;
-					auto hr = file->GetMkDocument(&path); RETURN_IF_FAILED(hr);
+					auto hr = file->GetMkDocument(this, &path); RETURN_IF_FAILED(hr);
 					return _wcsicmp(fullPath, path.get()) ? S_FALSE : S_OK;
 				}
 				else
@@ -1680,7 +1680,7 @@ public:
 
 		com_ptr<IChildNode> d;
 		if (FindDescendant(itemid, &d) == S_OK)
-			return d->GetMkDocument(pbstrMkDocument);
+			return d->GetMkDocument(this, pbstrMkDocument);
 
 		RETURN_HR_MSG(E_INVALIDARG, "itemid=%u", itemid);
 	}
@@ -1696,7 +1696,7 @@ public:
 		com_ptr<IFileNode> file;
 		hr = d->QueryInterface(IID_PPV_ARGS(&file)); RETURN_IF_FAILED(hr);
 		wil::unique_bstr mkDocument;
-		hr = file->GetMkDocument(&mkDocument); RETURN_IF_FAILED(hr);
+		hr = file->GetMkDocument(this, &mkDocument); RETURN_IF_FAILED(hr);
 
 		com_ptr<IVsUIShellOpenDocument> uiShellOpenDocument;
 		hr = serviceProvider->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED_EXPECTED(hr);
@@ -1717,7 +1717,7 @@ public:
 		hr = (*ppWindowFrame)->GetProperty(VSFPROPID_DocCookie, &var); LOG_IF_FAILED(hr);
 		if (SUCCEEDED(hr) && (var.vt == VT_VSCOOKIE) && (V_VSCOOKIE(&var) != VSDOCCOOKIE_NIL))
 		{
-			hr = d->SetProperty (VSHPROPID_ItemDocCookie, var); LOG_IF_FAILED(hr);
+			hr = d->SetProperty (this, VSHPROPID_ItemDocCookie, var); LOG_IF_FAILED(hr);
 		}
 
 		return S_OK;
@@ -1743,7 +1743,7 @@ public:
 		{
 			com_ptr<IChildNode> n;
 			hr = FindDescendant(itemidLoc, &n); RETURN_IF_FAILED_EXPECTED(hr); RETURN_HR_IF_EXPECTED(E_INVALIDARG, hr != S_OK);
-			hr = GetPathOf(n, path); RETURN_IF_FAILED_EXPECTED(hr);
+			hr = GetPathOf(this, n, path); RETURN_IF_FAILED_EXPECTED(hr);
 		}
 
 		for (uint32_t i = 0; i < 1000; i++)
@@ -1779,7 +1779,7 @@ public:
 		else
 		{
 			wil::unique_bstr locationDir;
-			hr = wil::try_com_query_nothrow<IChildNode>(location)->GetMkDocument(&locationDir); RETURN_IF_FAILED(hr);
+			hr = wil::try_com_query_nothrow<IChildNode>(location)->GetMkDocument(this, &locationDir); RETURN_IF_FAILED(hr);
 			hr = wil::str_concat_nothrow (dest, locationDir, L"\\", pszNewFileName); RETURN_IF_FAILED(hr);
 		}
 
@@ -1853,7 +1853,7 @@ public:
 					auto dir = wil::make_process_heap_string_nothrow (ptrComponent, nextComp - ptrComponent); RETURN_IF_NULL_ALLOC(dir);
 					ptrComponent = nextComp + 1;
 					com_ptr<IFolderNode> ch;
-					hr = GetOrCreateChildFolder(parent, dir.get(), true, &ch); RETURN_IF_FAILED(hr);
+					hr = GetOrCreateChildFolder(this, parent, dir.get(), true, &ch); RETURN_IF_FAILED(hr);
 					parent = ch->AsParentNode(); 
 				}
 
@@ -1871,7 +1871,7 @@ public:
 				}
 
 				hr = MakeFileNodeForExistingFile (ptrComponent, &file); RETURN_IF_FAILED(hr);
-				hr = AddFileToParent(file, parent); RETURN_IF_FAILED(hr);
+				hr = AddFileToParent(this, file, parent); RETURN_IF_FAILED(hr);
 			}
 			else
 			{
@@ -1879,7 +1879,7 @@ public:
 				// Add as link to the folder selected by the user when starting the UI command.
 				hr = EnsureFilePathUniqueInProject(relative); RETURN_IF_FAILED_EXPECTED(hr);
 				hr = MakeFileNodeForExistingFile (relative, &file); RETURN_IF_FAILED(hr);
-				hr = AddFileToParent(file, location); RETURN_IF_FAILED(hr);
+				hr = AddFileToParent(this, file, location); RETURN_IF_FAILED(hr);
 			}
 		}
 		else
@@ -1888,7 +1888,7 @@ public:
 			// Add as link to the folder selected by the user when starting the UI command.
 			hr = EnsureFilePathUniqueInProject(pszFullPathSource); RETURN_IF_FAILED_EXPECTED(hr);
 			hr = MakeFileNodeForExistingFile (pszFullPathSource, &file); RETURN_IF_FAILED(hr);
-			hr = AddFileToParent(file, location); RETURN_IF_FAILED(hr);
+			hr = AddFileToParent(this, file, location); RETURN_IF_FAILED(hr);
 		}
 
 		if (_configs.size())
@@ -1996,7 +1996,7 @@ public:
 		com_ptr<IFileNode> file;
 		hr = d->QueryInterface(IID_PPV_ARGS(&file)); RETURN_IF_FAILED_EXPECTED(hr);
 		wil::unique_bstr mkDocument;
-		hr = file->GetMkDocument(&mkDocument); RETURN_IF_FAILED_EXPECTED(hr);
+		hr = file->GetMkDocument(this, &mkDocument); RETURN_IF_FAILED_EXPECTED(hr);
 
 		com_ptr<IVsUIShellOpenDocument> uiShellOpenDocument;
 		hr = serviceProvider->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED(hr);
@@ -2008,7 +2008,7 @@ public:
 		hr = (*ppWindowFrame)->GetProperty(VSFPROPID_DocCookie, &var); LOG_IF_FAILED(hr);
 		if (SUCCEEDED(hr) && (var.vt == VT_VSCOOKIE) && (V_VSCOOKIE(&var) != VSDOCCOOKIE_NIL))
 		{
-			hr = d->SetProperty (VSHPROPID_ItemDocCookie, var); LOG_IF_FAILED(hr);
+			hr = d->SetProperty (this, VSHPROPID_ItemDocCookie, var); LOG_IF_FAILED(hr);
 		}
 
 		return S_OK;
@@ -2417,7 +2417,7 @@ public:
 			if (dwDelItemOp == DELITEMOP_DeleteFromStorage)
 			{
 				wil::unique_process_heap_string mk;
-				hr = GetPathOf(d, mk); RETURN_IF_FAILED(hr);
+				hr = GetPathOf(this, d, mk); RETURN_IF_FAILED(hr);
 
 				hr = RemoveChildFromParent(this, d); RETURN_IF_FAILED(hr);
 
@@ -3048,7 +3048,7 @@ public:
 			com_ptr<IChildNode> node;
 			hr = FindDescendant(parentItemId, &node); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_INVALIDARG, hr == S_FALSE);
 			hr = node->QueryInterface(IID_PPV_ARGS(&parent)); RETURN_IF_FAILED(hr);
-			hr = GetPathOf (node, parentPath); RETURN_IF_FAILED(hr);
+			hr = GetPathOf (this, node, parentPath); RETURN_IF_FAILED(hr);
 		}
 
 		wil::unique_bstr newFolderName;
@@ -3064,7 +3064,7 @@ public:
 			for (auto c = parent->FirstChild(); !!c; c = c->Next())
 			{
 				wil::unique_variant nameVar;
-				hr = c->GetProperty(VSHPROPID_Name, &nameVar); RETURN_IF_FAILED(hr);
+				hr = c->GetProperty(this, VSHPROPID_Name, &nameVar); RETURN_IF_FAILED(hr);
 				if (!_wcsicmp(nameVar.bstrVal, dirName))
 				{
 					nameExists = true;
@@ -3086,7 +3086,7 @@ public:
 		}
 
 		com_ptr<IFolderNode> newFolder;
-		hr = GetOrCreateChildFolder (parent, dirName, true, &newFolder); RETURN_IF_FAILED(hr);
+		hr = GetOrCreateChildFolder (this, parent, dirName, true, &newFolder); RETURN_IF_FAILED(hr);
 
 		_isDirty = true;
 

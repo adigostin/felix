@@ -13,8 +13,8 @@ namespace FelixTests
 	public:
 		TEST_METHOD(PutItemsOneFile)
 		{
-			com_ptr<IVsHierarchy> hier;
-			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			com_ptr<IProjectNode> proj;
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&proj));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			auto file = MakeFileNode(L"test.asm");
@@ -26,23 +26,22 @@ namespace FelixTests
 				Assert::IsTrue(SUCCEEDED(hr));
 				LONG i = 0;
 				SafeArrayPutElement (sa.get(), &i, file.try_query<IDispatch>());
-				hr = hier.try_query<IProjectNodeProperties>()->put_Items(sa.get());
+				hr = proj.try_query<IProjectNodeProperties>()->put_Items(sa.get());
 				Assert::IsTrue(SUCCEEDED(hr));
 
 				Assert::AreNotEqual<VSITEMID>(VSITEMID_NIL, file->GetItemId());
 
-				auto pip = hier.try_query<IParentNode>();
-				IUnknown* firstChild = wil::try_com_query_nothrow<IUnknown>(pip->FirstChild());
+				IUnknown* firstChild = wil::try_com_query_nothrow<IUnknown>(proj->FirstChild());
 				Assert::AreEqual<void*>(file.try_query<IUnknown>().get(), firstChild);
 
 				wil::unique_variant parentID;
-				hr = file->GetProperty(VSHPROPID_Parent, &parentID);
+				hr = file->GetProperty(proj, VSHPROPID_Parent, &parentID);
 				Assert::IsTrue(SUCCEEDED(hr));
 				Assert::AreEqual<VSITEMID>(VSITEMID_ROOT, V_VSITEMID(&parentID));
 			}
 
-			hier->Close();
-			ULONG refCount = hier.detach()->Release();
+			proj->AsHierarchy()->Close();
+			ULONG refCount = proj.detach()->Release();
 			Assert::AreEqual<ULONG>(0, refCount);
 
 			refCount = file.detach()->Release();
@@ -882,7 +881,7 @@ namespace FelixTests
 			for (auto c = project->FirstChild(); c != nullptr; c = c->Next())
 			{
 				wil::unique_variant n;
-				if (fn = wil::try_com_query_nothrow<IFileNode>(c); fn && SUCCEEDED(fn->GetProperty(VSHPROPID_SaveName, &n)) && V_VT(&n) == VT_BSTR && !wcscmp(FileName, V_BSTR(&n)))
+				if (fn = wil::try_com_query_nothrow<IFileNode>(c); fn && SUCCEEDED(fn->GetProperty(project, VSHPROPID_SaveName, &n)) && V_VT(&n) == VT_BSTR && !wcscmp(FileName, V_BSTR(&n)))
 					break;
 			}
 			Assert::IsNotNull(fn.get());

@@ -275,7 +275,7 @@ static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* project, IProject
 	wil::unique_bstr genFilesStr;
 	hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERATED_FILES, &genFilesStr); RETURN_IF_FAILED(hr);
 	com_ptr<IFolderNode> folder;
-	hr = GetOrCreateChildFolder(project, genFilesStr.get(), true, &folder); RETURN_IF_FAILED(hr);
+	hr = GetOrCreateChildFolder(project, project, genFilesStr.get(), true, &folder); RETURN_IF_FAILED(hr);
 
 	wil::unique_process_heap_string packageDir;
 	hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, packageDir); RETURN_IF_FAILED(hr);
@@ -286,19 +286,19 @@ static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* project, IProject
 		wil::unique_bstr fileName;
 		hr = shell->LoadPackageString(CLSID_FelixPackage, resID, &fileName); RETURN_IF_FAILED(hr);
 
-		com_ptr<IFileNode> file = FindChildFileByName(folder->AsParentNode(), fileName.get());
+		com_ptr<IFileNode> file = FindChildFileByName(project, folder->AsParentNode(), fileName.get());
 		if (!file)
 		{
 			hr = MakeFileNodeForExistingFile (fileName.get(), &file); RETURN_IF_FAILED(hr);
 			file.try_query<IFileNodeProperties>()->put_IsGenerated(TRUE);
-			hr = AddFileToParent(file, folder->AsParentNode()); RETURN_IF_FAILED(hr);
+			hr = AddFileToParent(project, file, folder->AsParentNode()); RETURN_IF_FAILED(hr);
 		}
 
 		wil::unique_process_heap_string templatePath;
 		hr = wil::str_concat_nothrow(templatePath, packageDir, L"Templates\\", fileName); RETURN_IF_FAILED(hr);
 
 		wil::unique_process_heap_string includePath;
-		hr = GetPathOf(file, includePath); RETURN_IF_FAILED(hr);
+		hr = GetPathOf(project, file, includePath); RETURN_IF_FAILED(hr);
 		hr = CreateFileFromTemplate(templatePath.get(), includePath.get(), macroResolver); RETURN_IF_FAILED(hr);
 	}
 
@@ -396,7 +396,7 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project)
 				for (auto c = genFilesFolder->AsParentNode()->FirstChild(); c; c = c->Next())
 				{
 					wil::unique_process_heap_string path;
-					hr = GetPathOf (c, path); RETURN_IF_FAILED(hr);
+					hr = GetPathOf (project, c, path); RETURN_IF_FAILED(hr);
 					VSDOCCOOKIE docCookie;
 					hr = rdt->FindAndLockDocument(RDT_NoLock, path.get(), nullptr, nullptr, nullptr, &docCookie);
 					if (SUCCEEDED(hr) && docCookie != VSDOCCOOKIE_NIL)
@@ -407,7 +407,7 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project)
 			}
 
 			wil::unique_process_heap_string genDirPath;
-			hr = GetPathOf(genFilesFolder, genDirPath); RETURN_IF_FAILED(hr);
+			hr = GetPathOf(project, genFilesFolder, genDirPath); RETURN_IF_FAILED(hr);
 
 			hr = RemoveChildFromParent(project, genFilesFolder); RETURN_IF_FAILED(hr);
 
@@ -494,7 +494,7 @@ FELIX_API HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* c
 		com_ptr<IFolderNode> folder;
 		wil::unique_variant folderName;
 		if (SUCCEEDED(c->QueryInterface(IID_PPV_ARGS(&folder)))
-			&& SUCCEEDED(folder->GetProperty(VSHPROPID_SaveName, &folderName))
+			&& SUCCEEDED(folder->GetProperty(project, VSHPROPID_SaveName, &folderName))
 			&& folderName.vt == VT_BSTR && folderName.bstrVal
 			&& !wcscmp(folderName.bstrVal, generatedFilesName.get()))
 		{
@@ -502,10 +502,10 @@ FELIX_API HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* c
 			hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_PREINCLUDE, &preincludeName); RETURN_IF_FAILED(hr);
 			hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_POSTINCLUDE, &postincludeName); RETURN_IF_FAILED(hr);
 
-			if (auto file = FindChildFileByName(folder->AsParentNode(), preincludeName.get()))
+			if (auto file = FindChildFileByName(project, folder->AsParentNode(), preincludeName.get()))
 				preIncludeFile = wil::try_com_query_nothrow<IFileNodeProperties>(file);
 
-			if (auto file = FindChildFileByName(folder->AsParentNode(), postincludeName.get()))
+			if (auto file = FindChildFileByName(project, folder->AsParentNode(), postincludeName.get()))
 				postIncludeFile = wil::try_com_query_nothrow<IFileNodeProperties>(file);
 
 			genFilesFolder = std::move(folder);
@@ -649,7 +649,7 @@ FELIX_API HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* c
 			com_ptr<IFileNode> fn;
 			hr = asmFile->QueryInterface(IID_PPV_ARGS(&fn)); RETURN_IF_FAILED(hr);
 			wil::unique_process_heap_string relative;
-			hr = GetPathOf (fn, relative, true); RETURN_IF_FAILED(hr);
+			hr = GetPathOf (project, fn, relative, true); RETURN_IF_FAILED(hr);
 			hr = Write(cmdLine, relative.get()); RETURN_IF_FAILED(hr);
 		}
 		else
@@ -736,7 +736,7 @@ HRESULT GetHierarchyWindow (IVsUIHierarchyWindow** ppHierWindow)
 	return docViewVar.punkVal->QueryInterface(ppHierWindow);
 }
 
-HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir, bool relativeToProjectDir)
+HRESULT GetPathTo (IProjectNode* proj, IChildNode* node, wil::unique_process_heap_string& dir, bool relativeToProjectDir)
 {
 	HRESULT hr;
 
@@ -763,49 +763,28 @@ HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir, bool 
 	{
 		com_ptr<IChildNode> parentAsChild;
 		hr = parent->QueryInterface(IID_PPV_ARGS(&parentAsChild)); RETURN_IF_FAILED(hr);
-		hr = GetPathTo (parentAsChild, dir, relativeToProjectDir);
+		hr = GetPathTo (proj, parentAsChild, dir, relativeToProjectDir);
 		wil::unique_variant parentName;
-		hr = parentAsChild->GetProperty(VSHPROPID_SaveName, &parentName); RETURN_IF_FAILED(hr);
+		hr = parentAsChild->GetProperty(proj, VSHPROPID_SaveName, &parentName); RETURN_IF_FAILED(hr);
 		hr = wil::str_concat_nothrow(dir, parentName.bstrVal, L"\\"); RETURN_IF_FAILED(hr);
 	}
 		
 	return S_OK;
 }
 
-HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path, bool relativeToProjectDir)
+HRESULT GetPathOf (IProjectNode* proj, IChildNode* node, wil::unique_process_heap_string& path, bool relativeToProjectDir)
 {
 	HRESULT hr;
-	hr = GetPathTo (node, path, relativeToProjectDir); RETURN_IF_FAILED(hr);
+	hr = GetPathTo (proj, node, path, relativeToProjectDir); RETURN_IF_FAILED(hr);
 	if (!relativeToProjectDir)
 		WI_ASSERT(path && path.get()[0] && wcschr(path.get(), 0)[-1] == L'\\');
 	else
 		WI_ASSERT(path && path.get()[0] != L'\\');
 	wil::unique_variant name;
-	hr = node->GetProperty(VSHPROPID_SaveName, &name); RETURN_IF_FAILED(hr);
+	hr = node->GetProperty(proj, VSHPROPID_SaveName, &name); RETURN_IF_FAILED(hr);
 	RETURN_HR_IF(E_UNEXPECTED, name.vt != VT_BSTR);
 	hr = wil::str_concat_nothrow(path, name.bstrVal); RETURN_IF_FAILED(hr);
 	return S_OK;
-}
-
-HRESULT FindHier (IChildNode* from, REFIID riid, void** ppvHier)
-{
-	com_ptr<IParentNode> parent;
-	auto hr = from->GetParent(&parent); RETURN_IF_FAILED(hr);
-	return FindHier(parent, riid, ppvHier);
-}
-
-HRESULT FindHier (IParentNode* from, REFIID riid, void** ppvHier)
-{
-	com_ptr<IVsHierarchy> hier;
-	auto hr = from->QueryInterface(IID_PPV_ARGS(hier.addressof()));
-	if (hr == S_OK)
-		return hier->QueryInterface(riid, ppvHier);
-	if (hr != E_NOINTERFACE)
-		RETURN_HR(hr);
-
-	com_ptr<IChildNode> pc;
-	hr = from->QueryInterface(IID_PPV_ARGS(&pc)); RETURN_IF_FAILED(hr);
-	return FindHier(pc, riid, ppvHier);
 }
 
 // Enum depth-first (just because it's simpler) pre-order mode (so that parents get their ItemId before children).
@@ -837,7 +816,7 @@ static HRESULT SetItemIdsTree (IProjectNode* root, IChildNode* child, IChildNode
 	return enumNodeAndChildren(child, childPrevSibling, addTo);
 }
 
-HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo)
+HRESULT AddFileToParent (IProjectNode* proj, IFileNode* child, IParentNode* addTo)
 {
 	HRESULT hr;
 	RETURN_HR_IF(E_UNEXPECTED, child->GetItemId() != VSITEMID_NIL);
@@ -856,7 +835,7 @@ HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo)
 		// Do we need to insert it in the first position?
 		wil::unique_variant name;
 		if (!wil::try_com_query_nothrow<IFolderNode>(addTo->FirstChild())
-			&& SUCCEEDED(addTo->FirstChild()->GetProperty(VSHPROPID_SaveName, &name))
+			&& SUCCEEDED(addTo->FirstChild()->GetProperty(proj, VSHPROPID_SaveName, &name))
 			&& _wcsicmp(childName, name.bstrVal) < 0)
 		{
 			// Yes
@@ -875,7 +854,7 @@ HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo)
 			if (insertAfter->Next())
 			{
 				while (insertAfter->Next()
-					&& SUCCEEDED(insertAfter->Next()->GetProperty(VSHPROPID_SaveName, &name))
+					&& SUCCEEDED(insertAfter->Next()->GetProperty(proj, VSHPROPID_SaveName, &name))
 					&& _wcsicmp(childName, name.bstrVal) > 0)
 				{
 					insertAfter = insertAfter->Next();
@@ -892,26 +871,24 @@ HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo)
 	if (addTo->GetItemId() != VSITEMID_NIL)
 	{
 		// Adding it to a hierarchy.
-		com_ptr<IProjectNode> root;
-		auto hr = FindHier(addTo, IID_PPV_ARGS(&root)); RETURN_IF_FAILED(hr);
-		hr = SetItemIdsTree (root, child, prevChild, addTo); RETURN_IF_FAILED(hr);
+		hr = SetItemIdsTree (proj, child, prevChild, addTo); RETURN_IF_FAILED(hr);
 
 		// Since our expandable status may have changed, we need to refresh it in the UI.
-		root->NotifyPropertyChangedHierNode (addTo->GetItemId(), VSHPROPID_Expandable);
+		proj->NotifyPropertyChangedHierNode (addTo->GetItemId(), VSHPROPID_Expandable);
 	}
 
 	return S_OK;
 }
 
-FELIX_API HRESULT GetOrCreateChildFolder (IParentNode* parent, const wchar_t* folderName, bool createDirectoryOnFileSystem, IFolderNode** ppFolder)
+FELIX_API HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, bool createDirectoryOnFileSystem, IFolderNode** ppFolder)
 {
 	HRESULT hr;
 
 	stdext::inplace_function<HRESULT(IFolderNode*)> createDir;
-	createDir = [&createDir](IFolderNode* f) -> HRESULT
+	createDir = [&createDir, proj](IFolderNode* f) -> HRESULT
 		{
 			wil::unique_process_heap_string path;
-			auto hr = GetPathOf (f, path); RETURN_IF_FAILED(hr);
+			auto hr = GetPathOf (proj, f, path); RETURN_IF_FAILED(hr);
 			if (!CreateDirectoryW (path.get(), nullptr))
 			{
 				DWORD lastError = ::GetLastError();
@@ -947,7 +924,7 @@ FELIX_API HRESULT GetOrCreateChildFolder (IParentNode* parent, const wchar_t* fo
 			break;
 
 		wil::unique_variant name;
-		if (SUCCEEDED(insertBeforeAsFolder->GetProperty(VSHPROPID_SaveName, &name)) && (V_VT(&name) == VT_BSTR))
+		if (SUCCEEDED(insertBeforeAsFolder->GetProperty(proj, VSHPROPID_SaveName, &name)) && (V_VT(&name) == VT_BSTR))
 		{
 			if (!_wcsicmp(folderName, V_BSTR(&name)))
 			{
@@ -982,13 +959,10 @@ FELIX_API HRESULT GetOrCreateChildFolder (IParentNode* parent, const wchar_t* fo
 	if (parent->GetItemId() != VSITEMID_NIL)
 	{
 		// Adding it to a hierarchy.
-		com_ptr<IProjectNode> root;
-		auto hr = FindHier(parent, IID_PPV_ARGS(&root)); RETURN_IF_FAILED(hr);
-
-		hr = SetItemIdsTree (root, newFolder, insertAfter, parent); RETURN_IF_FAILED(hr);
+		hr = SetItemIdsTree (proj, newFolder, insertAfter, parent); RETURN_IF_FAILED(hr);
 
 		// Since our expandable status may have changed, we need to refresh it in the UI.
-		root->NotifyPropertyChangedHierNode (parent->GetItemId(), VSHPROPID_Expandable);
+		proj->NotifyPropertyChangedHierNode (parent->GetItemId(), VSHPROPID_Expandable);
 	}
 
 	if (createDirectoryOnFileSystem)
@@ -1095,6 +1069,12 @@ HRESULT PutItems (SAFEARRAY* sa, IParentNode* parent)
 {
 	HRESULT hr;
 
+	// To keep things simple and the loading code fast, this function expects to put items either
+	// directly in the project (in which case it calls SetItemIdsTree), or to some other parent item
+	// that's _not_yet_ added to a hierarchy.
+	auto proj = wil::try_com_query_nothrow<IProjectNode>(parent);
+	RETURN_HR_IF(E_UNEXPECTED, !proj && parent->GetItemId() != VSITEMID_NIL);
+
 	VARTYPE vt;
 	hr = SafeArrayGetVartype(sa, &vt); RETURN_IF_FAILED(hr);
 	RETURN_HR_IF(E_NOTIMPL, vt != VT_DISPATCH);
@@ -1128,11 +1108,9 @@ HRESULT PutItems (SAFEARRAY* sa, IParentNode* parent)
 				insertAfter->SetNext(node);
 			}
 
-			if (parent->GetItemId() != VSITEMID_NIL)
+			if (proj)
 			{
-				com_ptr<IProjectNode> root;
-				auto hr = FindHier (parent, IID_PPV_ARGS(&root)); RETURN_IF_FAILED(hr);
-				hr = SetItemIdsTree (root, node, insertAfter, parent); RETURN_IF_FAILED(hr);
+				hr = SetItemIdsTree (proj, node, insertAfter, parent); RETURN_IF_FAILED(hr);
 			}
 		}
 		else
@@ -1262,7 +1240,7 @@ HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectConfig
 	return S_OK;
 }
 
-IFileNode* FindChildFileByName (IParentNode* parent, const wchar_t* fileName)
+IFileNode* FindChildFileByName (IProjectNode* proj, IParentNode* parent, const wchar_t* fileName)
 {
 	// Skip all folders.
 	auto child = parent->FirstChild();
@@ -1278,7 +1256,7 @@ IFileNode* FindChildFileByName (IParentNode* parent, const wchar_t* fileName)
 			return nullptr;
 
 		wil::unique_variant n;
-		if (SUCCEEDED(fn->GetProperty(VSHPROPID_SaveName, &n)) && V_VT(&n) == VT_BSTR && !_wcsicmp(fileName, V_BSTR(&n)))
+		if (SUCCEEDED(fn->GetProperty(proj, VSHPROPID_SaveName, &n)) && V_VT(&n) == VT_BSTR && !_wcsicmp(fileName, V_BSTR(&n)))
 			return fn;
 
 		child = child->Next();

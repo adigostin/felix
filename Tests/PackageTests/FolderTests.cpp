@@ -243,20 +243,20 @@ namespace FelixTests
 
 		TEST_METHOD(CreateFolderSameNameDifferentCase)
 		{
-			com_ptr<IVsUIHierarchy> hier;
-			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			com_ptr<IProjectNode> proj;
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&proj));
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto close = wil::scope_exit([&hier] { hier->Close(); });
 
 			com_ptr<IFolderNode> folder1;
-			hr = GetOrCreateChildFolder (hier.try_query<IParentNode>(), L"ABC", true, &folder1);
+			hr = GetOrCreateChildFolder (proj, proj, L"ABC", true, &folder1);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			com_ptr<IFolderNode> folder2;
-			hr = GetOrCreateChildFolder (hier.try_query<IParentNode>(), L"abc", true, &folder2);
+			hr = GetOrCreateChildFolder (proj, proj, L"abc", true, &folder2);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			Assert::IsTrue(folder1 == folder2);
+			proj->AsHierarchy()->Close();
 		}
 	};
 }

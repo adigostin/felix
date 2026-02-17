@@ -145,7 +145,7 @@ public:
 		_next = next;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetProperty (VSHPROPID propid, VARIANT* pvar) override
+	virtual HRESULT STDMETHODCALLTYPE GetProperty (IProjectNode* proj, VSHPROPID propid, VARIANT* pvar) override
 	{
 		HRESULT hr;
 
@@ -219,10 +219,8 @@ public:
 			case VSHPROPID_DescriptiveName: // -2108
 			{
 				// Tooltip when hovering the document tab with the mouse, maybe other things too.
-				com_ptr<IVsHierarchy> hier;
-				auto hr = FindHier(this, IID_PPV_ARGS(hier.addressof())); RETURN_IF_FAILED(hr);
 				wil::unique_bstr path;
-				hr = GetMkDocument(&path); RETURN_IF_FAILED(hr);
+				hr = GetMkDocument(proj, &path); RETURN_IF_FAILED(hr);
 				pvar->vt = VT_BSTR;
 				pvar->bstrVal = path.release();
 				return S_OK;
@@ -274,7 +272,7 @@ public:
 		}
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE SetProperty (VSHPROPID propid, const VARIANT& var) override
+	virtual HRESULT STDMETHODCALLTYPE SetProperty (IProjectNode* proj, VSHPROPID propid, const VARIANT& var) override
 	{
 		RETURN_HR_IF(E_UNEXPECTED, !_parent); // callable only while in a hierarchy
 
@@ -285,7 +283,7 @@ public:
 
 			case VSHPROPID_EditLabel: // -2026
 				RETURN_HR_IF(E_INVALIDARG, var.vt != VT_BSTR);
-				return RenameFile (var.bstrVal);
+				return RenameFile (proj, var.bstrVal);
 
 			case VSHPROPID_ItemDocCookie: // -2034
 				RETURN_HR_IF(E_INVALIDARG, var.vt != VT_VSCOOKIE);
@@ -339,7 +337,7 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE QueryStatusCommand (const GUID *pguidCmdGroup, OLECMD* pCmd, OLECMDTEXT *pCmdText) override
+	virtual HRESULT STDMETHODCALLTYPE QueryStatusCommand (IProjectNode* proj, const GUID *pguidCmdGroup, OLECMD* pCmd, OLECMDTEXT *pCmdText) override
 	{
 		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97)
 		{
@@ -568,7 +566,7 @@ public:
 		#endif
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE ExecCommand (const GUID *pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT *pvaIn, VARIANT *pvaOut) override
+	virtual HRESULT STDMETHODCALLTYPE ExecCommand (IProjectNode* proj, const GUID *pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT *pvaIn, VARIANT *pvaOut) override
 	{
 		HRESULT hr;
 
@@ -585,10 +583,8 @@ public:
 
 			if (nCmdID == cmdidOpen) // 261
 			{
-				com_ptr<IVsProject2> vsp;
-				hr = FindHier(this, IID_PPV_ARGS(vsp.addressof())); RETURN_IF_FAILED(hr);
 				wil::com_ptr_nothrow<IVsWindowFrame> windowFrame;
-				hr = vsp->OpenItem (_itemId, LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &windowFrame); RETURN_IF_FAILED_EXPECTED(hr);
+				hr = proj->AsVsProject()->OpenItem (_itemId, LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &windowFrame); RETURN_IF_FAILED_EXPECTED(hr);
 				hr = windowFrame->Show(); RETURN_IF_FAILED_EXPECTED(hr);
 				return S_OK;
 			}
@@ -641,10 +637,8 @@ public:
 		{
 			if (nCmdID == UIHWCMDID_DoubleClick || nCmdID == UIHWCMDID_EnterKey)
 			{
-				wil::com_ptr_nothrow<IVsProject2> vsp;
-				hr = FindHier(this, IID_PPV_ARGS(vsp.addressof())); RETURN_IF_FAILED(hr);
 				wil::com_ptr_nothrow<IVsWindowFrame> windowFrame;
-				hr = vsp->OpenItem (_itemId, LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &windowFrame); RETURN_IF_FAILED_EXPECTED(hr);
+				hr = proj->AsVsProject()->OpenItem (_itemId, LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &windowFrame); RETURN_IF_FAILED_EXPECTED(hr);
 				hr = windowFrame->Show();
 				if (FAILED(hr))
 					return hr;
@@ -658,7 +652,7 @@ public:
 		return OLECMDERR_E_UNKNOWNGROUP;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetCanonicalName (BSTR* pbstrName) override
+	virtual HRESULT STDMETHODCALLTYPE GetCanonicalName (IProjectNode* proj, BSTR* pbstrName) override
 	{
 		HRESULT hr;
 
@@ -666,7 +660,7 @@ public:
 		{
 			// (1)
 			wil::unique_process_heap_string path;
-			hr = GetPathOf(this, path, true); RETURN_IF_FAILED(hr);
+			hr = GetPathOf(proj, this, path, true); RETURN_IF_FAILED(hr);
 			*pbstrName = SysAllocString(path.get()); RETURN_IF_NULL_ALLOC(*pbstrName);
 			return S_OK;
 		}
@@ -679,7 +673,7 @@ public:
 		}
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (BSTR* pbstrMkDocument) override
+	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (IProjectNode* proj, BSTR* pbstrMkDocument) override
 	{
 		HRESULT hr;
 
@@ -687,7 +681,7 @@ public:
 		{
 			// (1)
 			wil::unique_process_heap_string mk;
-			hr = GetPathOf (this, mk, false); RETURN_IF_FAILED(hr);
+			hr = GetPathOf (proj, this, mk, false); RETURN_IF_FAILED(hr);
 			auto bstr = SysAllocString(mk.get()); RETURN_IF_NULL_ALLOC(bstr);
 			*pbstrMkDocument = bstr;
 			return S_OK;
@@ -695,12 +689,8 @@ public:
 		else if (!wcsncmp(_path.get(), L"..\\", 3))
 		{
 			// (2)
-			com_ptr<IParentNode> parent;
-			hr = _parent->QueryInterface(IID_PPV_ARGS(&parent)); RETURN_IF_FAILED(hr);
-			com_ptr<IVsHierarchy> hier;
-			hr = FindHier(parent, IID_PPV_ARGS(&hier)); RETURN_IF_FAILED(hr);
 			wil::unique_variant projectDir;
-			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_UNEXPECTED, projectDir.vt != VT_BSTR);
+			hr = proj->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projectDir); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_UNEXPECTED, projectDir.vt != VT_BSTR);
 			auto mk = wil::make_process_heap_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(mk);
 			auto res = PathCombine(mk.get(), projectDir.bstrVal, _path.get()); RETURN_HR_IF_NULL(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), res);
 			auto bstr = SysAllocString(mk.get()); RETURN_IF_NULL_ALLOC(bstr);
@@ -941,17 +931,14 @@ public:
 	}
 	#pragma endregion
 
-	HRESULT RenameFile (BSTR newName)
+	HRESULT RenameFile (IProjectNode* proj, BSTR newName)
 	{
 		HRESULT hr;
 
 		RETURN_HR_IF(E_UNEXPECTED, _itemId == VSITEMID_NIL);
 		
-		com_ptr<IProjectNode> proj;
-		hr = FindHier(this, IID_PPV_ARGS(proj.addressof())); RETURN_IF_FAILED(hr);
-
 		wil::unique_bstr oldFullPath;
-		hr = GetMkDocument(&oldFullPath); RETURN_IF_FAILED(hr);
+		hr = GetMkDocument(proj, &oldFullPath); RETURN_IF_FAILED(hr);
 
 		hr = QueryEditProjectFile(proj->AsHierarchy()); RETURN_IF_FAILED_EXPECTED(hr);
 

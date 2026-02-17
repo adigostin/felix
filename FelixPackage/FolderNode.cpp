@@ -150,7 +150,7 @@ public:
 		_next = next;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetProperty (VSHPROPID propid, VARIANT *pvar) override
+	virtual HRESULT STDMETHODCALLTYPE GetProperty (IProjectNode* proj, VSHPROPID propid, VARIANT *pvar) override
 	{
 		HRESULT hr;
 
@@ -226,7 +226,7 @@ public:
 		#endif
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE SetProperty (VSHPROPID propid, REFVARIANT var) override
+	virtual HRESULT STDMETHODCALLTYPE SetProperty (IProjectNode* proj, VSHPROPID propid, REFVARIANT var) override
 	{
 		HRESULT hr;
 
@@ -238,15 +238,11 @@ public:
 		if (propid == VSHPROPID_EditLabel)
 		{
 			RETURN_HR_IF(E_INVALIDARG, var.vt != VT_BSTR);
-			hr = RenameNode(var.bstrVal); RETURN_IF_FAILED_EXPECTED(hr);
+			hr = RenameNode(proj, var.bstrVal); RETURN_IF_FAILED_EXPECTED(hr);
 			// If the above call reordered nodes, we need to select ourselves again.
 			com_ptr<IVsUIHierarchyWindow> uiWindow;
 			if (SUCCEEDED(GetHierarchyWindow(uiWindow.addressof())))
-			{
-				com_ptr<IVsUIHierarchy> hier;
-				if (SUCCEEDED(FindHier(static_cast<IParentNode*>(this), IID_PPV_ARGS(&hier))))
-					uiWindow->ExpandItem (hier, _itemId, EXPF_SelectItem);
-			}
+				uiWindow->ExpandItem (proj->AsHierarchy(), _itemId, EXPF_SelectItem);
 
 			return S_OK;
 		}
@@ -302,12 +298,12 @@ public:
 		RETURN_HR(E_NOTIMPL);
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE QueryStatusCommand (const GUID *pguidCmdGroup, OLECMD* pCmd, OLECMDTEXT *pCmdText) override
+	virtual HRESULT STDMETHODCALLTYPE QueryStatusCommand (IProjectNode* proj, const GUID *pguidCmdGroup, OLECMD* pCmd, OLECMDTEXT *pCmdText) override
 	{
 		return OLECMDERR_E_NOTSUPPORTED;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE ExecCommand (const GUID *pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT *pvaIn, VARIANT *pvaOut) override
+	virtual HRESULT STDMETHODCALLTYPE ExecCommand (IProjectNode* proj, const GUID *pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT *pvaIn, VARIANT *pvaOut) override
 	{
 		HRESULT hr;
 
@@ -333,18 +329,18 @@ public:
 		return OLECMDERR_E_NOTSUPPORTED;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetCanonicalName (BSTR* pbstrName) override
+	virtual HRESULT STDMETHODCALLTYPE GetCanonicalName (IProjectNode* proj, BSTR* pbstrName) override
 	{
 		wil::unique_process_heap_string path;
-		auto hr = GetPathOf(this, path, true); RETURN_IF_FAILED(hr);
+		auto hr = GetPathOf(proj, this, path, true); RETURN_IF_FAILED(hr);
 		*pbstrName = SysAllocString(path.get()); RETURN_IF_NULL_ALLOC(*pbstrName);
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (BSTR* pbstrMkDocument) override
+	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (IProjectNode* proj, BSTR* pbstrMkDocument) override
 	{
 		wil::unique_process_heap_string path;
-		auto hr = GetPathOf(this, path, false); RETURN_IF_FAILED(hr);
+		auto hr = GetPathOf(proj, this, path, false); RETURN_IF_FAILED(hr);
 		*pbstrMkDocument = SysAllocString(path.get()); RETURN_IF_NULL_ALLOC(*pbstrMkDocument);
 		return S_OK;
 	}
@@ -509,7 +505,7 @@ public:
 			if (this == first)
 			{
 				// Yes. Do we need to be moved somewhere after the next one?
-				if (SUCCEEDED(_next->GetProperty(VSHPROPID_SaveName, &n))
+				if (SUCCEEDED(_next->GetProperty(proj, VSHPROPID_SaveName, &n))
 					&& V_VT(&n) == VT_BSTR
 					&& VarBstrCmp(_name.get(), V_BSTR(&n), 0, 0) == VARCMP_GT)
 				{
@@ -518,7 +514,7 @@ public:
 					com_ptr<IFolderNode> nf;
 					while (moveAfter->Next()
 						&& (nf = wil::try_com_query_nothrow<IFolderNode>(moveAfter->Next()))
-						&& SUCCEEDED(nf->GetProperty(VSHPROPID_SaveName, &n))
+						&& SUCCEEDED(nf->GetProperty(proj, VSHPROPID_SaveName, &n))
 						&& V_VT(&n) == VT_BSTR
 						&& VarBstrCmp(_name.get(), V_BSTR(&n), 0, 0) == VARCMP_GT)
 					{
@@ -533,7 +529,7 @@ public:
 				}
 			}
 			// If we're not the first folder, do we need to become the first?
-			else if (SUCCEEDED(first->GetProperty(VSHPROPID_SaveName, &n))
+			else if (SUCCEEDED(first->GetProperty(proj, VSHPROPID_SaveName, &n))
 				&& V_VT(&n) == VT_BSTR
 				&& VarBstrCmp(_name.get(), V_BSTR(&n), 0, 0) == VARCMP_LT)
 			{
@@ -554,7 +550,7 @@ public:
 				com_ptr<IFolderNode> nf;
 				while (moveAfter->Next()
 					&& (nf = wil::try_com_query_nothrow<IFolderNode>(moveAfter->Next()))
-					&& SUCCEEDED(nf->GetProperty(VSHPROPID_SaveName, &n))
+					&& SUCCEEDED(nf->GetProperty(proj, VSHPROPID_SaveName, &n))
 					&& V_VT(&n) == VT_BSTR
 					&& VarBstrCmp(_name.get(), V_BSTR(&n), 0, 0) != VARCMP_LT)
 				{
@@ -581,7 +577,7 @@ public:
 		return S_OK;
 	}
 
-	HRESULT RenameNode (const wchar_t* proposedName)
+	HRESULT RenameNode (IProjectNode* proj, const wchar_t* proposedName)
 	{
 		HRESULT hr;
 
@@ -595,7 +591,7 @@ public:
 		for (auto c = parent->FirstChild(); c; c = c->Next())
 		{
 			wil::unique_variant n;
-			if (SUCCEEDED(c->GetProperty(VSHPROPID_SaveName, &n))
+			if (SUCCEEDED(c->GetProperty(proj, VSHPROPID_SaveName, &n))
 				&& V_VT(&n) == VT_BSTR
 				&& VarBstrCmp(newName.get(), V_BSTR(&n), 0, 0) == VARCMP_EQ)
 			{
@@ -603,18 +599,15 @@ public:
 			}
 		}
 
-		com_ptr<IProjectNode> proj;
-		hr = FindHier(static_cast<IChildNode*>(this), IID_PPV_ARGS(&proj)); RETURN_IF_FAILED(hr);
-
 		hr = QueryEditProjectFile(proj->AsHierarchy()); RETURN_IF_FAILED_EXPECTED(hr);
 
 		// TODO: there's a lot that needs to be called in IVsTrackProjectDocumentsEvents2
 
 		wil::unique_process_heap_string oldFullPath;
-		hr = GetPathOf(this, oldFullPath); RETURN_IF_FAILED(hr);
+		hr = GetPathOf(proj, this, oldFullPath); RETURN_IF_FAILED(hr);
 
 		wil::unique_process_heap_string newFullPath;
-		hr = GetPathTo(this, newFullPath); RETURN_IF_FAILED(hr);
+		hr = GetPathTo(proj, this, newFullPath); RETURN_IF_FAILED(hr);
 		hr = wil::str_concat_nothrow (newFullPath, L"\\", newName); RETURN_IF_FAILED(hr);
 
 		// Make a list of all open documents that are our descendants, and their paths, before folder renaming.
@@ -623,7 +616,7 @@ public:
 		if (SUCCEEDED(serviceProvider->QueryService(SID_SVsRunningDocumentTable, IID_PPV_ARGS(rdt.addressof()))))
 		{
 			stdext::inplace_function<HRESULT(IParentNode*)> enumDescendants;
-			enumDescendants = [&enumDescendants, &openDocs, rdt=rdt.get()](IParentNode* parent) -> HRESULT
+			enumDescendants = [&enumDescendants, &openDocs, rdt=rdt.get(), proj](IParentNode* parent) -> HRESULT
 				{
 					for (auto c = parent->FirstChild(); c; c = c->Next())
 					{
@@ -632,12 +625,12 @@ public:
 							// TODO: call IVsTrackProjectDocuments2::OnQueryRenameFile here, call OnAfterRenameFile after renaming.
 
 							wil::unique_variant docCookie;
-							if (SUCCEEDED(file->GetProperty (VSHPROPID_ItemDocCookie, &docCookie))
+							if (SUCCEEDED(file->GetProperty (proj, VSHPROPID_ItemDocCookie, &docCookie))
 								&& (docCookie.vt == VT_VSCOOKIE)
 								&& (V_VSCOOKIE(&docCookie) != VSDOCCOOKIE_NIL))
 							{
 								wil::unique_process_heap_string path;
-								if (SUCCEEDED(GetPathOf(file, path)))
+								if (SUCCEEDED(GetPathOf(proj, file, path)))
 									openDocs.try_push_back({ std::move(file), std::move(path) });
 							}
 						}
@@ -668,7 +661,7 @@ public:
 		for (auto& od : openDocs)
 		{
 			wil::unique_process_heap_string newPath;
-			if (SUCCEEDED(GetPathOf(od.first, newPath)))
+			if (SUCCEEDED(GetPathOf(proj, od.first, newPath)))
 				rdt->RenameDocument(od.second.get(), newPath.get(), HIERARCHY_DONTCHANGE, VSITEMID_NIL);
 		}
 

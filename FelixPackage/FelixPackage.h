@@ -85,15 +85,15 @@ IChildNode : INode
 	virtual HRESULT ClearItemId() = 0;
 	virtual IChildNode* Next() = 0;
 	virtual void SetNext (IChildNode* next) = 0;
-	virtual HRESULT GetProperty (VSHPROPID propid, VARIANT* pvar) = 0;
-	virtual HRESULT SetProperty (VSHPROPID propid, REFVARIANT var) = 0;
+	virtual HRESULT GetProperty (IProjectNode* proj, VSHPROPID propid, VARIANT* pvar) = 0;
+	virtual HRESULT SetProperty (IProjectNode* proj, VSHPROPID propid, REFVARIANT var) = 0;
 	virtual HRESULT GetGuidProperty (VSHPROPID propid, GUID* pguid) = 0;
 	virtual HRESULT SetGuidProperty (VSHPROPID propid, REFGUID rguid) = 0;
 	virtual HRESULT IsItemDirty (IUnknown *punkDocData, BOOL *pfDirty) = 0;
-	virtual HRESULT QueryStatusCommand (const GUID* pguidCmdGroup, OLECMD* pCmd, OLECMDTEXT *pCmdText) = 0;
-	virtual HRESULT ExecCommand (const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT* pvaIn, VARIANT* pvaOut) = 0;
-	virtual HRESULT STDMETHODCALLTYPE GetCanonicalName (BSTR* pbstrName) = 0;
-	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (BSTR* pbstrMkDocument) = 0;
+	virtual HRESULT QueryStatusCommand (IProjectNode* proj, const GUID* pguidCmdGroup, OLECMD* pCmd, OLECMDTEXT *pCmdText) = 0;
+	virtual HRESULT ExecCommand (IProjectNode* proj, const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT* pvaIn, VARIANT* pvaOut) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetCanonicalName (IProjectNode* proj, BSTR* pbstrName) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetMkDocument (IProjectNode* proj, BSTR* pbstrMkDocument) = 0;
 };
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("5F6EA158-4DA8-469A-8FD8-E8C04F31244E")
@@ -274,17 +274,15 @@ HRESULT MakeFolderNode (IFolderNode** ppFolder);
 BOOL LUtilFixFilename (wchar_t* strName);
 HRESULT QueryEditProjectFile (IVsHierarchy* hier);
 HRESULT GetHierarchyWindow (IVsUIHierarchyWindow** ppHierWindow);
-HRESULT GetPathTo (IChildNode* node, wil::unique_process_heap_string& dir, bool relativeToProjectDir = false);
-HRESULT GetPathOf (IChildNode* node, wil::unique_process_heap_string& path, bool relativeToProjectDir = false);
-HRESULT FindHier (IChildNode* from, REFIID riid, void** ppvHier);
-HRESULT FindHier (IParentNode* from, REFIID riid, void** ppvHier);
-HRESULT AddFileToParent (IFileNode* child, IParentNode* addTo);
-FELIX_API HRESULT GetOrCreateChildFolder (IParentNode* parent, const wchar_t* folderName, bool createDirectoryOnFileSystem, IFolderNode** ppFolder);
+HRESULT GetPathTo (IProjectNode* proj, IChildNode* node, wil::unique_process_heap_string& dir, bool relativeToProjectDir = false);
+HRESULT GetPathOf (IProjectNode* proj, IChildNode* node, wil::unique_process_heap_string& path, bool relativeToProjectDir = false);
+HRESULT AddFileToParent (IProjectNode* proj, IFileNode* child, IParentNode* addTo);
+FELIX_API HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, bool createDirectoryOnFileSystem, IFolderNode** ppFolder);
 HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* child);
 HRESULT GetItems (IParentNode* itemsIn, SAFEARRAY** itemsOut);
 HRESULT PutItems (SAFEARRAY* sa, IParentNode* items);
 HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectConfig* config);
-IFileNode* FindChildFileByName (IParentNode* parent, const wchar_t* fileName);
+IFileNode* FindChildFileByName (IProjectNode* proj, IParentNode* parent, const wchar_t* fileName);
 HRESULT MakeFileNodeForExistingFile (LPCWSTR path, IFileNode** ppFile);
 HRESULT ParseNumber (LPCWSTR str, DWORD* value); // returns S_OK or S_FALSE
 HRESULT MakeSldSymbols (const wchar_t* symbolsFullPath, IFelixSymbols** to);
