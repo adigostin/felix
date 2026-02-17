@@ -2797,6 +2797,13 @@ public:
 				hr = GeneratePrePostIncludeFiles(this); RETURN_IF_FAILED(hr);
 			}
 		}
+		else if (auto file = wil::try_com_query_nothrow<IFileNode>(pObject))
+		{
+			if (dispID == dispidBuildToolKind)
+			{
+				hr = GeneratePrePostIncludeFiles(this); RETURN_IF_FAILED(hr);
+			}
+		}
 
 		_isDirty = true;
 		return S_OK;

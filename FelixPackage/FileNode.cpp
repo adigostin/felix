@@ -803,14 +803,6 @@ public:
 		{
 			NotifyPropertyChanging(_propChangeCP, this, { dispidBuildToolKind, dispidCustomBuildToolProps });
 			_buildTool = value;
-
-			if (_parent)
-			{
-				com_ptr<IProjectNode> project;
-				auto hr = FindHier(this, IID_PPV_ARGS(&project)); RETURN_IF_FAILED(hr);
-				hr = GeneratePrePostIncludeFiles (project); RETURN_IF_FAILED(hr);
-			}
-
 			NotifyPropertyChanged(_propChangeCP, this, { dispidCustomBuildToolProps, dispidBuildToolKind });
 			NotifyPropertyChanged(_propNotifyCP, { dispidCustomBuildToolProps, dispidBuildToolKind });
 		}
