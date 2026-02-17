@@ -203,6 +203,12 @@ public:
 	}
 };
 
+template<typename ISink> requires wistd::is_base_of_v<IUnknown, ISink>
+HRESULT MakeConnectionPoint (IConnectionPointContainer* cont, ConnectionPointImpl<ISink>** cp)
+{
+	return ConnectionPointImpl<ISink>::CreateInstance(cont, cp);
+}
+
 class EnumConnectionsImpl : public IEnumConnections
 {
 	ULONG _refCount = 0;
@@ -660,14 +666,14 @@ public:
 template<typename string_type>
 HRESULT GetBSTR (const string_type& from, BSTR* to)
 {
-	if (!from)
+	if (!from || !wil::str_raw_ptr(from)[0])
 		return (*to = nullptr), S_OK;
 	*to = SysAllocString(wil::str_raw_ptr(from)); RETURN_HR_IF(E_OUTOFMEMORY, !*to);
 	return S_OK;
 }
 
 template<typename string_type>
-HRESULT PutBSTR (BSTR from, string_type& to)
+HRESULT PutBSTR (string_type& to, BSTR from)
 {
 	if (!from || !from[0])
 	{
@@ -682,11 +688,25 @@ HRESULT PutBSTR (BSTR from, string_type& to)
 }
 
 template<typename string_type>
-bool Equals (string_type& other, BSTR one)
+bool EqualsBSTR (string_type& other, BSTR one)
 {
 	if (!one || !one[0])
 		return !other.get() || !other.get()[0];
 	if (!other.get() || !other.get()[0])
 		return false;
 	return !wcscmp(one, wil::str_raw_ptr(other));
+}
+
+template <typename U, typename T>
+HRESULT copy_to (T&& ptrSource, _COM_Outptr_result_maybenull_ U** ptrResult)
+{
+	auto* raw = wil::com_raw_ptr(wistd::forward<T>(ptrSource));
+	if (raw)
+	{
+		*ptrResult = raw;
+		(*ptrResult)->AddRef();
+	}
+	else
+		*ptrResult = nullptr;
+	return S_OK;
 }

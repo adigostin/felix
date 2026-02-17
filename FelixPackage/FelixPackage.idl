@@ -52,8 +52,6 @@ library ATLProject1Lib
 	{
 		[id(dispid__name), propget] HRESULT __id ([out, retval] BSTR* value);
 
-		[id(dispidProjectName), bindable, propget] HRESULT ProjectName ([out, retval] BSTR* pbstrProjectName);
-
 		[id(dispidOutputName), bindable, propget] HRESULT OutputName ([out, retval] BSTR* pbstrOutputFileName);
 		[id(dispidOutputName), bindable, propput] HRESULT OutputName (BSTR bstrOutputFileName);
 

@@ -26,7 +26,6 @@ class ProjectNode
 	, IXmlParent
 	, IProjectNode
 	, IPropertyChangeSink 
-	, IPropertyNotifySink // this implementation only used to mark the project as dirty
 	, IVsPerPropertyBrowsing
 	, IVsUpdateSolutionEvents
 	, VxDTE::Project
@@ -46,7 +45,8 @@ class ProjectNode
 	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsCfgProviderEvents>> _cfgProviderEventSinks;
 	VSCOOKIE _nextCfgProviderEventCookie = 1;
 	VSCOOKIE _itemDocCookie = VSDOCCOOKIE_NIL;
-	vector_nothrow<com_ptr<IProjectConfig>> _configs;
+	struct ConfigTokens { AdviseSinkToken config; AdviseSinkToken asmPage; AdviseSinkToken generalPage; };
+	vector_nothrow<std::pair<com_ptr<IProjectConfig>, ConfigTokens>> _configs;
 
 	// I introduced this because VS sometimes retains a project for a long time after the user closes it.
 	// For example in VS 17.11.2, when doing Close Solution while a project file was open, and then
@@ -214,7 +214,7 @@ public:
 		}
 
 		for (auto& c : _configs)
-			c->SetSite(this);
+			c.first->SetSite(this);
 
 		com_ptr<IVsSolutionBuildManager> buildManager;
 		if (SUCCEEDED(serviceProvider->QueryService(SID_SVsSolutionBuildManager, IID_PPV_ARGS(&buildManager))))
@@ -226,6 +226,8 @@ public:
 
 	~ProjectNode()
 	{
+		WI_ASSERT (_configs.empty());
+		WI_ASSERT (_firstChild == nullptr);
 		WI_ASSERT (_updateBuildSolutionEventsCookie == VSCOOKIE_NIL);
 		WI_ASSERT (_cfgProviderEventSinks.empty());
 		WI_ASSERT (_nodePropertyChangeTokens.empty());
@@ -338,7 +340,6 @@ public:
 			|| TryQI<IProjectNode>(this, riid, ppvObject)
 			|| TryQI<INode>(this, riid, ppvObject)
 			|| TryQI<IPropertyChangeSink>(this, riid, ppvObject)
-			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 			|| TryQI<IVsUpdateSolutionEvents>(this, riid, ppvObject)
 			|| TryQI<VxDTE::Project>(this, riid, ppvObject)
@@ -2035,7 +2036,7 @@ public:
 		ULONG& i = *pcActual;
 		for (i = 0; i < std::min(celt, (ULONG)_configs.size()); i++)
 		{
-			auto hr = _configs[i]->QueryInterface(&rgpcfg[i]); RETURN_IF_FAILED(hr);
+			auto hr = _configs[i].first->QueryInterface(&rgpcfg[i]); RETURN_IF_FAILED(hr);
 			if (prgfFlags)
 				prgfFlags[i] = 0;
 		}
@@ -2058,7 +2059,7 @@ public:
 		for (auto& c : _configs)
 		{
 			wil::unique_bstr n;
-			auto hr = c->AsProjectConfigProperties()->get_ConfigName(&n); RETURN_IF_FAILED(hr);
+			auto hr = c.first->AsProjectConfigProperties()->get_ConfigName(&n); RETURN_IF_FAILED(hr);
 			auto it = names.find_if([n=n.get()](auto& en) { return !wcscmp(en.get(), n); });
 			if (it == names.end())
 			{
@@ -2085,7 +2086,7 @@ public:
 		for (auto& c : _configs)
 		{
 			wil::unique_bstr n;
-			auto hr = c->AsProjectConfigProperties()->get_PlatformName(&n); RETURN_IF_FAILED(hr);
+			auto hr = c.first->AsProjectConfigProperties()->get_PlatformName(&n); RETURN_IF_FAILED(hr);
 			auto it = names.find_if([n=n.get()](auto& en) { return !wcscmp(en.get(), n); });
 			if (it == names.end())
 			{
@@ -2110,11 +2111,11 @@ public:
 		for (auto& cfg : _configs)
 		{
 			wil::unique_bstr cn, pn;
-			auto hr = cfg->AsProjectConfigProperties()->get_ConfigName(&cn); RETURN_IF_FAILED(hr);
-			hr = cfg->AsProjectConfigProperties()->get_PlatformName(&pn); RETURN_IF_FAILED(hr);
+			auto hr = cfg.first->AsProjectConfigProperties()->get_ConfigName(&cn); RETURN_IF_FAILED(hr);
+			hr = cfg.first->AsProjectConfigProperties()->get_PlatformName(&pn); RETURN_IF_FAILED(hr);
 			if (!wcscmp(pszCfgName, cn.get()) && !wcscmp(pszPlatformName, pn.get()))
 			{
-				auto hr = cfg->QueryInterface(ppCfg); RETURN_IF_FAILED(hr);
+				auto hr = cfg.first->QueryInterface(ppCfg); RETURN_IF_FAILED(hr);
 				return S_OK;
 			}
 		}
@@ -2133,10 +2134,10 @@ public:
 			for (auto& c : _configs)
 			{
 				wil::unique_bstr name;
-				hr = c->AsProjectConfigProperties()->get_ConfigName(&name); RETURN_IF_FAILED(hr);
+				hr = c.first->AsProjectConfigProperties()->get_ConfigName(&name); RETURN_IF_FAILED(hr);
 				if (wcscmp(name ? name.get() : L"", pszCloneCfgName) == 0)
 				{
-					existing = c->AsProjectConfigProperties();
+					existing = c.first->AsProjectConfigProperties();
 					break;
 				}
 			}
@@ -2155,19 +2156,22 @@ public:
 		auto newConfigNameBstr = wil::make_bstr_nothrow(pszCfgName); RETURN_IF_NULL_ALLOC(newConfigNameBstr);
 		hr = newConfig->AsProjectConfigProperties()->put_ConfigName(newConfigNameBstr.get()); RETURN_IF_FAILED(hr);
 
-		bool pushed = _configs.try_push_back(std::move(newConfig)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-		hr = _configs.back()->SetSite(this);
-		if (FAILED(hr))
-		{
-			_configs.remove_back();
-			RETURN_HR(hr);
-		}
+		ConfigTokens tokens;
+		hr = AdviseSink<IPropertyChangeSink>(newConfig, _weakRefToThis, &tokens.config); RETURN_IF_FAILED(hr);
+		hr = AdviseSink<IPropertyChangeSink>(newConfig->AsmProps(), _weakRefToThis, &tokens.asmPage); RETURN_IF_FAILED(hr);
+		hr = AdviseSink<IPropertyChangeSink>(newConfig->GeneralProps(), _weakRefToThis, &tokens.generalPage); RETURN_IF_FAILED(hr);
+
+		bool pushed = _configs.try_push_back({ std::move(newConfig), std::move(tokens) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		auto removeConfig = wil::scope_exit([this] { _configs.remove_back(); });
+
+		hr = _configs.back().first->SetSite(this); RETURN_IF_FAILED(hr);
 
 		_isDirty = true;
 
 		for (auto& sink : _cfgProviderEventSinks)
 			sink.second->OnCfgNameAdded(pszCfgName);
 
+		removeConfig.release();
 		return S_OK;
 	}
 
@@ -2179,7 +2183,7 @@ public:
 		while (it != _configs.end())
 		{
 			wil::unique_bstr name;
-			hr = it->get()->AsProjectConfigProperties()->get_ConfigName(&name); RETURN_IF_FAILED(hr);
+			hr = it->first->AsProjectConfigProperties()->get_ConfigName(&name); RETURN_IF_FAILED(hr);
 			if (wcscmp(name ? name.get() : L"", pszCfgName) == 0)
 				break;
 			it++;
@@ -2215,7 +2219,7 @@ public:
 		bool any = false;
 		for (auto& c : _configs)
 		{
-			IProjectConfigProperties* props = c->AsProjectConfigProperties();
+			IProjectConfigProperties* props = c.first->AsProjectConfigProperties();
 			wil::unique_bstr n;
 			hr = props->get_ConfigName(&n); RETURN_IF_FAILED(hr);
 			if (!wcscmp(n.get(), pszOldName))
@@ -2512,7 +2516,7 @@ public:
 		for (LONG i = 0; i < (LONG)bound.cElements; i++)
 		{
 			com_ptr<IDispatch> pdisp;
-			auto hr = _configs[i]->QueryInterface(&pdisp); RETURN_IF_FAILED(hr);
+			auto hr = _configs[i].first->QueryInterface(&pdisp); RETURN_IF_FAILED(hr);
 			hr = SafeArrayPutElement(sa.get(), &i, pdisp.get()); RETURN_IF_FAILED(hr);
 		}
 		*configs = sa.release();
@@ -2538,7 +2542,11 @@ public:
 			hr = SafeArrayGetElement (sa, &i, child.addressof()); RETURN_IF_FAILED(hr);
 			com_ptr<IProjectConfig> config;
 			hr = child->QueryInterface(&config); RETURN_IF_FAILED(hr);
-			bool pushed = _configs.try_push_back(std::move(config)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+			ConfigTokens tokens;
+			hr = AdviseSink<IPropertyChangeSink>(config, _weakRefToThis, &tokens.config); RETURN_IF_FAILED(hr);
+			hr = AdviseSink<IPropertyChangeSink>(config->AsmProps(), _weakRefToThis, &tokens.asmPage); RETURN_IF_FAILED(hr);
+			hr = AdviseSink<IPropertyChangeSink>(config->GeneralProps(), _weakRefToThis, &tokens.generalPage); RETURN_IF_FAILED(hr);
+			bool pushed = _configs.try_push_back({ std::move(config), std::move(tokens) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 		}
 
 		// This is meant to be called only from LoadXml, no need to set dirty flag or send notifications.
@@ -2762,19 +2770,6 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region IPropertyNotifySink
-	virtual HRESULT STDMETHODCALLTYPE OnChanged (DISPID dispID) override
-	{
-		_isDirty = true;
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE OnRequestEdit (DISPID dispID) override
-	{
-		RETURN_HR(E_NOTIMPL);
-	}
-	#pragma endregion
-
 	#pragma region IPropertyChangeSink
 	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanging( 
 		/* [in] */ UINT cObjects,
@@ -2791,6 +2786,26 @@ public:
 		/* [in] */ DISPID dispID,
 		/* [in] */ PropertyChangeArgs args) override
 	{
+		HRESULT hr;
+		com_ptr<IProjectConfig> config;
+		com_ptr<IProjectConfigAssemblerProperties> asmProps;
+		com_ptr<IProjectConfigGeneralProperties> generalProps;
+		if ((config = wil::try_com_query_nothrow<IProjectConfig>(rgpObjects[0]))
+			|| (asmProps = wil::try_com_query_nothrow<IProjectConfigAssemblerProperties>(rgpObjects[0]))
+			|| (generalProps = wil::try_com_query_nothrow<IProjectConfigGeneralProperties>(rgpObjects[0])))
+		{
+			com_ptr<IVsSolutionBuildManager> buildManager;
+			hr = serviceProvider->QueryService(SID_SVsSolutionBuildManager, IID_PPV_ARGS(&buildManager)); RETURN_IF_FAILED(hr);
+			com_ptr<IVsProjectCfg> activeConfig;
+			hr = buildManager->FindActiveProjectCfg (nullptr, nullptr, this, &activeConfig); RETURN_IF_FAILED(hr);
+			com_ptr<IProjectConfig> activeCfg;
+			hr = activeConfig->QueryInterface(&activeCfg); RETURN_IF_FAILED(hr);
+			if (activeCfg == config || activeCfg->AsmProps() == asmProps || activeCfg->GeneralProps() == generalProps)
+			{
+				hr = GeneratePrePostIncludeFiles(this); RETURN_IF_FAILED(hr);
+			}
+		}
+
 		_isDirty = true;
 		return S_OK;
 	}

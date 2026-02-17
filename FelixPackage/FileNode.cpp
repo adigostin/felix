@@ -13,7 +13,7 @@ struct FileNode
 	, IFileNodeProperties
 	, IVsPerPropertyBrowsing
 	, IConnectionPointContainer
-	, IPropertyNotifySink
+	, IPropertyChangeSink
 {
 	ULONG _refCount = 0;
 	VSITEMID _itemId = VSITEMID_NIL;
@@ -37,7 +37,7 @@ public:
 		hr = ConnectionPointImpl<IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
 		hr = ConnectionPointImpl<IPropertyChangeSink>::CreateInstance(this, &_propChangeCP); RETURN_IF_FAILED(hr);
 		hr = MakeCustomBuildToolProperties(&_customBuildToolProps); RETURN_IF_FAILED(hr);
-		hr = AdviseSink<IPropertyNotifySink>(_customBuildToolProps, _weakRefToThis, &_cbtPropNotifyToken); RETURN_IF_FAILED(hr);
+		hr = AdviseSink<IPropertyChangeSink>(_customBuildToolProps, _weakRefToThis, &_cbtPropNotifyToken); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
@@ -54,7 +54,7 @@ public:
 			|| TryQI<IDispatch>(static_cast<IFileNodeProperties*>(this), riid, ppvObject)
 			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
-			|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
+			|| TryQI<IPropertyChangeSink>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -924,31 +924,37 @@ public:
 	{
 		// This is requested by the property grid.
 		if (riid == IID_IPropertyNotifySink)
-			return wil::com_query_to_nothrow(_propNotifyCP, ppCP);
+			return copy_to(_propNotifyCP.get(), ppCP);
 
 		if (riid == IID_IPropertyChangeSink)
-			return _propChangeCP.query_to(ppCP);
+			return copy_to(_propChangeCP, ppCP);
 
 		RETURN_HR(E_NOTIMPL);
 	}
 	#pragma endregion
 
-	#pragma region IPropertyNotifySink
-	virtual HRESULT STDMETHODCALLTYPE OnChanged (DISPID dispID) override
-	{
-		if (_parent)
-		{
-			com_ptr<IPropertyNotifySink> sink;
-			auto hr = FindHier(this, IID_PPV_ARGS(sink.addressof())); RETURN_IF_FAILED(hr);
-			sink->OnChanged(DISPID_UNKNOWN);
-		}
 
-		return S_OK;
+	#pragma region IPropertyChangeSink
+	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanging( 
+		/* [in] */ UINT cObjects,
+		/* [size_is][in] */ IDispatch *const rgpObjects[  ],
+		/* [in] */ DISPID dispID,
+		/* [in] */ PropertyChangeArgs args) override
+	{
+		if (cObjects == 1 && rgpObjects[0] == _customBuildToolProps)
+			return NotifyPropertyChanging(_propChangeCP, this, { dispidCustomBuildToolProps });
+		RETURN_HR(E_NOTIMPL);
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE OnRequestEdit (DISPID dispID) override
+	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged( 
+		/* [in] */ UINT cObjects,
+		/* [size_is][in] */ IDispatch *const rgpObjects[  ],
+		/* [in] */ DISPID dispID,
+		/* [in] */ PropertyChangeArgs args) override
 	{
-		return E_NOTIMPL;
+		if (cObjects == 1 && rgpObjects[0] == _customBuildToolProps)
+			return NotifyPropertyChanged(_propChangeCP, this, { dispidCustomBuildToolProps });
+		RETURN_HR(E_NOTIMPL);
 	}
 	#pragma endregion
 

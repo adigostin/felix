@@ -281,5 +281,90 @@ namespace UITests
 			proj.query<IPersistFileFormat>()->IsDirty(&projectDirty);
 			Assert::IsTrue(projectDirty);
 		}
+
+		TEST_METHOD(NotifyPropertyChangingChanged_Config)
+		{
+			HRESULT hr;
+			auto changeSink = MakeTestPropertyChangeSink();
+			auto notifySink = MakeTestPropertyNotifySink();
+			auto disconnectSinks = wil::scope_exit([&changeSink, &notifySink]
+				{
+					CoDisconnectObject(changeSink, 0);
+					CoDisconnectObject(notifySink, 0);
+				});
+
+			BOOL projectDirty;
+			proj.query<IPersistFileFormat>()->IsDirty(&projectDirty);
+			Assert::IsFalse(projectDirty);
+
+			auto cfgProvider = proj.query<IVsCfgProvider2>();
+			wil::com_ptr_failfast<IVsCfg> cfgs[2];
+			VSCFGFLAGS cfgFlags[2];
+			ULONG cfgActual;
+			hr = cfgProvider->GetCfgs(2, cfgs[0].addressof(), &cfgActual, cfgFlags);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			{
+				hr = cfgs[0].query<IProjectConfigProperties>()->put_ConfigName(wil::make_bstr_failfast(L"Debug1").get());
+				Assert::IsTrue(SUCCEEDED(hr));
+				proj.query<IPersistFileFormat>()->IsDirty(&projectDirty);
+				Assert::IsTrue(projectDirty);
+			}
+
+			{
+				proj->Save(nullptr);
+				wil::com_ptr_failfast<IProjectConfigGeneralProperties> generalProps;
+				hr = cfgs[0].query<IProjectConfigProperties>()->get_GeneralProperties(&generalProps);
+				Assert::IsTrue(SUCCEEDED(hr));
+				hr = generalProps->put_OutputName(wil::make_bstr_failfast(L"output1.bin").get());
+				Assert::IsTrue(SUCCEEDED(hr));
+				proj.query<IPersistFileFormat>()->IsDirty(&projectDirty);
+				Assert::IsTrue(projectDirty);
+			}
+
+			{
+				proj->Save(nullptr);
+				wil::com_ptr_failfast<IProjectConfigAssemblerProperties> asmProps;
+				hr = cfgs[0].query<IProjectConfigProperties>()->get_AssemblerProperties(&asmProps);
+				Assert::IsTrue(SUCCEEDED(hr));
+				hr = asmProps->put_BaseAddress(123);
+				Assert::IsTrue(SUCCEEDED(hr));
+				proj.query<IPersistFileFormat>()->IsDirty(&projectDirty);
+				Assert::IsTrue(projectDirty);
+			}
+
+			{
+				proj->Save(nullptr);
+				wil::com_ptr_failfast<IProjectConfigDebugProperties> dbgProps;
+				hr = cfgs[0].query<IProjectConfigProperties>()->get_DebuggingProperties(&dbgProps);
+				Assert::IsTrue(SUCCEEDED(hr));
+				hr = dbgProps->put_LaunchTarget(wil::make_bstr_failfast(L"output1.bin").get());
+				Assert::IsTrue(SUCCEEDED(hr));
+				proj.query<IPersistFileFormat>()->IsDirty(&projectDirty);
+				Assert::IsTrue(projectDirty);
+			}
+
+			{
+				proj->Save(nullptr);
+				wil::com_ptr_failfast<IProjectConfigPrePostBuildProperties> preBuildProps;
+				hr = cfgs[0].query<IProjectConfigProperties>()->get_PreBuildProperties(&preBuildProps);
+				Assert::IsTrue(SUCCEEDED(hr));
+				hr = preBuildProps->put_CommandLine(wil::make_bstr_failfast(L"cmd.exe").get());
+				Assert::IsTrue(SUCCEEDED(hr));
+				proj.query<IPersistFileFormat>()->IsDirty(&projectDirty);
+				Assert::IsTrue(projectDirty);
+			}
+
+			{
+				proj->Save(nullptr);
+				wil::com_ptr_failfast<IProjectConfigPrePostBuildProperties> postBuildProps;
+				hr = cfgs[0].query<IProjectConfigProperties>()->get_PostBuildProperties(&postBuildProps);
+				Assert::IsTrue(SUCCEEDED(hr));
+				hr = postBuildProps->put_CommandLine(wil::make_bstr_failfast(L"cmd.exe").get());
+				Assert::IsTrue(SUCCEEDED(hr));
+				proj.query<IPersistFileFormat>()->IsDirty(&projectDirty);
+				Assert::IsTrue(projectDirty);
+			}
+		}
 	};
 }

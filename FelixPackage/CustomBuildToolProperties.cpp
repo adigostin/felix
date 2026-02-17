@@ -79,10 +79,10 @@ struct CustomBuildToolProperties
 
 	virtual HRESULT STDMETHODCALLTYPE put_CommandLine (BSTR value) override
 	{
-		if (!Equals(_commandLine, value))
+		if (!EqualsBSTR(_commandLine, value))
 		{
 			wil::unique_process_heap_string _new;
-			auto hr = PutBSTR(value, _new); RETURN_IF_FAILED(hr);
+			auto hr = PutBSTR(_new, value); RETURN_IF_FAILED(hr);
 			NotifyPropertyChanging(_propChangeCP, this, dispidCommandLine);
 			_commandLine = std::move(_new);
 			NotifyPropertyChanged(_propChangeCP, this, dispidCommandLine);
@@ -99,10 +99,10 @@ struct CustomBuildToolProperties
 
 	virtual HRESULT STDMETHODCALLTYPE put_Description (BSTR value) override
 	{
-		if (!Equals(_description, value))
+		if (!EqualsBSTR(_description, value))
 		{
 			wil::unique_process_heap_string _new;
-			auto hr = PutBSTR(value, _new); RETURN_IF_FAILED(hr);
+			auto hr = PutBSTR(_new, value); RETURN_IF_FAILED(hr);
 			NotifyPropertyChanging(_propChangeCP, this, dispidDescription);
 			_description = std::move(_new);
 			NotifyPropertyChanged(_propChangeCP, this, dispidDescription);
@@ -119,10 +119,10 @@ struct CustomBuildToolProperties
 
 	virtual HRESULT STDMETHODCALLTYPE put_Outputs (BSTR value) override
 	{
-		if (!Equals(_outputs, value))
+		if (!EqualsBSTR(_outputs, value))
 		{
 			wil::unique_process_heap_string _new;
-			auto hr = PutBSTR(value, _new); RETURN_IF_FAILED(hr);
+			auto hr = PutBSTR(_new, value); RETURN_IF_FAILED(hr);
 			NotifyPropertyChanging(_propChangeCP, this, dispidOutputs);
 			_outputs = std::move(_new);
 			NotifyPropertyChanged(_propChangeCP, this, dispidOutputs);

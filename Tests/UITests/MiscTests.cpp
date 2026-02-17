@@ -232,6 +232,28 @@ namespace UITests
 			Assert::IsTrue(!PathFileExists(genFilesPath.get()));
 		}
 
+		TEST_METHOD(GenPrePostInclude_ChangeBuildTool)
+		{
+			// Verify that, with a single .asm file in the project, the PreInclude.asm and PostInclude.asm 
+			// are generated when changing the BuildTool of the .asm file to Assembler, and deleted when
+			// changing the BuildTool to something else.
+
+			// The pre/post-include files should have been generated on project creation.
+			auto genFilesPath = CombinePath(projPath.get(), L"GeneratedFiles");
+			Assert::IsTrue(PathFileExists(genFilesPath.get()));
+
+			VSITEMID itemid;
+			auto hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"file.asm", &itemid);
+			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_variant filevar;
+			proj.query<IVsHierarchy>()->GetProperty(itemid, VSHPROPID_BrowseObject, &filevar);
+			auto fileProps = wil::com_query_failfast<IFileNodeProperties>(filevar.pdispVal);
+			fileProps->put_BuildTool(BuildToolKind::None);
+			Assert::IsTrue(!PathFileExists(genFilesPath.get()));
+
+			fileProps->put_BuildTool(BuildToolKind::Assembler);
+			Assert::IsTrue(PathFileExists(genFilesPath.get()));
+		}
 		TEST_METHOD(RemoveFileClosesEditor)
 		{
 			HRESULT hr;

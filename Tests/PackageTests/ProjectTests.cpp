@@ -833,6 +833,8 @@ namespace FelixTests
 			hr = cfg->GeneralProps()->get_OutputFilename(&fn); // this tries to resolve the macro from above
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::IsNotNull(wcsstr(fn.get(), L"%OUTPUT_NAME%"));
+
+			proj->AsHierarchy()->Close();
 		}
 
 		TEST_METHOD(GeneratedFiles_AddFirstAsmToProject_RemoveLastAsmFromProject)
@@ -894,6 +896,7 @@ namespace FelixTests
 
 			gff = findGenFilesFolder();
 			Assert::IsNull(gff.get());
+			project->AsHierarchy()->Close();
 		}
 	};
 }

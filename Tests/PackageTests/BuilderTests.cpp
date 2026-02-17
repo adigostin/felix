@@ -52,6 +52,7 @@ namespace FelixTests
 
 			hr = builder->StartBuild (nullptr);
 			Assert::AreEqual(HRESULT_FROM_WIN32(ERROR_NO_MORE_FILES), hr);
+			project->AsHierarchy()->Close();
 		}
 
 		TEST_METHOD(ProjectConfigHasPrePostBuildProps)
@@ -70,6 +71,7 @@ namespace FelixTests
 			hr = config->AsProjectConfigProperties()->get_PostBuildProperties(&props);
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::IsNotNull(props.get());
+			hier->Close();
 		}
 
 		static std::pair<wil::com_ptr_failfast<IProjectNode>, wil::com_ptr_failfast<IProjectConfigBuilder>> MakeSjasmProjectBuilder (const char* asmFileContent)
@@ -484,6 +486,7 @@ namespace FelixTests
 			//ULONG remainingRefCount = builder.detach()->Release();
 			//Assert::AreEqual((ULONG)0, remainingRefCount);
 			ULONG remainingRefCount = builder.detach()->Release();
+			project->AsHierarchy()->Close();
 		}
 
 		TEST_METHOD(BuildOnlySynchronousSteps)
