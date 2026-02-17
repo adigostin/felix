@@ -345,12 +345,6 @@ namespace UITests
 
 		wil::SetResultLoggingCallback (WilLoggingCallback);
 
-		wil::unique_process_heap_string fn;
-		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, fn); THROW_IF_FAILED(hr);
-		com_ptr<ITypeLib> _typeLib;
-		hr = LoadTypeLibEx(fn.get(), REGKIND_NONE, &_typeLib); THROW_IF_FAILED(hr);
-		hr = RegisterTypeLibForUser(_typeLib, fn.get(), nullptr); THROW_IF_FAILED(hr);
-
 		MakeTemplates (L"FelixTestUI");
 
 		hr = CoCreateInstance (__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation));
