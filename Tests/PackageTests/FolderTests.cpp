@@ -22,7 +22,7 @@ namespace FelixTests
 			Assert::AreEqual<VARTYPE>(VT_BOOL, expandable.vt);
 			Assert::AreEqual(VARIANT_FALSE, expandable.boolVal);
 
-			auto sink = MakeMockHierarchyEventSink();
+			auto sink = MakeTestHierarchyEventSink();
 			VSCOOKIE hierEventsCookie;
 			hr = hier->AdviseHierarchyEvents(sink, &hierEventsCookie);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -92,7 +92,7 @@ namespace FelixTests
 			Assert::AreEqual<VARTYPE>(VT_BOOL, expandable.vt);
 			Assert::AreEqual(VARIANT_FALSE, expandable.boolVal);
 
-			auto sink = MakeMockHierarchyEventSink();
+			auto sink = MakeTestHierarchyEventSink();
 			VSCOOKIE hierEventsCookie;
 			hr = hier->AdviseHierarchyEvents(sink, &hierEventsCookie);
 			Assert::IsTrue(SUCCEEDED(hr));

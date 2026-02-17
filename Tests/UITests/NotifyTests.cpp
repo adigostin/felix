@@ -114,7 +114,7 @@ namespace UITests
 		{
 			HRESULT hr;
 			auto hier = proj.query<IVsUIHierarchy>();
-			auto sink = MakeMockHierarchyEventSink();
+			auto sink = MakeTestHierarchyEventSink();
 			VSCOOKIE hierEventsCookie;
 			hier->AdviseHierarchyEvents(sink, &hierEventsCookie);
 			auto unadvise = wil::scope_exit([hier=hier.get(), hierEventsCookie]() { hier->UnadviseHierarchyEvents(hierEventsCookie); });
@@ -139,7 +139,7 @@ namespace UITests
 		{
 			HRESULT hr;
 			auto hier = proj.query<IVsUIHierarchy>();
-			auto sink = MakeMockHierarchyEventSink();
+			auto sink = MakeTestHierarchyEventSink();
 			VSCOOKIE hierEventsCookie;
 			hier->AdviseHierarchyEvents(sink, &hierEventsCookie);
 			auto unadvise = wil::scope_exit([hier=hier.get(), hierEventsCookie]() { hier->UnadviseHierarchyEvents(hierEventsCookie); });

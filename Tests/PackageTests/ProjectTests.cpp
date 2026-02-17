@@ -410,7 +410,7 @@ namespace FelixTests
 			com_ptr<IVsHierarchy> hier;
 			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
 			auto close = wil::scope_exit([&hier] { hier->Close(); });
-			auto sink = MakeMockHierarchyEventSink();
+			auto sink = MakeTestHierarchyEventSink();
 			VSCOOKIE cookie;
 			hr = hier->AdviseHierarchyEvents(sink, &cookie);
 			Assert::IsTrue(SUCCEEDED(hr));

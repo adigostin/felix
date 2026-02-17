@@ -92,7 +92,7 @@ void RemoveDirectoryTree (const wchar_t* dir)
 	Microsoft::VisualStudio::CppUnitTestFramework::Assert::AreEqual(0, ires);
 }
 
-struct MockHierarchyEventSink : IMockHierarchyEventSink
+struct TestHierarchyEventSink : ITestHierarchyEventSink
 {
 	ULONG _refCount = 0;
 	std::unordered_map<VSITEMID, std::set<VSHPROPID>> _changedProps;
@@ -107,7 +107,7 @@ struct MockHierarchyEventSink : IMockHierarchyEventSink
 	{
 		if (   TryQI<IUnknown>(this, riid, ppvObject)
 			|| TryQI<IVsHierarchyEvents>(this, riid, ppvObject)
-			|| TryQI<IMockHierarchyEventSink>(this, riid, ppvObject)
+			|| TryQI<ITestHierarchyEventSink>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -153,7 +153,7 @@ struct MockHierarchyEventSink : IMockHierarchyEventSink
 	}
 	#pragma endregion
 
-	#pragma region IMockHierarchyEventSink
+	#pragma region ITestHierarchyEventSink
 	virtual bool PropertyChanged (VSITEMID itemid, VSHPROPID propid) const override
 	{
 		auto it = _changedProps.find(itemid);
@@ -180,9 +180,9 @@ struct MockHierarchyEventSink : IMockHierarchyEventSink
 	#pragma endregion
 };
 
-wil::com_ptr_failfast<IMockHierarchyEventSink> MakeMockHierarchyEventSink()
+wil::com_ptr_failfast<ITestHierarchyEventSink> MakeTestHierarchyEventSink()
 {
-	return wil::com_ptr_failfast(new (std::nothrow) MockHierarchyEventSink());
+	return wil::com_ptr_failfast(new (std::nothrow) TestHierarchyEventSink());
 }
 
 struct TestPropertyChangeSink : ITestPropertyChangeSink
