@@ -20,8 +20,8 @@ struct CustomBuildToolProperties
 
 	HRESULT InitInstance()
 	{
-		auto hr = ConnectionPointImpl<IPropertyNotifySink>::CreateInstance(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
-		hr = ConnectionPointImpl<IPropertyChangeSink>::CreateInstance(this, &_propChangeCP); RETURN_IF_FAILED(hr);
+		auto hr = MakeConnectionPoint(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
+		hr = MakeConnectionPoint(this, &_propChangeCP); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 

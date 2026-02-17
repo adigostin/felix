@@ -2,12 +2,8 @@
 #pragma once
 #include "vector_nothrow.h"
 
-// ============================================================================
-
 template<typename T>
 using com_ptr = wil::com_ptr_nothrow<T>;
-
-// ============================================================================
 
 template<typename ITo>
 static bool TryQI (ITo* from, REFIID riid, void** ppvObject)
@@ -39,6 +35,20 @@ ULONG ReleaseST (T* _this, ULONG& refCount)
 	operator delete(_this);
 
 	return 0;
+}
+
+template <typename U, typename T>
+HRESULT copy_to (T&& ptrSource, _COM_Outptr_result_maybenull_ U** ptrResult)
+{
+	auto* raw = wil::com_raw_ptr(wistd::forward<T>(ptrSource));
+	if (raw)
+	{
+		*ptrResult = raw;
+		(*ptrResult)->AddRef();
+	}
+	else
+		*ptrResult = nullptr;
+	return S_OK;
 }
 
 // ============================================================================
@@ -108,11 +118,9 @@ class ConnectionPointImpl : public IConnectionPoint
 	DWORD _nextCookie = 1;
 
 public:
-	static HRESULT CreateInstance (IConnectionPointContainer* cont, ConnectionPointImpl<ISink>** cp)
+	HRESULT InitInstance (IConnectionPointContainer* cont)
 	{
-		com_ptr<ConnectionPointImpl> p = new (std::nothrow) ConnectionPointImpl(); RETURN_IF_NULL_ALLOC(p);
-		p->_cont = cont;
-		*cp = p.detach();
+		_cont = cont;
 		return S_OK;
 	}
 
@@ -160,9 +168,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetConnectionPointContainer (IConnectionPointContainer** ppCPC) override
 	{
-		*ppCPC = _cont;
-		_cont->AddRef();
-		return S_OK;
+		return copy_to(_cont, ppCPC);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE Advise (IUnknown* pUnkSink, DWORD* pdwCookie) override
@@ -206,7 +212,10 @@ public:
 template<typename ISink> requires wistd::is_base_of_v<IUnknown, ISink>
 HRESULT MakeConnectionPoint (IConnectionPointContainer* cont, ConnectionPointImpl<ISink>** cp)
 {
-	return ConnectionPointImpl<ISink>::CreateInstance(cont, cp);
+	auto p = com_ptr (new (std::nothrow) ConnectionPointImpl<ISink>()); RETURN_IF_NULL_ALLOC(p);
+	auto hr = p->InitInstance(cont); RETURN_IF_FAILED(hr);
+	*cp = p.detach();
+	return S_OK;
 }
 
 class EnumConnectionsImpl : public IEnumConnections
@@ -695,18 +704,4 @@ bool EqualsBSTR (string_type& other, BSTR one)
 	if (!other.get() || !other.get()[0])
 		return false;
 	return !wcscmp(one, wil::str_raw_ptr(other));
-}
-
-template <typename U, typename T>
-HRESULT copy_to (T&& ptrSource, _COM_Outptr_result_maybenull_ U** ptrResult)
-{
-	auto* raw = wil::com_raw_ptr(wistd::forward<T>(ptrSource));
-	if (raw)
-	{
-		*ptrResult = raw;
-		(*ptrResult)->AddRef();
-	}
-	else
-		*ptrResult = nullptr;
-	return S_OK;
 }

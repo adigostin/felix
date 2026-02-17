@@ -75,7 +75,7 @@ public:
 	{
 		HRESULT hr;
 		
-		hr = ConnectionPointImpl<ISimulatorEventNotifySink>::CreateInstance(this, &_eventHandlers); RETURN_IF_FAILED(hr);
+		hr = MakeConnectionPoint(this, &_eventHandlers); RETURN_IF_FAILED(hr);
 
 		hr = MakeZ80CPU(&memoryBus, &ioBus, &irq, &_cpu); RETURN_IF_FAILED(hr);
 

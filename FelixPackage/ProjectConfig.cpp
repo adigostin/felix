@@ -76,7 +76,7 @@ public:
 		hr = PrePostBuildPageProperties_CreateInstance(true, &_postBuildProps); RETURN_IF_FAILED(hr);
 		hr = AdviseSink<IPropertyChangeSink>(_postBuildProps, _weakRefToThis, &_postBuildPropsAdviseToken); RETURN_IF_FAILED(hr);
 
-		hr = ConnectionPointImpl<IPropertyChangeSink>::CreateInstance(this, &_propChangeCP); RETURN_IF_FAILED(hr);
+		hr = MakeConnectionPoint(this, &_propChangeCP); RETURN_IF_FAILED(hr);
 
 		return S_OK;
 	}
@@ -1522,14 +1522,12 @@ struct PrePostBuildPageProperties
 	wil::unique_process_heap_string _commandLine;
 	wil::unique_process_heap_string _description;
 
-	static HRESULT CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to)
+	HRESULT InitInstance (bool post)
 	{
 		HRESULT hr;
-		com_ptr<PrePostBuildPageProperties> p = new (std::nothrow) PrePostBuildPageProperties(); RETURN_IF_NULL_ALLOC(p);
-		hr = MakeConnectionPoint(p, &p->_propNotifyCP); RETURN_IF_FAILED(hr);
-		hr = MakeConnectionPoint(p, &p->_propChangeCP); RETURN_IF_FAILED(hr);
-		p->_post = post;
-		*to = p.detach();
+		hr = MakeConnectionPoint(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
+		hr = MakeConnectionPoint(this, &_propChangeCP); RETURN_IF_FAILED(hr);
+		_post = post;
 		return S_OK;
 	}
 
@@ -1712,5 +1710,8 @@ struct PrePostBuildPageProperties
 
 static HRESULT PrePostBuildPageProperties_CreateInstance (bool post, IProjectConfigPrePostBuildProperties** to)
 {
-	return PrePostBuildPageProperties::CreateInstance(post, to);
+	auto p = com_ptr(new (std::nothrow) PrePostBuildPageProperties()); RETURN_IF_NULL_ALLOC(p);
+	auto hr = p->InitInstance(post); RETURN_IF_FAILED(hr);
+	*to = p.detach();
+	return S_OK;
 }
