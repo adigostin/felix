@@ -13,16 +13,16 @@ wil::unique_process_heap_string TemplatePath_EmptyProject;
 wil::unique_process_heap_string TemplatePath_EmptyFile;
 
 static const char TemplateTwoConfigsOneFileXML[] = ""
-	"<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-	"<Z80Project Guid=\"{2839FDD7-4C8F-4772-90E6-222C702D045E}\">"
-	"  <Configurations>"
-	"    <Configuration ConfigName=\"Debug\" PlatformName=\"ZX Spectrum 48K\" />"
-	"    <Configuration ConfigName=\"Release\" PlatformName=\"ZX Spectrum 48K\" />"
-	"  </Configurations>"
-	"  <Items>"
-	"    <File Path=\"file.asm\" BuildTool=\"Assembler\" />"
-	"  </Items>"
-	"</Z80Project>";
+	"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n"
+	"<Z80Project Guid=\"{2839FDD7-4C8F-4772-90E6-222C702D045E}\">\r\n"
+	"  <Configurations>\r\n"
+	"    <Configuration ConfigName=\"Debug\" PlatformName=\"ZX Spectrum 48K\" />\r\n"
+	"    <Configuration ConfigName=\"Release\" PlatformName=\"ZX Spectrum 48K\" />\r\n"
+	"  </Configurations>\r\n"
+	"  <Items>\r\n"
+	"    <File Path=\"file.asm\" BuildTool=\"Assembler\" />\r\n"
+	"  </Items>\r\n"
+	"</Z80Project>\r\n";
 
 static const char TemplateXML_EmptyProject[] = ""
 	"<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
