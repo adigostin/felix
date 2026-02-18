@@ -114,14 +114,13 @@ public:
 		return _itemId;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE SetItemId (IParentNode* parent, VSITEMID id) override
+	virtual HRESULT STDMETHODCALLTYPE SetItemId (IProjectNode* root, IParentNode* parent) override
 	{
-		RETURN_HR_IF(E_INVALIDARG, id == VSITEMID_NIL);
 		RETURN_HR_IF(E_INVALIDARG, !parent);
 		RETURN_HR_IF(E_UNEXPECTED, _itemId != VSITEMID_NIL);
 		RETURN_HR_IF(E_UNEXPECTED, _parent);
 		auto hr = parent->QueryInterface(IID_PPV_ARGS(_parent.addressof())); RETURN_IF_FAILED(hr);
-		_itemId = id;
+		_itemId = root->MakeItemId();
 		return S_OK;
 	}
 

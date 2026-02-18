@@ -796,7 +796,7 @@ static HRESULT SetItemIdsTree (IProjectNode* root, IChildNode* child, IChildNode
 		{
 			root->NotifyNodeInsertingIntoHier(node);
 
-			auto hr = node->SetItemId(nodeParent, root->MakeItemId()); RETURN_IF_FAILED(hr);
+			auto hr = node->SetItemId(root, nodeParent); RETURN_IF_FAILED(hr);
 
 			com_ptr<IParentNode> nodeAsParent;
 			if (SUCCEEDED(node->QueryInterface(&nodeAsParent)))

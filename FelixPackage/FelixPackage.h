@@ -81,7 +81,7 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("A2EE7852-34B1-49A9-A3DB-36232AC6680C")
 IChildNode : INode
 {
 	virtual HRESULT GetParent (IParentNode** ppParent) = 0;
-	virtual HRESULT SetItemId (IParentNode* parent, VSITEMID itemId) = 0;
+	virtual HRESULT SetItemId (IProjectNode* root, IParentNode* parent) = 0;
 	virtual HRESULT ClearItemId() = 0;
 	virtual IChildNode* Next() = 0;
 	virtual void SetNext (IChildNode* next) = 0;
