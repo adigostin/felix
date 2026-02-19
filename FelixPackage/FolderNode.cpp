@@ -238,23 +238,6 @@ public:
 			return S_OK;
 		}
 
-		if (propid == VSHPROPID_SaveName || propid == VSHPROPID_Name)
-		{
-			// These two properties are meant to be set once, after this object is created.
-			// Afterwards is should be renamed only using VSHPROPID_EditLabel.
-			RETURN_HR_IF(E_UNEXPECTED, _name && _name.get()[0]);
-
-			RETURN_HR_IF(E_INVALIDARG, var.vt != VT_BSTR);
-
-			// The folder item is supposed to be created only for directories present in the file system.
-			// But we can't check that since our caller might set the Name property before adding us to the hierarchy.
-
-			_name = wil::make_process_heap_string_nothrow(var.bstrVal); RETURN_IF_NULL_ALLOC(_name);
-
-			// Also no need for notification since these properties are only set once.
-			return S_OK;
-		}
-
 		#ifdef _DEBUG
 		RETURN_HR(E_NOTIMPL);
 		#else

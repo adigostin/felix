@@ -16,8 +16,8 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace UITests
 {
-	com_ptr<IUIAutomation> automation;
-	com_ptr<VxDTE::_DTE> dte;
+	wil::com_ptr_failfast<IUIAutomation> automation;
+	wil::com_ptr_failfast<VxDTE::_DTE> dte;
 
 	#pragma region DTE Initialization
 	static HRESULT GetDTE (DWORD processId, VxDTE::_DTE** ppDTE)

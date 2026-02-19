@@ -228,6 +228,8 @@ BEGIN
                             "Specifies whether to generate PreInclude/PostInclude files when the project contains files with BuildTool=Assembler. When this is False, assembler directives such as DEVICE or ORG need to be added explicitly to .asm files."
     IDS_CANNOT_ADD_FILES_OR_SUBFOLDERS_TO_THIS_FOLDER 
                             "Cannot add files or subfolders to this folder."
+    IDS_CANNOT_REMOVE_GENFILES 
+                            "These files are auto-generated and cannot be removed. (Auto-generation can be disabled in the Project Properties -> Assembler page.)"
 END
 
 #endif    // English (United States) resources

@@ -2291,12 +2291,7 @@ public:
 		__RPC__inout_ecount_full(cItems) VARIANT_BOOL pfCanDelete[  ]) override
 	{
 		for (ULONG i = 0; i < cItems; i++)
-		{
-			if (itemid[i] == VSITEMID_GENFILES || itemid[i] == VSITEMID_PREINCLUDE || itemid[i] == VSITEMID_POSTINCLUDE)
-				pfCanDelete[i] = VARIANT_FALSE;
-			else
-				pfCanDelete[i] = VARIANT_TRUE;
-		}
+			pfCanDelete[i] = VARIANT_TRUE;
 		return S_OK;
 	}
 
@@ -2307,9 +2302,13 @@ public:
 		VSDELETEHANDLEROPTIONS dwFlags) override
 	{
 		HRESULT hr;
-
 		for (ULONG i = 0; i < cItems; i++)
-			RETURN_HR_IF(E_NOTIMPL, itemid[i] == VSITEMID_ROOT); // see example in PrjHier.cpp
+		{
+			if (itemid[i] == VSITEMID_ROOT)
+				RETURN_HR(E_NOTIMPL); // see example in PrjHier.cpp
+			else if (itemid[i] == VSITEMID_GENFILES || itemid[i] == VSITEMID_PREINCLUDE || itemid[i] == VSITEMID_POSTINCLUDE)
+				return SetFelixErrorInfo(E_INVALIDARG, IDS_CANNOT_REMOVE_GENFILES);
+		}
 
 		com_ptr<IVsSolution> solution;
 		hr = serviceProvider->QueryService(SID_SVsSolution, &solution); RETURN_IF_FAILED(hr);

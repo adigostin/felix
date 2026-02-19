@@ -16,7 +16,7 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace UITests
 {
-	extern com_ptr<VxDTE::_DTE> dte;
+	extern wil::com_ptr_failfast<VxDTE::_DTE> dte;
 	extern std::pair<wil::com_ptr_failfast<VxDTE::_Solution>, wil::com_ptr_failfast<VxDTE::Project>>
 		CreateSolutionAndProject (PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName);
 	extern void BuildSolution (VxDTE::_Solution* sln, long* buildFailCount);

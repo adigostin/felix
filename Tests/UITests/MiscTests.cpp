@@ -18,7 +18,7 @@ static constexpr VSITEMID VSITEMID_GENFILES = 50;
 
 namespace UITests
 {
-	extern com_ptr<VxDTE::_DTE> dte;
+	extern wil::com_ptr_failfast<VxDTE::_DTE> dte;
 	extern std::pair<wil::com_ptr_failfast<VxDTE::_Solution>, wil::com_ptr_failfast<VxDTE::Project>>
 		CreateSolutionAndProject (PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName);
 	extern void BuildSolution (VxDTE::_Solution* sln, long* buildFailCount);
@@ -279,34 +279,41 @@ namespace UITests
 
 		TEST_METHOD(RemoveFolderAndFile_FolderFirstInList)
 		{
-			HRESULT hr;
-			auto hier = proj.query<IVsHierarchy>();
-			VSITEMID itemIds[2];
-			hr = hier->ParseCanonicalName(L"GeneratedFiles", &itemIds[0]);
-			Assert::IsTrue(SUCCEEDED(hr));
-			hr = hier->ParseCanonicalName(L"GeneratedFiles\\PreInclude.asm", &itemIds[1]);
-			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_variant folderItemId;
+			auto hr = proj.query<IVsUIHierarchy>()->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &folderItemId);
+			Assert::AreEqual (S_OK, hr);
+			
+			VSITEMID fileItemId;
+			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"file.asm", &fileItemId);
+			Assert::AreEqual (S_OK, hr);
 
+			VSITEMID itemIds[2] = { V_UI4(&folderItemId), fileItemId };
 			hr = proj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(2, DELITEMOP_DeleteFromStorage, itemIds, DHO_SUPPRESS_UI);
 			Assert::IsTrue(SUCCEEDED(hr));
 		}
 
 		TEST_METHOD(RemoveFolderClosesEditors)
 		{
-			HRESULT hr;
+			wil::unique_variant folderItemId;
+			auto hr = proj.query<IVsUIHierarchy>()->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &folderItemId);
+			Assert::AreEqual (S_OK, hr);
+
+			VSADDRESULT addResult;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
+			hr = proj.query<IVsProject>()->AddItem (V_UI4(&folderItemId), oper, L"file2.asm", 1, const_cast<LPCOLESTR*>(TemplatePath_EmptyFile.addressof()), NULL, &addResult);
+			Assert::AreEqual (S_OK, hr);
+
 			VSITEMID itemId;
-			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"GeneratedFiles\\PreInclude.asm", &itemId);
-			Assert::IsTrue(SUCCEEDED(hr));
+			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"NewFolder1\\file2.asm", &itemId);
+			Assert::AreEqual (S_OK, hr);
 			com_ptr<IVsWindowFrame> wf;
 			hr = proj.query<IVsProject2>()->OpenItem(itemId, LOGVIEWID_Code, nullptr, &wf);
 			wf->Show();
 			hr = wf->IsVisible();
 			Assert::AreEqual (S_OK, hr);
 
-			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"GeneratedFiles", &itemId);
-			Assert::IsTrue(SUCCEEDED(hr));
-			hr = proj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(1, DELITEMOP_DeleteFromStorage, &itemId, DHO_SUPPRESS_UI);
-			Assert::IsTrue(SUCCEEDED(hr));
+			hr = proj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(1, DELITEMOP_DeleteFromStorage, &V_UI4(&folderItemId), DHO_SUPPRESS_UI);
+			Assert::AreEqual (S_OK, hr);
 			hr = wf->IsVisible();
 			Assert::AreNotEqual (S_OK, hr);
 		}
