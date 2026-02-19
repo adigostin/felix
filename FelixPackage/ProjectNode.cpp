@@ -2288,7 +2288,12 @@ public:
 		__RPC__inout_ecount_full(cItems) VARIANT_BOOL pfCanDelete[  ]) override
 	{
 		for (ULONG i = 0; i < cItems; i++)
-			pfCanDelete[i] = VARIANT_TRUE;
+		{
+			if (itemid[i] == VSITEMID_GENFILES || itemid[i] == VSITEMID_PREINCLUDE || itemid[i] == VSITEMID_POSTINCLUDE)
+				pfCanDelete[i] = VARIANT_FALSE;
+			else
+				pfCanDelete[i] = VARIANT_TRUE;
+		}
 		return S_OK;
 	}
 

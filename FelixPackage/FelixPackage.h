@@ -99,13 +99,13 @@ IChildNode : INode
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("5F6EA158-4DA8-469A-8FD8-E8C04F31244E")
 IFileNode : IChildNode
 {
+	virtual HRESULT STDMETHODCALLTYPE GetPath (BSTR* pbstrPath) = 0;
 };
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("E5498B79-7C01-4F49-B5EC-8D1C98FF935D")
 IFolderNode : IChildNode
 {
 	virtual IParentNode* AsParentNode() = 0;
-	virtual IFolderNodeProperties* AsFolderNodeProperties() = 0;
 };
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("56831DCD-0782-48BE-BF8A-57827FC0D6CA")
@@ -171,12 +171,16 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("32BEBBF2-86DF-4D79-88DF-1123548C4D8E") I
 };
 
 static constexpr VSITEMID VSITEMID_GENFILES = 50;
+static constexpr VSITEMID VSITEMID_PREINCLUDE = 51;
+static constexpr VSITEMID VSITEMID_POSTINCLUDE = 52;
 static constexpr VSITEMID VSITEMID_START = 100;
 FELIX_API extern wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 extern wil::com_ptr_nothrow<IVsShell> shell;
 extern wil::com_ptr_nothrow<IVsUIShell> uiShell;
 extern wil::com_ptr_nothrow<ISimulator> simulator;
 extern wil::unique_bstr genFilesStr;
+extern wil::unique_bstr preincludeFilename;
+extern wil::unique_bstr postincludeFilename;
 
 extern const wchar_t Z80AsmLanguageName[];
 extern const wchar_t SingleDebugPortName[];
@@ -256,6 +260,7 @@ inline HRESULT InitVariantFromVSITEMID (VSITEMID itemid, VARIANT* pvar)
 
 FELIX_API HRESULT MakeProjectNode (LPCOLESTR pszFilename, LPCOLESTR pszLocation, LPCOLESTR pszName, VSCREATEPROJFLAGS grfCreateFlags, REFIID iidProject, void** ppvProject);
 FELIX_API HRESULT MakeFileNode (IFileNode** file);
+HRESULT MakeFileNodePrePostInc (bool post, IFileNode** file);
 HRESULT MakeProjectConfig (IProjectConfig** to);
 HRESULT MakeProjectFactory (IVsProjectFactory** to);
 HRESULT MakePGPropertyPage (UINT titleStringResId, REFGUID pageGuid, DISPID dispidChildObj, IPropertyPage** to);

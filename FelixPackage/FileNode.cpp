@@ -22,7 +22,6 @@ struct FileNode
 	VSCOOKIE _docCookie = VSDOCCOOKIE_NIL;
 	wil::unique_process_heap_string _path;
 	BuildToolKind _buildTool = BuildToolKind::None;
-	bool _isGenerated = false;
 	com_ptr<ICustomBuildToolProperties> _customBuildToolProps;
 	com_ptr<ConnectionPointImpl<IPropertyNotifySink>> _propNotifyCP;
 	com_ptr<ConnectionPointImpl<IPropertyChangeSink>> _propChangeCP;
@@ -706,6 +705,13 @@ public:
 	}
 	#pragma endregion
 
+	#pragma region IFileNode
+	virtual HRESULT STDMETHODCALLTYPE GetPath (BSTR* pbstrPath) override
+	{
+		return GetBSTR(_path, pbstrPath);
+	}
+	#pragma endregion
+
 	#pragma region IFileNodeProperties
 	virtual HRESULT STDMETHODCALLTYPE get_Path (BSTR *pbstrPath) override
 	{
@@ -768,17 +774,9 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_IsGenerated (DWORD* is) override
-	{
-		*is = _isGenerated;
-		return S_OK;
-	}
+	virtual HRESULT STDMETHODCALLTYPE get_IsGenerated (DWORD* is) override { return S_OK; }
 
-	virtual HRESULT STDMETHODCALLTYPE put_IsGenerated (DWORD is) override
-	{
-		_isGenerated = !!is;
-		return S_OK;
-	}
+	virtual HRESULT STDMETHODCALLTYPE put_IsGenerated (DWORD is) override { return S_OK; }
 
 	virtual HRESULT STDMETHODCALLTYPE get_BuildTool (enum BuildToolKind *value) override
 	{
@@ -821,13 +819,7 @@ public:
 
 		if (dispid == dispidCustomBuildToolProps)
 		{
-			*pfHide = _isGenerated || (_buildTool != BuildToolKind::CustomBuildTool);
-			return S_OK;
-		}
-
-		if (dispid == dispidBuildToolKind)
-		{
-			*pfHide = _isGenerated;
+			*pfHide = (_buildTool != BuildToolKind::CustomBuildTool);
 			return S_OK;
 		}
 
@@ -859,12 +851,6 @@ public:
 		if (dispid == dispidBuildToolKind || dispid == dispidPath)
 		{
 			*fDefault = FALSE;
-			return S_OK;
-		}
-
-		if (dispid == dispidIsGenerated)
-		{
-			*fDefault = (_isGenerated == false);
 			return S_OK;
 		}
 

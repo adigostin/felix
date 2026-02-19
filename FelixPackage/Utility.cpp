@@ -268,6 +268,14 @@ static HRESULT Write (ISequentialStream* stream, const wchar_t* psz)
 	return stream->Write(psz, (ULONG)wcslen(psz) * sizeof(wchar_t), nullptr);
 }
 
+static HRESULT Write (ISequentialStream* stream, const wchar_t* str1, const wchar_t* str2)
+{
+	auto hr = stream->Write(str1, (ULONG)wcslen(str1) * sizeof(wchar_t), nullptr);
+	if (SUCCEEDED(hr))
+		hr = stream->Write(str2, (ULONG)wcslen(str2) * sizeof(wchar_t), nullptr);
+	return hr;
+}
+
 HRESULT GetCountOfBuildToolAssemblerFiles(IProjectNode* project, UINT* pCount)
 {
 	HRESULT hr;
@@ -325,22 +333,19 @@ static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* project, IProject
 	hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, packageDir); RETURN_IF_FAILED(hr);
 	*PathFindFileName(packageDir.get()) = 0;
 
-	for (ULONG resID : { IDS_PREINCLUDE, IDS_POSTINCLUDE })
+	struct Info { wil::unique_bstr& filename; const wchar_t* templateFilename; bool post; };
+	static const Info info[2] = { { preincludeFilename, L"preinclude.asm", false }, { postincludeFilename, L"postinclude.asm", true } };
+	for (auto& i : info)
 	{
-		wil::unique_bstr fileName;
-		hr = shell->LoadPackageString(CLSID_FelixPackage, resID, &fileName); RETURN_IF_FAILED(hr);
-
-		com_ptr<IFileNode> file = FindChildFileByName(project, folder->AsParentNode(), fileName.get());
+		com_ptr<IFileNode> file = FindChildFileByName(project, folder->AsParentNode(), i.filename.get());
 		if (!file)
 		{
-			hr = MakeFileNodeForExistingFile (fileName.get(), &file); RETURN_IF_FAILED(hr);
-			file.try_query<IFileNodeProperties>()->put_BuildTool(None);
-			file.try_query<IFileNodeProperties>()->put_IsGenerated(TRUE);
+			hr = MakeFileNodePrePostInc(i.post, &file); RETURN_IF_FAILED(hr);
 			hr = AddFileToParent(project, file, folder->AsParentNode()); RETURN_IF_FAILED(hr);
 		}
 
 		wil::unique_process_heap_string templatePath;
-		hr = wil::str_concat_nothrow(templatePath, packageDir, L"Templates\\", fileName); RETURN_IF_FAILED(hr);
+		hr = wil::str_concat_nothrow(templatePath, packageDir, L"Templates\\", i.templateFilename); RETURN_IF_FAILED(hr);
 
 		wil::unique_process_heap_string includePath;
 		hr = GetPathOf(project, file, includePath); RETURN_IF_FAILED(hr);
@@ -362,18 +367,6 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project)
 
 	wil::unique_variant projectName;
 	hr = project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_Name, &projectName); RETURN_IF_FAILED(hr);
-
-	com_ptr<IFolderNode> genFilesFolder;
-	for (auto c = project->FirstChild(); c; c = c->Next())
-	{
-		wil::unique_bstr name;
-		if (auto f = wil::try_com_query_nothrow<IFolderNode>(c);
-			f && SUCCEEDED(f->AsFolderNodeProperties()->get_Name(&name)) && !_wcsicmp(name.get(), genFilesStr.get()))
-		{
-			genFilesFolder = std::move(f);
-			break;
-		}
-	}
 
 	com_ptr<IVsSolutionBuildManager> buildManager;
 	hr = serviceProvider->QueryService(SID_SVsSolutionBuildManager, IID_PPV_ARGS(&buildManager)); RETURN_IF_FAILED(hr);
@@ -415,7 +408,7 @@ HRESULT DeletePrePostIncludeFiles (IProjectNode* project)
 
 	com_ptr<IVsOutputWindowPane> op;
 	hr = serviceProvider->QueryService(SID_SVsGeneralOutputWindowPane, IID_PPV_ARGS(&op)); RETURN_IF_FAILED(hr);
-//	hr = op->Activate(); RETURN_IF_FAILED(hr);
+	hr = op->Activate(); RETURN_IF_FAILED(hr);
 	com_ptr<IVsOutputWindowPane2> op2;
 	hr = op->QueryInterface(&op2); RETURN_IF_FAILED(hr);
 
@@ -425,11 +418,9 @@ HRESULT DeletePrePostIncludeFiles (IProjectNode* project)
 	com_ptr<IFolderNode> genFilesFolder;
 	for (auto c = project->FirstChild(); c; c = c->Next())
 	{
-		wil::unique_bstr name;
-		if (auto f = wil::try_com_query_nothrow<IFolderNode>(c);
-			f && SUCCEEDED(f->AsFolderNodeProperties()->get_Name(&name)) && !wcscmp(name.get(), genFilesStr.get()))
+		if (c->GetItemId() == VSITEMID_GENFILES)
 		{
-			genFilesFolder = std::move(f);
+			hr = c->QueryInterface(&genFilesFolder); RETURN_IF_FAILED(hr);
 			break;
 		}
 	}
@@ -496,50 +487,38 @@ FELIX_API HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* c
 	hr = ResolveMacros(outputDirUnresolved.get(), config, output_dir); RETURN_IF_FAILED(hr);
 	hr = EnsureDirHasBackslash (output_dir.get(), output_dir); RETURN_IF_FAILED(hr);
 
-	vector_nothrow<com_ptr<IFileNodeProperties>> asmFiles;
-
-	com_ptr<IFolderNode> genFilesFolder;
-	com_ptr<IFileNodeProperties> preIncludeFile, postIncludeFile;
-	for (auto c = project->FirstChild(); c; c = c->Next())
-	{
-		com_ptr<IFolderNode> folder;
-		wil::unique_variant folderName;
-		if (SUCCEEDED(c->QueryInterface(IID_PPV_ARGS(&folder)))
-			&& SUCCEEDED(folder->GetProperty(project, VSHPROPID_SaveName, &folderName))
-			&& folderName.vt == VT_BSTR && folderName.bstrVal
-			&& !wcscmp(folderName.bstrVal, genFilesStr.get()))
-		{
-			wil::unique_bstr preincludeName, postincludeName;
-			hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_PREINCLUDE, &preincludeName); RETURN_IF_FAILED(hr);
-			hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_POSTINCLUDE, &postincludeName); RETURN_IF_FAILED(hr);
-
-			if (auto file = FindChildFileByName(project, folder->AsParentNode(), preincludeName.get()))
-				preIncludeFile = wil::try_com_query_nothrow<IFileNodeProperties>(file);
-
-			if (auto file = FindChildFileByName(project, folder->AsParentNode(), postincludeName.get()))
-				postIncludeFile = wil::try_com_query_nothrow<IFileNodeProperties>(file);
-
-			genFilesFolder = std::move(folder);
-			break;
-		}
-	}
+	vector_nothrow<com_ptr<IFileNode>> asmFiles;
+	com_ptr<IFileNode> preIncludeFile, postIncludeFile;
 
 	stdext::inplace_function<HRESULT(IParentNode*)> enumDescendants;
 
-	enumDescendants = [&enumDescendants, &asmFiles, &genFilesFolder](IParentNode* parent) -> HRESULT
+	enumDescendants = [&enumDescendants, &asmFiles, &preIncludeFile, &postIncludeFile](IParentNode* parent) -> HRESULT
 		{
 			for (auto c = parent->FirstChild(); c; c = c->Next())
 			{
-				if (c == genFilesFolder)
-					continue;
-
-				if (auto file = wil::try_com_query_nothrow<IFileNodeProperties>(c))
+				if (c->GetItemId() == VSITEMID_GENFILES)
+				{
+					com_ptr<IParentNode> genFilesFolder;
+					auto hr = c->QueryInterface(&genFilesFolder); RETURN_IF_FAILED(hr);
+					for (auto cc = genFilesFolder->FirstChild(); cc; cc = cc->Next())
+					{
+						if (cc->GetItemId() == VSITEMID_PREINCLUDE)
+							RETURN_IF_FAILED(cc->QueryInterface(&preIncludeFile));
+						else if (cc->GetItemId() == VSITEMID_POSTINCLUDE)
+							RETURN_IF_FAILED(cc->QueryInterface(&postIncludeFile));
+					}
+					RETURN_HR_IF(E_UNEXPECTED, !preIncludeFile);
+					RETURN_HR_IF(E_UNEXPECTED, !postIncludeFile);
+				}
+				else if (auto file = wil::try_com_query_nothrow<IFileNodeProperties>(c))
 				{
 					BuildToolKind tool;
 					auto hr = file->get_BuildTool(&tool); RETURN_IF_FAILED(hr);
 					if (tool == BuildToolKind::Assembler)
 					{
-						bool pushed = asmFiles.try_push_back(std::move(file)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+						com_ptr<IFileNode> fileNode;
+						hr = file->QueryInterface(&fileNode); RETURN_IF_FAILED(hr);
+						bool pushed = asmFiles.try_push_back(std::move(fileNode)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 					}
 				}
 				else if (auto cAsParent = wil::try_com_query_nothrow<IParentNode>(c))
@@ -550,11 +529,7 @@ FELIX_API HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* c
 
 			return S_OK;
 		};
-	if (preIncludeFile)
-		asmFiles.try_push_back(std::move(preIncludeFile));
 	hr = enumDescendants(project); RETURN_IF_FAILED(hr);
-	if (postIncludeFile)
-		asmFiles.try_push_back(std::move(postIncludeFile));
 
 	if (asmFiles.empty())
 		return (*ppCmdLine = nullptr), S_FALSE;
@@ -649,25 +624,21 @@ FELIX_API HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* c
 	}
 
 	// input files
+	wil::unique_bstr filename;
+	if (preIncludeFile)
+	{
+		hr = preIncludeFile->GetCanonicalName(project, &filename); RETURN_IF_FAILED(hr);
+		hr = Write(cmdLine, L" ", filename.get()); RETURN_IF_FAILED(hr);
+	}	
 	for (auto& asmFile : asmFiles)
 	{
-		wil::unique_bstr path;
-		hr = asmFile->get_Path(&path); RETURN_IF_FAILED(hr);
-		hr = Write(cmdLine, L" "); RETURN_IF_FAILED(hr);
-		if (PathIsFileSpec(path.get()))
-		{
-			// (1)
-			com_ptr<IFileNode> fn;
-			hr = asmFile->QueryInterface(IID_PPV_ARGS(&fn)); RETURN_IF_FAILED(hr);
-			wil::unique_process_heap_string relative;
-			hr = GetPathOf (project, fn, relative, true); RETURN_IF_FAILED(hr);
-			hr = Write(cmdLine, relative.get()); RETURN_IF_FAILED(hr);
-		}
-		else
-		{
-			// (2) or (3)
-			hr = Write(cmdLine, path.get()); RETURN_IF_FAILED(hr);
-		}
+		hr = asmFile->GetCanonicalName(project, &filename); RETURN_IF_FAILED(hr);
+		hr = Write(cmdLine, L" ", filename.get()); RETURN_IF_FAILED(hr);
+	}
+	if (postIncludeFile)
+	{
+		hr = postIncludeFile->GetCanonicalName(project, &filename); RETURN_IF_FAILED(hr);
+		hr = Write(cmdLine, L" ", filename.get()); RETURN_IF_FAILED(hr);
 	}
 
 	return MakeBstrFromStreamOnHGlobal (cmdLine, ppCmdLine);
@@ -837,10 +808,8 @@ HRESULT AddFileToParent (IProjectNode* proj, IFileNode* child, IParentNode* addT
 		addTo->SetFirstChild(child);
 	else
 	{
-		com_ptr<IFileNodeProperties> childProps;
-		hr = child->QueryInterface(IID_PPV_ARGS(childProps.addressof())); RETURN_IF_FAILED(hr);
 		wil::unique_bstr childPath;
-		hr = childProps->get_Path(&childPath); RETURN_IF_FAILED(hr);
+		hr = child->GetPath(&childPath); RETURN_IF_FAILED(hr);
 		const wchar_t* childName = PathFindFileName(childPath.get());
 
 		// Do we need to insert it in the first position?

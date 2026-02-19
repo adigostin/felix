@@ -405,7 +405,6 @@ public:
 
 	#pragma region IFolderNode
 	virtual IParentNode* AsParentNode() override { return this; }
-	virtual IFolderNodeProperties* AsFolderNodeProperties() override { return this; }
 	#pragma endregion
 
 	#pragma region IVsPerPropertyBrowsing

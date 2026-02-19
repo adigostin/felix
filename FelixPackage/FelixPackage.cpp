@@ -36,6 +36,8 @@ wil::com_ptr_nothrow<IVsShell> shell;
 wil::com_ptr_nothrow<IVsUIShell> uiShell;
 com_ptr<ISimulator> simulator;
 wil::unique_bstr genFilesStr;
+wil::unique_bstr preincludeFilename;
+wil::unique_bstr postincludeFilename;
 
 HRESULT TestHelper_CreateInstance (IFelixTestHelper** out);
 
@@ -426,6 +428,8 @@ public:
 		hr = pSP->QueryService(SID_SVsUIShell, &uiShell); RETURN_IF_FAILED(hr);
 
 		hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERATED_FILES, &genFilesStr); RETURN_IF_FAILED(hr);
+		hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_PREINCLUDE, &preincludeFilename); RETURN_IF_FAILED(hr);
+		hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_POSTINCLUDE, &postincludeFilename); RETURN_IF_FAILED(hr);
 
 		if (!serviceProvider.try_query<IMockServiceProvider>())
 			InitSentry();
