@@ -226,6 +226,8 @@ STRINGTABLE
 BEGIN
     IDS_GEN_PRE_POST_FILES_DESC 
                             "Specifies whether to generate PreInclude/PostInclude files when the project contains files with BuildTool=Assembler. When this is False, assembler directives such as DEVICE or ORG need to be added explicitly to .asm files."
+    IDS_CANNOT_ADD_FILES_OR_SUBFOLDERS_TO_THIS_FOLDER 
+                            "Cannot add files or subfolders to this folder."
 END
 
 #endif    // English (United States) resources

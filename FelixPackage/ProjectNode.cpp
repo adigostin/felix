@@ -1301,6 +1301,9 @@ public:
 
 	HRESULT ProcessCommandAddItem (VSITEMID location, BOOL fAddNewItem)
 	{
+		if (location == VSITEMID_GENFILES)
+			return SetFelixErrorInfo(E_INVALIDARG, IDS_CANNOT_ADD_FILES_OR_SUBFOLDERS_TO_THIS_FOLDER);
+
 		wil::com_ptr_nothrow<IVsAddProjectItemDlg> dlg;
 		auto hr = serviceProvider->QueryService(SID_SVsAddProjectItemDlg, &dlg); RETURN_IF_FAILED(hr);
 		VSADDITEMFLAGS flags;
@@ -3182,6 +3185,9 @@ public:
 	HRESULT ProcessCommandAddNewFolder (VSITEMID parentItemId, OLECMDEXECOPT opt, VARIANT* pvaOut)
 	{
 		HRESULT hr;
+
+		if (parentItemId == VSITEMID_GENFILES)
+			return SetFelixErrorInfo(E_INVALIDARG, IDS_CANNOT_ADD_FILES_OR_SUBFOLDERS_TO_THIS_FOLDER);
 
 		com_ptr<IParentNode> parent;
 		wil::unique_process_heap_string parentPath;
