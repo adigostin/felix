@@ -39,5 +39,6 @@
 #define dispidProjectName          31
 #define dispidLaunchTarget         32
 #define dispidVSItemId             33
+#define dispidGeneratePrePostIncludeFiles 34
 
 #endif

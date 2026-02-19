@@ -80,6 +80,8 @@ namespace FelixTests
 			com_ptr<IProjectNode> project;
 			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&project));
 			Assert::IsTrue(SUCCEEDED(hr));
+			auto config = AddDebugProjectConfig(project->AsHierarchy());
+			config->AsmProps()->put_GeneratePrePostIncludeFiles(VARIANT_FALSE);
 
 			if (asmFileContent)
 				WriteFileOnDisk(CombinePath(tempPath, L"test.asm").get(), asmFileContent);
@@ -90,7 +92,6 @@ namespace FelixTests
 			project->AsVsProject()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, filesToOpen, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto config = AddDebugProjectConfig(project->AsHierarchy());
 			auto pane = MakeMockOutputWindowPane(nullptr);
 			com_ptr<IProjectConfigBuilder> builder;
 			hr = MakeProjectConfigBuilder (project, config, pane, &builder);
@@ -181,6 +182,8 @@ namespace FelixTests
 			wil::com_ptr_failfast<IProjectNode> project;
 			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&project));
 			Assert::IsTrue(SUCCEEDED(hr));
+			auto config = AddDebugProjectConfig(project->AsHierarchy());
+			config->AsmProps()->put_GeneratePrePostIncludeFiles(VARIANT_FALSE);
 
 			if (sourceFileContent)
 				WriteFileOnDisk(CombinePath(tempPath, sourceFileName).get(), sourceFileContent);
@@ -189,7 +192,7 @@ namespace FelixTests
 			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, sourceFileName);
 			hr = project->AsVsProject()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, (LPCOLESTR*)filePath.addressof(), nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto sourceFile = wil::try_com_query_nothrow<IFileNodeProperties>(project->FirstChild());
+			auto sourceFile = wil::com_query_failfast<IFileNodeProperties>(project->FirstChild());
 
 			hr = sourceFile->put_BuildTool(BuildToolKind::CustomBuildTool);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -201,7 +204,6 @@ namespace FelixTests
 			hr = cbtProps->put_CommandLine(wil::make_bstr_nothrow(cbtCmdLine).get());
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			auto config = AddDebugProjectConfig(project->AsHierarchy());
 			auto pane = MakeMockOutputWindowPane(outputStreamUTF16);
 
 			wil::com_ptr_failfast<IProjectConfigBuilder> builder;

@@ -80,6 +80,9 @@ library ATLProject1Lib
 
 		[id(dispidListingFilename), bindable, propget] HRESULT ListingFilename ([out, retval] BSTR* pFilename);
 		[id(dispidListingFilename), bindable, propput] HRESULT ListingFilename (BSTR filename);
+
+		[id(dispidGeneratePrePostIncludeFiles), bindable, propget] HRESULT GeneratePrePostIncludeFiles ([out, retval] VARIANT_BOOL* pGenerate);
+		[id(dispidGeneratePrePostIncludeFiles), bindable, propput] HRESULT GeneratePrePostIncludeFiles (VARIANT_BOOL generate);
 	}
 
 	[uuid(A6C45AD3-6F11-4116-A65D-9083381843D8)]
@@ -160,6 +163,7 @@ library ATLProject1Lib
 		[id(dispidPath), propget] HRESULT Path ([out, retval] BSTR* value);
 		[id(dispidPath), propput] HRESULT Path (BSTR value);
 
+		// This is used only for backward compatibility, to load files saved by old versions of our extension.
 		[id(dispidIsGenerated), propget] HRESULT IsGenerated ([out, retval] DWORD* is);
 		[id(dispidIsGenerated), propput] HRESULT IsGenerated (DWORD is);
 

@@ -268,14 +268,58 @@ static HRESULT Write (ISequentialStream* stream, const wchar_t* psz)
 	return stream->Write(psz, (ULONG)wcslen(psz) * sizeof(wchar_t), nullptr);
 }
 
+HRESULT GetCountOfBuildToolAssemblerFiles(IProjectNode* project, UINT* pCount)
+{
+	HRESULT hr;
+
+	*pCount = 0;
+	stdext::inplace_function<HRESULT(IParentNode*)> searchDescendants;
+	searchDescendants = [&searchDescendants, pCount](IParentNode* parent) -> HRESULT
+		{
+			for (auto c = parent->FirstChild(); c; c = c->Next())
+			{
+				if (auto file = wil::try_com_query_nothrow<IFileNodeProperties>(c))
+				{
+					BuildToolKind tool;
+					auto hr = file->get_BuildTool(&tool); RETURN_IF_FAILED(hr);
+					if (tool == BuildToolKind::Assembler)
+						(*pCount)++;
+				}
+				else if (auto cAsParent = wil::try_com_query_nothrow<IParentNode>(c))
+				{
+					if (c->GetItemId() != VSITEMID_GENFILES)
+					{
+						auto hr = searchDescendants(cAsParent); RETURN_IF_FAILED(hr);
+					}
+				}
+			}
+
+			return S_FALSE;
+		};
+	return searchDescendants(project);
+}
+
+HRESULT GetActiveCfgGeneratePrePostIncludeFiles (IVsHierarchy* hier)
+{
+	com_ptr<IVsSolutionBuildManager> buildManager;
+	auto hr = serviceProvider->QueryService(SID_SVsSolutionBuildManager, IID_PPV_ARGS(&buildManager)); RETURN_IF_FAILED(hr);
+	com_ptr<IVsProjectCfg> activeConfig;
+	hr = buildManager->FindActiveProjectCfg (nullptr, nullptr, hier, &activeConfig); RETURN_IF_FAILED_EXPECTED(hr);
+	// The call to FindActiveProjectCfg will fail if we get here while loading a project from XML.
+	// See explanation in comment in ProjectNode::put_Configurations().
+	com_ptr<IProjectConfig> activeCfg;
+	hr = activeConfig->QueryInterface(&activeCfg); RETURN_IF_FAILED(hr);
+	VARIANT_BOOL generate;
+	hr = activeCfg->AsmProps()->get_GeneratePrePostIncludeFiles(&generate); RETURN_IF_FAILED(hr);
+	return generate ? S_OK : S_FALSE;
+}
+
 static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* project, IProjectConfig* macroResolver)
 {
 	HRESULT hr;
 
-	wil::unique_bstr genFilesStr;
-	hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERATED_FILES, &genFilesStr); RETURN_IF_FAILED(hr);
 	com_ptr<IFolderNode> folder;
-	hr = GetOrCreateChildFolder(project, project, genFilesStr.get(), true, &folder); RETURN_IF_FAILED(hr);
+	hr = GetOrCreateChildFolder (project, project, genFilesStr.get(), MakeFolderNodeGenerated, true, &folder); RETURN_IF_FAILED(hr);
 
 	wil::unique_process_heap_string packageDir;
 	hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, packageDir); RETURN_IF_FAILED(hr);
@@ -290,6 +334,7 @@ static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* project, IProject
 		if (!file)
 		{
 			hr = MakeFileNodeForExistingFile (fileName.get(), &file); RETURN_IF_FAILED(hr);
+			file.try_query<IFileNodeProperties>()->put_BuildTool(None);
 			file.try_query<IFileNodeProperties>()->put_IsGenerated(TRUE);
 			hr = AddFileToParent(project, file, folder->AsParentNode()); RETURN_IF_FAILED(hr);
 		}
@@ -300,21 +345,6 @@ static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* project, IProject
 		wil::unique_process_heap_string includePath;
 		hr = GetPathOf(project, file, includePath); RETURN_IF_FAILED(hr);
 		hr = CreateFileFromTemplate(templatePath.get(), includePath.get(), macroResolver); RETURN_IF_FAILED(hr);
-	}
-
-	// If the project is titled, save it.
-	wil::unique_variant saveName;
-	if (SUCCEEDED(project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_SaveName, &saveName))
-		&& saveName.vt == VT_BSTR && saveName.bstrVal && saveName.bstrVal[0])
-	{
-		wil::unique_bstr projectMk;
-		hr = project->AsVsProject()->GetMkDocument(VSITEMID_ROOT, &projectMk); RETURN_IF_FAILED(hr);
-		com_ptr<IVsFileChangeEx> fileChange;
-		hr = serviceProvider->QueryService(SID_SVsFileChangeEx, IID_PPV_ARGS(&fileChange)); RETURN_IF_FAILED(hr);
-		hr = fileChange->IgnoreFile(VSCOOKIE_NIL, projectMk.get(), TRUE); RETURN_IF_FAILED(hr);
-		auto unignore = wil::scope_exit([&fileChange, &projectMk] { fileChange->IgnoreFile(0, projectMk.get(), FALSE); });
-		hr = wil::try_com_query_nothrow<IPersistFileFormat>(project)->Save(nullptr, 0, 0); RETURN_IF_FAILED(hr);
-		hr = fileChange->SyncFile(projectMk.get()); (void)hr;
 	}
 
 	return S_OK;
@@ -333,10 +363,6 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project)
 	wil::unique_variant projectName;
 	hr = project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_Name, &projectName); RETURN_IF_FAILED(hr);
 
-	// Do we have any file with BuildTool set to Assembler?
-	// If yes, we generate pre/post-include files. If no, we delete any existing pre/post-include files.
-	wil::unique_bstr genFilesStr;
-	hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERATED_FILES, &genFilesStr); RETURN_IF_FAILED(hr);
 	com_ptr<IFolderNode> genFilesFolder;
 	for (auto c = project->FirstChild(); c; c = c->Next())
 	{
@@ -347,87 +373,6 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project)
 			genFilesFolder = std::move(f);
 			break;
 		}
-	}
-
-	stdext::inplace_function<HRESULT(IParentNode*)> enumDescendants;
-	enumDescendants = [&enumDescendants, genFilesFolder=genFilesFolder.get()](IParentNode* parent) -> HRESULT
-		{
-			for (auto c = parent->FirstChild(); c; c = c->Next())
-			{
-				if (c == genFilesFolder)
-					continue;
-
-				if (auto file = wil::try_com_query_nothrow<IFileNodeProperties>(c))
-				{
-					BuildToolKind tool;
-					auto hr = file->get_BuildTool(&tool); RETURN_IF_FAILED(hr);
-					if (tool == BuildToolKind::Assembler)
-						return S_OK;
-				}
-				else if (auto cAsParent = wil::try_com_query_nothrow<IParentNode>(c))
-				{
-					auto hr = enumDescendants(cAsParent); RETURN_IF_FAILED(hr);
-					if (hr == S_OK)
-						return S_OK;
-				}
-			}
-
-			return S_FALSE;
-		};
-	hr = enumDescendants(project); RETURN_IF_FAILED(hr);
-	if (hr == S_FALSE)
-	{
-		// No file in project with BuildTool=Assembler. Delete the GeneratedFiles folder, if any, then return.
-		if (genFilesFolder)
-		{
-			wil::unique_bstr str;
-			if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_REMOVING_GEN_FILES, &str)))
-			{
-				op2->OutputTaskItemStringEx2 (str.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
-					nullptr, 0, nullptr, 0, 0, projectName.bstrVal, nullptr, nullptr);
-			}
-
-			com_ptr<IVsRunningDocumentTable> rdt;
-			if (SUCCEEDED(serviceProvider->QueryService(SID_SVsRunningDocumentTable, IID_PPV_ARGS(&rdt))))
-			{
-				com_ptr<IVsSolution> solution;
-				hr = serviceProvider->QueryService(SID_SVsSolution, &solution); RETURN_IF_FAILED(hr);
-
-				for (auto c = genFilesFolder->AsParentNode()->FirstChild(); c; c = c->Next())
-				{
-					wil::unique_process_heap_string path;
-					hr = GetPathOf (project, c, path); RETURN_IF_FAILED(hr);
-					VSDOCCOOKIE docCookie;
-					hr = rdt->FindAndLockDocument(RDT_NoLock, path.get(), nullptr, nullptr, nullptr, &docCookie);
-					if (SUCCEEDED(hr) && docCookie != VSDOCCOOKIE_NIL)
-					{
-						hr = solution->CloseSolutionElement (SLNSAVEOPT_NoSave, project->AsHierarchy(), docCookie); LOG_IF_FAILED(hr);
-					}
-				}
-			}
-
-			wil::unique_process_heap_string genDirPath;
-			hr = GetPathOf(project, genFilesFolder, genDirPath); RETURN_IF_FAILED(hr);
-
-			hr = RemoveChildFromParent(project, genFilesFolder); RETURN_IF_FAILED(hr);
-
-			// Attempt to delete the directory from disk. Ignore errors since the directory may be missing.
-			com_ptr<IShellItem> si;
-			hr = SHCreateItemFromParsingName(genDirPath.get(), nullptr, IID_PPV_ARGS(&si));
-			if (SUCCEEDED(hr))
-			{
-				com_ptr<IFileOperation> pfo;
-				hr = CoCreateInstance(__uuidof(FileOperation), NULL, CLSCTX_ALL, IID_PPV_ARGS(&pfo)); RETURN_IF_FAILED(hr);
-				DWORD fof;
-				hr = pfo->SetOperationFlags(FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT); RETURN_IF_FAILED(hr);
-				hr = pfo->DeleteItem(si, nullptr);
-				if (SUCCEEDED(hr))
-					hr = pfo->PerformOperations();
-			}
-
-		}
-
-		return S_OK;
 	}
 
 	com_ptr<IVsSolutionBuildManager> buildManager;
@@ -464,6 +409,74 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project)
 	return S_OK;
 };
 
+HRESULT DeletePrePostIncludeFiles (IProjectNode* project)
+{
+	HRESULT hr;
+
+	com_ptr<IVsOutputWindowPane> op;
+	hr = serviceProvider->QueryService(SID_SVsGeneralOutputWindowPane, IID_PPV_ARGS(&op)); RETURN_IF_FAILED(hr);
+//	hr = op->Activate(); RETURN_IF_FAILED(hr);
+	com_ptr<IVsOutputWindowPane2> op2;
+	hr = op->QueryInterface(&op2); RETURN_IF_FAILED(hr);
+
+	wil::unique_variant projectName;
+	hr = project->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_Name, &projectName); RETURN_IF_FAILED(hr);
+
+	com_ptr<IFolderNode> genFilesFolder;
+	for (auto c = project->FirstChild(); c; c = c->Next())
+	{
+		wil::unique_bstr name;
+		if (auto f = wil::try_com_query_nothrow<IFolderNode>(c);
+			f && SUCCEEDED(f->AsFolderNodeProperties()->get_Name(&name)) && !wcscmp(name.get(), genFilesStr.get()))
+		{
+			genFilesFolder = std::move(f);
+			break;
+		}
+	}
+
+	if (genFilesFolder)
+	{
+		wil::unique_bstr str;
+		if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_REMOVING_GEN_FILES, &str)))
+			op2->OutputTaskItemStringEx2 (str.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
+				nullptr, 0, nullptr, 0, 0, projectName.bstrVal, nullptr, nullptr);
+
+		com_ptr<IVsRunningDocumentTable> rdt;
+		if (SUCCEEDED(serviceProvider->QueryService(SID_SVsRunningDocumentTable, IID_PPV_ARGS(&rdt))))
+		{
+			com_ptr<IVsSolution> solution;
+			hr = serviceProvider->QueryService(SID_SVsSolution, &solution); RETURN_IF_FAILED(hr);
+
+			for (auto c = genFilesFolder->AsParentNode()->FirstChild(); c; c = c->Next())
+			{
+				wil::unique_process_heap_string path;
+				hr = GetPathOf (project, c, path); RETURN_IF_FAILED(hr);
+				VSDOCCOOKIE docCookie;
+				hr = rdt->FindAndLockDocument(RDT_NoLock, path.get(), nullptr, nullptr, nullptr, &docCookie);
+				if (SUCCEEDED(hr) && docCookie != VSDOCCOOKIE_NIL)
+				{
+					hr = solution->CloseSolutionElement (SLNSAVEOPT_NoSave, project->AsHierarchy(), docCookie); LOG_IF_FAILED(hr);
+				}
+			}
+		}
+
+		wil::unique_process_heap_string genDirPath;
+		hr = GetPathOf(project, genFilesFolder, genDirPath); RETURN_IF_FAILED(hr);
+
+		hr = RemoveChildFromParent(project, genFilesFolder); RETURN_IF_FAILED(hr);
+
+		auto buffer = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s%c", genDirPath.get(), L'\0');
+		SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = buffer.get(), .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
+		int ires = SHFileOperation(&file_op); WI_ASSERT(!ires);
+
+		if (SUCCEEDED(shell->LoadPackageString(CLSID_FelixPackage, IDS_GEN_PRE_POST_MESSAGE_DONE, &str)))
+			op2->OutputTaskItemStringEx2(str.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
+				nullptr, 0, nullptr, 0, 0, projectName.bstrVal, nullptr, nullptr);
+	}
+
+	return S_OK;
+}
+
 // Returns S_FALSE when there are no files with BuildTool=Assembler.
 FELIX_API HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine)
 {
@@ -485,8 +498,6 @@ FELIX_API HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* c
 
 	vector_nothrow<com_ptr<IFileNodeProperties>> asmFiles;
 
-	wil::unique_bstr generatedFilesName;
-	hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_GENERATED_FILES, &generatedFilesName); RETURN_IF_FAILED(hr);
 	com_ptr<IFolderNode> genFilesFolder;
 	com_ptr<IFileNodeProperties> preIncludeFile, postIncludeFile;
 	for (auto c = project->FirstChild(); c; c = c->Next())
@@ -496,7 +507,7 @@ FELIX_API HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* c
 		if (SUCCEEDED(c->QueryInterface(IID_PPV_ARGS(&folder)))
 			&& SUCCEEDED(folder->GetProperty(project, VSHPROPID_SaveName, &folderName))
 			&& folderName.vt == VT_BSTR && folderName.bstrVal
-			&& !wcscmp(folderName.bstrVal, generatedFilesName.get()))
+			&& !wcscmp(folderName.bstrVal, genFilesStr.get()))
 		{
 			wil::unique_bstr preincludeName, postincludeName;
 			hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_PREINCLUDE, &preincludeName); RETURN_IF_FAILED(hr);
@@ -880,7 +891,7 @@ HRESULT AddFileToParent (IProjectNode* proj, IFileNode* child, IParentNode* addT
 	return S_OK;
 }
 
-FELIX_API HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, bool createDirectoryOnFileSystem, IFolderNode** ppFolder)
+FELIX_API HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, HRESULT(*factory)(IFolderNode**), bool createDirectoryOnFileSystem, IFolderNode** ppFolder)
 {
 	HRESULT hr;
 
@@ -947,7 +958,7 @@ FELIX_API HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* paren
 	}
 
 	com_ptr<IFolderNode> newFolder;
-	hr = MakeFolderNode (&newFolder); RETURN_IF_FAILED(hr);
+	hr = factory (&newFolder); RETURN_IF_FAILED(hr);
 	auto name = wil::make_bstr_nothrow(folderName); RETURN_IF_NULL_ALLOC(name);
 	hr = newFolder.try_query<IFolderNodeProperties>()->put_Name(name.get()); RETURN_IF_FAILED(hr);
 	newFolder->SetNext(insertBefore);
@@ -1031,7 +1042,7 @@ HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* node)
 	return S_OK;
 }
 
-HRESULT GetItems (IParentNode* parent, SAFEARRAY** itemsOut)
+HRESULT GetItems (IParentNode* parent, HRESULT(*filter)(IChildNode*), SAFEARRAY** itemsOut)
 {
 	HRESULT hr;
 	*itemsOut = nullptr;
@@ -1040,6 +1051,13 @@ HRESULT GetItems (IParentNode* parent, SAFEARRAY** itemsOut)
 
 	for (auto c = parent->FirstChild(); c; c = c->Next())
 	{
+		if (filter)
+		{
+			hr = filter(c); RETURN_IF_FAILED(hr);
+			if (hr == S_FALSE)
+				continue;
+		}
+
 		if (auto file = wil::try_com_query_nothrow<IFileNodeProperties>(c))
 		{
 			bool pushed = nodes.try_push_back(std::move(file)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);

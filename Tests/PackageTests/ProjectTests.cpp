@@ -616,15 +616,17 @@ namespace FelixTests
 		TEST_METHOD(RenameFilePresentOnFileSystem)
 		{
 			static const char xml[] = ""
-				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-				"<Z80Project Guid=\"{2839FDD7-4C8F-4772-90E6-222C702D045E}\">"
-				"<Configurations>"
-				"<Configuration ConfigName=\"Debug\" PlatformName=\"ZX Spectrum 48K\" />"
-				"</Configurations>"
-				"<Items>"
-				"<File Path=\"file.asm\" BuildTool=\"Assembler\" />"
-				"</Items>"
-				"</Z80Project>";
+				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n"
+				"<Z80Project Guid=\"{2839FDD7-4C8F-4772-90E6-222C702D045E}\">\r\n"
+				"  <Configurations>\r\n"
+				"    <Configuration ConfigName=\"Debug\" PlatformName=\"ZX Spectrum 48K\">\r\n"
+				"      <AssemblerProperties GeneratePrePostIncludeFiles=\"False\" />\r\n"
+				"    </Configuration>\r\n"
+				"  </Configurations>\r\n"
+				"  <Items>\r\n"
+				"    <File Path=\"file.asm\" BuildTool=\"Assembler\" />\r\n"
+				"  </Items>\r\n"
+				"</Z80Project>\r\n";
 
 			auto s = SHCreateMemStream((BYTE*)xml, sizeof(xml) - 1);
 			com_ptr<IStream> stream;
@@ -746,6 +748,7 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, V_VSITEMID(&fileItemId));
 			Assert::IsFalse(PathFileExists(fileMk.get()));
+			hier->Close();
 		}
 
 		TEST_METHOD(DeleteItems_Folder)
@@ -791,6 +794,7 @@ namespace FelixTests
 			// Check there's no file or directory in the file system.
 			Assert::IsFalse(PathFileExists(fileMk.get()));
 			Assert::IsFalse(PathFileExists(directoryFullPath.get()));
+			hier->Close();
 		}
 
 		TEST_METHOD(DeleteItems_FolderAndOneOfTwoMemberFiles)
@@ -834,68 +838,6 @@ namespace FelixTests
 			Assert::IsNotNull(wcsstr(fn.get(), L"%OUTPUT_NAME%"));
 
 			proj->AsHierarchy()->Close();
-		}
-
-		TEST_METHOD(GeneratedFiles_AddFirstAsmToProject_RemoveLastAsmFromProject)
-		{
-			HRESULT hr;
-
-			com_ptr<IVsSolution> sol;
-			serviceProvider->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
-
-			auto testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"GeneratedFiles_AddFirstAsmToProject_RemoveLastAsmFromProject");
-
-			com_ptr<IProjectNode> project;
-			hr = sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), testPath.get(), L"TestProject.flx", CPF_CLONEFILE, IID_PPV_ARGS(&project));
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto config = AddDebugProjectConfig(project->AsHierarchy());
-
-			com_ptr<IVsShell> shell;
-			serviceProvider->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell));
-			wil::unique_bstr genFilesStr;
-			hr = shell->LoadPackageString (CLSID_FelixPackage, IDS_GENERATED_FILES, &genFilesStr);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			auto findGenFilesFolder = [project=project.get(), genFilesStr=genFilesStr.get()]() -> com_ptr<IFolderNode>
-				{
-					for (auto c = project->FirstChild(); c; c = c->Next())
-					{
-						wil::unique_bstr name;
-						if (auto f = wil::try_com_query_nothrow<IFolderNode>(c);
-							f && SUCCEEDED(f->AsFolderNodeProperties()->get_Name(&name)) && !_wcsicmp(name.get(), genFilesStr))
-						{
-							return f;
-						}
-					}
-
-					return nullptr;
-				};
-
-			auto gff = findGenFilesFolder();
-			Assert::IsNull(gff.get());
-
-			static const wchar_t FileName[] = L"file.asm";
-			hr = project->AsVsProject()->AddItem (VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, FileName, 1, (LPCOLESTR*)TemplatePath_EmptyFile.addressof(), nullptr, nullptr);
-			Assert::IsTrue(SUCCEEDED(hr));
-			com_ptr<IFileNode> fn;
-			for (auto c = project->FirstChild(); c != nullptr; c = c->Next())
-			{
-				wil::unique_variant n;
-				if (fn = wil::try_com_query_nothrow<IFileNode>(c); fn && SUCCEEDED(fn->GetProperty(project, VSHPROPID_SaveName, &n)) && V_VT(&n) == VT_BSTR && !wcscmp(FileName, V_BSTR(&n)))
-					break;
-			}
-			Assert::IsNotNull(fn.get());
-			VSITEMID fileItemId = fn->GetItemId();
-
-			gff = findGenFilesFolder();
-			Assert::IsNotNull(gff.get());
-
-			hr = project->AsHierarchyDeleteHandler3()->DeleteItems(1, DELITEMOP_DeleteFromStorage, &fileItemId, DHO_SUPPRESS_UI);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			gff = findGenFilesFolder();
-			Assert::IsNull(gff.get());
-			project->AsHierarchy()->Close();
 		}
 	};
 }

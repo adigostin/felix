@@ -18,7 +18,7 @@ struct FolderNode : IFolderNode, IParentNode, IFolderNodeProperties, IXmlParent,
 	VSITEMID _itemId = VSITEMID_NIL;
 	com_ptr<IChildNode> _next;
 	com_ptr<IChildNode> _firstChild;
-	wil::unique_bstr _name; // directory name, no path components needed
+	wil::unique_process_heap_string _name; // directory name, no path components needed
 	com_ptr<ConnectionPointImpl<IPropertyNotifySink>> _propNotifyCP;
 	com_ptr<ConnectionPointImpl<IPropertyChangeSink>> _propChangeCP;
 	WeakRefToThis _weakRefToThis;
@@ -68,33 +68,25 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE get___id (BSTR *value) override
 	{
 		// Shown by VS at the top of the Properties Window.
-		if (!_name || !_name.get()[0])
-			return (*value = nullptr), S_OK;			
-		*value = SysAllocString(_name.get()); RETURN_IF_NULL_ALLOC(*value);
-		return S_OK;
+		return GetBSTR(_name, value);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_Name (BSTR *value) override
 	{
-		if (!_name || !_name.get()[0])
-			return (*value = nullptr), S_OK;			
-		*value = SysAllocString(_name.get()); RETURN_IF_NULL_ALLOC(*value);
-		return S_OK;
+		return GetBSTR(_name, value);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_Name (BSTR value) override
 	{
 		RETURN_HR_IF(E_UNEXPECTED, _itemId != VSITEMID_NIL);
 		RETURN_HR_IF(E_INVALIDARG, !value || !value[0]);
-
-		_name = wil::make_bstr_nothrow(value); RETURN_IF_NULL_ALLOC(_name);
-		// TODO: property change notifications
+		_name = wil::make_process_heap_string_nothrow(value); RETURN_IF_NULL_ALLOC(_name);
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_Items (SAFEARRAY** items) override
 	{
-		return GetItems(this, items);
+		return GetItems(this, nullptr, items);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_Items (SAFEARRAY* sa) override
@@ -257,7 +249,7 @@ public:
 			// The folder item is supposed to be created only for directories present in the file system.
 			// But we can't check that since our caller might set the Name property before adding us to the hierarchy.
 
-			_name = wil::make_bstr_nothrow(var.bstrVal); RETURN_IF_NULL_ALLOC(_name);
+			_name = wil::make_process_heap_string_nothrow(var.bstrVal); RETURN_IF_NULL_ALLOC(_name);
 
 			// Also no need for notification since these properties are only set once.
 			return S_OK;
@@ -583,7 +575,7 @@ public:
 		com_ptr<IParentNode> parent;
 		_parent->QueryInterface(&parent);
 
-		auto newName = wil::make_bstr_nothrow(proposedName); RETURN_IF_NULL_ALLOC(newName);
+		auto newName = wil::make_process_heap_string_nothrow(proposedName); RETURN_IF_NULL_ALLOC(newName);
 		LUtilFixFilename(newName.get());
 
 		// Do we have a sibling with the new name?
@@ -679,7 +671,7 @@ public:
 	}
 };
 
-HRESULT MakeFolderNode (IFolderNode** ppFolder)
+FELIX_API HRESULT MakeFolderNode (IFolderNode** ppFolder)
 {
 	auto p = com_ptr(new (std::nothrow) FolderNode()); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance(); RETURN_IF_FAILED(hr);

@@ -10,6 +10,7 @@
 #include "../FelixPackageUi/resource.h"
 #define FORCE_EXPLICIT_DTE_NAMESPACE
 #include <dte.h>
+#include <array>
 
 // What MPF implements: https://docs.microsoft.com/en-us/visualstudio/extensibility/internals/project-model-core-components?view=vs-2022
 class ProjectNode
@@ -41,7 +42,7 @@ class ProjectNode
 	wil::com_ptr_nothrow<IVsUIHierarchy> _parentHierarchy;
 	VSITEMID _parentHierarchyItemId = VSITEMID_NIL; // item id of this project in the parent hierarchy
 	com_ptr<IChildNode> _firstChild;
-	VSITEMID _nextItemId = 1000;
+	VSITEMID _nextItemId = VSITEMID_START;
 	unordered_map_nothrow<VSCOOKIE, wil::com_ptr_nothrow<IVsCfgProviderEvents>> _cfgProviderEventSinks;
 	VSCOOKIE _nextCfgProviderEventCookie = 1;
 	VSCOOKIE _itemDocCookie = VSDOCCOOKIE_NIL;
@@ -212,9 +213,6 @@ public:
 			RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), PathIsRelative(pszLocation));
 			hr = EnsureDirHasBackslash (pszLocation, _projectDir); RETURN_IF_FAILED(hr);
 		}
-
-		for (auto& c : _configs)
-			c.first->SetSite(this);
 
 		com_ptr<IVsSolutionBuildManager> buildManager;
 		if (SUCCEEDED(serviceProvider->QueryService(SID_SVsSolutionBuildManager, IID_PPV_ARGS(&buildManager))))
@@ -1548,7 +1546,7 @@ public:
 			hr = memStream->Seek({ 0 }, STREAM_SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
 
 			com_ptr<IStream> stream;
-			hr = SHCreateStreamOnFile(currentFilePath.get(), STGM_CREATE | STGM_WRITE | STGM_SHARE_DENY_WRITE, &stream); RETURN_IF_FAILED(hr);
+			hr = SHCreateStreamOnFile(currentFilePath.get(), STGM_CREATE | STGM_WRITE | STGM_SHARE_DENY_WRITE, &stream); RETURN_IF_FAILED_EXPECTED(hr);
 			hr = IStream_Copy(memStream, stream, stat.cbSize.LowPart); RETURN_IF_FAILED(hr);
 			stream.reset();
 
@@ -1853,7 +1851,7 @@ public:
 					auto dir = wil::make_process_heap_string_nothrow (ptrComponent, nextComp - ptrComponent); RETURN_IF_NULL_ALLOC(dir);
 					ptrComponent = nextComp + 1;
 					com_ptr<IFolderNode> ch;
-					hr = GetOrCreateChildFolder(this, parent, dir.get(), true, &ch); RETURN_IF_FAILED(hr);
+					hr = GetOrCreateChildFolder(this, parent, dir.get(), MakeFolderNode, true, &ch); RETURN_IF_FAILED(hr);
 					parent = ch->AsParentNode(); 
 				}
 
@@ -1889,11 +1887,6 @@ public:
 			hr = EnsureFilePathUniqueInProject(pszFullPathSource); RETURN_IF_FAILED_EXPECTED(hr);
 			hr = MakeFileNodeForExistingFile (pszFullPathSource, &file); RETURN_IF_FAILED(hr);
 			hr = AddFileToParent(this, file, location); RETURN_IF_FAILED(hr);
-		}
-
-		if (_configs.size())
-		{
-			hr = GeneratePrePostIncludeFiles (this); LOG_IF_FAILED(hr);
 		}
 
 		_isDirty = true;
@@ -2436,11 +2429,6 @@ public:
 			}
 		}
 
-		if (_configs.size())
-		{
-			hr = GeneratePrePostIncludeFiles(this); LOG_IF_FAILED(hr);
-		}
-
 		_isDirty = true;
 
 		return S_OK;
@@ -2536,6 +2524,8 @@ public:
 		LONG ubound;
 		hr = SafeArrayGetUBound(sa, 1, &ubound); RETURN_IF_FAILED(hr);
 
+		auto removeall = wil::scope_exit([this] { _configs.clear(); });
+
 		for (LONG i = 0; i <= ubound; i++)
 		{
 			com_ptr<IDispatch> child;
@@ -2547,20 +2537,89 @@ public:
 			hr = AdviseSink<IPropertyChangeSink>(config->AsmProps(), _weakRefToThis, &tokens.asmPage); RETURN_IF_FAILED(hr);
 			hr = AdviseSink<IPropertyChangeSink>(config->GeneralProps(), _weakRefToThis, &tokens.generalPage); RETURN_IF_FAILED(hr);
 			bool pushed = _configs.try_push_back({ std::move(config), std::move(tokens) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+			hr = _configs.back().first->SetSite(this); RETURN_IF_FAILED(hr);
 		}
 
-		// This is meant to be called only from LoadXml, no need to set dirty flag or send notifications.
+		removeall.release();
+
+		// This is meant to be called only from LoadXml, which we call from our project factory with the XML passed by VS.
+		// VS calls the project factory before it registers any IVsCfgProviderEvents listener, so we can't possibly
+		// tell VS about our configurations.
+		WI_ASSERT(_cfgProviderEventSinks.empty());
 
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_Items (SAFEARRAY** items) override
 	{
-		return GetItems(this, items);
+		auto filter = [](IChildNode* c) { return (c->GetItemId() != VSITEMID_GENFILES) ? S_OK : S_FALSE; };
+		return GetItems(this, filter, items);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE put_Items (SAFEARRAY* sa) override
 	{
+		HRESULT hr;
+
+		// Back-compat: remove any folder named GeneratedFiles (older versions of our extension used to save it). We'll recreate it anyway.
+		VARTYPE vt;
+		LONG lbound, ubound;
+		if (   SUCCEEDED(SafeArrayGetVartype(sa, &vt)) && vt == VT_DISPATCH && SafeArrayGetDim(sa) == 1
+			&& SUCCEEDED(SafeArrayGetLBound(sa, 1, &lbound)) && lbound == 0
+			&& SUCCEEDED(SafeArrayGetUBound(sa, 1, &ubound)))
+		{
+			LONG folderIndex = -1;
+			for (LONG i = 0; i <= ubound; i++)
+			{
+				com_ptr<IDispatch> child;
+				com_ptr<IFolderNodeProperties> folder;
+				wil::unique_bstr folderName;
+				unique_safearray folderItems;
+				LONG filbound, fiubound;
+				com_ptr<IDispatch> folderChild;
+				com_ptr<IFileNodeProperties> file;
+				wil::unique_bstr filePath;
+				if (   SUCCEEDED(SafeArrayGetElement (sa, &i, child.addressof()))
+					&& SUCCEEDED(child->QueryInterface(&folder))
+					&& SUCCEEDED(folder->get_Name(&folderName))
+					&& !wcscmp(folderName.get(), L"GeneratedFiles")
+					&& SUCCEEDED(folder->get_Items(&folderItems))
+					&& SUCCEEDED(SafeArrayGetVartype(folderItems.get(), &vt)) && vt == VT_DISPATCH && SafeArrayGetDim(folderItems.get()) == 1
+					&& SUCCEEDED(SafeArrayGetLBound(folderItems.get(), 1, &filbound)) && filbound == 0
+					&& SUCCEEDED(SafeArrayGetUBound(folderItems.get(), 1, &fiubound)) && fiubound == 1
+					&& SUCCEEDED(SafeArrayGetElement(folderItems.get(), std::array<LONG, 1>{ 0 }.data(), folderChild.addressof()))
+					&& SUCCEEDED(folderChild->QueryInterface(&file))
+					&& SUCCEEDED(file->get_Path(&filePath)) && !wcsicmp(filePath.get(), L"PostInclude.asm")
+					&& SUCCEEDED(SafeArrayGetElement(folderItems.get(), std::array<LONG, 1>{ 1 }.data(), folderChild.addressof()))
+					&& SUCCEEDED(folderChild->QueryInterface(&file))
+					&& SUCCEEDED(file->get_Path(&filePath)) && !wcsicmp(filePath.get(), L"PreInclude.asm"))
+				{
+					folderIndex = i;
+					break;
+				}
+			}
+
+			if (folderIndex != -1)
+			{
+				auto hr = SafeArrayGetUBound(sa, 1, &ubound); RETURN_IF_FAILED(hr);
+				SAFEARRAYBOUND sabound = { .cElements = (ULONG)ubound, .lLbound = 0 }; // cElements equal to ubound means one less than the original array
+				unique_safearray sanew (SafeArrayCreate (VT_DISPATCH, 1, &sabound)); RETURN_IF_NULL_ALLOC(sanew);
+				LONG countNew = 0;
+				for (LONG i = 0; i <= ubound; i++)
+				{
+					if (i != folderIndex)
+					{
+						com_ptr<IDispatch> child;
+						SafeArrayGetElement (sa, &i, child.addressof());
+						SafeArrayPutElement (sanew.get(), &countNew, child);
+						countNew++;
+					}
+				}
+
+				return PutItems(sanew.get(), this);
+			}
+		}
+
+		// No "GeneratedFiles" folder.
 		return PutItems(sa, this);
 	}
 
@@ -2722,16 +2781,28 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE NotifyNodeInsertedIntoHier (IParentNode* parent, IChildNode* prevSibling, IChildNode* node) override
 	{
+		HRESULT hr;
+
+		// Have we inserted the first .asm file with BuildTool==Assembler, while the active config has Generate true?
+		BuildToolKind buildTool;
+		UINT count;
+		if (auto fileProps = wil::try_com_query_nothrow<IFileNodeProperties>(node);
+			fileProps && SUCCEEDED(fileProps->get_BuildTool(&buildTool)) && buildTool == Assembler
+			&& SUCCEEDED(GetCountOfBuildToolAssemblerFiles(this, &count)) && count == 1
+			&& GetActiveCfgGeneratePrePostIncludeFiles(this) == S_OK)
+		{
+			GeneratePrePostIncludeFiles(this);
+		}
+
 		WI_ASSERT(node->GetItemId() != VSITEMID_NIL);
 		VSITEMID itemidSiblingPrev = prevSibling ? prevSibling->GetItemId() : VSITEMID_NIL;
 		for (auto& sink : _hierarchyEventSinks)
 			sink.second->OnItemAdded (parent->GetItemId(), itemidSiblingPrev, node->GetItemId());
 
-		// Listen for property changes in the node.
+		// Listen for property changes in the node. Intentionally ignore errors returned by AdviseSink.
 		AdviseSinkToken token;
-		auto hr = AdviseSink<IPropertyChangeSink>(node, _weakRefToThis, &token); LOG_IF_FAILED(hr);
-		if (SUCCEEDED(hr))
-			(void)_nodePropertyChangeTokens.try_insert({ node, std::move(token) });
+		AdviseSink<IPropertyChangeSink>(node, _weakRefToThis, &token);
+		(void)_nodePropertyChangeTokens.try_insert({ node, std::move(token) });
 
 		return S_OK;
 	}
@@ -2743,6 +2814,18 @@ public:
 		WI_ASSERT(it != _nodePropertyChangeTokens.end());
 		if (it != _nodePropertyChangeTokens.end())
 			_nodePropertyChangeTokens.erase(it);
+
+		// Are we removing the last remaining .asm file with BuildTool==Assembler, while the active config has Generate true?
+		BuildToolKind buildTool;
+		UINT count;
+		if (auto fileProps = wil::try_com_query_nothrow<IFileNodeProperties>(node);
+			fileProps && SUCCEEDED(fileProps->get_BuildTool(&buildTool)) && buildTool == Assembler
+			&& SUCCEEDED(GetCountOfBuildToolAssemblerFiles(this, &count)) && count == 1
+			&& GetActiveCfgGeneratePrePostIncludeFiles(this) == S_OK)
+		{
+			DeletePrePostIncludeFiles(this);
+		}
+
 		return S_OK;
 	}
 
@@ -2773,35 +2856,90 @@ public:
 	#pragma region IPropertyChangeSink
 	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanging (IDispatch* pObject, DISPID dispID, PropertyChangeArgs args) override
 	{
+		HRESULT hr;
+		com_ptr<IVsSolutionBuildManager> buildManager;
+		hr = serviceProvider->QueryService(SID_SVsSolutionBuildManager, IID_PPV_ARGS(&buildManager)); RETURN_IF_FAILED(hr);
+		com_ptr<IVsProjectCfg> activeConfig;
+		if (SUCCEEDED(buildManager->FindActiveProjectCfg (nullptr, nullptr, this, &activeConfig)))
+		{
+			com_ptr<IProjectConfig> activeCfg;
+			hr = activeConfig->QueryInterface(&activeCfg); RETURN_IF_FAILED(hr);
+
+			// Is the user turning off generation for the active project config?
+			UINT count;
+			VARIANT_BOOL generate;
+			if (auto asmProps = wil::try_com_query_nothrow<IProjectConfigAssemblerProperties>(pObject);
+				asmProps && asmProps == activeCfg->AsmProps() && dispID == dispidGeneratePrePostIncludeFiles
+				&& SUCCEEDED(activeCfg->AsmProps()->get_GeneratePrePostIncludeFiles(&generate)) && generate
+				&& SUCCEEDED(GetCountOfBuildToolAssemblerFiles(this, &count)) && count)
+			{
+				// Yes
+				DeletePrePostIncludeFiles(this);
+			}
+
+			// Is the user changing the BuildTool so that there won't be files left with BuildTool==Assembler?
+			BuildToolKind buildTool;
+			if (auto file = wil::try_com_query_nothrow<IFileNodeProperties>(pObject);
+				file && dispID == dispidBuildToolKind && SUCCEEDED(file->get_BuildTool(&buildTool)) && buildTool == Assembler
+				&& SUCCEEDED(GetCountOfBuildToolAssemblerFiles(this, &count)) && count == 1
+				&& SUCCEEDED(activeCfg->AsmProps()->get_GeneratePrePostIncludeFiles(&generate)) && generate)
+			{
+				DeletePrePostIncludeFiles(this);
+			}
+		}
+
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged (IDispatch* pObject, DISPID dispID, PropertyChangeArgs args) override
 	{
 		HRESULT hr;
-		com_ptr<IProjectConfig> config;
-		com_ptr<IProjectConfigAssemblerProperties> asmProps;
-		com_ptr<IProjectConfigGeneralProperties> generalProps;
-		if ((config = wil::try_com_query_nothrow<IProjectConfig>(pObject))
-			|| (asmProps = wil::try_com_query_nothrow<IProjectConfigAssemblerProperties>(pObject))
-			|| (generalProps = wil::try_com_query_nothrow<IProjectConfigGeneralProperties>(pObject)))
+		com_ptr<IVsSolutionBuildManager> buildManager;
+		hr = serviceProvider->QueryService(SID_SVsSolutionBuildManager, IID_PPV_ARGS(&buildManager)); RETURN_IF_FAILED(hr);
+		com_ptr<IVsProjectCfg> activeConfig;
+		if (SUCCEEDED(buildManager->FindActiveProjectCfg (nullptr, nullptr, this, &activeConfig)))
 		{
-			com_ptr<IVsSolutionBuildManager> buildManager;
-			hr = serviceProvider->QueryService(SID_SVsSolutionBuildManager, IID_PPV_ARGS(&buildManager)); RETURN_IF_FAILED(hr);
-			com_ptr<IVsProjectCfg> activeConfig;
-			hr = buildManager->FindActiveProjectCfg (nullptr, nullptr, this, &activeConfig); RETURN_IF_FAILED(hr);
 			com_ptr<IProjectConfig> activeCfg;
 			hr = activeConfig->QueryInterface(&activeCfg); RETURN_IF_FAILED(hr);
-			if (activeCfg == config || activeCfg->AsmProps() == asmProps || activeCfg->GeneralProps() == generalProps)
+
+			VARIANT_BOOL generate;
+			BuildToolKind buildTool;
+			UINT count;
+			// Has the user just turned on generation for the active project config?
+			if (auto asmProps = wil::try_com_query_nothrow<IProjectConfigAssemblerProperties>(pObject);
+				asmProps && asmProps == activeCfg->AsmProps() && dispID == dispidGeneratePrePostIncludeFiles
+				&& SUCCEEDED(asmProps->get_GeneratePrePostIncludeFiles(&generate)) && generate
+				&& SUCCEEDED(GetCountOfBuildToolAssemblerFiles(this, &count)) && count)
 			{
-				hr = GeneratePrePostIncludeFiles(this); RETURN_IF_FAILED(hr);
+				GeneratePrePostIncludeFiles(this);
 			}
-		}
-		else if (auto file = wil::try_com_query_nothrow<IFileNode>(pObject))
-		{
-			if (dispID == dispidBuildToolKind)
+			// ... or just switched the first file to BuildTool==Assembler?
+			else if (auto fileProps = wil::try_com_query_nothrow<IFileNodeProperties>(pObject);
+				fileProps && dispID == dispidBuildToolKind && SUCCEEDED(fileProps->get_BuildTool(&buildTool))
+				&& buildTool == Assembler && SUCCEEDED(GetCountOfBuildToolAssemblerFiles(this, &count)) && count == 1
+				&& SUCCEEDED(activeCfg->AsmProps()->get_GeneratePrePostIncludeFiles(&generate)) && generate)
 			{
-				hr = GeneratePrePostIncludeFiles(this); RETURN_IF_FAILED(hr);
+				GeneratePrePostIncludeFiles(this);
+			}
+			// ... or if the conditions for generation were and still are satisfied, has the user changed
+			// something in a settings page that need to be written to the pre/post-include files?
+			else if (auto asmProps = wil::try_com_query_nothrow<IProjectConfigAssemblerProperties>(pObject);
+				asmProps && asmProps == activeCfg->AsmProps() && (dispID == dispidBaseAddress || dispID == dispidEntryPointAddress))
+			{
+				if (SUCCEEDED(activeCfg->AsmProps()->get_GeneratePrePostIncludeFiles(&generate)) && generate
+					&& SUCCEEDED(GetCountOfBuildToolAssemblerFiles(this, &count)) && count)
+				{
+					GeneratePrePostIncludeFiles(this);
+				}
+			}
+			else if (auto genProps = wil::try_com_query_nothrow<IProjectConfigGeneralProperties>(pObject);
+				genProps && genProps == activeCfg->GeneralProps() && (dispID == dispidPlatformName || dispID == dispidOutputFileType))
+			{
+				if (SUCCEEDED(activeCfg->AsmProps()->get_GeneratePrePostIncludeFiles(&generate)) && generate
+					&& SUCCEEDED(GetCountOfBuildToolAssemblerFiles(this, &count)) && count)
+				{
+					GeneratePrePostIncludeFiles(this);
+				}
 			}
 		}
 
@@ -2882,7 +3020,11 @@ public:
 
 		if (pIVsHierarchy == this)
 		{
-			hr = GeneratePrePostIncludeFiles(this); RETURN_IF_FAILED(hr);
+			UINT count;
+			if (SUCCEEDED(GetCountOfBuildToolAssemblerFiles(this, &count)) && count && GetActiveCfgGeneratePrePostIncludeFiles(this) == S_OK)
+				GeneratePrePostIncludeFiles(this);
+			else
+				DeletePrePostIncludeFiles(this);
 		}
 
 		return S_OK;
@@ -3086,7 +3228,7 @@ public:
 		}
 
 		com_ptr<IFolderNode> newFolder;
-		hr = GetOrCreateChildFolder (this, parent, dirName, true, &newFolder); RETURN_IF_FAILED(hr);
+		hr = GetOrCreateChildFolder (this, parent, dirName, MakeFolderNode, true, &newFolder); RETURN_IF_FAILED(hr);
 
 		_isDirty = true;
 

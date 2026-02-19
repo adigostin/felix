@@ -170,10 +170,13 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("32BEBBF2-86DF-4D79-88DF-1123548C4D8E") I
 	virtual HRESULT STDMETHODCALLTYPE GetFilename(BSTR * pbstrFilename) = 0;
 };
 
+static constexpr VSITEMID VSITEMID_GENFILES = 50;
+static constexpr VSITEMID VSITEMID_START = 100;
 FELIX_API extern wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 extern wil::com_ptr_nothrow<IVsShell> shell;
 extern wil::com_ptr_nothrow<IVsUIShell> uiShell;
 extern wil::com_ptr_nothrow<ISimulator> simulator;
+extern wil::unique_bstr genFilesStr;
 
 extern const wchar_t Z80AsmLanguageName[];
 extern const wchar_t SingleDebugPortName[];
@@ -268,18 +271,22 @@ FELIX_API HRESULT MakeCustomBuildToolProperties (ICustomBuildToolProperties** to
 FELIX_API HRESULT MakeProjectConfigBuilder (IProjectNode* project, IProjectConfig* config,
 	IVsOutputWindowPane2* outputWindowPane, IProjectConfigBuilder** to);
 HRESULT ShowCommandLinePropertyBuilder (HWND hwndParent, BSTR valueBefore, BSTR* valueAfter);
+HRESULT GetCountOfBuildToolAssemblerFiles(IProjectNode* project, UINT* pCount);
+HRESULT GetActiveCfgGeneratePrePostIncludeFiles (IVsHierarchy* hier);
 HRESULT GeneratePrePostIncludeFiles (IProjectNode* project);
+HRESULT DeletePrePostIncludeFiles (IProjectNode* project);
 FELIX_API HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine);
-HRESULT MakeFolderNode (IFolderNode** ppFolder);
+FELIX_API HRESULT MakeFolderNode (IFolderNode** ppFolder);
+HRESULT MakeFolderNodeGenerated (IFolderNode** ppFolder);
 BOOL LUtilFixFilename (wchar_t* strName);
 HRESULT QueryEditProjectFile (IVsHierarchy* hier);
 HRESULT GetHierarchyWindow (IVsUIHierarchyWindow** ppHierWindow);
 HRESULT GetPathTo (IProjectNode* proj, IChildNode* node, wil::unique_process_heap_string& dir, bool relativeToProjectDir = false);
 HRESULT GetPathOf (IProjectNode* proj, IChildNode* node, wil::unique_process_heap_string& path, bool relativeToProjectDir = false);
 HRESULT AddFileToParent (IProjectNode* proj, IFileNode* child, IParentNode* addTo);
-FELIX_API HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, bool createDirectoryOnFileSystem, IFolderNode** ppFolder);
+FELIX_API HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, HRESULT(*factory)(IFolderNode**), bool createDirectoryOnFileSystem, IFolderNode** ppFolder);
 HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* child);
-HRESULT GetItems (IParentNode* itemsIn, SAFEARRAY** itemsOut);
+HRESULT GetItems (IParentNode* itemsIn, HRESULT(*filter)(IChildNode*), SAFEARRAY** itemsOut);
 HRESULT PutItems (SAFEARRAY* sa, IParentNode* items);
 HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectConfig* config);
 IFileNode* FindChildFileByName (IProjectNode* proj, IParentNode* parent, const wchar_t* fileName);

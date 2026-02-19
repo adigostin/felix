@@ -364,9 +364,9 @@ inline HRESULT AdviseSink (IUnknown* source, IUnknown* sink, AdviseSinkToken* pT
 	auto hr = sink->QueryInterface(IID_PPV_ARGS(&unused)); RETURN_IF_FAILED(hr);
 
 	com_ptr<IConnectionPointContainer> cpc;
-	hr = source->QueryInterface(&cpc); RETURN_IF_FAILED(hr);
+	hr = source->QueryInterface(&cpc); RETURN_IF_FAILED_EXPECTED(hr);
 	com_ptr<IConnectionPoint> cp;
-	hr = cpc->FindConnectionPoint(__uuidof(ISink), &cp); RETURN_IF_FAILED(hr);
+	hr = cpc->FindConnectionPoint(__uuidof(ISink), &cp); RETURN_IF_FAILED_EXPECTED(hr);
 	DWORD dwCookie;
 	hr = cp->Advise(sink, &dwCookie); RETURN_IF_FAILED(hr);
 	pToken->reset();

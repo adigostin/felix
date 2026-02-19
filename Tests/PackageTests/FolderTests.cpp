@@ -248,11 +248,11 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			com_ptr<IFolderNode> folder1;
-			hr = GetOrCreateChildFolder (proj, proj, L"ABC", true, &folder1);
+			hr = GetOrCreateChildFolder (proj, proj, L"ABC", MakeFolderNode, true, &folder1);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			com_ptr<IFolderNode> folder2;
-			hr = GetOrCreateChildFolder (proj, proj, L"abc", true, &folder2);
+			hr = GetOrCreateChildFolder (proj, proj, L"abc", MakeFolderNode, true, &folder2);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			Assert::IsTrue(folder1 == folder2);

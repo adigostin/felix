@@ -650,6 +650,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged (IDispatch* pObject, DISPID dispID, PropertyChangeArgs args) override
 	{
+		// Propagate the event since we at least need to mark the project as dirty.
 		if (pObject == _generalProps)
 			return NotifyPropertyChanged(_propChangeCP, this, { dispidGeneralProperties });
 		if (pObject == _assemblerProps)
@@ -1016,6 +1017,7 @@ struct AssemblerPageProperties
 	DWORD _baseAddress = BaseAddressDefaultValue;
 	bool _saveListing = false;
 	wil::unique_process_heap_string _listingFilename;
+	bool _generatePrePostIncludeFiles = true;
 
 	HRESULT InitInstance (IProjectConfig* config)
 	{
@@ -1140,6 +1142,9 @@ struct AssemblerPageProperties
 			return S_OK;
 		}
 
+		if (dispid == dispidGeneratePrePostIncludeFiles)
+			return (*fDefault = (_generatePrePostIncludeFiles == true)), S_OK;
+
 		return E_NOTIMPL;
 	}
 
@@ -1154,6 +1159,7 @@ struct AssemblerPageProperties
 			case dispidSaveListing:
 			case dispidListingFilename:
 			case dispidEntryPointAddress:
+			case dispidGeneratePrePostIncludeFiles:
 				*pfCanReset = TRUE;
 				return S_OK;
 			default:
@@ -1171,6 +1177,9 @@ struct AssemblerPageProperties
 
 		if (dispid == dispidEntryPointAddress)
 			return put_EntryPointAddress(wil::make_bstr_nothrow(EntryPointAddressDefaultValue).get());
+
+		if (dispid == dispidGeneratePrePostIncludeFiles)
+			return put_GeneratePrePostIncludeFiles(VARIANT_TRUE);
 
 		return E_NOTIMPL;
 	}
@@ -1275,6 +1284,26 @@ struct AssemblerPageProperties
 			NotifyPropertyChanged(_propChangeCP, this, { dispidListingFilename });
 			NotifyPropertyChanged(_propNotifyCP, { dispidListingFilename });
 			RETURN_HR(hr);
+		}
+
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_GeneratePrePostIncludeFiles (VARIANT_BOOL *pGenerate) override
+	{
+		*pGenerate = _generatePrePostIncludeFiles ? VARIANT_TRUE : VARIANT_FALSE;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_GeneratePrePostIncludeFiles (VARIANT_BOOL generate) override
+	{
+		bool gen = (bool)generate;
+		if (_generatePrePostIncludeFiles != gen)
+		{
+			NotifyPropertyChanging(_propChangeCP, this, { dispidGeneratePrePostIncludeFiles });
+			_generatePrePostIncludeFiles = gen;
+			NotifyPropertyChanged(_propChangeCP, this, { dispidGeneratePrePostIncludeFiles });
+			NotifyPropertyChanged(_propNotifyCP, { dispidGeneratePrePostIncludeFiles });
 		}
 
 		return S_OK;

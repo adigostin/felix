@@ -187,7 +187,7 @@ BEGIN
     IDS_GEN_PRE_POST_MESSAGE_FAIL " failed.\r\n"
     IDS_GEN_PRE_POST_MESSAGE 
                             "Generating pre/post-include files for configuration ""%s""..."
-    IDS_REMOVING_GEN_FILES  "Removing generated pre/post-include files as there are no files in project with BuildTool = Assembler.\r\n"
+    IDS_REMOVING_GEN_FILES  "Removing generated pre/post-include files..."
     IDS_UNK_NUM_FORMAT      "Unknown number format. Only decimal, C hex, and Asm hex are supported."
     IDS_UNK_EXPRESSION      "Unknown expression. Only numbers and register names are supported for now."
     IDS_GENERAL_PROP_PAGE_TITLE "General"
@@ -220,6 +220,12 @@ BEGIN
                             "Can't resolve entry point address:\r\n%s\r\n\r\nin symbol file:\r\n%s"
     IDS_WRONG_FORMAT_ENTRY_POINT_ADDRESS_S 
                             "Wrong format for the entry point address:\r\n%s"
+END
+
+STRINGTABLE
+BEGIN
+    IDS_GEN_PRE_POST_FILES_DESC 
+                            "Specifies whether to generate PreInclude/PostInclude files when the project contains files with BuildTool=Assembler. When this is False, assembler directives such as DEVICE or ORG need to be added explicitly to .asm files."
 END
 
 #endif    // English (United States) resources

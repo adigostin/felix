@@ -14,6 +14,8 @@ namespace VxDTE
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
+static constexpr VSITEMID VSITEMID_GENFILES = 50;
+
 namespace UITests
 {
 	extern com_ptr<VxDTE::_DTE> dte;
@@ -26,6 +28,7 @@ namespace UITests
 		wil::unique_process_heap_string testPath;
 		wil::unique_process_heap_string slnFilePath;
 		wil::unique_process_heap_string projPath;
+		wil::unique_process_heap_string projFilePath;
 		wil::com_ptr_failfast<VxDTE::_Solution> sln;
 		wil::com_ptr_failfast<VxDTE::Project> proj;
 
@@ -36,6 +39,7 @@ namespace UITests
 			std::tie(sln, proj) = CreateSolutionAndProject(testPath.get(), L"test", L"proj");
 			slnFilePath = CombinePath(testPath.get(), L"test.sln");
 			projPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\proj");
+			projFilePath = wil::str_concat_failfast<wil::unique_process_heap_string>(projPath, L"\\proj.flx");
 		}
 
 		TEST_METHOD_CLEANUP(MiscTestCleanup)
@@ -45,6 +49,7 @@ namespace UITests
 				sln->Close();
 				sln.reset();
 				proj.reset();
+				slnFilePath.reset();
 			}
 
 			if (testPath)
@@ -401,6 +406,230 @@ namespace UITests
 			VSADDRESULT addResult;
 			hr = proj.query<IVsProject>()->AddItem(V_VSITEMID(&folderItemId), oper, L"file.asm", 1, const_cast<LPCOLESTR*>(templatePath.addressof()), nullptr, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
+		}
+
+		static inline const char OldXmlWithGeneratedFilesFolder[] = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n"
+			"<Z80Project Guid=\"{4839FDD7-4C8F-4772-90E6-222C702D045E}\">\r\n"
+			"<Configurations>\r\n"
+			"  <Configuration ConfigName=\"SnaOutput\" PlatformName=\"ZX Spectrum 48K\" />\r\n"
+			"</Configurations>\r\n"
+			"<Items>\r\n"
+			"  <Folder Name=\"GeneratedFiles\">\r\n"
+			"    <Items>\r\n"
+			"      <File Path=\"PostInclude.asm\" IsGenerated=\"1\" BuildTool=\"Assembler\" />\r\n"
+			"      <File Path=\"PreInclude.asm\" IsGenerated=\"1\" BuildTool=\"Assembler\" />\r\n"
+			"    </Items>\r\n"
+			"  </Folder>\r\n"
+			"</Items>\r\n"
+			"</Z80Project>\r\n";
+
+		TEST_METHOD(GenPrePostInclude_LoadOldXml)
+		{
+			HRESULT hr;
+			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"GenPrePostInclude_LoadOldXml");
+			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
+			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
+
+			wil::com_ptr_failfast<IUnknown> solution;
+			hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
+			auto sln = solution.query<VxDTE::_Solution>();
+			//hr = sln->Create(wil::make_bstr_failfast(testPath.get()).get(), wil::make_bstr_failfast(L"test").get());
+			//Assert::IsTrue(SUCCEEDED(hr));
+			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
+
+			auto projPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\proj.flx");
+			WriteFileOnDisk(projPath.get(), OldXmlWithGeneratedFilesFolder);
+
+			wil::com_ptr_failfast<VxDTE::Project> proj;
+			hr = sln->AddFromFile (wil::make_bstr_failfast(projPath.get()).get(), VARIANT_TRUE, &proj);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			// The folder named GeneratedFiles should have been ignored while loading from XML,
+			// and nothing should have been generated since there are no other files with
+			// BuildTool==Assembler in the XML.
+			wil::unique_variant var;
+			hr = proj.query<IVsHierarchy>()->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &var);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<VARTYPE>(VT_VSITEMID, var.vt);
+			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, V_VSITEMID(&var));
+			auto genFilesPath = CombinePath(testPath.get(), L"GeneratedFiles");
+			Assert::IsFalse(PathFileExists(genFilesPath.get()));
+
+			// And the project should not be dirty just after loading from XML.
+			auto pff = proj.query<IPersistFileFormat>();
+			BOOL dirty;
+			hr = pff->IsDirty(&dirty); Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsFalse(dirty);
+
+			// Now if we add an .asm file, we should have the generated files.
+			VSADDRESULT addResult;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
+			hr = proj.query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"file.asm", 1, const_cast<LPCOLESTR*>(TemplatePath_EmptyFile.addressof()), NULL, &addResult);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = proj.query<IVsHierarchy>()->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &var);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<VARTYPE>(VT_VSITEMID, var.vt);
+			Assert::AreNotEqual<VSITEMID>(VSITEMID_NIL, V_VSITEMID(&var));
+			Assert::IsTrue(PathFileExists(genFilesPath.get()));
+
+			// The project should now be dirty. We used to have a bug that triggered a save upon generation.
+			hr = pff->IsDirty(&dirty); Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsTrue(dirty);
+		}
+
+		TEST_METHOD(GenPrePostInclude_GeneratedFilesNotSaved)
+		{
+			auto hr = proj->Save(nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
+			wil::unique_hfile file (CreateFile(projFilePath.get(), GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0));
+			Assert::IsTrue(file.is_valid());
+			DWORD fileSize = GetFileSize(file.get(), 0);
+			auto buffer = wil::make_process_heap_ansistring(nullptr, fileSize);
+			BOOL bres = ReadFile(file.get(), buffer.get(), fileSize, nullptr, nullptr);
+			Assert::IsTrue(bres);
+			Assert::IsNull(strstr(buffer.get(), "GeneratedFiles"));
+		}
+
+		TEST_METHOD(GenPrePostInclude_AddFirstAsm_RemoveLastAsm)
+		{
+			HRESULT hr;
+
+			// We have a file in the project with BuildTool==Assembler. We should have a GeneratedFiles folder.
+			wil::unique_variant firstChild;
+			hr = proj.query<IVsHierarchy>()->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &firstChild);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<VSITEMID>(VSITEMID_GENFILES, V_VSITEMID(&firstChild));
+
+			// Remove the only file
+			VSITEMID fileItemId;
+			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(L"file.asm", &fileItemId);
+			Assert::AreEqual(S_OK, hr);
+			hr = proj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(1, DELITEMOP_RemoveFromProject, &fileItemId, DHO_SUPPRESS_UI);
+			Assert::AreEqual(S_OK, hr);
+
+			// Project should be empty (no file and no GeneratedFiles folder)
+			hr = proj.query<IVsHierarchy>()->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &firstChild);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, V_VSITEMID(&firstChild));
+
+			// Add the file back.
+			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(projPath, L"\\file.asm");
+			VSADDRESULT addResult;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
+			hr = proj.query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(filePath.addressof()), nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+
+			// First child should be "GeneratedFiles"
+			hr = proj.query<IVsHierarchy>()->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &firstChild);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<VSITEMID>(VSITEMID_GENFILES, V_VSITEMID(&firstChild));
+		}
+
+		TEST_METHOD(GenPrePostInclude_EnableDisableGeneration)
+		{
+			HRESULT hr;
+
+			// Assume first config is the active config. 
+			wil::com_ptr_failfast<IVsCfg> cfgs[2];
+			ULONG actual;
+			VSCFGFLAGS flags;
+			hr = proj.query<IVsCfgProvider>()->GetCfgs(2, cfgs[0].addressof(), &actual, &flags);
+			Assert::AreEqual(S_OK, hr);
+
+			// We have a file in the project with BuildTool==Assembler. We should have a GeneratedFiles folder.
+			wil::unique_variant firstChild;
+			hr = proj.query<IVsHierarchy>()->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &firstChild);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<VSITEMID>(VSITEMID_GENFILES, V_VSITEMID(&firstChild));
+
+			// Disable generation. The folder should be gone.
+			com_ptr<IProjectConfigAssemblerProperties> asmProps;
+			cfgs[0].query<IProjectConfigProperties>()->get_AssemblerProperties(&asmProps);
+			hr = asmProps->put_GeneratePrePostIncludeFiles(VARIANT_FALSE);
+			Assert::AreEqual(S_OK, hr);
+			hr = proj.query<IVsHierarchy>()->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &firstChild);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreNotEqual<VSITEMID>(VSITEMID_GENFILES, V_VSITEMID(&firstChild));
+
+			// Enable again generation. Folder should be back.
+			hr = asmProps->put_GeneratePrePostIncludeFiles(VARIANT_TRUE);
+			Assert::AreEqual(S_OK, hr);
+			hr = proj.query<IVsHierarchy>()->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &firstChild);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<VSITEMID>(VSITEMID_GENFILES, V_VSITEMID(&firstChild));
+
+			// Disable generation in the inactive config. Folder should remain.
+			cfgs[1].query<IProjectConfigProperties>()->get_AssemblerProperties(&asmProps);
+			hr = asmProps->put_GeneratePrePostIncludeFiles(VARIANT_FALSE);
+			Assert::AreEqual(S_OK, hr);
+			hr = proj.query<IVsHierarchy>()->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &firstChild);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<VSITEMID>(VSITEMID_GENFILES, V_VSITEMID(&firstChild));
+		}
+
+		TEST_METHOD(GenPrePostInclude_SwitchActiveConfig)
+		{
+			HRESULT hr;
+
+			wil::com_ptr_failfast<VxDTE::SolutionBuild> slnBuild;
+			hr = sln->get_SolutionBuild(&slnBuild);
+			Assert::AreEqual(S_OK, hr);
+			wil::com_ptr_failfast<VxDTE::SolutionConfigurations> slnConfigs;
+			hr = slnBuild->get_SolutionConfigurations(&slnConfigs);
+			Assert::AreEqual(S_OK, hr);
+
+			long configCount;
+			hr = slnConfigs->get_Count(&configCount);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(2l, configCount);
+
+			wil::com_ptr_failfast<VxDTE::SolutionConfiguration> slnConfig0, slnConfig1, activeSlnConfig;
+			VARIANT i; i.vt = VT_INT; i.intVal = 1;
+			hr = slnConfigs->Item(i, &slnConfig0);
+			Assert::AreEqual(S_OK, hr);
+			i.intVal = 2;
+			hr = slnConfigs->Item(i, &slnConfig1);
+			Assert::AreEqual(S_OK, hr);
+			hr = slnBuild->get_ActiveConfiguration(&activeSlnConfig);
+			Assert::AreEqual(S_OK, hr);
+			Assert::IsTrue(activeSlnConfig == slnConfig0);
+			
+			wil::com_ptr_failfast<IVsCfg> cfgs[2];
+			ULONG actual;
+			VSCFGFLAGS flags;
+			hr = proj.query<IVsCfgProvider>()->GetCfgs(2, cfgs[0].addressof(), &actual, &flags);
+			Assert::AreEqual(S_OK, hr);
+
+			// Generation is by default enabled. We should have a GeneratedFiles folder.
+			wil::unique_variant firstChild;
+			hr = proj.query<IVsHierarchy>()->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &firstChild);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<VSITEMID>(VSITEMID_GENFILES, V_VSITEMID(&firstChild));
+
+			// Disable generation in the second config. We should still have a GeneratedFiles folder.
+			wil::com_ptr_failfast<IProjectConfigAssemblerProperties> config1AsmProps;
+			hr = cfgs[1].query<IProjectConfigProperties>()->get_AssemblerProperties(&config1AsmProps);
+			Assert::AreEqual(S_OK, hr);
+			hr = config1AsmProps->put_GeneratePrePostIncludeFiles(VARIANT_FALSE);
+			Assert::AreEqual(S_OK, hr);
+			hr = proj.query<IVsHierarchy>()->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &firstChild);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<VSITEMID>(VSITEMID_GENFILES, V_VSITEMID(&firstChild));
+
+			// Switch the active config to the one with generation disabled. We should no longer have a GeneratedFiles folder.
+			hr = slnConfig1->Activate();
+			Assert::AreEqual(S_OK, hr);
+			hr = proj.query<IVsHierarchy>()->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &firstChild);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreNotEqual<VSITEMID>(VSITEMID_GENFILES, V_VSITEMID(&firstChild));
+
+			// Switch the active config back. We should have a GeneratedFiles folder again.
+			hr = slnConfig0->Activate();
+			Assert::AreEqual(S_OK, hr);
+			hr = proj.query<IVsHierarchy>()->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &firstChild);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<VSITEMID>(VSITEMID_GENFILES, V_VSITEMID(&firstChild));
 		}
 	};
 }

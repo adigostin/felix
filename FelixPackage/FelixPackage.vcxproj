@@ -144,6 +144,7 @@
     <ClCompile Include="DebugEngine\DebugProgram.cpp" />
     <ClCompile Include="DebugEngine\DebugThread.cpp" />
     <ClCompile Include="DebugEngine\DebugProperties.cpp" />
+    <ClCompile Include="FolderNodeGenerated.cpp" />
     <ClCompile Include="SymbolsSld.cpp" />
     <ClCompile Include="SymbolsZ80Sym.cpp" />
     <ClCompile Include="dllmain.cpp" />
