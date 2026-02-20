@@ -289,7 +289,7 @@ HRESULT GetHierarchyWindow (IVsUIHierarchyWindow** ppHierWindow);
 HRESULT GetPathTo (IProjectNode* proj, IChildNode* node, wil::unique_process_heap_string& dir, bool relativeToProjectDir = false);
 HRESULT GetPathOf (IProjectNode* proj, IChildNode* node, wil::unique_process_heap_string& path, bool relativeToProjectDir = false);
 HRESULT AddFileToParent (IProjectNode* proj, IFileNode* child, IParentNode* addTo);
-FELIX_API HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, HRESULT(*factory)(IFolderNode**), IFolderNode** ppFolder);
+HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, HRESULT(*factory)(IFolderNode**), IFolderNode** ppFolder);
 HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* child);
 HRESULT GetItems (IParentNode* itemsIn, HRESULT(*filter)(IChildNode*), SAFEARRAY** itemsOut);
 HRESULT PutItems (SAFEARRAY* sa, IParentNode* items);

@@ -240,24 +240,6 @@ namespace FelixTests
 			Assert::AreEqual<VSITEMID>(V_VSITEMID(&other), hier.try_query<IParentNode>()->FirstChild()->GetItemId());
 			Assert::AreEqual<VSITEMID>(V_VSITEMID(&one), hier.try_query<IParentNode>()->FirstChild()->Next()->GetItemId());
 		}
-
-		TEST_METHOD(CreateFolderSameNameDifferentCase)
-		{
-			com_ptr<IProjectNode> proj;
-			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&proj));
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			com_ptr<IFolderNode> folder1;
-			hr = GetOrCreateChildFolder (proj, proj, L"ABC", MakeFolderNode, &folder1);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			com_ptr<IFolderNode> folder2;
-			hr = GetOrCreateChildFolder (proj, proj, L"abc", MakeFolderNode, &folder2);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			Assert::IsTrue(folder1 == folder2);
-			proj->AsHierarchy()->Close();
-		}
 	};
 }
 

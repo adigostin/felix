@@ -25,27 +25,27 @@ namespace UITests
 	{
 		struct TD
 		{
-			wil::unique_process_heap_string testPath;
+			wil::unique_process_heap_string testDir;
 			wil::unique_process_heap_string slnFilePath;
-			wil::unique_process_heap_string projPath;
+			wil::unique_process_heap_string projDir;
 			wil::unique_process_heap_string projFilePath;
 			wil::com_ptr_failfast<VxDTE::_Solution> sln;
 			wil::com_ptr_failfast<VxDTE::Project> proj;
 
 			TD()
 			{
-				testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"FolderTest");
-				Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-				std::tie(sln, proj) = CreateSolutionAndProject(testPath.get(), L"test", L"proj");
-				slnFilePath = CombinePath(testPath.get(), L"test.sln");
-				projPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\proj");
-				projFilePath = wil::str_concat_failfast<wil::unique_process_heap_string>(projPath, L"\\proj.flx");
+				testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"FolderTest");
+				Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
+				std::tie(sln, proj) = CreateSolutionAndProject(testDir.get(), L"test", L"proj");
+				slnFilePath = CombinePath(testDir.get(), L"test.sln");
+				projDir = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\proj");
+				projFilePath = wil::str_concat_failfast<wil::unique_process_heap_string>(projDir, L"\\proj.flx");
 			}
 
 			~TD()
 			{
-				//sln->Close();
-				//RemoveDirectoryTree(testPath.get());
+				sln->Close();
+				RemoveDirectoryTree(testDir.get());
 			}
 		};
 
@@ -112,6 +112,23 @@ namespace UITests
 			tryAddFolder();
 
 			// TODO: do the same with a directory in a directory. With the outer directory present and then missing.
+		}
+
+		TEST_METHOD(AddFileInFolder_DifferentFolderCase)
+		{
+			TD td;
+			wil::unique_variant folderItemId;
+			auto hr = td.proj.query<IVsUIHierarchy>()->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder,
+				OLECMDEXECOPT_DONTPROMPTUSER, wil::make_variant_bstr_failfast(L"Name").addressof(), &folderItemId);
+			Assert::AreEqual(S_OK, hr);
+
+			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\NAME\\file.txt");
+			WriteFileOnDisk(filePath.get(), "");
+
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000u);
+			VSADDRESULT addResult;
+			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(filePath.addressof()), nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
 		}
 	};
 }

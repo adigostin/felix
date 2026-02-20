@@ -860,7 +860,7 @@ HRESULT AddFileToParent (IProjectNode* proj, IFileNode* child, IParentNode* addT
 	return S_OK;
 }
 
-FELIX_API HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, HRESULT(*factory)(IFolderNode**), IFolderNode** ppFolder)
+HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, HRESULT(*factory)(IFolderNode**), IFolderNode** ppFolder)
 {
 	HRESULT hr;
 
