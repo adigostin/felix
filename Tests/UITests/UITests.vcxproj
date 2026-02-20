@@ -102,6 +102,7 @@
   <ItemGroup>
     <ClCompile Include="..\TestsCommon.cpp" />
     <ClCompile Include="BuildTests.cpp" />
+    <ClCompile Include="FolderTests.cpp" />
     <ClCompile Include="MiscTests.cpp" />
     <ClCompile Include="NotifyTests.cpp" />
     <ClCompile Include="pch.cpp">

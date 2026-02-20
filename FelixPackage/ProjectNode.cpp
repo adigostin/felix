@@ -1385,7 +1385,7 @@ public:
 			return RefreshHierarchy();
 
 		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97 && nCmdID == cmdidNewFolder)
-			return ProcessCommandAddNewFolder(itemid, (OLECMDEXECOPT)nCmdexecopt, pvaOut);
+			return ProcessCommandAddNewFolder(itemid, (OLECMDEXECOPT)nCmdexecopt, pvaIn, pvaOut);
 
 		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97 && nCmdID == cmdidAddNewItem)
 			return ProcessCommandAddItem(itemid, TRUE);
@@ -1854,7 +1854,7 @@ public:
 					auto dir = wil::make_process_heap_string_nothrow (ptrComponent, nextComp - ptrComponent); RETURN_IF_NULL_ALLOC(dir);
 					ptrComponent = nextComp + 1;
 					com_ptr<IFolderNode> ch;
-					hr = GetOrCreateChildFolder(this, parent, dir.get(), MakeFolderNode, true, &ch); RETURN_IF_FAILED(hr);
+					hr = GetOrCreateChildFolder(this, parent, dir.get(), MakeFolderNode, &ch); RETURN_IF_FAILED(hr);
 					parent = ch->AsParentNode(); 
 				}
 
@@ -2668,6 +2668,12 @@ public:
 		_autoOpenFiles = std::move(f);
 		return S_OK;
 	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_NextVSItemIdDebug (DWORD* pdwNextVSItemID) override
+	{
+		*pdwNextVSItemID = _nextItemId;
+		return S_OK;
+	}
 	#pragma endregion
 
 	#pragma region IXmlParent
@@ -2961,6 +2967,11 @@ public:
 		if (dispid == dispidAutoOpenFiles)
 			return (*pfHide = TRUE), S_OK;
 
+		#ifdef NDEBUG
+		if (dispid == dispidNextVSItemIdDebug)
+			return (*pfHide = TRUE), S_OK;
+		#endif
+
 		return E_NOTIMPL;
 	}
 
@@ -2974,12 +2985,17 @@ public:
 			// Never save this to XML. It's supposed to be added by hand in template files only.
 			return (*fDefault = TRUE), S_OK;
 
+		if (dispid == dispidNextVSItemIdDebug)
+			// Never save this to XML either.
+			return (*fDefault = TRUE), S_OK;
+
 		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE IsPropertyReadOnly (DISPID dispid, BOOL *fReadOnly) override
 	{
-		if (dispid == dispidProjectGuid)
+		if (dispid == dispidProjectGuid
+			|| dispid == dispidNextVSItemIdDebug)
 		{
 			*fReadOnly = TRUE;
 			return S_OK;
@@ -3181,7 +3197,7 @@ public:
 		return S_OK;
 	}
 
-	HRESULT ProcessCommandAddNewFolder (VSITEMID parentItemId, OLECMDEXECOPT opt, VARIANT* pvaOut)
+	HRESULT ProcessCommandAddNewFolder (VSITEMID parentItemId, OLECMDEXECOPT opt, VARIANT* pvaIn, VARIANT* pvaOut)
 	{
 		HRESULT hr;
 
@@ -3203,42 +3219,51 @@ public:
 			hr = GetPathOf (this, node, parentPath); RETURN_IF_FAILED(hr);
 		}
 
-		wil::unique_bstr newFolderName;
-		hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_NEW_FOLDER_NAME, &newFolderName); RETURN_IF_FAILED(hr);
-
-		wchar_t dirName[20];
-		for (uint32_t i = 1;;)
+		wil::unique_process_heap_string dirName;
+		if (pvaIn && V_VT(pvaIn) == VT_BSTR)
 		{
-			swprintf_s(dirName, newFolderName.get(), i);
+			// Our testing code passes the folder name in pvaIn, while VS seems to always pass this variant empty.
+			// Even though the code paths are not identical, we can still test a lot of what this function does.
+			dirName = wil::make_process_heap_string_nothrow(V_BSTR(pvaIn)); RETURN_IF_NULL_ALLOC(dirName);
+		}
+		else
+		{
+			wil::unique_bstr newFolderNameFormat;
+			hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_NEW_FOLDER_NAME, &newFolderNameFormat); RETURN_IF_FAILED(hr);
 
-			// Search for a node with the same name in the same location (not deeper).
-			bool nameExists = false;
-			for (auto c = parent->FirstChild(); !!c; c = c->Next())
+			for (uint32_t i = 1;;)
 			{
-				wil::unique_variant nameVar;
-				hr = c->GetProperty(this, VSHPROPID_Name, &nameVar); RETURN_IF_FAILED(hr);
-				if (!_wcsicmp(nameVar.bstrVal, dirName))
+				hr = wil::str_printf_nothrow(dirName, newFolderNameFormat.get(), i);  RETURN_IF_FAILED(hr);
+
+				// Search for a node with the same name in the same location (not deeper).
+				bool nameExists = false;
+				for (auto c = parent->FirstChild(); !!c; c = c->Next())
 				{
-					nameExists = true;
-					break;
+					wil::unique_variant nameVar;
+					hr = c->GetProperty(this, VSHPROPID_Name, &nameVar); RETURN_IF_FAILED(hr);
+					if (!_wcsicmp(nameVar.bstrVal, dirName.get()))
+					{
+						nameExists = true;
+						break;
+					}
 				}
-			}
 			
-			if (!nameExists)
-			{
-				wil::unique_hlocal_string dirPath;
-				hr = wil::str_concat_nothrow(dirPath, parentPath, L"\\", dirName); RETURN_IF_FAILED(hr);
-				if (!PathFileExists(dirPath.get()))
-					break;
-			}
+				if (!nameExists)
+				{
+					wil::unique_hlocal_string dirPath;
+					hr = wil::str_concat_nothrow(dirPath, parentPath, L"\\", dirName); RETURN_IF_FAILED(hr);
+					if (!PathFileExists(dirPath.get()))
+						break;
+				}
 
-			i++;
-			if (i == 100)
-				RETURN_HR(E_UNEXPECTED);
+				i++;
+				if (i == 100)
+					RETURN_HR(E_UNEXPECTED);
+			}
 		}
 
 		com_ptr<IFolderNode> newFolder;
-		hr = GetOrCreateChildFolder (this, parent, dirName, MakeFolderNode, true, &newFolder); RETURN_IF_FAILED(hr);
+		hr = GetOrCreateChildFolder (this, parent, dirName.get(), MakeFolderNode, &newFolder); RETURN_IF_FAILED_EXPECTED(hr);
 
 		_isDirty = true;
 

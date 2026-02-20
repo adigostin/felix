@@ -823,7 +823,7 @@ public:
 			return S_OK;
 		}
 
-		if (dispid == dispidVSItemId)
+		if (dispid == dispidVSItemIdDebug)
 		{
 			#ifdef NDEBUG
 			*pfHide = TRUE;

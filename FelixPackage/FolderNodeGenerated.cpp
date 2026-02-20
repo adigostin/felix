@@ -287,7 +287,7 @@ public:
 	#pragma region IVsPerPropertyBrowsing
 	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL *pfHide) override
 	{
-		if (dispid == dispidVSItemId)
+		if (dispid == dispidVSItemIdDebug)
 		{
 			#ifdef NDEBUG
 			*pfHide = TRUE;

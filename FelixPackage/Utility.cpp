@@ -327,7 +327,7 @@ static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* project, IProject
 	HRESULT hr;
 
 	com_ptr<IFolderNode> folder;
-	hr = GetOrCreateChildFolder (project, project, genFilesStr.get(), MakeFolderNodeGenerated, true, &folder); RETURN_IF_FAILED(hr);
+	hr = GetOrCreateChildFolder (project, project, genFilesStr.get(), MakeFolderNodeGenerated, &folder); RETURN_IF_FAILED(hr);
 
 	wil::unique_process_heap_string packageDir;
 	hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, packageDir); RETURN_IF_FAILED(hr);
@@ -860,40 +860,38 @@ HRESULT AddFileToParent (IProjectNode* proj, IFileNode* child, IParentNode* addT
 	return S_OK;
 }
 
-FELIX_API HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, HRESULT(*factory)(IFolderNode**), bool createDirectoryOnFileSystem, IFolderNode** ppFolder)
+FELIX_API HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, HRESULT(*factory)(IFolderNode**), IFolderNode** ppFolder)
 {
 	HRESULT hr;
 
-	stdext::inplace_function<HRESULT(IFolderNode*)> createDir;
-	createDir = [&createDir, proj](IFolderNode* f) -> HRESULT
-		{
-			wil::unique_process_heap_string path;
-			auto hr = GetPathOf (proj, f, path); RETURN_IF_FAILED(hr);
-			if (!CreateDirectoryW (path.get(), nullptr))
-			{
-				DWORD lastError = ::GetLastError();
-				if (lastError == ERROR_ALREADY_EXISTS && (GetFileAttributes(path.get()) & FILE_ATTRIBUTE_DIRECTORY))
-					return S_OK;
+	RETURN_HR_IF(E_UNEXPECTED, parent->GetItemId() == VSITEMID_NIL);
 
-				if (lastError == ERROR_PATH_NOT_FOUND)
-				{
-					com_ptr<IParentNode> parent;
-					hr = f->GetParent(&parent); RETURN_IF_FAILED(hr);
-					if (parent.try_query<IProjectNode>())
-						return HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND);
-					com_ptr<IFolderNode> parentfn;
-					hr = parent->QueryInterface(IID_PPV_ARGS(&parentfn)); RETURN_IF_FAILED(hr);
-					hr = createDir(parentfn); RETURN_IF_FAILED_EXPECTED(hr);
-					if (!CreateDirectoryW(path.get(), nullptr))
-						return HRESULT_FROM_WIN32(GetLastError());
-					return S_OK;
-				}
+	// Attempt to create the directory first. If this can't be done, we don't want to touch the hierarchy.
+	wil::unique_process_heap_string path;
+	if (parent == proj)
+	{
+		wil::unique_variant projDir;
+		hr = proj->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projDir); RETURN_IF_FAILED(hr);
+		hr = wil::str_concat_nothrow(path, projDir.bstrVal, folderName); RETURN_IF_NULL_ALLOC(path);
+	}
+	else
+	{
+		com_ptr<IChildNode> parentAsChild;
+		hr = parent->QueryInterface(&parentAsChild); RETURN_IF_FAILED(hr);
+		hr = GetPathOf(proj, parentAsChild, path); RETURN_IF_FAILED(hr);
+		hr = wil::str_concat_nothrow(path, L"\\", folderName); RETURN_IF_FAILED(hr);
+	}
 
-				return HRESULT_FROM_WIN32(lastError);
-			}
-
-			return S_OK;
-		};
+	if (PathFileExists(path.get()))
+	{
+		DWORD attrs = GetFileAttributes(path.get()); RETURN_LAST_ERROR_IF_EXPECTED(attrs == INVALID_FILE_ATTRIBUTES);
+		if ((attrs & FILE_ATTRIBUTE_DIRECTORY) == 0)
+			return HRESULT_FROM_WIN32(ERROR_FILE_EXISTS);
+	}
+	else
+	{
+		int ires = SHCreateDirectoryEx(nullptr, path.get(), nullptr); RETURN_HR_IF_EXPECTED(HRESULT_FROM_WIN32(ires), ires);
+	}
 
 	com_ptr<IChildNode> insertAfter;
 	com_ptr<IChildNode> insertBefore = parent->FirstChild();
@@ -908,11 +906,6 @@ FELIX_API HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* paren
 		{
 			if (!_wcsicmp(folderName, V_BSTR(&name)))
 			{
-				if (createDirectoryOnFileSystem)
-				{
-					hr = createDir(insertBeforeAsFolder); RETURN_IF_FAILED(hr);
-				}
-
 				*ppFolder = insertBeforeAsFolder.detach();
 				return S_OK;
 			}
@@ -926,6 +919,17 @@ FELIX_API HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* paren
 		insertBefore = insertBefore->Next();
 	}
 
+	// We found the place to insert the new folder. Let's make sure there aren't any files with the same name.
+	if (insertBefore)
+	{
+		for (auto c = insertBefore->Next(); c != nullptr; c = c->Next())
+		{
+			wil::unique_variant name;
+			if (SUCCEEDED(c->GetProperty(proj, VSHPROPID_SaveName, &name)) && !_wcsicmp(name.bstrVal, folderName))
+				return HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
+		}
+	}
+
 	com_ptr<IFolderNode> newFolder;
 	hr = factory (&newFolder); RETURN_IF_FAILED(hr);
 	auto name = wil::make_bstr_nothrow(folderName); RETURN_IF_NULL_ALLOC(name);
@@ -935,20 +939,9 @@ FELIX_API HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* paren
 		parent->SetFirstChild(newFolder);
 	else
 		insertAfter->SetNext(newFolder);
+	hr = SetItemIdsTree (proj, newFolder, insertAfter, parent); RETURN_IF_FAILED(hr);
+	proj->NotifyPropertyChangedHierNode (parent->GetItemId(), VSHPROPID_Expandable);
 
-	if (parent->GetItemId() != VSITEMID_NIL)
-	{
-		// Adding it to a hierarchy.
-		hr = SetItemIdsTree (proj, newFolder, insertAfter, parent); RETURN_IF_FAILED(hr);
-
-		// Since our expandable status may have changed, we need to refresh it in the UI.
-		proj->NotifyPropertyChangedHierNode (parent->GetItemId(), VSHPROPID_Expandable);
-	}
-
-	if (createDirectoryOnFileSystem)
-	{
-		hr = createDir(newFolder); RETURN_IF_FAILED(hr);
-	}
 	*ppFolder = newFolder.detach();
 	return S_OK;
 }
