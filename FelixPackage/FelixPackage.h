@@ -289,7 +289,10 @@ HRESULT GetHierarchyWindow (IVsUIHierarchyWindow** ppHierWindow);
 HRESULT GetPathTo (IProjectNode* proj, IChildNode* node, wil::unique_process_heap_string& dir, bool relativeToProjectDir = false);
 HRESULT GetPathOf (IProjectNode* proj, IChildNode* node, wil::unique_process_heap_string& path, bool relativeToProjectDir = false);
 HRESULT AddFileToParent (IProjectNode* proj, IFileNode* child, IParentNode* addTo);
-HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, HRESULT(*factory)(IFolderNode**), IFolderNode** ppFolder);
+HRESULT EnsureDirectoryExists (IProjectNode* proj, IParentNode* parent, const wchar_t* dirName);
+HRESULT FindFolderNodeOrInsertLocation (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName,
+	com_ptr<IFolderNode>& found, com_ptr<IChildNode>& insertBefore, com_ptr<IChildNode>& insertAfter);
+HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, IFolderNode** ppFolder);
 HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* child);
 HRESULT GetItems (IParentNode* itemsIn, HRESULT(*filter)(IChildNode*), SAFEARRAY** itemsOut);
 HRESULT PutItems (SAFEARRAY* sa, IParentNode* items);

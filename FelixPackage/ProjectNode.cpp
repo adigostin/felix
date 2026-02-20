@@ -1854,7 +1854,7 @@ public:
 					auto dir = wil::make_process_heap_string_nothrow (ptrComponent, nextComp - ptrComponent); RETURN_IF_NULL_ALLOC(dir);
 					ptrComponent = nextComp + 1;
 					com_ptr<IFolderNode> ch;
-					hr = GetOrCreateChildFolder(this, parent, dir.get(), MakeFolderNode, &ch); RETURN_IF_FAILED(hr);
+					hr = GetOrCreateChildFolder(this, parent, dir.get(), &ch); RETURN_IF_FAILED(hr);
 					parent = ch->AsParentNode(); 
 				}
 
@@ -3263,7 +3263,7 @@ public:
 		}
 
 		com_ptr<IFolderNode> newFolder;
-		hr = GetOrCreateChildFolder (this, parent, dirName.get(), MakeFolderNode, &newFolder); RETURN_IF_FAILED_EXPECTED(hr);
+		hr = GetOrCreateChildFolder (this, parent, dirName.get(), &newFolder); RETURN_IF_FAILED_EXPECTED(hr);
 
 		_isDirty = true;
 

@@ -9,14 +9,13 @@
 
 using namespace Microsoft::VisualStudio::Imaging;
 
-struct FolderNodeGenerated : IFolderNode, IParentNode, IFolderNodeProperties, IVsPerPropertyBrowsing
+struct FolderNodeGenerated : IFolderNode, IParentNode
 {
 	ULONG _refCount = 0;
 	com_ptr<IWeakRef> _parent;
 	VSITEMID _itemId = VSITEMID_NIL;
 	com_ptr<IChildNode> _next;
 	com_ptr<IChildNode> _firstChild;
-	wil::unique_process_heap_string _name;
 	WeakRefToThis _weakRefToThis;
 
 public:
@@ -33,14 +32,11 @@ public:
 		RETURN_HR_IF(E_POINTER, !ppvObject);
 		*ppvObject = nullptr;
 
-		if (   TryQI<IUnknown>(static_cast<IFolderNodeProperties*>(this), riid, ppvObject)
-			|| TryQI<IDispatch>(static_cast<IFolderNodeProperties*>(this), riid, ppvObject)
-			|| TryQI<IFolderNodeProperties>(this, riid, ppvObject)
+		if (   TryQI<IUnknown>(static_cast<IFolderNode*>(this), riid, ppvObject)
 			|| TryQI<IFolderNode>(this, riid, ppvObject)
 			|| TryQI<IChildNode>(this, riid, ppvObject)
 			|| TryQI<IParentNode>(this, riid, ppvObject)
 			|| TryQI<INode>(static_cast<IParentNode*>(this), riid, ppvObject)
-			|| TryQI<IVsPerPropertyBrowsing>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -53,46 +49,6 @@ public:
 	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
-	#pragma endregion
-
-	IMPLEMENT_IDISPATCH(IFolderNodeProperties);
-
-	#pragma region IFolderNodeProperties
-	virtual HRESULT STDMETHODCALLTYPE get___id (BSTR *value) override
-	{
-		// Shown by VS at the top of the Properties Window.
-		*value = SysAllocString(_name.get()); RETURN_IF_NULL_ALLOC(*value);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE get_Name (BSTR *value) override
-	{
-		*value = SysAllocString(_name.get()); RETURN_IF_NULL_ALLOC(*value);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE put_Name (BSTR value) override
-	{
-		RETURN_HR_IF(E_UNEXPECTED, _itemId != VSITEMID_NIL);
-		RETURN_HR_IF(E_INVALIDARG, !value || !value[0]);
-		_name = wil::make_process_heap_string_nothrow(value); RETURN_IF_NULL_ALLOC(_name);
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE get_Items (SAFEARRAY** items) override
-	{
-		RETURN_HR(E_UNEXPECTED);
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE put_Items (SAFEARRAY* sa) override
-	{
-		RETURN_HR(E_UNEXPECTED);
-	}
-
-	virtual HRESULT get_VSItemId (VSITEMID* pItemId)
-	{
-		return *pItemId = _itemId, S_OK;
-	}
 	#pragma endregion
 
 	#pragma region IChildNode
@@ -161,16 +117,13 @@ public:
 			|| propid == VSHPROPID_Caption // -2003
 			|| propid == VSHPROPID_Name // -2012
 		)
-			return InitVariantFromString(_name.get(), pvar);
+			return InitVariantFromString(genFilesStr.get(), pvar);
 
 		if (propid == VSHPROPID_Expandable) // -2006
 			return InitVariantFromBoolean (_firstChild ? TRUE : FALSE, pvar);
 
 		if (propid == VSHPROPID_ExpandByDefault) // -2011
 			return InitVariantFromBoolean (FALSE, pvar);
-
-		if (propid == VSHPROPID_BrowseObject) // -2018
-			return InitVariantFromDispatch(static_cast<IFolderNodeProperties*>(this), pvar);
 
 		if (propid == VSHPROPID_SupportsIconMonikers) // -2159
 			return InitVariantFromBoolean (TRUE, pvar);
@@ -282,52 +235,6 @@ public:
 
 	#pragma region IFolderNode
 	virtual IParentNode* AsParentNode() override { return this; }
-	#pragma endregion
-
-	#pragma region IVsPerPropertyBrowsing
-	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL *pfHide) override
-	{
-		if (dispid == dispidVSItemIdDebug)
-		{
-			#ifdef NDEBUG
-			*pfHide = TRUE;
-			#else
-			*pfHide = FALSE;
-			#endif
-			return S_OK;
-		}
-
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE DisplayChildProperties (DISPID dispid, BOOL *pfDisplay) override { return E_NOTIMPL; }
-
-	virtual HRESULT STDMETHODCALLTYPE GetLocalizedPropertyInfo (DISPID dispid, LCID localeID, BSTR *pbstrLocalizedName, BSTR *pbstrLocalizeDescription) override { return E_NOTIMPL; }
-
-	virtual HRESULT STDMETHODCALLTYPE HasDefaultValue (DISPID dispid, BOOL *fDefault) override
-	{
-		if (dispid == dispidFolderName)
-			return (*fDefault = FALSE), S_OK;
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE IsPropertyReadOnly (DISPID dispid, BOOL *fReadOnly) override
-	{
-		if (dispid == dispidFolderName)
-			return (*fReadOnly = TRUE), S_OK;
-		return E_NOTIMPL;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetClassName (BSTR *pbstrClassName) override
-	{
-		// Shown by VS at the top of the Properties Window.
-		*pbstrClassName = SysAllocString(L"Folder");
-		return S_OK;
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE CanResetPropertyValue (DISPID dispid, BOOL* pfCanReset) override { return E_NOTIMPL; }
-
-	virtual HRESULT STDMETHODCALLTYPE ResetPropertyValue (DISPID dispid) override { return E_NOTIMPL; }
 	#pragma endregion
 };
 
