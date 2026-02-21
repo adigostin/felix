@@ -1853,7 +1853,16 @@ public:
 					auto dir = wil::make_process_heap_string_nothrow (ptrComponent, nextComp - ptrComponent); RETURN_IF_NULL_ALLOC(dir);
 					ptrComponent = nextComp + 1;
 					com_ptr<IFolderNode> ch;
-					hr = GetOrCreateFolderNode(this, parent, dir.get(), &ch); RETURN_IF_FAILED(hr);
+					com_ptr<IChildNode> insertBefore, insertAfter;
+					hr = FindFolderNodeOrInsertLocation (this, parent, dir.get(), &ch, insertBefore, insertAfter); RETURN_IF_FAILED_EXPECTED(hr);
+					if (hr == S_FALSE)
+					{
+						hr = MakeFolderNode(&ch); RETURN_IF_FAILED(hr);
+						auto name = wil::make_bstr_nothrow(dir.get()); RETURN_IF_NULL_ALLOC(name);
+						hr = ch.try_query<IFolderNodeProperties>()->put_Name(name.get()); RETURN_IF_FAILED(hr);
+						hr = InsertFolderNode(this, parent, insertBefore, insertAfter, ch); RETURN_IF_FAILED(hr);
+					}
+
 					parent = ch->AsParentNode(); 
 				}
 

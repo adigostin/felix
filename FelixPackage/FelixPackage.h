@@ -294,7 +294,6 @@ HRESULT EnsureDirectoryExists (const wchar_t* path);
 HRESULT FindFolderNodeOrInsertLocation (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName,
 	IFolderNode** ppFound, com_ptr<IChildNode>& insertBefore, com_ptr<IChildNode>& insertAfter);
 HRESULT InsertFolderNode (IProjectNode* proj, IParentNode* parent, IChildNode* insertBefore, IChildNode* insertAfter, IFolderNode* newFolder);
-HRESULT GetOrCreateFolderNode (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, IFolderNode** ppFolder);
 HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* child);
 HRESULT GetItems (IParentNode* itemsIn, HRESULT(*filter)(IChildNode*), SAFEARRAY** itemsOut);
 HRESULT PutItems (SAFEARRAY* sa, IParentNode* items);

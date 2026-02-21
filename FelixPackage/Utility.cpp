@@ -948,26 +948,6 @@ HRESULT InsertFolderNode (IProjectNode* proj, IParentNode* parent, IChildNode* i
 	return S_OK;
 }
 
-HRESULT GetOrCreateFolderNode (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, IFolderNode** ppFolder)
-{
-	RETURN_HR_IF(E_UNEXPECTED, parent->GetItemId() == VSITEMID_NIL);
-
-	com_ptr<IFolderNode> newFolder;
-	com_ptr<IChildNode> insertBefore;
-	com_ptr<IChildNode> insertAfter;
-	auto hr = FindFolderNodeOrInsertLocation (proj, parent, folderName, &newFolder, insertBefore, insertAfter); RETURN_IF_FAILED_EXPECTED(hr);
-	if (hr == S_FALSE)
-	{
-		hr = MakeFolderNode(&newFolder); RETURN_IF_FAILED(hr);
-		auto name = wil::make_bstr_nothrow(folderName); RETURN_IF_NULL_ALLOC(name);
-		hr = newFolder.try_query<IFolderNodeProperties>()->put_Name(name.get()); RETURN_IF_FAILED(hr);
-		hr = InsertFolderNode(proj, parent, insertBefore, insertAfter, newFolder); RETURN_IF_FAILED(hr);
-	}
-
-	*ppFolder = newFolder.detach();
-	return S_OK;
-}
-
 // Enum depth-first (just because it's simpler) post-order mode (so that children clear their ItemId before parent).
 static HRESULT ClearItemIdsTree (IProjectNode* root, IChildNode* child)
 {
