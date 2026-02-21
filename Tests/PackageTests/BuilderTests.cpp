@@ -38,10 +38,27 @@ namespace FelixTests
 {
 	TEST_CLASS(BuilderTests)
 	{
+		struct TD
+		{
+			wil::unique_process_heap_string testDir;
+
+			TD()
+			{
+				testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"FolderTest\\");
+				Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
+			}
+
+			~TD()
+			{
+				RemoveDirectoryTree(testDir.get());
+			}
+		};
+
 		TEST_METHOD(BuildFailsOnEmptyProject)
 		{
+			TD td;
 			com_ptr<IProjectNode> project;
-			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&project));
+			auto hr = MakeProjectNode (nullptr, td.testDir.get(), nullptr, 0, IID_PPV_ARGS(&project));
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto config = AddDebugProjectConfig(project->AsHierarchy());
 			auto pane = MakeMockOutputWindowPane(nullptr);
@@ -57,8 +74,9 @@ namespace FelixTests
 
 		TEST_METHOD(ProjectConfigHasPrePostBuildProps)
 		{
+			TD td;
 			com_ptr<IVsHierarchy> hier;
-			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			auto hr = MakeProjectNode (nullptr, td.testDir.get(), nullptr, 0, IID_PPV_ARGS(&hier));
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			auto config = AddDebugProjectConfig(hier);
@@ -74,22 +92,30 @@ namespace FelixTests
 			hier->Close();
 		}
 
-		static std::pair<wil::com_ptr_failfast<IProjectNode>, wil::com_ptr_failfast<IProjectConfigBuilder>> MakeSjasmProjectBuilder (const char* asmFileContent)
+		static std::pair<wil::com_ptr_failfast<IProjectNode>, wil::com_ptr_failfast<IProjectConfigBuilder>> MakeSjasmProjectBuilder (const wchar_t* testDir, const char* asmFileContent)
 		{
 			HRESULT hr;
 			com_ptr<IProjectNode> project;
-			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&project));
+			hr = MakeProjectNode (nullptr, testDir, nullptr, 0, IID_PPV_ARGS(&project));
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto config = AddDebugProjectConfig(project->AsHierarchy());
 			config->AsmProps()->put_GeneratePrePostIncludeFiles(VARIANT_FALSE);
 
+			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"test.asm");
 			if (asmFileContent)
-				WriteFileOnDisk(CombinePath(tempPath, L"test.asm").get(), asmFileContent);
+			{
+				wil::unique_hfile h (CreateFile(filePath.get(), GENERIC_WRITE, 0, 0, CREATE_NEW, 0, 0));
+				Assert::IsTrue(h.is_valid());
+				BOOL bres = WriteFile(h.get(), asmFileContent, strlen(asmFileContent), NULL, NULL);
+				Assert::IsTrue(bres);
+			}
 			else
-				DeleteFileOnDisk(tempPath, L"test.asm");
-			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"test.asm");
+			{
+				BOOL bres = DeleteFile(filePath.get());
+				Assert::IsTrue(bres);
+			}
 			LPCOLESTR filesToOpen[] = { filePath.get() };
-			project->AsVsProject()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, filesToOpen, nullptr, nullptr);
+			hr = project->AsVsProject()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, filesToOpen, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			auto pane = MakeMockOutputWindowPane(nullptr);
@@ -117,6 +143,7 @@ namespace FelixTests
 
 		TEST_METHOD(Test_SjasmMissingExe)
 		{
+			TD td;
 			wil::unique_process_heap_string dllDir;
 			wil::GetModuleFileNameW((HMODULE)&__ImageBase, dllDir);
 			*PathFindFileName(dllDir.get()) = 0;
@@ -128,7 +155,7 @@ namespace FelixTests
 			BOOL bres = MoveFileExW (sjasmOrigPath.get(), sjasmTempPath.get(), MOVEFILE_REPLACE_EXISTING);
 			Assert::IsTrue(bres);
 
-			auto [proj, builder] = MakeSjasmProjectBuilder({ });
+			auto [proj, builder] = MakeSjasmProjectBuilder(td.testDir.get(), "");
 			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild (callback);
@@ -141,7 +168,8 @@ namespace FelixTests
 
 		TEST_METHOD(Test_SjasmCommandLine_ExitCodeZero)
 		{
-			auto [proj, builder] = MakeSjasmProjectBuilder("\tend\r\n");
+			TD td;
+			auto [proj, builder] = MakeSjasmProjectBuilder(td.testDir.get(), "\tend\r\n");
 			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild (callback);
@@ -155,7 +183,8 @@ namespace FelixTests
 
 		TEST_METHOD(Test_SjasmCommandLine_ExitCodeNonzero)
 		{
-			auto [proj, builder] = MakeSjasmProjectBuilder({ });
+			TD td;
+			auto [proj, builder] = MakeSjasmProjectBuilder(td.testDir.get(), "\tINVALIDOPCODE");
 			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild (callback);
@@ -173,6 +202,7 @@ namespace FelixTests
 
 		// sourceFileContent - empty string view to skip creating the file on disk
 		static std::pair<wil::com_ptr_failfast<IProjectNode>, wil::com_ptr_failfast<IProjectConfigBuilder>> MakeProjectWithCustomBuildTool (
+			const wchar_t* testDir,
 			const wchar_t* sourceFileName, const char* sourceFileContent,
 			const wchar_t* cbtDescription,
 			const wchar_t* cbtCmdLine, IStream* outputStreamUTF16)
@@ -180,16 +210,16 @@ namespace FelixTests
 			HRESULT hr;
 
 			wil::com_ptr_failfast<IProjectNode> project;
-			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&project));
+			hr = MakeProjectNode (nullptr, testDir, nullptr, 0, IID_PPV_ARGS(&project));
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto config = AddDebugProjectConfig(project->AsHierarchy());
 			config->AsmProps()->put_GeneratePrePostIncludeFiles(VARIANT_FALSE);
 
 			if (sourceFileContent)
-				WriteFileOnDisk(CombinePath(tempPath, sourceFileName).get(), sourceFileContent);
+				WriteFileOnDisk(CombinePath(testDir, sourceFileName).get(), sourceFileContent);
 			else
-				DeleteFileOnDisk(tempPath, sourceFileName);
-			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, sourceFileName);
+				DeleteFileOnDisk(testDir, sourceFileName);
+			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, sourceFileName);
 			hr = project->AsVsProject()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, (LPCOLESTR*)filePath.addressof(), nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto sourceFile = wil::com_query_failfast<IFileNodeProperties>(project->FirstChild());
@@ -214,12 +244,13 @@ namespace FelixTests
 
 		TEST_METHOD(TestCustomBuildToolOutputWithNoEOL)
 		{
+			TD td;
 			HeavyLoad hl;
 
 			com_ptr<IStream> outputStream;
 			auto hr = CreateStreamOnHGlobal (NULL, TRUE, &outputStream);
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto [proj, builder] = MakeProjectWithCustomBuildTool(L"test.xxx", "content", nullptr, L"cmd /c type test.xxx", outputStream);
+			auto [proj, builder] = MakeProjectWithCustomBuildTool (td.testDir.get(), L"test.xxx", "content", nullptr, L"cmd /c type test.xxx", outputStream);
 			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 
 			auto callback = com_ptr(new TestBuildCallback());
@@ -242,10 +273,11 @@ namespace FelixTests
 
 		TEST_METHOD(TestCustomBuildToolOutputWithEOL)
 		{
+			TD td;
 			com_ptr<IStream> outputStream;
 			auto hr = CreateStreamOnHGlobal (NULL, TRUE, &outputStream);
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto [proj, builder] = MakeProjectWithCustomBuildTool(L"test.xxx", "content\r\n", nullptr, L"cmd /c type test.xxx", outputStream);
+			auto [proj, builder] = MakeProjectWithCustomBuildTool(td.testDir.get(), L"test.xxx", "content\r\n", nullptr, L"cmd /c type test.xxx", outputStream);
 			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto callback = com_ptr(new TestBuildCallback());
 			hr = builder->StartBuild(callback);
@@ -267,7 +299,8 @@ namespace FelixTests
 
 		TEST_METHOD(TestBuilderDestroyedWhenReleasedWithPendingBuild)
 		{
-			auto [proj, builder] = MakeProjectWithCustomBuildTool(L"test.xxx", { }, nullptr, L"cmd /c pause", nullptr);
+			TD td;
+			auto [proj, builder] = MakeProjectWithCustomBuildTool(td.testDir.get(), L"test.xxx", "content", nullptr, L"cmd /c pause", nullptr);
 			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild(callback);
@@ -280,7 +313,8 @@ namespace FelixTests
 
 		TEST_METHOD(TestCustomBuildToolWaitingUserInput)
 		{
-			auto [proj, builder] = MakeProjectWithCustomBuildTool(L"test.xxx", { }, nullptr, L"cmd /c pause", nullptr);
+			TD td;
+			auto [proj, builder] = MakeProjectWithCustomBuildTool(td.testDir.get(), L"test.xxx", "\tNOP", nullptr, L"cmd /c pause", nullptr);
 			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild(callback);
@@ -309,9 +343,9 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 		}
 		*/
-		static void CancelAfterAsyncBuildProcessExited (const wchar_t* command, BOOL* complete, BOOL* success)
+		static void CancelAfterAsyncBuildProcessExited (const wchar_t* testDir, const wchar_t* command, BOOL* complete, BOOL* success)
 		{
-			auto [proj, builder] = MakeProjectWithCustomBuildTool(L"test.xxx", "content", nullptr, command, nullptr);
+			auto [proj, builder] = MakeProjectWithCustomBuildTool (testDir, L"test.xxx", "content", nullptr, command, nullptr);
 			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild(callback);
@@ -328,8 +362,9 @@ namespace FelixTests
 
 		TEST_METHOD(CancelAfterAsyncBuildProcessExitedWithExitCode0)
 		{
+			TD td;
 			BOOL complete, success;
-			CancelAfterAsyncBuildProcessExited (L"cmd /c exit 0", &complete, &success);
+			CancelAfterAsyncBuildProcessExited (td.testDir.get(), L"cmd /c exit 0", &complete, &success);
 			Assert::IsTrue(complete);
 			Assert::IsFalse(success);
 		}
@@ -373,26 +408,24 @@ namespace FelixTests
 
 		TEST_METHOD(CancelAfterAsyncBuildProcessExitedWithExitCode1)
 		{
+			TD td;
 			BOOL complete, success;
-			CancelAfterAsyncBuildProcessExited (L"cmd /c exit 1", &complete, &success);
+			CancelAfterAsyncBuildProcessExited (td.testDir.get(), L"cmd /c exit 1", &complete, &success);
 			Assert::IsTrue(complete);
 			Assert::IsFalse(success);
 		}
 
-		static void CancelAfterAsyncBuildProcessExited_NotOnLastCmd (DWORD firstCommandExitCode, BOOL* complete, BOOL* success)
+		static void CancelAfterAsyncBuildProcessExited_NotOnLastCmd (const wchar_t* testDir, DWORD firstCommandExitCode, BOOL* complete, BOOL* success)
 		{
-			wchar_t tempPath[MAX_PATH + 1];
-			DWORD dwres = GetTempPathW (MAX_PATH + 1, tempPath);
-			Assert::IsTrue(dwres > 0);
 			wchar_t tempFilename[MAX_PATH];
-			UINT uires = GetTempFileNameW (tempPath, L"TST", 0, tempFilename);
+			UINT uires = GetTempFileNameW (testDir, L"TST", 0, tempFilename);
 			Assert::IsTrue(uires > 0);
 			static const wchar_t Format[] = L"cmd /c exit %u\r\ncmd /c del \"%s\"";
 			size_t allocLen = _countof(Format) + 10 + wcslen(tempFilename);
 			auto cmd = wil::make_hlocal_string_nothrow(nullptr, allocLen);
 			Assert::IsNotNull(cmd.get());
 			swprintf_s (cmd.get(), allocLen, Format, firstCommandExitCode, tempFilename);
-			CancelAfterAsyncBuildProcessExited (cmd.get(), complete, success);
+			CancelAfterAsyncBuildProcessExited (testDir, cmd.get(), complete, success);
 
 			// Since we canceled the build right after the first command, the second command
 			// (the one that deletes the temporary file), shouldn't have been executed.
@@ -403,23 +436,26 @@ namespace FelixTests
 
 		TEST_METHOD(CancelAfterAsyncBuildProcessExitedWithExitCode0_NotOnLastCmd)
 		{
+			TD td;
 			BOOL complete, success;
-			CancelAfterAsyncBuildProcessExited_NotOnLastCmd(0, &complete, &success);
+			CancelAfterAsyncBuildProcessExited_NotOnLastCmd(td.testDir.get(), 0, &complete, &success);
 			Assert::IsTrue(complete);
 			Assert::IsFalse(success);
 		}
 
 		TEST_METHOD(CancelAfterAsyncBuildProcessExitedWithExitCode1_NotOnLastCmd)
 		{
+			TD td;
 			BOOL complete, success;
-			CancelAfterAsyncBuildProcessExited_NotOnLastCmd(1, &complete, &success);
+			CancelAfterAsyncBuildProcessExited_NotOnLastCmd(td.testDir.get(), 1, &complete, &success);
 			Assert::IsTrue(complete);
 			Assert::IsFalse(success);
 		}
 
 		TEST_METHOD(TestCustomBuildToolOnlyWhitespaceCommands)
 		{
-			auto [proj, builder] = MakeProjectWithCustomBuildTool(L"test.xxx", { }, nullptr, L"   \r\n   \t   ", nullptr);
+			TD td;
+			auto [proj, builder] = MakeProjectWithCustomBuildTool(td.testDir.get(), L"test.xxx", "\tNOP", nullptr, L"   \r\n   \t   ", nullptr);
 			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild(callback);
@@ -428,11 +464,12 @@ namespace FelixTests
 
 		TEST_METHOD(TestCustomBuildToolSomeWhitespaceCommands)
 		{
+			TD td;
 			com_ptr<IStream> outputStream;
 			auto hr = CreateStreamOnHGlobal (NULL, TRUE, &outputStream);
 			Assert::IsTrue(SUCCEEDED(hr));
 			static const wchar_t cmdLine[] = L"  cmd /c type test.xxx  \t\r\n   \t   ";
-			auto [proj, builder] = MakeProjectWithCustomBuildTool(L"test.xxx", "content", nullptr, cmdLine, outputStream);
+			auto [proj, builder] = MakeProjectWithCustomBuildTool(td.testDir.get(), L"test.xxx", "content", nullptr, cmdLine, outputStream);
 			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto callback = com_ptr(new TestBuildCallback());
 			hr = builder->StartBuild(callback);
@@ -493,7 +530,8 @@ namespace FelixTests
 
 		TEST_METHOD(BuildOnlySynchronousSteps)
 		{
-			auto [proj, builder] = MakeProjectWithCustomBuildTool (L"test.asm", { }, L"CBT Description", nullptr, nullptr);
+			TD td;
+			auto [proj, builder] = MakeProjectWithCustomBuildTool (td.testDir.get(), L"test.asm", "content", L"CBT Description", nullptr, nullptr);
 			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
 			auto hr = builder->StartBuild(nullptr);
 			Assert::AreEqual(S_OK, hr);
@@ -557,13 +595,17 @@ namespace FelixTests
 
 			// file 1 in project dir
 			auto file1FullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(projDir, L"\\file1.asm");
+			WriteFileOnDisk(file1FullPath.get(), "");
 			// file 2 in project sub dir
 			auto file2FullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(projDir, L"\\subdir\\file2.asm");
+			WriteFileOnDisk(file2FullPath.get(), "");
 			// file 3 outside project dir but on same drive
 			auto file3FullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\file3.asm");
+			WriteFileOnDisk(file3FullPath.get(), "");
 			// file 4 on different drive
 			auto file4FullPath = wil::make_process_heap_string_failfast(L"D:\\FelixTest\\BuildFilesNotInProjectDir\\file4.asm");
-			
+			WriteFileOnDisk(file4FullPath.get(), "");
+
 			LPCOLESTR files[] = { file1FullPath.get(), file2FullPath.get(), file3FullPath.get(), file4FullPath.get() };
 			
 			hr = proj->AsVsProject()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, (ULONG)_countof(files), files, nullptr, nullptr);
