@@ -181,6 +181,7 @@ extern wil::com_ptr_nothrow<ISimulator> simulator;
 extern wil::unique_bstr genFilesStr;
 extern wil::unique_bstr preincludeFilename;
 extern wil::unique_bstr postincludeFilename;
+extern wil::unique_bstr newFolderNameFormat;
 
 extern const wchar_t Z80AsmLanguageName[];
 extern const wchar_t SingleDebugPortName[];
@@ -289,10 +290,11 @@ HRESULT GetHierarchyWindow (IVsUIHierarchyWindow** ppHierWindow);
 HRESULT GetPathTo (IProjectNode* proj, IChildNode* node, wil::unique_process_heap_string& dir, bool relativeToProjectDir = false);
 HRESULT GetPathOf (IProjectNode* proj, IChildNode* node, wil::unique_process_heap_string& path, bool relativeToProjectDir = false);
 HRESULT AddFileToParent (IProjectNode* proj, IFileNode* child, IParentNode* addTo);
-HRESULT EnsureDirectoryExists (IProjectNode* proj, IParentNode* parent, const wchar_t* dirName);
+HRESULT EnsureDirectoryExists (const wchar_t* path);
 HRESULT FindFolderNodeOrInsertLocation (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName,
-	com_ptr<IFolderNode>& found, com_ptr<IChildNode>& insertBefore, com_ptr<IChildNode>& insertAfter);
-HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, IFolderNode** ppFolder);
+	IFolderNode** ppFound, com_ptr<IChildNode>& insertBefore, com_ptr<IChildNode>& insertAfter);
+HRESULT InsertFolderNode (IProjectNode* proj, IParentNode* parent, IChildNode* insertBefore, IChildNode* insertAfter, IFolderNode* newFolder);
+HRESULT GetOrCreateFolderNode (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, IFolderNode** ppFolder);
 HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* child);
 HRESULT GetItems (IParentNode* itemsIn, HRESULT(*filter)(IChildNode*), SAFEARRAY** itemsOut);
 HRESULT PutItems (SAFEARRAY* sa, IParentNode* items);

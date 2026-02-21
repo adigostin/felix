@@ -327,11 +327,15 @@ HRESULT GetActiveCfgGeneratePrePostIncludeFiles (IVsHierarchy* hier)
 
 static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* proj, IProjectConfig* macroResolver)
 {
-	auto hr = EnsureDirectoryExists(proj, proj, genFilesStr.get()); RETURN_IF_FAILED_EXPECTED(hr);
+	wil::unique_variant projDir;
+	auto hr = proj->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projDir); RETURN_IF_FAILED(hr);
+	wil::unique_process_heap_string genFilesDir;
+	hr = wil::str_concat_nothrow(genFilesDir, V_BSTR(&projDir), genFilesStr); RETURN_IF_FAILED(hr);
+	hr = EnsureDirectoryExists(genFilesDir.get()); RETURN_IF_FAILED_EXPECTED(hr);
 
 	com_ptr<IFolderNode> folder;
 	com_ptr<IChildNode> insertBefore, insertAfter;
-	hr = FindFolderNodeOrInsertLocation (proj, proj, genFilesStr.get(), folder, insertBefore, insertAfter); RETURN_IF_FAILED(hr);
+	hr = FindFolderNodeOrInsertLocation (proj, proj, genFilesStr.get(), &folder, insertBefore, insertAfter); RETURN_IF_FAILED(hr);
 	if (hr == S_FALSE)
 	{
 		hr = MakeFolderNodeGenerated(&folder); RETURN_IF_FAILED(hr);
@@ -869,33 +873,17 @@ HRESULT AddFileToParent (IProjectNode* proj, IFileNode* child, IParentNode* addT
 	return S_OK;
 }
 
-HRESULT EnsureDirectoryExists (IProjectNode* proj, IParentNode* parent, const wchar_t* dirName)
+HRESULT EnsureDirectoryExists (const wchar_t* path)
 {
-	HRESULT hr;
-	wil::unique_process_heap_string path;
-	if (parent == proj)
+	if (PathFileExists(path))
 	{
-		wil::unique_variant projDir;
-		hr = proj->AsHierarchy()->GetProperty(VSITEMID_ROOT, VSHPROPID_ProjectDir, &projDir); RETURN_IF_FAILED(hr);
-		hr = wil::str_concat_nothrow(path, projDir.bstrVal, dirName); RETURN_IF_NULL_ALLOC(path);
-	}
-	else
-	{
-		com_ptr<IChildNode> parentAsChild;
-		hr = parent->QueryInterface(&parentAsChild); RETURN_IF_FAILED(hr);
-		hr = GetPathOf(proj, parentAsChild, path); RETURN_IF_FAILED(hr);
-		hr = wil::str_concat_nothrow(path, L"\\", dirName); RETURN_IF_FAILED(hr);
-	}
-
-	if (PathFileExists(path.get()))
-	{
-		DWORD attrs = GetFileAttributes(path.get()); RETURN_LAST_ERROR_IF_EXPECTED(attrs == INVALID_FILE_ATTRIBUTES);
+		DWORD attrs = GetFileAttributes(path); RETURN_LAST_ERROR_IF_EXPECTED(attrs == INVALID_FILE_ATTRIBUTES);
 		if ((attrs & FILE_ATTRIBUTE_DIRECTORY) == 0)
 			return HRESULT_FROM_WIN32(ERROR_FILE_EXISTS);
 	}
 	else
 	{
-		int ires = SHCreateDirectoryEx(nullptr, path.get(), nullptr); RETURN_HR_IF_EXPECTED(HRESULT_FROM_WIN32(ires), ires);
+		int ires = SHCreateDirectoryEx(nullptr, path, nullptr); RETURN_HR_IF_EXPECTED(HRESULT_FROM_WIN32(ires), ires);
 	}
 
 	return S_OK;
@@ -904,9 +892,8 @@ HRESULT EnsureDirectoryExists (IProjectNode* proj, IParentNode* parent, const wc
 // Returns S_OK if found, result in insertBefore.
 // Returns S_FALSE if not found, location to insert given by insertBefore and insertAfter.
 HRESULT FindFolderNodeOrInsertLocation (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName,
-	com_ptr<IFolderNode>& found, com_ptr<IChildNode>& insertBefore, com_ptr<IChildNode>& insertAfter)
+	IFolderNode** ppFound, com_ptr<IChildNode>& insertBefore, com_ptr<IChildNode>& insertAfter)
 {
-	found = nullptr;
 	insertAfter = nullptr;
 	insertBefore = parent->FirstChild();
 	while (insertBefore)
@@ -916,21 +903,25 @@ HRESULT FindFolderNodeOrInsertLocation (IProjectNode* proj, IParentNode* parent,
 			break; // No more folders, only files from now on
 
 		wil::unique_variant name;
-		if (SUCCEEDED(insertBeforeAsFolder->GetProperty(proj, VSHPROPID_SaveName, &name)) && (V_VT(&name) == VT_BSTR))
-		{
-			if (!_wcsicmp(folderName, V_BSTR(&name)))
-				return (found = std::move(insertBeforeAsFolder)), S_OK;
+		auto hr = insertBeforeAsFolder->GetProperty(proj, VSHPROPID_SaveName, &name); RETURN_IF_FAILED(hr);
+		RETURN_HR_IF(E_UNEXPECTED, V_VT(&name) != VT_BSTR);
 
-			int cmpRes = wcscmp(folderName, V_BSTR(&name));
-			if (cmpRes < 0)
-				break;
+		if (!_wcsicmp(folderName, V_BSTR(&name)))
+		{
+			if (ppFound)
+				*ppFound = insertBeforeAsFolder.detach();
+			return S_OK;
 		}
+
+		int cmpRes = wcscmp(folderName, V_BSTR(&name));
+		if (cmpRes < 0)
+			break;
 
 		insertAfter = insertBefore;
 		insertBefore = insertBefore->Next();
 	}
 
-	// We found the place to insert the new folder. Let's make sure there aren't any files with the same name.
+	// We found the place to insert the new folder. Let's make sure there aren't any other nodes with the same name.
 	if (insertBefore)
 	{
 		for (auto c = insertBefore->Next(); c != nullptr; c = c->Next())
@@ -957,17 +948,14 @@ HRESULT InsertFolderNode (IProjectNode* proj, IParentNode* parent, IChildNode* i
 	return S_OK;
 }
 
-HRESULT GetOrCreateChildFolder (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, IFolderNode** ppFolder)
+HRESULT GetOrCreateFolderNode (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName, IFolderNode** ppFolder)
 {
 	RETURN_HR_IF(E_UNEXPECTED, parent->GetItemId() == VSITEMID_NIL);
-
-	// Attempt to create the directory first. If this can't be done, we don't want to touch the hierarchy.
-	auto hr = EnsureDirectoryExists(proj, parent, folderName); RETURN_IF_FAILED_EXPECTED(hr);
 
 	com_ptr<IFolderNode> newFolder;
 	com_ptr<IChildNode> insertBefore;
 	com_ptr<IChildNode> insertAfter;
-	hr = FindFolderNodeOrInsertLocation (proj, parent, folderName, newFolder, insertBefore, insertAfter); RETURN_IF_FAILED_EXPECTED(hr);
+	auto hr = FindFolderNodeOrInsertLocation (proj, parent, folderName, &newFolder, insertBefore, insertAfter); RETURN_IF_FAILED_EXPECTED(hr);
 	if (hr == S_FALSE)
 	{
 		hr = MakeFolderNode(&newFolder); RETURN_IF_FAILED(hr);

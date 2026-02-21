@@ -1771,6 +1771,7 @@ public:
 		RETURN_HR_IF_NULL(E_INVALIDARG, pszNewFileName);
 		RETURN_HR_IF(E_INVALIDARG, !!wcspbrk(pszNewFileName, L":/\\"));
 		RETURN_HR_IF_NULL(E_POINTER, ppNewNode);
+		RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND), !PathFileExists(_projectDir.get()));
 
 		wil::unique_hlocal_string dest;
 		if (location == this)
@@ -1781,22 +1782,17 @@ public:
 		{
 			wil::unique_bstr locationDir;
 			hr = wil::try_com_query_nothrow<IChildNode>(location)->GetMkDocument(this, &locationDir); RETURN_IF_FAILED(hr);
+			hr = EnsureDirectoryExists(locationDir.get()); RETURN_IF_FAILED(hr);
 			hr = wil::str_concat_nothrow (dest, locationDir, L"\\", pszNewFileName); RETURN_IF_FAILED(hr);
 		}
 
 		if (PathFileExists(dest.get()))
 			return SetFelixErrorInfo (HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), IDS_ITEM_ALREADY_EXISTS_IN_LOCATION);
 
-		// Let's call AddExistingFile first, as that function creates in the file system the subdirectories that might be missing.
-		hr = AddExistingFile (location, dest.get(), ppNewNode); RETURN_IF_FAILED(hr);
-		auto removeNewNode = wil::scope_exit([newNode=*ppNewNode, this] { RemoveChildFromParent(this, newNode); });
-
-		BOOL bres = CopyFile(pszFullPathSource, dest.get(), TRUE);
-		if (!bres)
-			return HRESULT_FROM_WIN32(GetLastError());
+		BOOL bres = CopyFile(pszFullPathSource, dest.get(), TRUE); RETURN_IF_WIN32_BOOL_FALSE(bres);
 		SetFileAttributes(dest.get(), FILE_ATTRIBUTE_ARCHIVE); // template was read-only, but our file should not be
 
-		removeNewNode.release();
+		hr = AddExistingFile (location, dest.get(), ppNewNode); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
@@ -1822,6 +1818,9 @@ public:
 	HRESULT AddExistingFile (IParentNode* location, LPCTSTR pszFullPathSource, IChildNode** ppNewFile, BOOL fSilent = FALSE, BOOL fLoad = FALSE)
 	{
 		HRESULT hr;
+		
+		wil::unique_hfile handle (CreateFile(pszFullPathSource, STANDARD_RIGHTS_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr));
+		RETURN_LAST_ERROR_IF_EXPECTED(!handle.is_valid());
 
 		hr = QueryEditProjectFile(this); RETURN_IF_FAILED_EXPECTED(hr);
 
@@ -1854,7 +1853,7 @@ public:
 					auto dir = wil::make_process_heap_string_nothrow (ptrComponent, nextComp - ptrComponent); RETURN_IF_NULL_ALLOC(dir);
 					ptrComponent = nextComp + 1;
 					com_ptr<IFolderNode> ch;
-					hr = GetOrCreateChildFolder(this, parent, dir.get(), &ch); RETURN_IF_FAILED(hr);
+					hr = GetOrCreateFolderNode(this, parent, dir.get(), &ch); RETURN_IF_FAILED(hr);
 					parent = ch->AsParentNode(); 
 				}
 
@@ -3220,50 +3219,40 @@ public:
 		}
 
 		wil::unique_process_heap_string dirName;
+		com_ptr<IChildNode> insertBefore;
+		com_ptr<IChildNode> insertAfter;
 		if (pvaIn && V_VT(pvaIn) == VT_BSTR)
 		{
 			// Our testing code passes the folder name in pvaIn, while VS seems to always pass this variant empty.
 			// Even though the code paths are not identical, we can still test a lot of what this function does.
+			hr = FindFolderNodeOrInsertLocation (this, parent, V_BSTR(pvaIn), nullptr, insertBefore, insertAfter); RETURN_IF_FAILED_EXPECTED(hr);
+			RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), hr != S_FALSE);
 			dirName = wil::make_process_heap_string_nothrow(V_BSTR(pvaIn)); RETURN_IF_NULL_ALLOC(dirName);
 		}
 		else
 		{
-			wil::unique_bstr newFolderNameFormat;
-			hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_NEW_FOLDER_NAME, &newFolderNameFormat); RETURN_IF_FAILED(hr);
-
 			for (uint32_t i = 1;;)
 			{
 				hr = wil::str_printf_nothrow(dirName, newFolderNameFormat.get(), i);  RETURN_IF_FAILED(hr);
-
-				// Search for a node with the same name in the same location (not deeper).
-				bool nameExists = false;
-				for (auto c = parent->FirstChild(); !!c; c = c->Next())
-				{
-					wil::unique_variant nameVar;
-					hr = c->GetProperty(this, VSHPROPID_Name, &nameVar); RETURN_IF_FAILED(hr);
-					if (!_wcsicmp(nameVar.bstrVal, dirName.get()))
-					{
-						nameExists = true;
-						break;
-					}
-				}
-			
-				if (!nameExists)
-				{
-					wil::unique_hlocal_string dirPath;
-					hr = wil::str_concat_nothrow(dirPath, parentPath, L"\\", dirName); RETURN_IF_FAILED(hr);
-					if (!PathFileExists(dirPath.get()))
-						break;
-				}
-
+				hr = FindFolderNodeOrInsertLocation (this, parent, dirName.get(), nullptr, insertBefore, insertAfter); RETURN_IF_FAILED_EXPECTED(hr);
+				if (hr == S_FALSE)
+					break;
 				i++;
 				if (i == 100)
 					RETURN_HR(E_UNEXPECTED);
 			}
 		}
 
+		// Attempt to create the directory first. If this can't be done, we don't want to touch the hierarchy.
+		wil::unique_process_heap_string dirPath;
+		hr = wil::str_concat_nothrow(dirPath, parentPath, L"\\", dirName); RETURN_IF_FAILED(hr);
+		hr = EnsureDirectoryExists(dirPath.get()); RETURN_IF_FAILED_EXPECTED(hr);
+
 		com_ptr<IFolderNode> newFolder;
-		hr = GetOrCreateChildFolder (this, parent, dirName.get(), &newFolder); RETURN_IF_FAILED_EXPECTED(hr);
+		hr = MakeFolderNode(&newFolder); RETURN_IF_FAILED(hr);
+		auto name = wil::make_bstr_nothrow(dirName.get()); RETURN_IF_NULL_ALLOC(name);
+		hr = newFolder.try_query<IFolderNodeProperties>()->put_Name(name.get()); RETURN_IF_FAILED(hr);
+		hr = InsertFolderNode(this, parent, insertBefore, insertAfter, newFolder); RETURN_IF_FAILED(hr);
 
 		_isDirty = true;
 

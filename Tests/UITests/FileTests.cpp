@@ -103,6 +103,7 @@ namespace UITests
 		TEST_METHOD(RenameFileOutsideProjectDirSameDrive)
 		{
 			auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\file.asm");
+			wil::unique_hfile (CreateFile(fileFullPath.get(), GENERIC_WRITE, 0, 0, CREATE_NEW, 0, 0));
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000u);
 			auto hr = proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(fileFullPath.addressof()), nullptr, &addResult);
@@ -138,6 +139,7 @@ namespace UITests
 			auto testPathOtherDrive = MakeVolumeGuidPath(testPath.get());
 			Assert::IsTrue(PathFileExists(testPathOtherDrive.get()));
 			auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPathOtherDrive, L"\\file.asm");
+			wil::unique_hfile (CreateFile(fileFullPath.get(), GENERIC_WRITE, 0, 0, CREATE_NEW, 0, 0));
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000u);
 			VSADDRESULT addResult;
 			hr = proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(fileFullPath.addressof()), nullptr, &addResult);
@@ -184,6 +186,7 @@ namespace UITests
 		TEST_METHOD(GetMkDocument_FileNotInProjectDir_SameDrive)
 		{
 			auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\file.asm");
+			wil::unique_hfile (CreateFile(fileFullPath.get(), GENERIC_WRITE, 0, 0, CREATE_NEW, 0, 0));
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000u);
 			VSADDRESULT addResult;
 			auto hr = proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(fileFullPath.addressof()), nullptr, &addResult);
@@ -202,6 +205,8 @@ namespace UITests
 		TEST_METHOD(GetMkDocument_FileNotInProjectDir_OtherDrive)
 		{
 			auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(MakeVolumeGuidPath(testPath.get()), L"\\file.asm");
+			wil::unique_hfile h (CreateFile(fileFullPath.get(), GENERIC_WRITE, 0, 0, CREATE_NEW, 0, 0));
+			Assert::IsTrue(h.is_valid());
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000u);
 			VSADDRESULT addResult;
 			auto hr = proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(fileFullPath.addressof()), nullptr, &addResult);
