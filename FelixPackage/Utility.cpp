@@ -636,6 +636,13 @@ FELIX_API HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* c
 		}
 	}
 
+	wil::unique_bstr additionalOpts;
+	hr = asmProps->get_AdditionalAssemblerOptions(&additionalOpts); RETURN_IF_FAILED(hr);
+	if (additionalOpts && additionalOpts.get()[0])
+	{
+		hr = Write(cmdLine, L" ", additionalOpts.get()); RETURN_IF_FAILED(hr);
+	}
+
 	// input files
 	wil::unique_bstr filename;
 	if (preIncludeFile)

@@ -1018,6 +1018,7 @@ struct AssemblerPageProperties
 	bool _saveListing = false;
 	wil::unique_process_heap_string _listingFilename;
 	bool _generatePrePostIncludeFiles = true;
+	wil::unique_process_heap_string _additionalAsmOptions;
 
 	HRESULT InitInstance (IProjectConfig* config)
 	{
@@ -1145,6 +1146,9 @@ struct AssemblerPageProperties
 		if (dispid == dispidGeneratePrePostIncludeFiles)
 			return (*fDefault = (_generatePrePostIncludeFiles == true)), S_OK;
 
+		if (dispid == dispidAdditionalAsmOpts)
+			return (*fDefault = !_additionalAsmOptions), S_OK;
+
 		return E_NOTIMPL;
 	}
 
@@ -1160,6 +1164,7 @@ struct AssemblerPageProperties
 			case dispidListingFilename:
 			case dispidEntryPointAddress:
 			case dispidGeneratePrePostIncludeFiles:
+			case dispidAdditionalAsmOpts:
 				*pfCanReset = TRUE;
 				return S_OK;
 			default:
@@ -1180,6 +1185,9 @@ struct AssemblerPageProperties
 
 		if (dispid == dispidGeneratePrePostIncludeFiles)
 			return put_GeneratePrePostIncludeFiles(VARIANT_TRUE);
+
+		if (dispid == dispidAdditionalAsmOpts)
+			return put_AdditionalAssemblerOptions(nullptr);
 
 		return E_NOTIMPL;
 	}
@@ -1304,6 +1312,25 @@ struct AssemblerPageProperties
 			_generatePrePostIncludeFiles = gen;
 			NotifyPropertyChanged(_propChangeCP, this, { dispidGeneratePrePostIncludeFiles });
 			NotifyPropertyChanged(_propNotifyCP, { dispidGeneratePrePostIncludeFiles });
+		}
+
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_AdditionalAssemblerOptions (BSTR* pbstrOpts) override
+	{
+		return GetBSTR(_additionalAsmOptions, pbstrOpts);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_AdditionalAssemblerOptions (BSTR bstrOpts) override
+	{
+		if (!EqualsBSTR(_additionalAsmOptions, bstrOpts))
+		{
+			NotifyPropertyChanging(_propChangeCP, this, { dispidAdditionalAsmOpts });
+			auto hr = PutBSTR(_additionalAsmOptions, bstrOpts);
+			NotifyPropertyChanged(_propChangeCP, this, { dispidAdditionalAsmOpts });
+			NotifyPropertyChanged(_propNotifyCP, { dispidAdditionalAsmOpts });
+			RETURN_HR(hr);
 		}
 
 		return S_OK;

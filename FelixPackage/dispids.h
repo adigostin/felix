@@ -41,5 +41,6 @@
 #define dispidVSItemIdDebug        33
 #define dispidGeneratePrePostIncludeFiles 34
 #define dispidNextVSItemIdDebug    35
+#define dispidAdditionalAsmOpts    36
 
 #endif

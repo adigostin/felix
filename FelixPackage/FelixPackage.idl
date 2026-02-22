@@ -83,6 +83,9 @@ library ATLProject1Lib
 
 		[id(dispidGeneratePrePostIncludeFiles), bindable, propget] HRESULT GeneratePrePostIncludeFiles ([out, retval] VARIANT_BOOL* pGenerate);
 		[id(dispidGeneratePrePostIncludeFiles), bindable, propput] HRESULT GeneratePrePostIncludeFiles (VARIANT_BOOL generate);
+
+		[id(dispidAdditionalAsmOpts), bindable, propget] HRESULT AdditionalAssemblerOptions ([out, retval] BSTR* pbstrOpts);
+		[id(dispidAdditionalAsmOpts), bindable, propput] HRESULT AdditionalAssemblerOptions (BSTR bstrOpts);
 	}
 
 	[uuid(A6C45AD3-6F11-4116-A65D-9083381843D8)]
