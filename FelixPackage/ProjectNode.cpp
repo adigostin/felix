@@ -1099,14 +1099,8 @@ public:
 		{
 			switch (cmdID)
 			{
-			case cmdidBuildOnlyProject:   // 1603
-			case cmdidRebuildOnlyProject: // 1604
-			case cmdidCleanOnlyProject:   // 1605
-				*cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
-				break;
-
-			default:
-				*cmdf = 0; // not supported
+				default:
+					*cmdf = 0; // not supported
 			}
 
 			return S_OK;
