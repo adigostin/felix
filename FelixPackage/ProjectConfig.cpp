@@ -320,6 +320,8 @@ public:
 			hr = debugger->LaunchDebugTargets (1, &dti);
 			if (hr == OLE_E_PROMPTSAVECANCELLED)
 				hr = E_ABORT;
+			if (hr == 0x89710016)
+				return hr; // Commonly returned HR that doesn't give us any information via telemetry
 			RETURN_IF_FAILED(hr);
 		}
 
