@@ -234,7 +234,8 @@ struct SldSymbols : IFelixSymbols
 			if (!*p)
 				return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 
-			bool bres = try_parse_line(p, entry); RETURN_HR_IF(E_INVALID_SLD_LINE, !bres);
+			auto ls = p;
+			bool bres = try_parse_line(p, entry); RETURN_HR_IF_MSG(E_INVALID_SLD_LINE, !bres, "%.200S", ls);
 
 			if (entry.type[0] != 'L')
 				continue;
