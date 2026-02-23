@@ -7,6 +7,7 @@
 #include "../guids.h"
 #include "../FelixPackage.h"
 #include "../Z80Xml.h"
+#include "../FelixPackageUi/resource.h"
 
 class Z80DebugEngine : public IDebugEngine2, IDebugEngineLaunch2, ISimulatorEventNotifySink, IFelixLaunchOptionsProvider
 {
@@ -460,7 +461,8 @@ public:
 		if (!exePath)
 			RETURN_HR(E_NO_EXE_FILENAME);
 
-		if (!_wcsicmp(PathFindExtension(exePath.get()), L".bin"))
+		auto fileExt = PathFindExtension(exePath.get());
+		if (!_wcsicmp(fileExt, L".bin"))
 		{
 			// Simulate some instructions until the EDITOR function is called.
 			// TODO: use timeout
@@ -479,7 +481,7 @@ public:
 				hr = simulator->Resume(true); RETURN_IF_FAILED(hr);
 			}
 		}
-		else if (!_wcsicmp(PathFindExtension(exePath.get()), L".sna"))
+		else if (!_wcsicmp(fileExt, L".sna"))
 		{
 			hr = simulator->LoadFile(exePath.get());
 			if (FAILED(hr))
@@ -506,7 +508,11 @@ public:
 			hr = simulator->AddBreakpoint(BreakpointType::Code, false, addr, &_exitPointBreakpoint); RETURN_IF_FAILED(hr);
 		}
 		else
-			RETURN_HR(E_NOTIMPL);
+		{
+			hr = SetFelixErrorInfo(E_NOTIMPL, IDS_DONT_KNOW_HOW_TO_DEBUG_EXT_S, fileExt);
+			uiShell->ReportErrorInfo(hr);
+			return hr;
+		}
 
 		// Note AGO: I tried showing the simulator window here, but at this point the VS GUI is still
 		// in the design mode layout. It will switch to the debug mode layout - with the simulator window

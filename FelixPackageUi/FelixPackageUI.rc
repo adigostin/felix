@@ -230,6 +230,8 @@ BEGIN
                             "Cannot add files or subfolders to this folder."
     IDS_CANNOT_REMOVE_GENFILES 
                             "These files are auto-generated and cannot be removed.\r\n\r\n(If what you want is to disable auto-generation, it can be done in the Project Properties -> Assembler page.)"
+    IDS_DONT_KNOW_HOW_TO_DEBUG_EXT_S 
+                            "Don't know how to debug file with extension %s. Only .bin and .sna supported for now."
 END
 
 #endif    // English (United States) resources
