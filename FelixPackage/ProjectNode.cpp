@@ -3113,7 +3113,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE get_Properties (VxDTE::Properties **ppObject) override
 	{
-		return E_NOTIMPL;
+		return S_FALSE;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_UniqueName (BSTR *lpbstrFileName) override

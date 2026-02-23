@@ -955,10 +955,10 @@ struct GeneralPageProperties
 
 	virtual HRESULT STDMETHODCALLTYPE CanResetPropertyValue (DISPID dispid, BOOL *pfCanReset) override
 	{
-		if (dispid == dispidOutputName)
-			return (*pfCanReset = TRUE), S_OK;
-
-		if (dispid == dispidOutputFileType)
+		if (   dispid == dispidOutputName
+			|| dispid == dispidOutputFileType
+			|| dispid == dispidOutputDirectory
+		)
 			return (*pfCanReset = TRUE), S_OK;
 
 		return E_NOTIMPL;
@@ -971,6 +971,9 @@ struct GeneralPageProperties
 
 		if (dispid == dispidOutputFileType)
 			return put_OutputFileType(OutputFileType::Binary);
+
+		if (dispid == dispidOutputDirectory)
+			return put_OutputDirectory(wil::make_bstr_failfast(OutputDirectoryDefaultValue).get());
 
 		return E_NOTIMPL;
 	}
