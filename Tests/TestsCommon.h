@@ -2,6 +2,8 @@
 #pragma once
 #include "../FelixPackage/FelixPackage_h.h"
 #include "shared/inplace_function.h"
+#define FORCE_EXPLICIT_DTE_NAMESPACE
+#include <dte.h>
 
 extern wchar_t tempPath[MAX_PATH + 1];
 extern wil::unique_process_heap_string TemplatePath_TwoConfigsOneFile;
@@ -34,3 +36,4 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("5F94F823-F39F-4311-8067-4F851D1DDAAC") I
 wil::com_ptr_failfast<ITestPropertyNotifySink> MakeTestPropertyNotifySink();
 
 bool WaitWithMessageLoop (const stdext::inplace_function<bool()>& condition, DWORD timeoutMilliseconds);
+void DisableGeneratedFiles (VxDTE::Project* proj);

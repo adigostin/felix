@@ -742,6 +742,7 @@ public:
 				|| propid == -2176 // VSHPROPID_HasRunningOperation
 				|| propid == -2177 // VSHPROPID_PreserveExpandCollapseState
 				|| propid == -9089 // VSHPROPID_SlowEnumeration   // -9089
+				|| propid == -9999 // VS2026 wants some IVsCommandLineComboPopulator
 			)
 				return E_NOTIMPL;
 
