@@ -31,10 +31,10 @@ namespace UITests
 			wil::com_ptr_failfast<VxDTE::Project> proj;
 			com_ptr<VxDTE::SolutionBuild> slnBuild;
 
-			TD()
+			TD (const wchar_t* projectTemplatePath)
 			{
 				HRESULT hr;
-				testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"FolderTest");
+				testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"BuildTests");
 				Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
 				
 				wil::com_ptr_failfast<IUnknown> solution;
@@ -48,7 +48,7 @@ namespace UITests
 				Assert::IsTrue(CreateDirectory(projDir.get(), nullptr));
 
 				hr = sln->AddFromTemplate (
-					wil::make_bstr_failfast(TemplatePath_TwoConfigsOneFile.get()).get(),
+					wil::make_bstr_failfast(projectTemplatePath).get(),
 					wil::make_bstr_failfast(projDir.get()).get(),
 					wil::make_bstr_failfast(L"proj.flx").get(), VARIANT_FALSE, &proj);
 				Assert::IsTrue(SUCCEEDED(hr));
@@ -71,7 +71,7 @@ namespace UITests
 
 		TEST_METHOD(BuildProject)
 		{
-			TD td;
+			TD td (TemplatePath_TwoConfigsOneFile.get());
 			auto hr = td.slnBuild->Build(VARIANT_TRUE);
 			Assert::IsTrue(SUCCEEDED(hr));
 			// LastBuildInfo returns the number of failed projects, despite the parameter name.
@@ -84,7 +84,7 @@ namespace UITests
 		TEST_METHOD(BuildProjectWithError)
 		{
 			HRESULT hr;
-			TD td;
+			TD td (TemplatePath_TwoConfigsOneFile.get());
 
 			long buildFailCount;
 			hr = td.slnBuild->Build(VARIANT_TRUE);
@@ -118,7 +118,7 @@ namespace UITests
 		TEST_METHOD(BuildOutDirNoBackslash)
 		{
 			HRESULT hr;
-			TD td;
+			TD td (TemplatePath_TwoConfigsOneFile.get());
 
 			wil::com_ptr_failfast<IVsCfg> cfg;
 			ULONG actual;
@@ -142,7 +142,7 @@ namespace UITests
 		TEST_METHOD(BuildOutDirOutsideProjectDir)
 		{
 			HRESULT hr;
-			TD td;
+			TD td (TemplatePath_TwoConfigsOneFile.get());
 
 			wil::com_ptr_failfast<IVsCfg> cfg;
 			ULONG actual;
@@ -205,7 +205,7 @@ namespace UITests
 
 		TEST_METHOD(BuildWithFilesInFolders)
 		{
-			TD td;
+			TD td (TemplatePath_TwoConfigsOneFile.get());
 			HRESULT hr;
 
 			wil::com_ptr_failfast<IVsCfg> cfg;
@@ -277,6 +277,20 @@ namespace UITests
 			Assert::IsTrue(file.is_valid());
 			Assert::AreNotEqual(0ul, GetFileSize(file.get(), NULL));
 			file.reset();
+		}
+
+		TEST_METHOD(BuildFailsOnEmptyProject)
+		{
+			TD td (TemplatePath_EmptyProject.get());
+			HRESULT hr;
+
+			hr = td.slnBuild->BuildProject(wil::make_bstr_failfast(L"Debug").get(),
+				wil::make_bstr_failfast(L"proj\\proj.flx").get(), VARIANT_TRUE);
+			Assert::IsTrue(SUCCEEDED(hr));
+			long buildFailCount;
+			hr = td.slnBuild->get_LastBuildInfo(&buildFailCount);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual(1l, buildFailCount);
 		}
 	};
 }

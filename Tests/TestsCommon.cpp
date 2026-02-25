@@ -25,8 +25,14 @@ static const char TemplateTwoConfigsOneFileXML[] = ""
 	"</Z80Project>\r\n";
 
 static const char TemplateXML_EmptyProject[] = ""
-	"<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-	"<Z80Project Guid=\"{2839FDD7-4C8F-4772-90E6-222C702D045E}\" />";
+	"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n"
+	"<Z80Project Guid=\"{2839FDD7-4C8F-4772-90E6-222C702D045E}\">\r\n"
+	"  <Configurations>\r\n"
+	"    <Configuration ConfigName=\"Debug\" PlatformName=\"ZX Spectrum 48K\">\r\n"
+	"      <AssemblerProperties GeneratePrePostIncludeFiles=\"False\" />\r\n"
+	"    </Configuration>\r\n"
+	"  </Configurations>\r\n"
+	"</Z80Project>\r\n";
 
 void MakeTemplates (const wchar_t* tempDirName)
 {

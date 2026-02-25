@@ -54,24 +54,6 @@ namespace FelixTests
 			}
 		};
 
-		TEST_METHOD(BuildFailsOnEmptyProject)
-		{
-			TD td;
-			com_ptr<IProjectNode> project;
-			auto hr = MakeProjectNode (nullptr, td.testDir.get(), nullptr, 0, IID_PPV_ARGS(&project));
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto config = AddDebugProjectConfig(project->AsHierarchy());
-			auto pane = MakeMockOutputWindowPane(nullptr);
-
-			com_ptr<IProjectConfigBuilder> builder;
-			hr = MakeProjectConfigBuilder (project, config, pane, &builder);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			hr = builder->StartBuild (nullptr);
-			Assert::AreEqual(HRESULT_FROM_WIN32(ERROR_NO_MORE_FILES), hr);
-			project->AsHierarchy()->Close();
-		}
-
 		TEST_METHOD(ProjectConfigHasPrePostBuildProps)
 		{
 			TD td;

@@ -551,7 +551,6 @@ namespace FelixTests
 			hr = sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), testPath.get(), L"TestProject.flx", CPF_CLONEFILE, IID_PPV_ARGS(&project));
 			Assert::IsTrue(SUCCEEDED(hr));
 			auto close = wil::scope_exit([&project] { project->AsHierarchy()->Close(); });
-			auto config = AddDebugProjectConfig(project->AsHierarchy());
 
 			auto proj = wil::try_com_query_failfast<IVsProject2>(project);
 			auto hier = wil::try_com_query_failfast<IVsUIHierarchy>(project);
@@ -575,7 +574,7 @@ namespace FelixTests
 
 			hr = proj->AddItem(V_VSITEMID(&evenMore), VSADDITEMOP_CLONEFILE, L"file.inc", 1, templateasm, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
-			/*
+
 			wil::unique_variant generatedFiles;
 			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &generatedFiles);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -586,7 +585,6 @@ namespace FelixTests
 			Assert::IsTrue(SUCCEEDED(hr));
 			hr = proj->AddItem(V_VSITEMID(&generatedFiles), VSADDITEMOP_CLONEFILE, L"postinclude.inc", 1, templateasm, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
-			*/
 
 			auto c = hier.try_query<IParentNode>()->FirstChild();
 			Assert::IsNotNull(c);
@@ -597,11 +595,11 @@ namespace FelixTests
 			c = genFilesFolder.try_query<IParentNode>()->FirstChild();
 			auto postinc = wil::try_com_query_nothrow<IFileNode>(c);
 			Assert::IsNotNull(postinc.get());
-			Assert::AreEqual(0, _wcsicmp(L"postinclude.asm", GetProperty_String(hier, postinc->GetItemId(), VSHPROPID_SaveName).get()));
+			Assert::AreEqual(0, _wcsicmp(L"postinclude.inc", GetProperty_String(hier, postinc->GetItemId(), VSHPROPID_SaveName).get()));
 
 			auto preinc = wil::try_com_query_nothrow<IFileNode>(postinc->Next());
 			Assert::IsNotNull(preinc.get());
-			Assert::AreEqual(0, _wcsicmp(L"preinclude.asm", GetProperty_String(hier, preinc->GetItemId(), VSHPROPID_SaveName).get()));
+			Assert::AreEqual(0, _wcsicmp(L"preinclude.inc", GetProperty_String(hier, preinc->GetItemId(), VSHPROPID_SaveName).get()));
 
 			c = genFilesFolder->Next();
 			Assert::IsNotNull(c);
