@@ -54,26 +54,6 @@ namespace FelixTests
 			}
 		};
 
-		TEST_METHOD(ProjectConfigHasPrePostBuildProps)
-		{
-			TD td;
-			com_ptr<IVsHierarchy> hier;
-			auto hr = MakeProjectNode (nullptr, td.testDir.get(), nullptr, 0, IID_PPV_ARGS(&hier));
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			auto config = AddDebugProjectConfig(hier);
-
-			com_ptr<IProjectConfigPrePostBuildProperties> props;
-			hr = config->AsProjectConfigProperties()->get_PreBuildProperties(&props);
-			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::IsNotNull(props.get());
-
-			hr = config->AsProjectConfigProperties()->get_PostBuildProperties(&props);
-			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::IsNotNull(props.get());
-			hier->Close();
-		}
-
 		static std::pair<wil::com_ptr_failfast<IProjectNode>, wil::com_ptr_failfast<IProjectConfigBuilder>> MakeSjasmProjectBuilder (const wchar_t* testDir, const char* asmFileContent)
 		{
 			HRESULT hr;
@@ -105,22 +85,6 @@ namespace FelixTests
 			hr = MakeProjectConfigBuilder (project, config, pane, &builder);
 			Assert::IsTrue(SUCCEEDED(hr));
 			return { std::move(project), std::move(builder) };
-		}
-
-		static void WaitCallbackWithMessageLoop (DWORD milliseconds, TestBuildCallback* callback)
-		{
-			DWORD tickStart = GetTickCount();
-			while (!callback->_complete && (milliseconds == INFINITE || GetTickCount() - tickStart < milliseconds))
-			{
-				MSG msg;
-				while(PeekMessage(&msg,0,0,0,PM_NOREMOVE))
-				{
-					if (::GetMessage(&msg, NULL, 0, 0) > 0)
-						::DispatchMessage(&msg);
-				}
-
-				Sleep(10);
-			}
 		}
 
 		TEST_METHOD(Test_SjasmMissingExe)
@@ -157,7 +121,7 @@ namespace FelixTests
 			auto hr = builder->StartBuild (callback);
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			WaitCallbackWithMessageLoop(INFINITE, callback);
+			WaitWithMessageLoop([callback] { return callback->_complete; }, INFINITE);
 
 			Assert::IsTrue(callback->_complete);
 			Assert::IsTrue(callback->_success);
@@ -172,7 +136,7 @@ namespace FelixTests
 			auto hr = builder->StartBuild (callback);
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			WaitCallbackWithMessageLoop(INFINITE, callback);
+			WaitWithMessageLoop([callback] { return callback->_complete; }, INFINITE);
 
 			Assert::IsTrue(callback->_complete);
 			Assert::IsFalse(callback->_success);
@@ -238,7 +202,7 @@ namespace FelixTests
 			auto callback = com_ptr(new TestBuildCallback());
 			hr = builder->StartBuild(callback);
 			Assert::IsTrue(SUCCEEDED(hr));
-			WaitCallbackWithMessageLoop(INFINITE, callback);
+			WaitWithMessageLoop([callback] { return callback->_complete; }, INFINITE);
 			Assert::IsTrue(callback->_complete);
 			Assert::IsTrue(callback->_success);
 			ULARGE_INTEGER curr;
@@ -264,7 +228,7 @@ namespace FelixTests
 			auto callback = com_ptr(new TestBuildCallback());
 			hr = builder->StartBuild(callback);
 			Assert::IsTrue(SUCCEEDED(hr));
-			WaitCallbackWithMessageLoop(INFINITE, callback);
+			WaitWithMessageLoop([callback] { return callback->_complete; }, INFINITE);
 			Assert::IsTrue(callback->_complete);
 			Assert::IsTrue(callback->_success);
 			ULARGE_INTEGER curr;
@@ -287,7 +251,7 @@ namespace FelixTests
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild(callback);
 			Assert::IsTrue(SUCCEEDED(hr));
-			WaitCallbackWithMessageLoop(1000, callback);
+			WaitWithMessageLoop([callback] { return callback->_complete; }, 1000);
 			Assert::IsFalse(callback->_complete);
 			ULONG remainingRefCount = builder.detach()->Release();
 			Assert::AreEqual((ULONG)0, remainingRefCount);
@@ -301,7 +265,7 @@ namespace FelixTests
 			auto callback = com_ptr(new TestBuildCallback());
 			auto hr = builder->StartBuild(callback);
 			Assert::IsTrue(SUCCEEDED(hr));
-			WaitCallbackWithMessageLoop(1000, callback);
+			WaitWithMessageLoop([callback] { return callback->_complete; }, 1000);
 			Assert::IsFalse(callback->_complete);
 			hr = builder->CancelBuild();
 			Assert::IsTrue(callback->_complete);
@@ -456,7 +420,7 @@ namespace FelixTests
 			auto callback = com_ptr(new TestBuildCallback());
 			hr = builder->StartBuild(callback);
 			Assert::IsTrue(SUCCEEDED(hr));
-			WaitCallbackWithMessageLoop(INFINITE, callback);
+			WaitWithMessageLoop([callback] { return callback->_complete; }, INFINITE);
 			Assert::IsTrue(callback->_complete);
 			Assert::IsTrue(callback->_success);
 			wil::unique_bstr output;

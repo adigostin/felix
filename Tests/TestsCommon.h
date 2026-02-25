@@ -39,7 +39,7 @@ template<typename condition_t> requires std::is_invocable_r_v<bool, condition_t>
 bool WaitWithMessageLoop (const condition_t& condition, DWORD timeoutMilliseconds)
 {
 	DWORD tickStart = GetTickCount();
-	while (GetTickCount() - tickStart < timeoutMilliseconds)
+	while (timeoutMilliseconds == INFINITE || GetTickCount() - tickStart < timeoutMilliseconds)
 	{
 		if (condition())
 			return true;
