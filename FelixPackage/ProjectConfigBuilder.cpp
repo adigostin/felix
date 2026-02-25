@@ -2,7 +2,6 @@
 #include "pch.h"
 #include "FelixPackage.h"
 #include "shared/com.h"
-#include "shared/inplace_function.h"
 #include "../FelixPackageUi/resource.h"
 
 struct IBuildStep;
@@ -29,16 +28,16 @@ struct IBuildStep : IUnknown
 class BuildStepMessage : public IBuildStep
 {
 	ULONG _refCount = 0;
-	wil::unique_bstr _projectName;
-	wil::unique_bstr _message;
+	wil::unique_process_heap_string _projectName;
+	wil::unique_process_heap_string _message;
 	com_ptr<IVsOutputWindowPane2> _outputWindow;
 
 public:
-	static HRESULT CreateInstance (PCWSTR projectName, wil::unique_bstr message,
+	static HRESULT CreateInstance (PCWSTR projectName, wil::unique_process_heap_string message,
 		IVsOutputWindowPane2* outputWindow, IBuildStep** ppStep)
 	{
 		auto p = com_ptr(new (std::nothrow) BuildStepMessage()); RETURN_IF_NULL_ALLOC(p);
-		p->_projectName = wil::make_bstr_nothrow(projectName);
+		p->_projectName = wil::make_process_heap_string_nothrow(projectName); RETURN_IF_NULL_ALLOC(p->_projectName);
 		p->_message = std::move(message);
 		p->_outputWindow = outputWindow;
 		*ppStep = p.detach();
@@ -57,7 +56,7 @@ public:
 	{
 		auto hr = _outputWindow->OutputTaskItemStringEx2 (_message.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
 			nullptr, 0, nullptr, 0, 0, _projectName.get(), nullptr, nullptr); RETURN_IF_FAILED(hr);
-		uint32_t len = SysStringLen(_message.get());
+		uint32_t len = wcslen(_message.get());
 		if (len < 2 || _message.get()[len - 2] != 0x0D || _message.get()[len - 1] != 0x0A)
 		{
 			hr = _outputWindow->OutputTaskItemStringEx2 (L"\r\n", (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
@@ -526,14 +525,16 @@ public:
 	// It launches them one by one, stopping in case of a HRESULT error, or in case of a non-zero exit code.
 	// This function writes pExitCode only when it returns S_OK. When it writes pExitCode to non-zero,
 	// it additionally writes pbstrCmdLine with the command line whose execution returned that exit code.
-	HRESULT ParseCommandLines (ICommandLineList* list, const wchar_t* workDir, vector_nothrow<com_ptr<IBuildStep>>& steps)
+	HRESULT ParseCommandLines (IProjectConfig* config, ICommandLineList* list, const wchar_t* workDir, vector_nothrow<com_ptr<IBuildStep>>& steps)
 	{
 		wil::unique_bstr desc;
 		auto hr = list->get_Description(&desc); RETURN_IF_FAILED(hr);
 		if (desc && desc.get()[0])
 		{
+			wil::unique_process_heap_string descResolved;
+			hr = ResolveMacros (desc.get(), config, descResolved); RETURN_IF_FAILED(hr);
 			com_ptr<IBuildStep> step;
-			hr = BuildStepMessage::CreateInstance(_projName.get(), std::move(desc), _outputWindow2, step.addressof()); RETURN_IF_FAILED(hr);
+			hr = BuildStepMessage::CreateInstance(_projName.get(), std::move(descResolved), _outputWindow2, step.addressof()); RETURN_IF_FAILED(hr);
 			bool pushed = steps.try_push_back(std::move(step)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 		}
 
@@ -541,8 +542,10 @@ public:
 		hr = list->get_CommandLine(&cmdLines); RETURN_IF_FAILED(hr);
 		if (!cmdLines)
 			return S_OK;
+		wil::unique_process_heap_string cmdLinesResolved;
+		hr = ResolveMacros(cmdLines.get(), config, cmdLinesResolved); RETURN_IF_FAILED(hr);
 		
-		for (PCWSTR p = cmdLines.get(); *p; )
+		for (PCWSTR p = cmdLinesResolved.get(); *p; )
 		{
 			while (*p && (*p == ' ' || *p == '\t'))
 				p++;
@@ -570,29 +573,27 @@ public:
 		return S_OK;
 	}
 
-	static HRESULT EnumDescendants (IVsHierarchy* hier, VSITEMID from, const stdext::inplace_function<HRESULT(IChildNode*)>& filter)
+	template<typename filter_t> requires std::is_invocable_r_v<HRESULT, filter_t, IFileNode*>
+	static HRESULT EnumDescendants (IParentNode* from, const filter_t& filter)
 	{
-		// TODO: search in depth too when we'll support directories
-
-		wil::unique_variant childItemId;
-		auto hr = hier->GetProperty(from, VSHPROPID_FirstChild, &childItemId);
-		while(SUCCEEDED(hr) && (childItemId.vt == VT_VSITEMID) && (V_VSITEMID(&childItemId) != VSITEMID_NIL))
+		auto item = from->FirstChild();
+		while(item)
 		{
-			wil::unique_variant obj;
-			hr = hier->GetProperty(V_VSITEMID(&childItemId), VSHPROPID_BrowseObject, &obj);
-			if (SUCCEEDED(hr) && (obj.vt == VT_DISPATCH) && obj.pdispVal)
+			if (auto file = wil::try_com_query_nothrow<IFileNode>(item))
 			{
-				com_ptr<IChildNode> item;
-				hr = obj.pdispVal->QueryInterface(&item);
-				if (SUCCEEDED(hr))
-				{
-					hr = filter(item);
-					if (hr == S_OK || FAILED(hr))
-						return hr;
-				}
+				auto hr = filter(file);
+				if (hr == S_OK || FAILED(hr))
+					return hr;
+			}
+			else if (auto folder = wil::try_com_query_nothrow<IFolderNode>(item);
+				folder && folder->GetItemId() != VSITEMID_GENFILES)
+			{
+				auto hr = EnumDescendants(folder->AsParentNode(), filter);
+				if (hr == S_OK || FAILED(hr))
+					return hr;
 			}
 
-			hr = hier->GetProperty (V_VSITEMID(&childItemId), VSHPROPID_NextSibling, &childItemId);
+			item = item->Next();
 		}
 
 		return S_FALSE;
@@ -611,10 +612,10 @@ public:
 		// Pre-Build Event
 		com_ptr<IProjectConfigPrePostBuildProperties> preBuildProps;
 		hr = _config->AsProjectConfigProperties()->get_PreBuildProperties(&preBuildProps); RETURN_IF_FAILED(hr);
-		hr = ParseCommandLines (preBuildProps, projectDir.bstrVal, steps);RETURN_IF_FAILED(hr);
+		hr = ParseCommandLines (_config, preBuildProps, projectDir.bstrVal, steps);RETURN_IF_FAILED(hr);
 		
 		// First build the files with a custom build tool. This is similar to what VS does.
-		hr = EnumDescendants (_project->AsHierarchy(), VSITEMID_ROOT, [this, &steps, workDir = projectDir.bstrVal](IChildNode* item)
+		hr = EnumDescendants (_project, [this, &steps, workDir = projectDir.bstrVal](IFileNode* item)
 			{
 				com_ptr<IFileNodeProperties> file;
 				if (SUCCEEDED(item->QueryInterface(&file)))
@@ -625,13 +626,7 @@ public:
 					{
 						com_ptr<ICustomBuildToolProperties> props;
 						hr = file->get_CustomBuildToolProperties(&props); RETURN_IF_FAILED(hr);
-						//static const WCHAR Format[] = L"Custom Build Tool for file \"%s\"";
-						//wil::unique_bstr path;
-						//hr = f->get_Path(&path); RETURN_IF_FAILED(hr);
-						//size_t eventNameLen = _countof(Format) + SysStringLen(path.get());
-						//auto eventName = wil::make_hlocal_string_nothrow(nullptr, eventNameLen); RETURN_IF_NULL_ALLOC(eventName);
-						//swprintf_s (eventName.get(), eventNameLen, Format, path.get());
-						hr = ParseCommandLines (props, workDir, steps); RETURN_IF_FAILED(hr);
+						hr = ParseCommandLines (_config, props, workDir, steps); RETURN_IF_FAILED(hr);
 					}
 				}
 				return S_FALSE;
@@ -652,7 +647,7 @@ public:
 		// Post-Build Event
 		com_ptr<IProjectConfigPrePostBuildProperties> postBuildProps;
 		hr = _config->AsProjectConfigProperties()->get_PostBuildProperties(&postBuildProps); RETURN_IF_FAILED(hr);
-		hr = ParseCommandLines (postBuildProps, projectDir.bstrVal, steps);RETURN_IF_FAILED(hr);
+		hr = ParseCommandLines (_config, postBuildProps, projectDir.bstrVal, steps);RETURN_IF_FAILED(hr);
 
 		if (steps.empty())
 		{
