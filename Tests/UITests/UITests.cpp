@@ -415,7 +415,6 @@ namespace UITests
 		hr = sln->get_SolutionBuild(&solutionBuild);
 		Assert::IsTrue(SUCCEEDED(hr));
 
-		Assert::IsTrue(SUCCEEDED(hr));
 		hr = solutionBuild->Build(VARIANT_TRUE);
 		Assert::IsTrue(SUCCEEDED(hr));
 
