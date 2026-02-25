@@ -1,7 +1,6 @@
 
 #pragma once
 #include "../FelixPackage/FelixPackage_h.h"
-#include "shared/inplace_function.h"
 #define FORCE_EXPLICIT_DTE_NAMESPACE
 #include <dte.h>
 
@@ -35,5 +34,27 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("5F94F823-F39F-4311-8067-4F851D1DDAAC") I
 };
 wil::com_ptr_failfast<ITestPropertyNotifySink> MakeTestPropertyNotifySink();
 
-bool WaitWithMessageLoop (const stdext::inplace_function<bool()>& condition, DWORD timeoutMilliseconds);
+// Returns true if the condition was met before the timeout expired.
+template<typename condition_t> requires std::is_invocable_r_v<bool, condition_t>
+bool WaitWithMessageLoop (const condition_t& condition, DWORD timeoutMilliseconds)
+{
+	DWORD tickStart = GetTickCount();
+	while (GetTickCount() - tickStart < timeoutMilliseconds)
+	{
+		if (condition())
+			return true;
+
+		MSG msg;
+		while(PeekMessage(&msg,0,0,0,PM_NOREMOVE))
+		{
+			if (::GetMessage(&msg, NULL, 0, 0) > 0)
+				::DispatchMessage(&msg);
+		}
+
+		Sleep(20);
+	}
+
+	return false;
+}
+
 void DisableGeneratedFiles (VxDTE::Project* proj);

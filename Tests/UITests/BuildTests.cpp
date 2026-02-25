@@ -1,7 +1,6 @@
 
 #include "pch.h"
 #include "shared/com.h"
-#include "FelixPackage.h"
 #include "../TestsCommon.h"
 
 #define FORCE_EXPLICIT_DTE_NAMESPACE
