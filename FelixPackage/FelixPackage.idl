@@ -86,6 +86,8 @@ library ATLProject1Lib
 
 		[id(dispidAdditionalAsmOpts), bindable, propget] HRESULT AdditionalAssemblerOptions ([out, retval] BSTR* pbstrOpts);
 		[id(dispidAdditionalAsmOpts), bindable, propput] HRESULT AdditionalAssemblerOptions (BSTR bstrOpts);
+
+		[id(dispidSjasmCommandLine), bindable, propget] HRESULT CommandLine ([out, retval] BSTR* pbstrCommandLine);
 	}
 
 	[uuid(A6C45AD3-6F11-4116-A65D-9083381843D8)]

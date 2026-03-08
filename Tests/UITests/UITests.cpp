@@ -306,10 +306,16 @@ namespace UITests
 
 	static void CloseCurrentInstance(bool hard = false)
 	{
+		HRESULT hr;
 		if (dte)
 		{
+			wil::com_ptr_failfast<IUnknown> solution;
+			hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
+			Assert::IsTrue(SUCCEEDED(hr));
+			solution.query<VxDTE::_Solution>()->Close();
+
 			com_ptr<VxDTE::Window> dteMainWindow;
-			auto hr = dte->get_MainWindow(&dteMainWindow);
+			hr = dte->get_MainWindow(&dteMainWindow);
 			Assert::IsTrue(SUCCEEDED(hr));
 			long dteMainWindowHWnd;
 			hr = dteMainWindow->get_HWnd(&dteMainWindowHWnd);
@@ -436,5 +442,46 @@ namespace UITests
 		auto pres = PathCombine(testPathOtherDrive.get(), volumeName, pathWithoutDrive);
 		Assert::IsNotNull(pres);
 		return testPathOtherDrive;
+	}
+
+	wil::unique_bstr GetBuildOutputWindowPaneContent()
+	{
+		HRESULT hr;
+		auto dte2 = wil::com_query_failfast<VxDTE::DTE2>(dte);
+		wil::com_ptr_failfast<VxDTE::ToolWindows> toolWindows;
+		dte2->get_ToolWindows(&toolWindows);
+		wil::com_ptr_failfast<VxDTE::OutputWindow> outputWindow;
+		toolWindows->get_OutputWindow(&outputWindow);
+		wil::com_ptr_failfast<VxDTE::OutputWindowPanes> panes;
+		outputWindow->get_OutputWindowPanes(&panes);
+		wil::com_ptr_failfast<VxDTE::OutputWindowPane> buildPane;
+		hr = panes->Item (wil::make_variant_bstr_failfast(L"Build"), &buildPane);
+		Assert::AreEqual(S_OK, hr);
+		wil::com_ptr_failfast<VxDTE::TextDocument> text;
+		hr = buildPane->get_TextDocument(&text);
+		Assert::AreEqual(S_OK, hr);
+		wil::com_ptr_failfast<VxDTE::TextSelection> selection;
+		text->get_Selection(&selection);
+		hr = selection->SelectAll();
+		Assert::AreEqual(S_OK, hr);
+		wil::unique_bstr output;
+		hr = selection->get_Text(&output);
+		Assert::AreEqual(S_OK, hr);
+
+		// Wait until no more text is added.
+		while(true)
+		{
+			Sleep(200);
+			hr = selection->SelectAll();
+			Assert::AreEqual(S_OK, hr);
+			wil::unique_bstr outputNew;
+			hr = selection->get_Text(&outputNew);
+			Assert::AreEqual(S_OK, hr);
+			if (!wcscmp(output.get(), outputNew.get()))
+				break;
+			output = std::move(outputNew);
+		}
+
+		return output;
 	}
 }

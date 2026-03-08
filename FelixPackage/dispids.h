@@ -42,5 +42,5 @@
 #define dispidGeneratePrePostIncludeFiles 34
 #define dispidNextVSItemIdDebug    35
 #define dispidAdditionalAsmOpts    36
-
+#define dispidSjasmCommandLine     37
 #endif

@@ -17,6 +17,7 @@ namespace UITests
 {
 	extern wil::com_ptr_failfast<VxDTE::_DTE> dte;
 	extern wil::unique_process_heap_string MakeVolumeGuidPath (const wchar_t* path);
+	extern wil::unique_bstr GetBuildOutputWindowPaneContent();
 
 	TEST_CLASS(BuildTests)
 	{
@@ -278,6 +279,51 @@ namespace UITests
 			file.reset();
 		}
 
+		TEST_METHOD(BuildFilesInFoldersAndSubfolders)
+		{
+			TD td (TemplatePath_EmptyProject.get());
+			HRESULT hr;
+			auto hier = td.proj.query<IVsUIHierarchy>();
+
+			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
+
+			wil::unique_variant folder;
+			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder,
+				OLECMDEXECOPT_DONTPROMPTUSER, wil::make_variant_bstr_failfast(L"folder").addressof(), &folder);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<VARTYPE>(VT_VSITEMID, folder.vt);
+			//hr = proj->AsHierarchy()->SetProperty (V_VSITEMID(&folder), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"folder"));
+			//Assert::IsTrue(SUCCEEDED(hr));
+
+			VSADDRESULT addResult;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
+			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&folder), oper, L"file1.asm", 1, templateasm, NULL, &addResult);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::unique_variant subfolder;
+			hr = hier->ExecCommand (V_VSITEMID(&folder), &CMDSETID_StandardCommandSet97, cmdidNewFolder,
+				OLECMDEXECOPT_DONTPROMPTUSER, wil::make_variant_bstr_nothrow(L"subfolder").addressof(), &subfolder);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<VARTYPE>(VT_VSITEMID, subfolder.vt);
+			//hr = hier->SetProperty (V_VSITEMID(&subfolder), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"subfolder"));
+			//Assert::IsTrue(SUCCEEDED(hr));
+
+			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&subfolder), oper, L"file2.asm", 1, templateasm, NULL, &addResult);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::com_ptr_failfast<IVsCfg> cfg;
+			ULONG actual;
+			VSCFGFLAGS flags;
+			td.proj.query<IVsCfgProvider>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
+			wil::com_ptr_failfast<IProjectConfigAssemblerProperties> asmProps;
+			cfg.query<IProjectConfigProperties>()->get_AssemblerProperties(&asmProps);
+			wil::unique_bstr cmdLine;
+			asmProps->get_CommandLine(&cmdLine);
+
+			Assert::IsNotNull(wcsstr(cmdLine.get(), L" folder\\file1.asm"));
+			Assert::IsNotNull(wcsstr(cmdLine.get(), L" folder\\subfolder\\file2.asm"));
+		}
+
 		TEST_METHOD(BuildFailsOnEmptyProject)
 		{
 			TD td (TemplatePath_EmptyProject.get());
@@ -290,6 +336,234 @@ namespace UITests
 			hr = td.slnBuild->get_LastBuildInfo(&buildFailCount);
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::AreEqual(1l, buildFailCount);
+		}
+
+		TEST_METHOD(PrePostBuildEvents)
+		{
+			TD td (TemplatePath_EmptyProject.get());
+			HRESULT hr;
+
+			wil::com_ptr_failfast<IVsCfg> cfg;
+			ULONG actual;
+			VSCFGFLAGS flags;
+			hr = td.proj.query<IVsCfgProvider>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
+			auto config = cfg.query<IProjectConfigProperties>();
+
+			com_ptr<IProjectConfigPrePostBuildProperties> preBuildProps;
+			hr = config->get_PreBuildProperties(&preBuildProps);
+			Assert::AreEqual(S_OK, hr);
+			hr = preBuildProps->put_CommandLine(wil::make_bstr_nothrow(L"cmd /c echo XXXX").get());
+			Assert::AreEqual(S_OK, hr);
+
+			com_ptr<IProjectConfigPrePostBuildProperties> postBuildProps;
+			hr = config->get_PostBuildProperties(&postBuildProps);
+			Assert::AreEqual(S_OK, hr);
+			hr = postBuildProps->put_CommandLine(wil::make_bstr_nothrow(L"cmd /c echo YYYY").get());
+			Assert::AreEqual(S_OK, hr);
+
+			hr = td.slnBuild->Build(VARIANT_TRUE);
+			Assert::AreEqual(S_OK, hr);
+
+			auto output = GetBuildOutputWindowPaneContent();
+			auto preMessage = wcsstr(output.get(), L"XXXX");
+			Assert::IsNotNull(preMessage);
+			auto postMessage = wcsstr(output.get(), L"YYYY");
+			Assert::IsNotNull(preMessage);
+		}
+
+		static inline const char TemplateOneConfigOneCustomBuildTool[] = ""
+			"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n"
+			"<Z80Project Guid=\"{2839FDD7-4C8F-4772-90E6-222C702D045E}\">\r\n"
+			"  <Configurations>\r\n"
+			"    <Configuration ConfigName=\"Debug\" PlatformName=\"ZX Spectrum 48K\" />\r\n"
+			"  </Configurations>\r\n"
+			"  <Items>\r\n"
+			"    <File Path=\"file.asm\" BuildTool=\"CustomBuildTool\" >\r\n"
+			"      <CustomBuildToolProperties />\r\n"
+			"    </File>\r\n"
+			"  </Items>\r\n"
+			"</Z80Project>\r\n";
+
+		static void SetCustomBuildTool (VxDTE::Project* proj, const wchar_t* fileCanonicalName, const wchar_t* commandLine, const wchar_t* description)
+		{
+			auto hier = wil::com_query_failfast<IVsHierarchy>(proj);
+			VSITEMID itemId;
+			auto hr = hier->ParseCanonicalName(L"file.asm", &itemId); 
+			Assert::AreEqual(S_OK, hr);
+			wil::unique_variant file;
+			hr = hier->GetProperty(itemId, VSHPROPID_BrowseObject, &file);
+			Assert::AreEqual(S_OK, hr);
+			auto fileProps = wil::com_query_failfast<IFileNodeProperties>(file.pdispVal);
+			
+			wil::com_ptr_failfast<ICustomBuildToolProperties> cbtProps;
+			hr = fileProps->get_CustomBuildToolProperties(&cbtProps); 
+			Assert::AreEqual(S_OK, hr);
+			
+			if (commandLine)
+			{
+				hr = cbtProps->put_CommandLine(wil::make_bstr_failfast(commandLine).get());
+				Assert::AreEqual(S_OK, hr);
+			}
+
+			if (description)
+			{
+				hr = cbtProps->put_Description(wil::make_bstr_failfast(description).get());
+				Assert::AreEqual(S_OK, hr);
+			}
+		}
+
+		TEST_METHOD(CustomBuildToolOnlyWhitespaceCommands)
+		{
+			HRESULT hr;
+			auto templatePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"CustomBuildToolOnlyWhitespaceCommands\\template.flx");
+			WriteFileOnDisk(templatePath.get(), TemplateOneConfigOneCustomBuildTool);
+			TD td (templatePath.get());
+
+			SetCustomBuildTool(td.proj, L"file.asm", L"   \r\n   \t   ", nullptr);
+
+			hr = td.slnBuild->Build(VARIANT_TRUE);
+			Assert::AreEqual(S_OK, hr);
+			long buildFailCount;
+			hr = td.slnBuild->get_LastBuildInfo(&buildFailCount);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(1l, buildFailCount);
+			auto output = GetBuildOutputWindowPaneContent();
+			auto x = wcsstr(output.get(), L"0x80070012"); // HRESULT_FROM_WIN32(ERROR_NO_MORE_FILES)
+			Assert::IsNotNull(x, output.get());
+			/*
+			wil::com_ptr_failfast<IDispatch> aodisp;
+			hr = dte->GetObject(wil::make_bstr_failfast(L"TestHelper").get(), &aodisp);
+			Assert::AreEqual(S_OK, hr);
+			auto ao = aodisp.query<IFelixTestHelper>();
+			wil::com_ptr_failfast<IUnknown> runnerUnk;
+			hr = ao->CreateInstanceFromLocalRegistry(__uuidof(IBuildRunner), runnerUnk.addressof());
+			Assert::AreEqual(S_OK, hr);
+			wil::com_ptr_failfast<IBuildRunner> runner;
+			hr = runnerUnk->QueryInterface(IID_PPV_ARGS(runner.addressof()));
+			Assert::AreEqual(S_OK, hr);
+			*/
+		}
+
+		TEST_METHOD(CustomBuildToolWaitingUserInput)
+		{
+			HRESULT hr;
+			auto templatePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"TestCustomBuildToolWaitingUserInput\\template.flx");
+			WriteFileOnDisk(templatePath.get(), TemplateOneConfigOneCustomBuildTool);
+			TD td (templatePath.get());
+
+			SetCustomBuildTool(td.proj, L"file.asm", L"cmd /c pause", nullptr);
+			hr = td.slnBuild->Build(VARIANT_FALSE);
+			Assert::AreEqual(S_OK, hr);
+
+			auto tickCount = GetTickCount();
+			VxDTE::vsBuildState buildState;
+			while (true)
+			{
+				hr = td.slnBuild->get_BuildState(&buildState);
+				Assert::AreEqual(S_OK, hr);
+				if (buildState == VxDTE::vsBuildStateDone)
+					break;
+				if (GetTickCount() - tickCount >= 1000)
+					break;
+				Sleep(50);
+			}
+
+			Assert::AreEqual<int>(VxDTE::vsBuildStateInProgress, buildState);
+
+			hr = dte->ExecuteCommand(wil::make_bstr_failfast(L"Build.Cancel").get());
+			Assert::AreEqual(S_OK, hr);
+
+			while (SUCCEEDED(td.slnBuild->get_BuildState(&buildState)) && buildState == VxDTE::vsBuildStateInProgress)
+				Sleep(50);
+
+			Assert::AreEqual<int>(VxDTE::vsBuildStateDone, buildState);
+
+			long buildFailCount = 0;
+			hr = td.slnBuild->get_LastBuildInfo(&buildFailCount);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(1l, buildFailCount);
+		}
+
+		class HeavyLoad
+		{
+			wil::unique_event_failfast event;
+			vector_nothrow<wil::unique_handle> threads;
+
+		public:
+			HeavyLoad()
+			{
+				SYSTEM_INFO si;
+				GetSystemInfo (&si);
+				threads.try_resize(si.dwNumberOfProcessors);
+				event.create(wil::EventOptions::ManualReset);
+				for (auto& h : threads)
+					h.reset(CreateThread(nullptr, 0, ThreadProc, this, 0, nullptr));
+			}
+
+			~HeavyLoad()
+			{
+				event.SetEvent();
+				while(!threads.empty())
+				{
+					WaitForSingleObject(threads.back().get(), INFINITE);
+					threads.remove_back();
+				}
+			}
+
+		private:
+			static DWORD WINAPI ThreadProc (void* arg)
+			{
+				HeavyLoad* _this = (HeavyLoad*)arg;
+				DWORD tickStart = GetTickCount();
+				while (!_this->event.is_signaled())
+					;
+				return (DWORD)0;
+			}
+		};
+
+		TEST_METHOD(TestCustomBuildToolOutputWithNoEOL)
+		{
+			HRESULT hr;
+			auto templatePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"TestCustomBuildToolOutputWithNoEOL\\template.flx");
+			WriteFileOnDisk(templatePath.get(), TemplateOneConfigOneCustomBuildTool);
+			TD td (templatePath.get());
+
+			HeavyLoad hl;
+
+			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\file.asm");
+			WriteFileOnDisk(filePath.get(), "content_xxx");
+			SetCustomBuildTool (td.proj, L"file.asm", L"cmd /c type file.asm", nullptr);
+			hr = td.slnBuild->Build(VARIANT_TRUE);
+			Assert::AreEqual(S_OK, hr);
+
+			auto output = GetBuildOutputWindowPaneContent();
+			static const wchar_t cnt[] = L"content_xxx";
+			auto x = wcsstr(output.get(), cnt);
+			Assert::IsNotNull(x);
+			wchar_t charAfter = x[std::size(cnt) - 1];
+			Assert::AreNotEqual(L'\r', charAfter);
+			Assert::AreNotEqual(L'\n', charAfter);
+		}
+
+		TEST_METHOD(TestCustomBuildToolOutputWithEOL)
+		{
+			HRESULT hr;
+			auto templatePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"TestCustomBuildToolOutputWithNoEOL\\template.flx");
+			WriteFileOnDisk(templatePath.get(), TemplateOneConfigOneCustomBuildTool);
+			TD td (templatePath.get());
+
+			HeavyLoad hl;
+
+			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\file.asm");
+			WriteFileOnDisk(filePath.get(), "content_xxx\r\n");
+			SetCustomBuildTool (td.proj, L"file.asm", L"cmd /c type file.asm", nullptr);
+			hr = td.slnBuild->Build(VARIANT_TRUE);
+			Assert::AreEqual(S_OK, hr);
+
+			auto output = GetBuildOutputWindowPaneContent();
+			static const wchar_t cnt[] = L"content_xxx\r\n";
+			auto x = wcsstr(output.get(), cnt);
+			Assert::IsNotNull(x);
 		}
 	};
 }

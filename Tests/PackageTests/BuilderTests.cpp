@@ -188,61 +188,6 @@ namespace FelixTests
 			return { std::move(project), std::move(builder) };
 		}
 
-		TEST_METHOD(TestCustomBuildToolOutputWithNoEOL)
-		{
-			TD td;
-			HeavyLoad hl;
-
-			com_ptr<IStream> outputStream;
-			auto hr = CreateStreamOnHGlobal (NULL, TRUE, &outputStream);
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto [proj, builder] = MakeProjectWithCustomBuildTool (td.testDir.get(), L"test.xxx", "content", nullptr, L"cmd /c type test.xxx", outputStream);
-			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
-
-			auto callback = com_ptr(new TestBuildCallback());
-			hr = builder->StartBuild(callback);
-			Assert::IsTrue(SUCCEEDED(hr));
-			WaitWithMessageLoop([callback] { return callback->_complete; }, INFINITE);
-			Assert::IsTrue(callback->_complete);
-			Assert::IsTrue(callback->_success);
-			ULARGE_INTEGER curr;
-			hr = outputStream->Seek (LARGE_INTEGER{ .QuadPart = 0 }, STREAM_SEEK_CUR, &curr);
-			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::IsTrue (curr.QuadPart > 0);
-			wil::unique_bstr output;
-			hr = MakeBstrFromStreamOnHGlobal (outputStream, &output);
-			Assert::IsTrue(SUCCEEDED(hr));
-			//if (FAILED(hr))
-			//	Assert::Fail(std::to_wstring(hr).c_str());
-			Assert::AreEqual(L"content", output.get());
-		}
-
-		TEST_METHOD(TestCustomBuildToolOutputWithEOL)
-		{
-			TD td;
-			com_ptr<IStream> outputStream;
-			auto hr = CreateStreamOnHGlobal (NULL, TRUE, &outputStream);
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto [proj, builder] = MakeProjectWithCustomBuildTool(td.testDir.get(), L"test.xxx", "content\r\n", nullptr, L"cmd /c type test.xxx", outputStream);
-			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
-			auto callback = com_ptr(new TestBuildCallback());
-			hr = builder->StartBuild(callback);
-			Assert::IsTrue(SUCCEEDED(hr));
-			WaitWithMessageLoop([callback] { return callback->_complete; }, INFINITE);
-			Assert::IsTrue(callback->_complete);
-			Assert::IsTrue(callback->_success);
-			ULARGE_INTEGER curr;
-			hr = outputStream->Seek (LARGE_INTEGER{ .QuadPart = 0 }, STREAM_SEEK_CUR, &curr);
-			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::IsTrue (curr.QuadPart > 0);
-			wil::unique_bstr output;
-			hr = MakeBstrFromStreamOnHGlobal (outputStream, &output);
-			Assert::IsTrue(SUCCEEDED(hr));
-			//if (FAILED(hr))
-			//	Assert::Fail(std::to_wstring(hr).c_str());
-			Assert::AreEqual(L"content\r\n", output.get());
-		}
-
 		TEST_METHOD(TestBuilderDestroyedWhenReleasedWithPendingBuild)
 		{
 			TD td;
@@ -257,21 +202,6 @@ namespace FelixTests
 			Assert::AreEqual((ULONG)0, remainingRefCount);
 		}
 
-		TEST_METHOD(TestCustomBuildToolWaitingUserInput)
-		{
-			TD td;
-			auto [proj, builder] = MakeProjectWithCustomBuildTool(td.testDir.get(), L"test.xxx", "\tNOP", nullptr, L"cmd /c pause", nullptr);
-			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
-			auto callback = com_ptr(new TestBuildCallback());
-			auto hr = builder->StartBuild(callback);
-			Assert::IsTrue(SUCCEEDED(hr));
-			WaitWithMessageLoop([callback] { return callback->_complete; }, 1000);
-			Assert::IsFalse(callback->_complete);
-			hr = builder->CancelBuild();
-			Assert::IsTrue(callback->_complete);
-			Assert::IsFalse(callback->_success);
-			Assert::IsTrue(SUCCEEDED(hr));
-		}
 		/*
 		On second thought, this scenario is not legal COM. The application is supposed to
 		hold a reference to "builder" until _after_ the call to CancelBuild returns.
@@ -398,16 +328,6 @@ namespace FelixTests
 			Assert::IsFalse(success);
 		}
 
-		TEST_METHOD(TestCustomBuildToolOnlyWhitespaceCommands)
-		{
-			TD td;
-			auto [proj, builder] = MakeProjectWithCustomBuildTool(td.testDir.get(), L"test.xxx", "\tNOP", nullptr, L"   \r\n   \t   ", nullptr);
-			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
-			auto callback = com_ptr(new TestBuildCallback());
-			auto hr = builder->StartBuild(callback);
-			Assert::AreEqual(HRESULT_FROM_WIN32(ERROR_NO_MORE_FILES), hr);
-		}
-
 		TEST_METHOD(TestCustomBuildToolSomeWhitespaceCommands)
 		{
 			TD td;
@@ -429,51 +349,6 @@ namespace FelixTests
 			Assert::AreEqual(L"content", output.get());
 		}
 
-		TEST_METHOD(TestPrePostBuildEvents)
-		{
-			HRESULT hr;
-
-			com_ptr<IProjectNode> project;
-			hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&project));
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto config = AddDebugProjectConfig(project->AsHierarchy());
-
-			com_ptr<IProjectConfigPrePostBuildProperties> preBuildProps;
-			hr = config->AsProjectConfigProperties()->get_PreBuildProperties(&preBuildProps);
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto preCmdLine = wil::make_bstr_nothrow(L"cmd /c echo XXX");
-			hr = preBuildProps->put_CommandLine(preCmdLine.get());
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			com_ptr<IProjectConfigPrePostBuildProperties> postBuildProps;
-			hr = config->AsProjectConfigProperties()->get_PostBuildProperties(&postBuildProps);
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto postCmdLine = wil::make_bstr_nothrow(L"cmd /c echo YYY");
-			hr = postBuildProps->put_CommandLine(postCmdLine.get());
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			com_ptr<IStream> outputStream;
-			hr = CreateStreamOnHGlobal (NULL, TRUE, &outputStream);
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto pane = MakeMockOutputWindowPane(outputStream);
-			com_ptr<IProjectConfigBuilder> builder;
-			hr = MakeProjectConfigBuilder (project, config, pane, &builder);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			auto callback = com_ptr(new TestBuildCallback());
-			hr = builder->StartBuild(callback);
-			Assert::IsTrue(SUCCEEDED(hr));
-			//auto callback = com_ptr(new TestBuildCallback());
-			//auto hr = builder->StartBuild(callback);
-			//Assert::IsTrue(SUCCEEDED(hr));
-			//WaitWithMessageLoop(500, callback);
-			//Assert::IsFalse(callback->_complete);
-			//ULONG remainingRefCount = builder.detach()->Release();
-			//Assert::AreEqual((ULONG)0, remainingRefCount);
-			ULONG remainingRefCount = builder.detach()->Release();
-			project->AsHierarchy()->Close();
-		}
-
 		TEST_METHOD(BuildOnlySynchronousSteps)
 		{
 			TD td;
@@ -483,45 +358,6 @@ namespace FelixTests
 			Assert::AreEqual(S_OK, hr);
 		}
 
-		TEST_METHOD(BuildFilesInFoldersAndSubfolders)
-		{
-			com_ptr<IProjectNode> proj;
-			auto hr = MakeProjectNode (TemplatePath_EmptyProject.get(), tempPath, L"BuildFilesInFoldersAndSubfolders.flx",
-				CPF_CLONEFILE | CPF_OVERWRITE | CPF_SILENT, IID_PPV_ARGS(&proj));
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
-
-			auto config = FelixTests::AddDebugProjectConfig(proj->AsHierarchy());
-
-			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
-
-			wil::unique_variant folder;
-			hr = proj->AsHierarchy()->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &folder);
-			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::AreEqual<VARTYPE>(VT_VSITEMID, folder.vt);
-			hr = proj->AsHierarchy()->SetProperty (V_VSITEMID(&folder), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"folder"));
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			hr = proj->AsVsProject()->AddItem (V_VSITEMID(&folder), VSADDITEMOP_CLONEFILE, L"file1.asm", 1, templateasm, NULL, NULL);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			wil::unique_variant subfolder;
-			hr = proj->AsHierarchy()->ExecCommand (V_VSITEMID(&folder), &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &subfolder);
-			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::AreEqual<VARTYPE>(VT_VSITEMID, subfolder.vt);
-			hr = proj->AsHierarchy()->SetProperty (V_VSITEMID(&subfolder), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"subfolder"));
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			hr = proj->AsVsProject()->AddItem (V_VSITEMID(&subfolder), VSADDITEMOP_CLONEFILE, L"file2.asm", 1, templateasm, NULL, NULL);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			wil::unique_bstr cmdLine;
-			hr = MakeSjasmCommandLine (proj, config, nullptr, &cmdLine);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			Assert::IsNotNull(wcsstr(cmdLine.get(), L" folder\\file1.asm"));
-			Assert::IsNotNull(wcsstr(cmdLine.get(), L" folder\\subfolder\\file2.asm"));
-		}
 
 		TEST_METHOD(BuildFilesNotInProjectDir)
 		{

@@ -1096,7 +1096,13 @@ struct AssemblerPageProperties
 	IMPLEMENT_IDISPATCH(IProjectConfigAssemblerProperties);
 
 	#pragma region IVsPerPropertyBrowsing
-	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL* pfHide) override { return E_NOTIMPL; }
+	virtual HRESULT STDMETHODCALLTYPE HideProperty (DISPID dispid, BOOL* pfHide) override
+	{
+		if (dispid == dispidSjasmCommandLine)
+			return (*pfHide = TRUE), S_OK;
+
+		return E_NOTIMPL;
+	}
 
 	virtual HRESULT STDMETHODCALLTYPE DisplayChildProperties (DISPID dispid, BOOL *pfDisplay) override { return E_NOTIMPL; }
 
@@ -1274,10 +1280,10 @@ struct AssemblerPageProperties
 		bool s = (save == VARIANT_TRUE);
 		if (_saveListing != s)
 		{
-			NotifyPropertyChanging(_propChangeCP, this, { dispidSaveListing });
+			NotifyPropertyChanging(_propChangeCP, this, { dispidSaveListing, dispidSjasmCommandLine });
 			_saveListing = s;
-			NotifyPropertyChanged(_propChangeCP, this, { dispidSaveListing });
-			NotifyPropertyChanged(_propNotifyCP, { dispidSaveListing });
+			NotifyPropertyChanged(_propChangeCP, this, { dispidSaveListing, dispidSjasmCommandLine });
+			NotifyPropertyChanged(_propNotifyCP, { dispidSaveListing, dispidSjasmCommandLine });
 		}
 
 		return S_OK;
@@ -1292,10 +1298,10 @@ struct AssemblerPageProperties
 	{
 		if (!EqualsBSTR(_listingFilename, filename))
 		{
-			NotifyPropertyChanging(_propChangeCP, this, { dispidListingFilename });
+			NotifyPropertyChanging(_propChangeCP, this, { dispidListingFilename, dispidSjasmCommandLine });
 			auto hr = PutBSTR(_listingFilename, filename);
-			NotifyPropertyChanged(_propChangeCP, this, { dispidListingFilename });
-			NotifyPropertyChanged(_propNotifyCP, { dispidListingFilename });
+			NotifyPropertyChanged(_propChangeCP, this, { dispidListingFilename, dispidSjasmCommandLine });
+			NotifyPropertyChanged(_propNotifyCP, { dispidListingFilename, dispidSjasmCommandLine });
 			RETURN_HR(hr);
 		}
 
@@ -1331,14 +1337,23 @@ struct AssemblerPageProperties
 	{
 		if (!EqualsBSTR(_additionalAsmOptions, bstrOpts))
 		{
-			NotifyPropertyChanging(_propChangeCP, this, { dispidAdditionalAsmOpts });
+			NotifyPropertyChanging(_propChangeCP, this, { dispidAdditionalAsmOpts, dispidSjasmCommandLine });
 			auto hr = PutBSTR(_additionalAsmOptions, bstrOpts);
-			NotifyPropertyChanged(_propChangeCP, this, { dispidAdditionalAsmOpts });
-			NotifyPropertyChanged(_propNotifyCP, { dispidAdditionalAsmOpts });
+			NotifyPropertyChanged(_propChangeCP, this, { dispidAdditionalAsmOpts, dispidSjasmCommandLine });
+			NotifyPropertyChanged(_propNotifyCP, { dispidAdditionalAsmOpts, dispidSjasmCommandLine });
 			RETURN_HR(hr);
 		}
 
 		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_CommandLine (BSTR *pbstrCommandLine) override
+	{
+		com_ptr<IProjectConfig> config;
+		auto hr = _config->QueryInterface(&config); RETURN_IF_FAILED(hr);
+		com_ptr<IProjectNode> proj;
+		hr = config->GetSite(IID_PPV_ARGS(&proj)); RETURN_IF_FAILED(hr);
+		return MakeSjasmCommandLine (proj, config, this, pbstrCommandLine);
 	}
 	#pragma endregion
 
