@@ -285,8 +285,6 @@ namespace UITests
 			HRESULT hr;
 			auto hier = td.proj.query<IVsUIHierarchy>();
 
-			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
-
 			wil::unique_variant folder;
 			hr = hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder,
 				OLECMDEXECOPT_DONTPROMPTUSER, wil::make_variant_bstr_failfast(L"folder").addressof(), &folder);
@@ -297,7 +295,8 @@ namespace UITests
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&folder), oper, L"file1.asm", 1, templateasm, NULL, &addResult);
+			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&folder), oper, L"file1.asm", 1,
+				const_cast<LPCOLESTR*>(TemplatePath_EmptyFile.addressof()), NULL, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			wil::unique_variant subfolder;
@@ -308,7 +307,8 @@ namespace UITests
 			//hr = hier->SetProperty (V_VSITEMID(&subfolder), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"subfolder"));
 			//Assert::IsTrue(SUCCEEDED(hr));
 
-			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&subfolder), oper, L"file2.asm", 1, templateasm, NULL, &addResult);
+			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&subfolder), oper, L"file2.asm", 1, 
+				const_cast<LPCOLESTR*>(TemplatePath_EmptyFile.addressof()), NULL, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			wil::com_ptr_failfast<IVsCfg> cfg;
@@ -322,6 +322,48 @@ namespace UITests
 
 			Assert::IsNotNull(wcsstr(cmdLine.get(), L" folder\\file1.asm"));
 			Assert::IsNotNull(wcsstr(cmdLine.get(), L" folder\\subfolder\\file2.asm"));
+		}
+
+		TEST_METHOD(BuildFilesNotInProjectDir)
+		{
+			TD td (TemplatePath_EmptyProject.get());
+			HRESULT hr;
+			auto hier = td.proj.query<IVsUIHierarchy>();
+
+			// file 1 in project dir
+			auto file1FullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\file1.asm");
+			WriteFileOnDisk(file1FullPath.get(), "");
+			// file 2 in project sub dir
+			auto file2FullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\subdir\\file2.asm");
+			WriteFileOnDisk(file2FullPath.get(), "");
+			// file 3 outside project dir but on same drive
+			auto file3FullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.testDir, L"\\file3.asm");
+			WriteFileOnDisk(file3FullPath.get(), "");
+			// file 4 on different drive
+			auto temp = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\file4.asm");
+			auto file4FullPath = MakeVolumeGuidPath(temp.get());
+			WriteFileOnDisk(file4FullPath.get(), "");
+
+			LPCOLESTR files[] = { file1FullPath.get(), file2FullPath.get(), file3FullPath.get(), file4FullPath.get() };
+
+			VSADDRESULT addResult;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
+			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", (ULONG)_countof(files), files, nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::com_ptr_failfast<IVsCfg> cfg;
+			ULONG actual;
+			VSCFGFLAGS flags;
+			td.proj.query<IVsCfgProvider>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
+			wil::com_ptr_failfast<IProjectConfigAssemblerProperties> asmProps;
+			cfg.query<IProjectConfigProperties>()->get_AssemblerProperties(&asmProps);
+			wil::unique_bstr cmdLine;
+			asmProps->get_CommandLine(&cmdLine);
+
+			Assert::IsNotNull(wcsstr(cmdLine.get(), L" file1.asm"));
+			Assert::IsNotNull(wcsstr(cmdLine.get(), L" subdir\\file2.asm"));
+			Assert::IsNotNull(wcsstr(cmdLine.get(), L" ..\\file3.asm"));
+			Assert::IsNotNull(wcsstr(cmdLine.get(), file4FullPath.get()));
 		}
 
 		TEST_METHOD(BuildFailsOnEmptyProject)
