@@ -241,43 +241,6 @@ namespace FelixTests
 			Assert::IsFalse(success);
 		}
 
-		class HeavyLoad
-		{
-			wil::unique_event_failfast event;
-			vector_nothrow<wil::unique_handle> threads;
-
-		public:
-			HeavyLoad()
-			{
-				SYSTEM_INFO si;
-				GetSystemInfo (&si);
-				threads.try_resize(si.dwNumberOfProcessors);
-				event.create(wil::EventOptions::ManualReset);
-				for (auto& h : threads)
-					h.reset(CreateThread(nullptr, 0, ThreadProc, this, 0, nullptr));
-			}
-
-			~HeavyLoad()
-			{
-				event.SetEvent();
-				while(!threads.empty())
-				{
-					WaitForSingleObject(threads.back().get(), INFINITE);
-					threads.remove_back();
-				}
-			}
-
-		private:
-			static DWORD WINAPI ThreadProc (void* arg)
-			{
-				HeavyLoad* _this = (HeavyLoad*)arg;
-				DWORD tickStart = GetTickCount();
-				while (!_this->event.is_signaled())
-					;
-				return (DWORD)0;
-			}
-		};
-
 		TEST_METHOD(CancelAfterAsyncBuildProcessExitedWithExitCode1)
 		{
 			TD td;
