@@ -142,10 +142,6 @@ namespace FelixTests
 			Assert::IsFalse(callback->_success);
 		}
 
-		TEST_METHOD(Test_CustomBuildToolFilesInFolders)
-		{
-		}
-
 		// sourceFileContent - empty string view to skip creating the file on disk
 		static std::pair<wil::com_ptr_failfast<IProjectNode>, wil::com_ptr_failfast<IProjectConfigBuilder>> MakeProjectWithCustomBuildTool (
 			const wchar_t* testDir,
@@ -347,15 +343,6 @@ namespace FelixTests
 			hr = MakeBstrFromStreamOnHGlobal (outputStream, &output);
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::AreEqual(L"content", output.get());
-		}
-
-		TEST_METHOD(BuildOnlySynchronousSteps)
-		{
-			TD td;
-			auto [proj, builder] = MakeProjectWithCustomBuildTool (td.testDir.get(), L"test.asm", "content", L"CBT Description", nullptr, nullptr);
-			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
-			auto hr = builder->StartBuild(nullptr);
-			Assert::AreEqual(S_OK, hr);
 		}
 	};
 }

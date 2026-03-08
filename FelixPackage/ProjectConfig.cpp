@@ -456,15 +456,16 @@ public:
 		}
 
 		hr = _pendingBuild->StartBuild(this);
-		if (FAILED(hr))
+		if (hr == S_OK || FAILED(hr))
 		{
+			BOOL success = (hr == S_OK);
 			for (auto& cb : _buildStatusCallbacks)
-				cb.second->BuildEnd(FALSE);
+				cb.second->BuildEnd(success);
 			_pendingBuild = nullptr;
 			return hr;
 		}
 
-		return S_OK;
+		return S_FALSE;
 	}
 	#pragma endregion
 

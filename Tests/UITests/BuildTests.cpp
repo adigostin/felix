@@ -366,6 +366,44 @@ namespace UITests
 			Assert::IsNotNull(wcsstr(cmdLine.get(), file4FullPath.get()));
 		}
 
+		TEST_METHOD(BuildOnlySynchronousSteps)
+		{
+			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
+			HRESULT hr;
+
+			VSITEMID itemid;
+			hr = td.proj.query<IVsHierarchy>()->ParseCanonicalName(L"file.asm", &itemid);
+			Assert::AreEqual(S_OK, hr);
+			wil::unique_variant filevar;
+			hr = td.proj.query<IVsHierarchy>()->GetProperty(itemid, VSHPROPID_BrowseObject, &filevar);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<VARTYPE>(VT_DISPATCH, filevar.vt);
+			wil::com_ptr_failfast<IFileNodeProperties> fileProps;
+			hr = filevar.pdispVal->QueryInterface(&fileProps);
+			Assert::AreEqual(S_OK, hr);
+			wil::com_ptr_failfast<ICustomBuildToolProperties> cbtProps;
+			fileProps->get_CustomBuildToolProperties(&cbtProps);
+			cbtProps->put_CommandLine(nullptr);
+			static const wchar_t description[] = L"CBT Description";
+			cbtProps->put_Description(wil::make_bstr_nothrow(description).get());
+
+			hr = td.slnBuild->Build(VARIANT_TRUE);
+			Assert::AreEqual(S_OK, hr);
+			long buildFailCount = -1;
+			hr = td.slnBuild->get_LastBuildInfo(&buildFailCount);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(0l, buildFailCount);
+
+			auto text = GetBuildOutputWindowPaneContent();
+			auto p = wcsstr(text.get(), description);
+			Assert::IsNotNull(p);
+		}
+
+		TEST_METHOD(CustomBuildToolFilesInFolders)
+		{
+			// TODO:
+		}
+
 		TEST_METHOD(BuildFailsOnEmptyProject)
 		{
 			TD td (TemplatePath_EmptyProject.get());
@@ -413,19 +451,6 @@ namespace UITests
 			Assert::IsNotNull(preMessage);
 		}
 
-		static inline const char TemplateOneConfigOneCustomBuildTool[] = ""
-			"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n"
-			"<Z80Project Guid=\"{2839FDD7-4C8F-4772-90E6-222C702D045E}\">\r\n"
-			"  <Configurations>\r\n"
-			"    <Configuration ConfigName=\"Debug\" PlatformName=\"ZX Spectrum 48K\" />\r\n"
-			"  </Configurations>\r\n"
-			"  <Items>\r\n"
-			"    <File Path=\"file.asm\" BuildTool=\"CustomBuildTool\" >\r\n"
-			"      <CustomBuildToolProperties />\r\n"
-			"    </File>\r\n"
-			"  </Items>\r\n"
-			"</Z80Project>\r\n";
-
 		static void SetCustomBuildTool (VxDTE::Project* proj, const wchar_t* fileCanonicalName, const wchar_t* commandLine, const wchar_t* description)
 		{
 			auto hier = wil::com_query_failfast<IVsHierarchy>(proj);
@@ -457,9 +482,7 @@ namespace UITests
 		TEST_METHOD(CustomBuildToolOnlyWhitespaceCommands)
 		{
 			HRESULT hr;
-			auto templatePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"CustomBuildToolOnlyWhitespaceCommands\\template.flx");
-			WriteFileOnDisk(templatePath.get(), TemplateOneConfigOneCustomBuildTool);
-			TD td (templatePath.get());
+			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
 
 			SetCustomBuildTool(td.proj, L"file.asm", L"   \r\n   \t   ", nullptr);
 
@@ -489,9 +512,7 @@ namespace UITests
 		TEST_METHOD(CustomBuildToolWaitingUserInput)
 		{
 			HRESULT hr;
-			auto templatePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"TestCustomBuildToolWaitingUserInput\\template.flx");
-			WriteFileOnDisk(templatePath.get(), TemplateOneConfigOneCustomBuildTool);
-			TD td (templatePath.get());
+			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
 
 			SetCustomBuildTool(td.proj, L"file.asm", L"cmd /c pause", nullptr);
 			hr = td.slnBuild->Build(VARIANT_FALSE);
@@ -566,9 +587,7 @@ namespace UITests
 		TEST_METHOD(TestCustomBuildToolOutputWithNoEOL)
 		{
 			HRESULT hr;
-			auto templatePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"TestCustomBuildToolOutputWithNoEOL\\template.flx");
-			WriteFileOnDisk(templatePath.get(), TemplateOneConfigOneCustomBuildTool);
-			TD td (templatePath.get());
+			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
 
 			HeavyLoad hl;
 
@@ -590,9 +609,7 @@ namespace UITests
 		TEST_METHOD(TestCustomBuildToolOutputWithEOL)
 		{
 			HRESULT hr;
-			auto templatePath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"TestCustomBuildToolOutputWithNoEOL\\template.flx");
-			WriteFileOnDisk(templatePath.get(), TemplateOneConfigOneCustomBuildTool);
-			TD td (templatePath.get());
+			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
 
 			HeavyLoad hl;
 

@@ -9,6 +9,7 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 wchar_t tempPath[MAX_PATH + 1];
 wil::unique_process_heap_string TemplatePath_TwoConfigsOneFile;
+wil::unique_process_heap_string TemplatePath_OneConfigOneCustomBuildTool;
 wil::unique_process_heap_string TemplatePath_EmptyProject;
 wil::unique_process_heap_string TemplatePath_EmptyFile;
 
@@ -23,6 +24,19 @@ static const char TemplateTwoConfigsOneFileXML[] = ""
 	"    <File Path=\"file.asm\" BuildTool=\"Assembler\" />\r\n"
 	"  </Items>\r\n"
 	"</Z80Project>\r\n";
+
+static const char TemplateXML_OneConfigOneCustomBuildTool[] = ""
+"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n"
+"<Z80Project Guid=\"{2839FDD7-4C8F-4772-90E6-222C702D045E}\">\r\n"
+"  <Configurations>\r\n"
+"    <Configuration ConfigName=\"Debug\" PlatformName=\"ZX Spectrum 48K\" />\r\n"
+"  </Configurations>\r\n"
+"  <Items>\r\n"
+"    <File Path=\"file.asm\" BuildTool=\"CustomBuildTool\" >\r\n"
+"      <CustomBuildToolProperties />\r\n"
+"    </File>\r\n"
+"  </Items>\r\n"
+"</Z80Project>\r\n";
 
 static const char TemplateXML_EmptyProject[] = ""
 	"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n"
@@ -45,8 +59,13 @@ void MakeTemplates (const wchar_t* tempDirName)
 	auto templateDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"TemplateTwoConfigsOneFile\\");
 	wil::str_concat_nothrow(TemplatePath_TwoConfigsOneFile, templateDir, L"proj.flx");
 	WriteFileOnDisk(TemplatePath_TwoConfigsOneFile.get(), TemplateTwoConfigsOneFileXML);
-
 	auto file = wil::str_concat_failfast<wil::unique_process_heap_string>(templateDir, L"file.asm");
+	WriteFileOnDisk(file.get(), "start:\tret");
+
+	templateDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"TemplateOneConfigOneCustomBuildTool\\");
+	wil::str_concat_nothrow(TemplatePath_OneConfigOneCustomBuildTool, templateDir, L"proj.flx");
+	WriteFileOnDisk(TemplatePath_OneConfigOneCustomBuildTool.get(), TemplateXML_OneConfigOneCustomBuildTool);
+	file = wil::str_concat_failfast<wil::unique_process_heap_string>(templateDir, L"file.asm");
 	WriteFileOnDisk(file.get(), "start:\tret");
 
 	wil::str_concat_nothrow(TemplatePath_EmptyProject, tempPath, L"TemplateEmpty\\proj.flx");
