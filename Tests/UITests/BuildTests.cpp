@@ -509,6 +509,25 @@ namespace UITests
 			*/
 		}
 
+		TEST_METHOD(TestCustomBuildToolSomeWhitespaceCommands)
+		{
+			HRESULT hr;
+			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
+
+			static const wchar_t cmdLine[] = L"  cmd /c type file.asm  \t\r\n   \t   ";
+			SetCustomBuildTool(td.proj, L"file.asm", cmdLine, nullptr);
+
+			hr = td.slnBuild->Build(VARIANT_TRUE);
+			Assert::AreEqual(S_OK, hr);
+			long buildFailCount;
+			hr = td.slnBuild->get_LastBuildInfo(&buildFailCount);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(0l, buildFailCount);
+			auto output = GetBuildOutputWindowPaneContent();
+			auto x = wcsstr(output.get(), L"start:");
+			Assert::IsNotNull(x, output.get());
+		}
+
 		TEST_METHOD(CustomBuildToolWaitingUserInput)
 		{
 			HRESULT hr;

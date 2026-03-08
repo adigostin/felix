@@ -286,26 +286,5 @@ namespace FelixTests
 			Assert::IsTrue(complete);
 			Assert::IsFalse(success);
 		}
-
-		TEST_METHOD(TestCustomBuildToolSomeWhitespaceCommands)
-		{
-			TD td;
-			com_ptr<IStream> outputStream;
-			auto hr = CreateStreamOnHGlobal (NULL, TRUE, &outputStream);
-			Assert::IsTrue(SUCCEEDED(hr));
-			static const wchar_t cmdLine[] = L"  cmd /c type test.xxx  \t\r\n   \t   ";
-			auto [proj, builder] = MakeProjectWithCustomBuildTool(td.testDir.get(), L"test.xxx", "content", nullptr, cmdLine, outputStream);
-			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
-			auto callback = com_ptr(new TestBuildCallback());
-			hr = builder->StartBuild(callback);
-			Assert::IsTrue(SUCCEEDED(hr));
-			WaitWithMessageLoop([callback] { return callback->_complete; }, INFINITE);
-			Assert::IsTrue(callback->_complete);
-			Assert::IsTrue(callback->_success);
-			wil::unique_bstr output;
-			hr = MakeBstrFromStreamOnHGlobal (outputStream, &output);
-			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::AreEqual(L"content", output.get());
-		}
 	};
 }
