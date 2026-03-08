@@ -366,6 +366,31 @@ namespace UITests
 			Assert::IsNotNull(wcsstr(cmdLine.get(), file4FullPath.get()));
 		}
 
+		TEST_METHOD(SjasmCommandLine_ExitCodeZero)
+		{
+			HRESULT hr;
+			TD td (TemplatePath_TwoConfigsOneFile.get());
+			hr = td.slnBuild->Build(VARIANT_TRUE);
+			Assert::AreEqual(S_OK, hr);
+			long buildFailCount;
+			hr = td.slnBuild->get_LastBuildInfo(&buildFailCount);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(0l, buildFailCount);
+		}
+
+		TEST_METHOD(SjasmCommandLine_ExitCodeNonzero)
+		{
+			HRESULT hr;
+			TD td (TemplatePath_TwoConfigsOneFile.get());
+			WriteFileOnDisk (CombinePath(td.projDir.get(), L"file.asm").get(), "\tabcde");
+			hr = td.slnBuild->Build(VARIANT_TRUE);
+			Assert::AreEqual(S_OK, hr);
+			long buildFailCount;
+			hr = td.slnBuild->get_LastBuildInfo(&buildFailCount);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(1l, buildFailCount);
+		}
+
 		TEST_METHOD(BuildOnlySynchronousSteps)
 		{
 			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
@@ -509,7 +534,7 @@ namespace UITests
 			*/
 		}
 
-		TEST_METHOD(TestCustomBuildToolSomeWhitespaceCommands)
+		TEST_METHOD(CustomBuildToolSomeWhitespaceCommands)
 		{
 			HRESULT hr;
 			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
@@ -603,7 +628,7 @@ namespace UITests
 			}
 		};
 
-		TEST_METHOD(TestCustomBuildToolOutputWithNoEOL)
+		TEST_METHOD(CustomBuildToolOutputWithNoEOL)
 		{
 			HRESULT hr;
 			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
@@ -625,7 +650,7 @@ namespace UITests
 			Assert::AreNotEqual(L'\n', charAfter);
 		}
 
-		TEST_METHOD(TestCustomBuildToolOutputWithEOL)
+		TEST_METHOD(CustomBuildToolOutputWithEOL)
 		{
 			HRESULT hr;
 			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());

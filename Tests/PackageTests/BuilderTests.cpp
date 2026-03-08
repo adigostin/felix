@@ -112,36 +112,6 @@ namespace FelixTests
 			Assert::AreEqual(HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), hr);
 		}
 
-		TEST_METHOD(Test_SjasmCommandLine_ExitCodeZero)
-		{
-			TD td;
-			auto [proj, builder] = MakeSjasmProjectBuilder(td.testDir.get(), "\tend\r\n");
-			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
-			auto callback = com_ptr(new TestBuildCallback());
-			auto hr = builder->StartBuild (callback);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			WaitWithMessageLoop([callback] { return callback->_complete; }, INFINITE);
-
-			Assert::IsTrue(callback->_complete);
-			Assert::IsTrue(callback->_success);
-		}
-
-		TEST_METHOD(Test_SjasmCommandLine_ExitCodeNonzero)
-		{
-			TD td;
-			auto [proj, builder] = MakeSjasmProjectBuilder(td.testDir.get(), "\tINVALIDOPCODE");
-			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
-			auto callback = com_ptr(new TestBuildCallback());
-			auto hr = builder->StartBuild (callback);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			WaitWithMessageLoop([callback] { return callback->_complete; }, INFINITE);
-
-			Assert::IsTrue(callback->_complete);
-			Assert::IsFalse(callback->_success);
-		}
-
 		// sourceFileContent - empty string view to skip creating the file on disk
 		static std::pair<wil::com_ptr_failfast<IProjectNode>, wil::com_ptr_failfast<IProjectConfigBuilder>> MakeProjectWithCustomBuildTool (
 			const wchar_t* testDir,
