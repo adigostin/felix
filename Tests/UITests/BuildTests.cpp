@@ -476,7 +476,7 @@ namespace UITests
 			Assert::IsNotNull(preMessage);
 		}
 
-		static void SetCustomBuildTool (VxDTE::Project* proj, const wchar_t* fileCanonicalName, const wchar_t* commandLine, const wchar_t* description)
+		static void SetCustomBuildToolParams (VxDTE::Project* proj, const wchar_t* fileCanonicalName, const wchar_t* commandLine, const wchar_t* description)
 		{
 			auto hier = wil::com_query_failfast<IVsHierarchy>(proj);
 			VSITEMID itemId;
@@ -509,7 +509,7 @@ namespace UITests
 			HRESULT hr;
 			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
 
-			SetCustomBuildTool(td.proj, L"file.asm", L"   \r\n   \t   ", nullptr);
+			SetCustomBuildToolParams(td.proj, L"file.asm", L"   \r\n   \t   ", nullptr);
 
 			hr = td.slnBuild->Build(VARIANT_TRUE);
 			Assert::AreEqual(S_OK, hr);
@@ -540,7 +540,7 @@ namespace UITests
 			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
 
 			static const wchar_t cmdLine[] = L"  cmd /c type file.asm  \t\r\n   \t   ";
-			SetCustomBuildTool(td.proj, L"file.asm", cmdLine, nullptr);
+			SetCustomBuildToolParams(td.proj, L"file.asm", cmdLine, nullptr);
 
 			hr = td.slnBuild->Build(VARIANT_TRUE);
 			Assert::AreEqual(S_OK, hr);
@@ -558,7 +558,7 @@ namespace UITests
 			HRESULT hr;
 			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
 
-			SetCustomBuildTool(td.proj, L"file.asm", L"cmd /c pause", nullptr);
+			SetCustomBuildToolParams(td.proj, L"file.asm", L"cmd /c pause", nullptr);
 			hr = td.slnBuild->Build(VARIANT_FALSE);
 			Assert::AreEqual(S_OK, hr);
 
@@ -637,7 +637,7 @@ namespace UITests
 
 			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\file.asm");
 			WriteFileOnDisk(filePath.get(), "content_xxx");
-			SetCustomBuildTool (td.proj, L"file.asm", L"cmd /c type file.asm", nullptr);
+			SetCustomBuildToolParams (td.proj, L"file.asm", L"cmd /c type file.asm", nullptr);
 			hr = td.slnBuild->Build(VARIANT_TRUE);
 			Assert::AreEqual(S_OK, hr);
 
@@ -659,7 +659,7 @@ namespace UITests
 
 			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\file.asm");
 			WriteFileOnDisk(filePath.get(), "content_xxx\r\n");
-			SetCustomBuildTool (td.proj, L"file.asm", L"cmd /c type file.asm", nullptr);
+			SetCustomBuildToolParams (td.proj, L"file.asm", L"cmd /c type file.asm", nullptr);
 			hr = td.slnBuild->Build(VARIANT_TRUE);
 			Assert::AreEqual(S_OK, hr);
 
@@ -667,6 +667,84 @@ namespace UITests
 			static const wchar_t cnt[] = L"content_xxx\r\n";
 			auto x = wcsstr(output.get(), cnt);
 			Assert::IsNotNull(x);
+		}
+		
+		TEST_METHOD(CancelAfterAsyncBuildProcessExitedWithExitCode0)
+		{
+			HRESULT hr;
+			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
+
+			SetCustomBuildToolParams(td.proj, L"file.asm", L"cmd /c exit 0", nullptr);
+
+			wil::com_ptr_failfast<IVsCfg> cfg;
+			ULONG actual;
+			VSCFGFLAGS flags;
+			hr = td.proj.query<IVsCfgProvider>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
+			auto config = cfg.query<IVsBuildableProjectCfg2>();
+			hr = config->StartBuildEx(0, NULL, 0x0001'0000);
+			Assert::AreEqual(S_FALSE, hr);
+		}
+
+		TEST_METHOD(CancelAfterAsyncBuildProcessExitedWithExitCode1)
+		{
+			HRESULT hr;
+			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
+
+			SetCustomBuildToolParams(td.proj, L"file.asm", L"cmd /c exit 1", nullptr);
+
+			wil::com_ptr_failfast<IVsCfg> cfg;
+			ULONG actual;
+			VSCFGFLAGS flags;
+			hr = td.proj.query<IVsCfgProvider>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
+			auto config = cfg.query<IVsBuildableProjectCfg2>();
+			hr = config->StartBuildEx(0, NULL, 0x0002'0000);
+			Assert::AreEqual(S_FALSE, hr);
+		}
+
+		TEST_METHOD(CancelAfterAsyncBuildProcessExitedWithExitCode0_NotOnLastCmd)
+		{
+			HRESULT hr;
+			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
+
+			auto tempFilename = wil::str_concat_failfast<wil::unique_process_heap_string>(td.testDir, L"TST");
+			Assert::IsTrue(wil::unique_hfile(CreateFile(tempFilename.get(), GENERIC_WRITE, 0, 0, CREATE_NEW, 0, 0)).is_valid());
+			auto cmd = wil::str_printf_failfast<wil::unique_process_heap_string>(L"cmd /c exit 0\r\ncmd /c del \"%s\"", tempFilename);
+			SetCustomBuildToolParams (td.proj, L"file.asm", cmd.get(), nullptr);
+
+			wil::com_ptr_failfast<IVsCfg> cfg;
+			ULONG actual;
+			VSCFGFLAGS flags;
+			hr = td.proj.query<IVsCfgProvider>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
+			auto config = cfg.query<IVsBuildableProjectCfg2>();
+			hr = config->StartBuildEx(0, NULL, 0x0002'0000);
+			Assert::AreEqual(S_FALSE, hr);
+
+			// Since we canceled the build right after the first command, the second command
+			// (the one that deletes the temporary file), shouldn't have been executed.
+			Assert::IsTrue(PathFileExists(tempFilename.get()));
+		}
+
+		TEST_METHOD(CancelAfterAsyncBuildProcessExitedWithExitCode1_NotOnLastCmd)
+		{
+			HRESULT hr;
+			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
+
+			auto tempFilename = wil::str_concat_failfast<wil::unique_process_heap_string>(td.testDir, L"TST");
+			Assert::IsTrue(wil::unique_hfile(CreateFile(tempFilename.get(), GENERIC_WRITE, 0, 0, CREATE_NEW, 0, 0)).is_valid());
+			auto cmd = wil::str_printf_failfast<wil::unique_process_heap_string>(L"cmd /c exit 1\r\ncmd /c del \"%s\"", tempFilename);
+			SetCustomBuildToolParams (td.proj, L"file.asm", cmd.get(), nullptr);
+
+			wil::com_ptr_failfast<IVsCfg> cfg;
+			ULONG actual;
+			VSCFGFLAGS flags;
+			hr = td.proj.query<IVsCfgProvider>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
+			auto config = cfg.query<IVsBuildableProjectCfg2>();
+			hr = config->StartBuildEx(0, NULL, 0x0002'0000);
+			Assert::AreEqual(S_FALSE, hr);
+
+			// Since we canceled the build right after the first command, the second command
+			// (the one that deletes the temporary file), shouldn't have been executed.
+			Assert::IsTrue(PathFileExists(tempFilename.get()));
 		}
 	};
 }

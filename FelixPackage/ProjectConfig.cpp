@@ -387,7 +387,11 @@ public:
 		// is running on that object. Let's keep the object alive until after CancelBuild returns.
 		auto keepAlive = com_ptr(_pendingBuild);
 
-		return _pendingBuild->CancelBuild();
+		_pendingBuild->CancelBuild();
+
+		ULONG refCount = keepAlive.detach()->Release();
+		WI_ASSERT(refCount == 0);
+		return S_OK;
 	}
 
 	[[deprecated]]
@@ -461,8 +465,31 @@ public:
 			BOOL success = (hr == S_OK);
 			for (auto& cb : _buildStatusCallbacks)
 				cb.second->BuildEnd(success);
-			_pendingBuild = nullptr;
+			ULONG refCount = _pendingBuild.detach()->Release();
+			WI_ASSERT(refCount == 0);
 			return hr;
+		}
+
+		if (   (dwOptions & VS_BUILDABLEPROJECTCFGOPTS_PRIVATE) == 0x0001'0000
+			|| (dwOptions & VS_BUILDABLEPROJECTCFGOPTS_PRIVATE) == 0x0002'0000)
+		{
+			// Our tests pass these values which mean "wait a while, then cancel the build, then check outcome".
+			// 0x10000 means build is supposed to succeed, 0x20000 means the build is supposed to fail.
+			WI_ASSERT(_pendingBuild->IsBuildComplete() == S_FALSE);
+			Sleep(1000); // give the process time to run and exit, but don't pump the message loop
+			WI_ASSERT(_pendingBuild->IsBuildComplete() == S_FALSE);
+
+			auto keepAlive = _pendingBuild;
+			hr = keepAlive->CancelBuild();
+			WI_ASSERT(SUCCEEDED(hr));
+			WI_ASSERT(!_pendingBuild);
+			BOOL succeeded;
+			hr = keepAlive->IsBuildComplete(&succeeded);
+			WI_ASSERT(hr == S_OK);
+			if (dwOptions & VS_BUILDABLEPROJECTCFGOPTS_PRIVATE == 0x0001'0000)
+				WI_ASSERT(succeeded);
+			else
+				WI_ASSERT(!succeeded);
 		}
 
 		return S_FALSE;

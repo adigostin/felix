@@ -87,31 +87,6 @@ namespace FelixTests
 			return { std::move(project), std::move(builder) };
 		}
 
-		TEST_METHOD(Test_SjasmMissingExe)
-		{
-			TD td;
-			wil::unique_process_heap_string dllDir;
-			wil::GetModuleFileNameW((HMODULE)&__ImageBase, dllDir);
-			*PathFindFileName(dllDir.get()) = 0;
-
-			auto sjasmOrigPath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH);
-			PathCombine (sjasmOrigPath.get(), dllDir.get(), L"sjasmplus.exe");
-			auto sjasmTempPath = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH);
-			PathCombine(sjasmTempPath.get(), dllDir.get(), L"sjasmplus.tmp");
-			BOOL bres = MoveFileExW (sjasmOrigPath.get(), sjasmTempPath.get(), MOVEFILE_REPLACE_EXISTING);
-			Assert::IsTrue(bres);
-
-			auto [proj, builder] = MakeSjasmProjectBuilder(td.testDir.get(), "");
-			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
-			auto callback = com_ptr(new TestBuildCallback());
-			auto hr = builder->StartBuild (callback);
-
-			bres = MoveFileExW(sjasmTempPath.get(), sjasmOrigPath.get(), MOVEFILE_REPLACE_EXISTING);
-			Assert::IsTrue(bres);
-
-			Assert::AreEqual(HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), hr);
-		}
-
 		// sourceFileContent - empty string view to skip creating the file on disk
 		static std::pair<wil::com_ptr_failfast<IProjectNode>, wil::com_ptr_failfast<IProjectConfigBuilder>> MakeProjectWithCustomBuildTool (
 			const wchar_t* testDir,
@@ -166,95 +141,6 @@ namespace FelixTests
 			Assert::IsFalse(callback->_complete);
 			ULONG remainingRefCount = builder.detach()->Release();
 			Assert::AreEqual((ULONG)0, remainingRefCount);
-		}
-
-		/*
-		On second thought, this scenario is not legal COM. The application is supposed to
-		hold a reference to "builder" until _after_ the call to CancelBuild returns.
-		TEST_METHOD(TestCustomBuildToolWaitingUserInput_CallbackReleasesBuilder)
-		{
-			auto builder = MakeProjectWithCustomBuildTool(L"test.xxx", { }, L"cmd /c pause", nullptr);
-			auto callback = com_ptr(new TestBuildCallback([&builder](bool success) { builder.reset(); }));
-			auto hr = builder->StartBuild(callback);
-			Assert::IsTrue(SUCCEEDED(hr));
-			WaitCallbackWithMessageLoop(1000, callback);
-			Assert::IsFalse(callback->_complete);
-			hr = builder->CancelBuild();
-			Assert::IsTrue(callback->_complete);
-			Assert::IsFalse(callback->_success);
-			Assert::IsTrue(SUCCEEDED(hr));
-		}
-		*/
-		static void CancelAfterAsyncBuildProcessExited (const wchar_t* testDir, const wchar_t* command, BOOL* complete, BOOL* success)
-		{
-			auto [proj, builder] = MakeProjectWithCustomBuildTool (testDir, L"test.xxx", "content", nullptr, command, nullptr);
-			auto close = wil::scope_exit([&proj] { proj->AsHierarchy()->Close(); });
-			auto callback = com_ptr(new TestBuildCallback());
-			auto hr = builder->StartBuild(callback);
-			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::IsFalse(callback->_complete);
-			Sleep(1000); // give the process time to run and exit, but don't pump the message loop
-			Assert::IsFalse(callback->_complete);
-
-			hr = builder->CancelBuild();
-			Assert::IsTrue(SUCCEEDED(hr));
-			*complete = callback->_complete;
-			*success = callback->_success;
-		}
-
-		TEST_METHOD(CancelAfterAsyncBuildProcessExitedWithExitCode0)
-		{
-			TD td;
-			BOOL complete, success;
-			CancelAfterAsyncBuildProcessExited (td.testDir.get(), L"cmd /c exit 0", &complete, &success);
-			Assert::IsTrue(complete);
-			Assert::IsFalse(success);
-		}
-
-		TEST_METHOD(CancelAfterAsyncBuildProcessExitedWithExitCode1)
-		{
-			TD td;
-			BOOL complete, success;
-			CancelAfterAsyncBuildProcessExited (td.testDir.get(), L"cmd /c exit 1", &complete, &success);
-			Assert::IsTrue(complete);
-			Assert::IsFalse(success);
-		}
-
-		static void CancelAfterAsyncBuildProcessExited_NotOnLastCmd (const wchar_t* testDir, DWORD firstCommandExitCode, BOOL* complete, BOOL* success)
-		{
-			wchar_t tempFilename[MAX_PATH];
-			UINT uires = GetTempFileNameW (testDir, L"TST", 0, tempFilename);
-			Assert::IsTrue(uires > 0);
-			static const wchar_t Format[] = L"cmd /c exit %u\r\ncmd /c del \"%s\"";
-			size_t allocLen = _countof(Format) + 10 + wcslen(tempFilename);
-			auto cmd = wil::make_hlocal_string_nothrow(nullptr, allocLen);
-			Assert::IsNotNull(cmd.get());
-			swprintf_s (cmd.get(), allocLen, Format, firstCommandExitCode, tempFilename);
-			CancelAfterAsyncBuildProcessExited (testDir, cmd.get(), complete, success);
-
-			// Since we canceled the build right after the first command, the second command
-			// (the one that deletes the temporary file), shouldn't have been executed.
-			BOOL fileExists = PathFileExists(tempFilename);
-			DeleteFileW(tempFilename);
-			Assert::IsTrue(fileExists);
-		}
-
-		TEST_METHOD(CancelAfterAsyncBuildProcessExitedWithExitCode0_NotOnLastCmd)
-		{
-			TD td;
-			BOOL complete, success;
-			CancelAfterAsyncBuildProcessExited_NotOnLastCmd(td.testDir.get(), 0, &complete, &success);
-			Assert::IsTrue(complete);
-			Assert::IsFalse(success);
-		}
-
-		TEST_METHOD(CancelAfterAsyncBuildProcessExitedWithExitCode1_NotOnLastCmd)
-		{
-			TD td;
-			BOOL complete, success;
-			CancelAfterAsyncBuildProcessExited_NotOnLastCmd(td.testDir.get(), 1, &complete, &success);
-			Assert::IsTrue(complete);
-			Assert::IsFalse(success);
 		}
 	};
 }

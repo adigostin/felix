@@ -62,11 +62,13 @@ public:
 		}
 	}
 
-	void clear()
+	void clear() noexcept
 	{
-		for (uint32_t i = _size - 1; i != -1; i--)
-			_ptr[i].~T();
-		_size = 0;
+		while(_size)
+		{
+			_ptr[_size - 1].~T();
+			_size--;
+		}
 	}
 
 	T& front()

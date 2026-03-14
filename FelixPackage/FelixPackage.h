@@ -42,6 +42,9 @@ __interface IProjectConfigBuilder : IUnknown
 	// fSuccess=TRUE if the build completed successfully before calling this function,
 	// or with fSuccess=FALSE otherwise.
 	HRESULT STDMETHODCALLTYPE CancelBuild();
+
+	// Returns S_OK (complete) or S_FALSE (pending or not yet started).
+	HRESULT STDMETHODCALLTYPE IsBuildComplete (BOOL* pfSucceeded = nullptr);
 };
 
 struct IChildNode;

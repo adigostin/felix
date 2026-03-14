@@ -462,7 +462,12 @@ struct ProjectConfigBuilder : IProjectConfigBuilder, IBuildStepCallback
 	com_ptr<IVsOutputWindowPane2> _outputWindow2;
 	com_ptr<IProjectConfigBuilderCallback> _callback;
 	vector_nothrow<com_ptr<IBuildStep>> _steps;
-	uint32_t _currentStep = UINT32_MAX; // UINT32_MAX means we haven't started yet, or have finished already
+	// - -1 means we haven't started yet;
+	// - a value lower than _steps.size() means build is at that step, and:
+	//    - _callback != NULL means build is currently running;
+	//    - _callback == NULL means build completed with failure at this step;
+	// - a value equal to _steps.size() means build completed successfully.
+	int _currentStep = -1;
 	WeakRefToThis _weakRefToThis;
 
 public:
@@ -489,17 +494,6 @@ public:
 
 	~ProjectConfigBuilder()
 	{
-		if (_currentStep < _steps.size())
-		{
-			// The user of this object has called StartBuild on us, has not yet called
-			// CancelBuild on us, and has released the last reference to us.
-			WI_ASSERT(_callback);
-			ULONG remainingRefCount = _steps[_currentStep].detach()->Release();
-			WI_ASSERT(remainingRefCount == 0);
-			_callback = nullptr;
-		}
-		else
-			WI_ASSERT(_callback == nullptr);
 	}
 
 	#pragma region IUnknown
@@ -694,31 +688,53 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE CancelBuild() override
 	{
-		RETURN_HR_IF(E_UNEXPECTED, _currentStep >= _steps.size());
+		RETURN_HR_IF(E_UNEXPECTED, _currentStep < 0);
+		RETURN_HR_IF(E_UNEXPECTED, _currentStep >= (int)_steps.size());
 		RETURN_HR_IF(E_UNEXPECTED, !_callback);
 		auto hr = _steps[_currentStep]->CancelStep(); RETURN_IF_FAILED(hr);
 		WI_ASSERT(_callback == nullptr);
-		_steps.clear();
-		_currentStep = UINT32_MAX;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE IsBuildComplete (BOOL* pfSucceeded) override
+	{
+		if (_currentStep < 0)
+			// build hasn't started yet
+			return S_FALSE;
+		
+		if (_currentStep < _steps.size())
+		{
+			if (_callback)
+				return S_FALSE; // build is running, so far successfully
+		
+			// build completed with error
+			if (pfSucceeded)
+				*pfSucceeded = FALSE;
+			return S_OK;
+		}
+
+		// build completed successfully
+		if (pfSucceeded)
+			*pfSucceeded = TRUE;
 		return S_OK;
 	}
 
 	#pragma region IBuildStepCallback
 	virtual void OnStepComplete (bool success) override
 	{
-		_currentStep++;
-
 		if (!success)
 		{
 			auto callback = std::move(_callback);
 			callback->OnBuildComplete(false);
-			while (_steps.size() > _currentStep)
-				_steps.remove_back();
 			return;
 		}
 
-		while (_currentStep < _steps.size())
+		while(true)
 		{
+			_currentStep++;
+			if (_currentStep >= _steps.size())
+				break;
+
 			auto hr = _steps[_currentStep]->RunStep(this);
 			if (hr == E_PENDING)
 				return;
@@ -728,7 +744,6 @@ public:
 				callback->OnBuildComplete(false);
 				return;
 			}
-			_currentStep++;
 		}
 
 		auto callback = std::move(_callback);
