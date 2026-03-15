@@ -490,6 +490,7 @@ public:
 				WI_ASSERT(succeeded);
 			else
 				WI_ASSERT(!succeeded);
+			WI_ASSERT(keepAlive.detach()->Release() == 0);
 		}
 
 		return S_FALSE;
