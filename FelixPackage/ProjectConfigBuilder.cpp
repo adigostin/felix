@@ -843,7 +843,7 @@ public:
 	}
 };
 
-FELIX_API HRESULT MakeProjectConfigBuilder (IProjectNode* project, IProjectConfig* config,
+HRESULT MakeProjectConfigBuilder (IProjectNode* project, IProjectConfig* config,
 	IVsOutputWindowPane2* outputWindowPane, IProjectConfigBuilder** to)
 {
 	auto p = com_ptr(new (std::nothrow) ProjectConfigBuilder()); RETURN_IF_NULL_ALLOC(p);

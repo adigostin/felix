@@ -208,7 +208,7 @@ void PrintProperty (const char* prefix, VSHPROPID propid, const VARIANT* pvar);
 HRESULT MakeBstrFromString (const char* name, BSTR* bstr);
 HRESULT MakeBstrFromString (const char* name, size_t len, BSTR* bstr);
 HRESULT MakeBstrFromString (const char* sl_name_from, const char* sl_name_to, BSTR* to);
-FELIX_API HRESULT MakeBstrFromStreamOnHGlobal (IStream* stream, BSTR* pBstr);
+HRESULT MakeBstrFromStreamOnHGlobal (IStream* stream, BSTR* pBstr);
 
 template<typename from_string_type, typename to_string_type>
 HRESULT UTF8ToUTF16 (const from_string_type& fromStringUTF8, to_string_type& toStringUTF16)
@@ -276,16 +276,16 @@ HRESULT MakeDebugEngine (IDebugEngine2** to);
 HRESULT MakeLaunchOptions (IFelixLaunchOptions** ppOptions);
 HRESULT GetDefaultProjectFileExtension (BSTR* ppExt);
 HRESULT SetFelixErrorInfo(HRESULT errorHR, ULONG formatPackageStringResId, ...);
-FELIX_API HRESULT MakeCustomBuildToolProperties (ICustomBuildToolProperties** to);
-FELIX_API HRESULT MakeProjectConfigBuilder (IProjectNode* project, IProjectConfig* config,
+HRESULT MakeCustomBuildToolProperties (ICustomBuildToolProperties** to);
+HRESULT MakeProjectConfigBuilder (IProjectNode* project, IProjectConfig* config,
 	IVsOutputWindowPane2* outputWindowPane, IProjectConfigBuilder** to);
 HRESULT ShowCommandLinePropertyBuilder (HWND hwndParent, BSTR valueBefore, BSTR* valueAfter);
 HRESULT GetCountOfBuildToolAssemblerFiles(IProjectNode* project, UINT* pCount);
 HRESULT GetActiveCfgGeneratePrePostIncludeFiles (IVsHierarchy* hier);
 HRESULT GeneratePrePostIncludeFiles (IProjectNode* project);
 HRESULT DeletePrePostIncludeFiles (IProjectNode* project);
-FELIX_API HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine);
-FELIX_API HRESULT MakeFolderNode (IFolderNode** ppFolder);
+HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine);
+HRESULT MakeFolderNode (IFolderNode** ppFolder);
 HRESULT MakeFolderNodeGenerated (IFolderNode** ppFolder);
 BOOL LUtilFixFilename (wchar_t* strName);
 HRESULT QueryEditProjectFile (IVsHierarchy* hier);

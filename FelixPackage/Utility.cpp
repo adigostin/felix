@@ -250,7 +250,7 @@ HRESULT MakeBstrFromString (const char* sl_name_from, const char* sl_name_to, BS
 	return S_OK;
 }
 
-FELIX_API HRESULT MakeBstrFromStreamOnHGlobal (IStream* stream, BSTR* pBstr)
+HRESULT MakeBstrFromStreamOnHGlobal (IStream* stream, BSTR* pBstr)
 {
 	STATSTG stat;
 	auto hr = stream->Stat(&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
@@ -482,7 +482,7 @@ HRESULT DeletePrePostIncludeFiles (IProjectNode* project)
 }
 
 // Returns S_FALSE when there are no files with BuildTool=Assembler.
-FELIX_API HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine)
+HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* config, IProjectConfigAssemblerProperties* asmPropsOverride, BSTR* ppCmdLine)
 {
 	HRESULT hr;
 

@@ -324,15 +324,14 @@ namespace UITests
 			GetWindowThreadProcessId((HWND)(size_t)(DWORD)dteMainWindowHWnd, &processID);
 			wil::unique_handle hProcess (OpenProcess (SYNCHRONIZE, FALSE, processID));
 
-			bool closed = false;
+			bool exited = false;
 			if (!hard && SUCCEEDED(dte->Quit()))
 			{
-				DWORD waitRes = WaitForSingleObject(hProcess.get(), IsDebuggerPresent() ? INFINITE : 10000);
-				if (waitRes == WAIT_OBJECT_0)
-					closed = true;
+				auto processExited = [&hProcess] { return WaitForSingleObject(hProcess.get(), 0) == WAIT_OBJECT_0; };
+				exited = WaitWithMessageLoop (processExited, IsDebuggerPresent() ? INFINITE : 10000);
 			}
 
-			if (!closed)
+			if (!exited)
 				TerminateProcess(hProcess.get(), 1234);
 
 			dte.reset();

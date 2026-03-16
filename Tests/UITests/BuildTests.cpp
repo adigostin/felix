@@ -706,7 +706,7 @@ namespace UITests
 			HRESULT hr;
 			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
 
-			auto tempFilename = wil::str_concat_failfast<wil::unique_process_heap_string>(td.testDir, L"TST");
+			auto tempFilename = wil::str_concat_failfast<wil::unique_process_heap_string>(td.testDir, L"\\TST");
 			Assert::IsTrue(wil::unique_hfile(CreateFile(tempFilename.get(), GENERIC_WRITE, 0, 0, CREATE_NEW, 0, 0)).is_valid());
 			auto cmd = wil::str_printf_failfast<wil::unique_process_heap_string>(L"cmd /c exit 0\r\ncmd /c del \"%s\"", tempFilename);
 			SetCustomBuildToolParams (td.proj, L"file.asm", cmd.get(), nullptr);
@@ -729,7 +729,7 @@ namespace UITests
 			HRESULT hr;
 			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
 
-			auto tempFilename = wil::str_concat_failfast<wil::unique_process_heap_string>(td.testDir, L"TST");
+			auto tempFilename = wil::str_concat_failfast<wil::unique_process_heap_string>(td.testDir, L"\\TST");
 			Assert::IsTrue(wil::unique_hfile(CreateFile(tempFilename.get(), GENERIC_WRITE, 0, 0, CREATE_NEW, 0, 0)).is_valid());
 			auto cmd = wil::str_printf_failfast<wil::unique_process_heap_string>(L"cmd /c exit 1\r\ncmd /c del \"%s\"", tempFilename);
 			SetCustomBuildToolParams (td.proj, L"file.asm", cmd.get(), nullptr);
