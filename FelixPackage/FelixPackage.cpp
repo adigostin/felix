@@ -24,6 +24,7 @@ FELIX_API const wchar_t ProjectElementName[] = L"Z80Project";
 const wchar_t ConfigurationElementName[] = L"Configuration";
 const wchar_t FileElementName[] = L"File";
 const wchar_t FolderElementName[] = L"Folder";
+wil::unique_process_heap_string uiTestDir;
 static const wchar_t AlwaysReportSettingsName[] = L"AlwaysReportErrors";
 static const wchar_t BinaryFilename[] = L"ROMs/Spectrum48K.rom";
 
@@ -63,11 +64,31 @@ public:
 	HRESULT InitInstance()
 	{
 		auto hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, packageDir); RETURN_IF_FAILED(hr);
-		auto fnres = PathFindFileName(packageDir.get()); RETURN_HR_IF(CO_E_BAD_PATH, fnres == packageDir.get());
+		auto fnres = PathFindFileName(packageDir.get()); RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), fnres == packageDir.get());
 		*fnres = 0;
+
+		wchar_t temp[MAX_PATH + 1];
+		GetTempPathW(_countof(temp), temp);
+		hr = wil::str_concat_nothrow(uiTestDir, temp, L"FelixTestUI\\"); RETURN_IF_FAILED(hr);
+		if (PathFileExists(uiTestDir.get()))
+		{
+			wil::unique_process_heap_string path;
+			if (SUCCEEDED(wil::str_concat_nothrow(path, uiTestDir, L"FelixPackageImpl")))
+				wil::unique_hfile(CreateFile(path.get(), GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS, 0, 0));
+		}
 
 		hr = Z80AsmLanguageInfo_CreateInstance(&_z80AsmLanguageInfo); RETURN_IF_FAILED(hr);
 		return S_OK;
+	}
+
+	~FelixPackageImpl()
+	{
+		if (PathFileExists(uiTestDir.get()))
+		{
+			wil::unique_process_heap_string path;
+			if (SUCCEEDED(wil::str_concat_nothrow(path, uiTestDir, L"FelixPackageImpl")))
+				DeleteFile(path.get());
+		}
 	}
 
 	#pragma region IUnknown

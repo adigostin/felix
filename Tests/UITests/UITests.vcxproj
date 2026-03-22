@@ -110,11 +110,13 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="FileTests.cpp" />
+    <ClCompile Include="PackageTests.cpp" />
     <ClCompile Include="UITests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\TestsCommon.h" />
     <ClInclude Include="pch.h" />
+    <ClInclude Include="UITests.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

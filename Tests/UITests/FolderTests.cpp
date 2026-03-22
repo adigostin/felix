@@ -1,30 +1,19 @@
 
 #include "pch.h"
 #include "shared/com.h"
-#include "../TestsCommon.h"
-#include "dispids.h"
-#include "FelixPackage_h.h"
-
-#define FORCE_EXPLICIT_DTE_NAMESPACE
-#include <dte.h>
-namespace VxDTE
-{
-	#include <dte80.h>
-	#include <dte90.h>
-}
-
-using namespace Microsoft::VisualStudio::CppUnitTestFramework;
+#include "UITests.h"
 
 namespace UITests
 {
 	extern std::pair<wil::com_ptr_failfast<VxDTE::_Solution>, wil::com_ptr_failfast<VxDTE::Project>>
-		CreateSolutionAndProject (PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName);
+		CreateSolutionAndProject (VxDTE::DTE2* dte, PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName);
 	extern wil::unique_process_heap_string MakeVolumeGuidPath (const wchar_t* path);
 
 	TEST_CLASS(FolderTests)
 	{
 		struct TD
 		{
+			wil::com_ptr_failfast<VxDTE::DTE2> dte;
 			wil::unique_process_heap_string testDir;
 			wil::unique_process_heap_string slnFilePath;
 			wil::unique_process_heap_string projDir;
@@ -34,9 +23,10 @@ namespace UITests
 
 			TD()
 			{
+				dte = GetDefaultVSInstance();
 				testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"FolderTest");
 				Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
-				std::tie(sln, proj) = CreateSolutionAndProject(testDir.get(), L"test", L"proj");
+				std::tie(sln, proj) = CreateSolutionAndProject(dte, testDir.get(), L"test", L"proj");
 				slnFilePath = CombinePath(testDir.get(), L"test.sln");
 				projDir = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\proj");
 				projFilePath = wil::str_concat_failfast<wil::unique_process_heap_string>(projDir, L"\\proj.flx");

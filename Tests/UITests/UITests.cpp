@@ -1,26 +1,15 @@
 
 #include "pch.h"
 #include "shared/com.h"
-#include "FelixPackage.h"
-#include "../TestsCommon.h"
-
-#define FORCE_EXPLICIT_DTE_NAMESPACE
-#include <dte.h>
-namespace VxDTE
-{
-	#include <dte80.h>
-	#include <dte90.h>
-}
-
-using namespace Microsoft::VisualStudio::CppUnitTestFramework;
+#include "UITests.h"
 
 namespace UITests
 {
-	wil::com_ptr_failfast<IUIAutomation> automation;
-	wil::com_ptr_failfast<VxDTE::_DTE> dte;
+	static wil::com_ptr_failfast<IUIAutomation> automation;
+	static wil::com_ptr_failfast<VxDTE::DTE2> defaultInstance;
 
 	#pragma region DTE Initialization
-	static HRESULT GetDTE (DWORD processId, VxDTE::_DTE** ppDTE)
+	static HRESULT GetDTE (DWORD processId, VxDTE::DTE2** ppDTE)
 	{
 		HRESULT hr;
 
@@ -184,7 +173,7 @@ namespace UITests
 			DWORD vspid = pids.get()[i];
 			if (vspid == targetVsProcessId)
 				continue;
-			com_ptr<VxDTE::_DTE> dte;
+			com_ptr<VxDTE::DTE2> dte;
 			if (SUCCEEDED(GetDTE(vspid, &dte)))
 			{
 				com_ptr<VxDTE::Debugger> debugger;
@@ -223,7 +212,7 @@ namespace UITests
 		Assert::Fail();
 	}
 
-	static void StartOrRestart()
+	wil::com_ptr_failfast<VxDTE::DTE2> LaunchVS()
 	{
 		HRESULT hr;
 
@@ -243,7 +232,7 @@ namespace UITests
 		Assert::IsTrue(bres);
 		Assert::AreEqual(STILL_ACTIVE, exitCode);
 
-		com_ptr<VxDTE::_DTE> dte;
+		wil::com_ptr_failfast<VxDTE::DTE2> dte;
 		DWORD startTime = GetTickCount();
 		while (GetTickCount() - startTime <= 60'000 && !dte)
 		{
@@ -301,41 +290,36 @@ namespace UITests
 		if (IsDebuggerPresent())
 			FindAndAttach(pi.dwProcessId, dte);
 
-		::UITests::dte = std::move(dte);
+		return dte;
 	}
 
-	static void CloseCurrentInstance(bool hard = false)
+	void CloseVS (VxDTE::DTE2* dte, bool hard)
 	{
 		HRESULT hr;
-		if (dte)
+		wil::com_ptr_failfast<IUnknown> solution;
+		hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
+		Assert::IsTrue(SUCCEEDED(hr));
+		solution.query<VxDTE::_Solution>()->Close();
+
+		com_ptr<VxDTE::Window> dteMainWindow;
+		hr = dte->get_MainWindow(&dteMainWindow);
+		Assert::IsTrue(SUCCEEDED(hr));
+		long dteMainWindowHWnd;
+		hr = dteMainWindow->get_HWnd(&dteMainWindowHWnd);
+		Assert::IsTrue(SUCCEEDED(hr));
+		DWORD processID;
+		GetWindowThreadProcessId((HWND)(size_t)(DWORD)dteMainWindowHWnd, &processID);
+		wil::unique_handle hProcess (OpenProcess (SYNCHRONIZE, FALSE, processID));
+
+		bool exited = false;
+		if (!hard && SUCCEEDED(dte->Quit()))
 		{
-			wil::com_ptr_failfast<IUnknown> solution;
-			hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
-			Assert::IsTrue(SUCCEEDED(hr));
-			solution.query<VxDTE::_Solution>()->Close();
-
-			com_ptr<VxDTE::Window> dteMainWindow;
-			hr = dte->get_MainWindow(&dteMainWindow);
-			Assert::IsTrue(SUCCEEDED(hr));
-			long dteMainWindowHWnd;
-			hr = dteMainWindow->get_HWnd(&dteMainWindowHWnd);
-			Assert::IsTrue(SUCCEEDED(hr));
-			DWORD processID;
-			GetWindowThreadProcessId((HWND)(size_t)(DWORD)dteMainWindowHWnd, &processID);
-			wil::unique_handle hProcess (OpenProcess (SYNCHRONIZE, FALSE, processID));
-
-			bool exited = false;
-			if (!hard && SUCCEEDED(dte->Quit()))
-			{
-				auto processExited = [&hProcess] { return WaitForSingleObject(hProcess.get(), 0) == WAIT_OBJECT_0; };
-				exited = WaitWithMessageLoop (processExited, IsDebuggerPresent() ? INFINITE : 10000);
-			}
-
-			if (!exited)
-				TerminateProcess(hProcess.get(), 1234);
-
-			dte.reset();
+			auto processExited = [&hProcess] { return WaitForSingleObject(hProcess.get(), 0) == WAIT_OBJECT_0; };
+			exited = WaitWithMessageLoop (processExited, IsDebuggerPresent() ? INFINITE : 10000);
 		}
+
+		if (!exited)
+			TerminateProcess(hProcess.get(), 1234);
 	}
 	#pragma endregion
 
@@ -354,12 +338,16 @@ namespace UITests
 
 		hr = CoCreateInstance (__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation));
 		Assert::IsTrue(SUCCEEDED(hr));
-		StartOrRestart();
 	}
 
 	TEST_MODULE_CLEANUP(UITestsCleanup)
 	{
-		CloseCurrentInstance();
+		if (defaultInstance)
+		{
+			CloseVS(defaultInstance);
+			defaultInstance = nullptr;
+		}
+
 		automation.reset();
 
 		// To easy debugging, delete only the contents of the test directory, not the test directory itself.
@@ -371,11 +359,19 @@ namespace UITests
 		wil::SetResultLoggingCallback(nullptr);
 	}
 
+	wil::com_ptr_failfast<VxDTE::DTE2> GetDefaultVSInstance()
+	{
+		if (!defaultInstance)
+			defaultInstance = LaunchVS();
+
+		return defaultInstance;
+	}
+
 	// <param name="testDir">The directory in which to create the solution.</param>
 	// <param name="solutionName">The name of the solution to create, without extension.</param>
 	// <param name="projectName">NULL to create a project with the same name as the solution in the same dir, filename without extension to create project in subdir with different name.</param>
 	std::pair<wil::com_ptr_failfast<VxDTE::_Solution>, wil::com_ptr_failfast<VxDTE::Project>>
-		CreateSolutionAndProject (PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName)
+		CreateSolutionAndProject (VxDTE::DTE2* dte, PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName)
 	{
 		HRESULT hr;
 		wil::com_ptr_failfast<IUnknown> solution;
@@ -443,7 +439,7 @@ namespace UITests
 		return testPathOtherDrive;
 	}
 
-	wil::unique_bstr GetBuildOutputWindowPaneContent()
+	wil::unique_bstr GetBuildOutputWindowPaneContent(VxDTE::DTE2* dte)
 	{
 		HRESULT hr;
 		auto dte2 = wil::com_query_failfast<VxDTE::DTE2>(dte);

@@ -1,30 +1,19 @@
 
 #include "pch.h"
 #include "shared/com.h"
-#include "../TestsCommon.h"
-#include "../FelixPackage/dispids.h"
-
-#define FORCE_EXPLICIT_DTE_NAMESPACE
-#include <dte.h>
-namespace VxDTE
-{
-	#include <dte80.h>
-	#include <dte90.h>
-}
-
-using namespace Microsoft::VisualStudio::CppUnitTestFramework;
+#include "UITests.h"
 
 static constexpr VSITEMID VSITEMID_GENFILES = 50;
 
 namespace UITests
 {
-	extern wil::com_ptr_failfast<VxDTE::_DTE> dte;
 	extern std::pair<wil::com_ptr_failfast<VxDTE::_Solution>, wil::com_ptr_failfast<VxDTE::Project>>
-		CreateSolutionAndProject (PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName);
+		CreateSolutionAndProject (VxDTE::DTE2* dte, PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName);
 	extern void BuildSolution (VxDTE::_Solution* sln, long* buildFailCount);
 
 	TEST_CLASS(MiscTests)
 	{
+		wil::com_ptr_failfast<VxDTE::DTE2> dte;
 		wil::unique_process_heap_string testPath;
 		wil::unique_process_heap_string slnFilePath;
 		wil::unique_process_heap_string projPath;
@@ -34,9 +23,10 @@ namespace UITests
 
 		TEST_METHOD_INITIALIZE(MiscTestInit)
 		{
+			dte = GetDefaultVSInstance();
 			testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"MiscTest");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			std::tie(sln, proj) = CreateSolutionAndProject(testPath.get(), L"test", L"proj");
+			std::tie(sln, proj) = CreateSolutionAndProject(dte, testPath.get(), L"test", L"proj");
 			slnFilePath = CombinePath(testPath.get(), L"test.sln");
 			projPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\proj");
 			projFilePath = wil::str_concat_failfast<wil::unique_process_heap_string>(projPath, L"\\proj.flx");

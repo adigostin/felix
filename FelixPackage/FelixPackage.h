@@ -195,6 +195,7 @@ FELIX_API extern const wchar_t ProjectElementName[];
 extern const wchar_t ConfigurationElementName[];
 extern const wchar_t FileElementName[];
 extern const wchar_t FolderElementName[];
+extern wil::unique_process_heap_string uiTestDir;
 
 extern const wchar_t MacroOutputName[];
 extern const wchar_t MacroProjectName[];

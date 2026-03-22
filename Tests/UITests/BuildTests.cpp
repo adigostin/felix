@@ -1,39 +1,30 @@
 
 #include "pch.h"
-#include "shared/com.h"
-#include "../TestsCommon.h"
-
-#define FORCE_EXPLICIT_DTE_NAMESPACE
-#include <dte.h>
-namespace VxDTE
-{
-	#include <dte80.h>
-	#include <dte90.h>
-}
-
-using namespace Microsoft::VisualStudio::CppUnitTestFramework;
+#include "shared/vector_nothrow.h"
+#include "UITests.h"
 
 namespace UITests
 {
-	extern wil::com_ptr_failfast<VxDTE::_DTE> dte;
 	extern wil::unique_process_heap_string MakeVolumeGuidPath (const wchar_t* path);
-	extern wil::unique_bstr GetBuildOutputWindowPaneContent();
+	extern wil::unique_bstr GetBuildOutputWindowPaneContent (VxDTE::DTE2* dte);
 
 	TEST_CLASS(BuildTests)
 	{
 		struct TD
 		{
+			wil::com_ptr_failfast<VxDTE::DTE2> dte;
 			wil::unique_process_heap_string testDir;
 			wil::unique_process_heap_string slnFilePath;
 			wil::unique_process_heap_string projDir;
 			wil::unique_process_heap_string projFilePath;
 			wil::com_ptr_failfast<VxDTE::_Solution> sln;
 			wil::com_ptr_failfast<VxDTE::Project> proj;
-			com_ptr<VxDTE::SolutionBuild> slnBuild;
+			wil::com_ptr_failfast<VxDTE::SolutionBuild> slnBuild;
 
 			TD (const wchar_t* projectTemplatePath)
 			{
 				HRESULT hr;
+				dte = GetDefaultVSInstance();
 				testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"BuildTests");
 				Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
 				
@@ -102,10 +93,9 @@ namespace UITests
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::AreEqual(1l, buildFailCount);
 
-			hr = dte->ExecuteCommand(wil::make_bstr_failfast(L"View.ErrorList").get());
-			auto dte2 = wil::com_query_failfast<VxDTE::DTE2>(dte);
+			hr = td.dte->ExecuteCommand(wil::make_bstr_failfast(L"View.ErrorList").get());
 			wil::com_ptr_failfast<VxDTE::ToolWindows> toolWindows;
-			hr = dte2->get_ToolWindows(&toolWindows);
+			hr = td.dte->get_ToolWindows(&toolWindows);
 			wil::com_ptr_failfast<VxDTE::ErrorList> errorList;
 			hr = toolWindows->get_ErrorList(&errorList);
 			wil::com_ptr_failfast<VxDTE::ErrorItems> errorItems;
@@ -125,7 +115,7 @@ namespace UITests
 			VSCFGFLAGS flags;
 			td.proj.query<IVsCfgProvider>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
 
-			com_ptr<IProjectConfigGeneralProperties> generalProps;
+			wil::com_ptr_failfast<IProjectConfigGeneralProperties> generalProps;
 			cfg.query<IProjectConfigProperties>()->get_GeneralProperties(&generalProps);
 			generalProps->put_OutputDirectory(wil::make_bstr_failfast(L"%PROJECT_DIR%Out").get());
 			generalProps->put_OutputFileType(OutputFileType::Sna);
@@ -149,7 +139,7 @@ namespace UITests
 			VSCFGFLAGS flags;
 			td.proj.query<IVsCfgProvider>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
 
-			com_ptr<IProjectConfigGeneralProperties> generalProps;
+			wil::com_ptr_failfast<IProjectConfigGeneralProperties> generalProps;
 			cfg.query<IProjectConfigProperties>()->get_GeneralProperties(&generalProps);
 
 			auto buildIt = [&generalProps, &td](const wchar_t* outputDirExpected)
@@ -281,8 +271,8 @@ namespace UITests
 
 		TEST_METHOD(BuildFilesInFoldersAndSubfolders)
 		{
-			TD td (TemplatePath_EmptyProject.get());
 			HRESULT hr;
+			TD td (TemplatePath_EmptyProject.get());
 			auto hier = td.proj.query<IVsUIHierarchy>();
 
 			wil::unique_variant folder;
@@ -419,7 +409,7 @@ namespace UITests
 			Assert::AreEqual(S_OK, hr);
 			Assert::AreEqual(0l, buildFailCount);
 
-			auto text = GetBuildOutputWindowPaneContent();
+			auto text = GetBuildOutputWindowPaneContent(td.dte);
 			auto p = wcsstr(text.get(), description);
 			Assert::IsNotNull(p);
 		}
@@ -454,13 +444,13 @@ namespace UITests
 			hr = td.proj.query<IVsCfgProvider>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
 			auto config = cfg.query<IProjectConfigProperties>();
 
-			com_ptr<IProjectConfigPrePostBuildProperties> preBuildProps;
+			wil::com_ptr_failfast<IProjectConfigPrePostBuildProperties> preBuildProps;
 			hr = config->get_PreBuildProperties(&preBuildProps);
 			Assert::AreEqual(S_OK, hr);
 			hr = preBuildProps->put_CommandLine(wil::make_bstr_nothrow(L"cmd /c echo XXXX").get());
 			Assert::AreEqual(S_OK, hr);
 
-			com_ptr<IProjectConfigPrePostBuildProperties> postBuildProps;
+			wil::com_ptr_failfast<IProjectConfigPrePostBuildProperties> postBuildProps;
 			hr = config->get_PostBuildProperties(&postBuildProps);
 			Assert::AreEqual(S_OK, hr);
 			hr = postBuildProps->put_CommandLine(wil::make_bstr_nothrow(L"cmd /c echo YYYY").get());
@@ -469,7 +459,7 @@ namespace UITests
 			hr = td.slnBuild->Build(VARIANT_TRUE);
 			Assert::AreEqual(S_OK, hr);
 
-			auto output = GetBuildOutputWindowPaneContent();
+			auto output = GetBuildOutputWindowPaneContent(td.dte);
 			auto preMessage = wcsstr(output.get(), L"XXXX");
 			Assert::IsNotNull(preMessage);
 			auto postMessage = wcsstr(output.get(), L"YYYY");
@@ -517,7 +507,7 @@ namespace UITests
 			hr = td.slnBuild->get_LastBuildInfo(&buildFailCount);
 			Assert::AreEqual(S_OK, hr);
 			Assert::AreEqual(1l, buildFailCount);
-			auto output = GetBuildOutputWindowPaneContent();
+			auto output = GetBuildOutputWindowPaneContent(td.dte);
 			auto x = wcsstr(output.get(), L"0x80070012"); // HRESULT_FROM_WIN32(ERROR_NO_MORE_FILES)
 			Assert::IsNotNull(x, output.get());
 			/*
@@ -548,7 +538,7 @@ namespace UITests
 			hr = td.slnBuild->get_LastBuildInfo(&buildFailCount);
 			Assert::AreEqual(S_OK, hr);
 			Assert::AreEqual(0l, buildFailCount);
-			auto output = GetBuildOutputWindowPaneContent();
+			auto output = GetBuildOutputWindowPaneContent(td.dte);
 			auto x = wcsstr(output.get(), L"start:");
 			Assert::IsNotNull(x, output.get());
 		}
@@ -577,7 +567,7 @@ namespace UITests
 
 			Assert::AreEqual<int>(VxDTE::vsBuildStateInProgress, buildState);
 
-			hr = dte->ExecuteCommand(wil::make_bstr_failfast(L"Build.Cancel").get());
+			hr = td.dte->ExecuteCommand(wil::make_bstr_failfast(L"Build.Cancel").get());
 			Assert::AreEqual(S_OK, hr);
 
 			while (SUCCEEDED(td.slnBuild->get_BuildState(&buildState)) && buildState == VxDTE::vsBuildStateInProgress)
@@ -641,7 +631,7 @@ namespace UITests
 			hr = td.slnBuild->Build(VARIANT_TRUE);
 			Assert::AreEqual(S_OK, hr);
 
-			auto output = GetBuildOutputWindowPaneContent();
+			auto output = GetBuildOutputWindowPaneContent(td.dte);
 			static const wchar_t cnt[] = L"content_xxx";
 			auto x = wcsstr(output.get(), cnt);
 			Assert::IsNotNull(x);
@@ -663,7 +653,7 @@ namespace UITests
 			hr = td.slnBuild->Build(VARIANT_TRUE);
 			Assert::AreEqual(S_OK, hr);
 
-			auto output = GetBuildOutputWindowPaneContent();
+			auto output = GetBuildOutputWindowPaneContent(td.dte);
 			static const wchar_t cnt[] = L"content_xxx\r\n";
 			auto x = wcsstr(output.get(), cnt);
 			Assert::IsNotNull(x);
