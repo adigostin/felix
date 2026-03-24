@@ -14,7 +14,7 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 namespace UITests
 {
 	wil::com_ptr_failfast<VxDTE::DTE2> GetDefaultVSInstance();
-	wil::com_ptr_failfast<VxDTE::DTE2> LaunchVS (bool setEnvVar = false);
+	wil::com_ptr_failfast<VxDTE::DTE2> LaunchVS (const wchar_t* envVar = nullptr);
 	void CloseVS (VxDTE::DTE2* dte, bool hard = false);
 }
 

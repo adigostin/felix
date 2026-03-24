@@ -213,14 +213,14 @@ namespace UITests
 		Assert::Fail();
 	}
 
-	wil::com_ptr_failfast<VxDTE::DTE2> LaunchVS (bool setEnvVar)
+	wil::com_ptr_failfast<VxDTE::DTE2> LaunchVS (const wchar_t* envVar)
 	{
 		HRESULT hr;
 
 		auto lock = cs.lock();
 		auto resetev = wil::scope_exit([] { SetEnvironmentVariable(L"FelixTestUI", nullptr); });
-		if (setEnvVar)
-			SetEnvironmentVariable(L"FelixTestUI", tempPath);
+		if (envVar)
+			SetEnvironmentVariable(L"FelixTestUI", envVar);
 		else
 			resetev.release();
 
@@ -304,10 +304,15 @@ namespace UITests
 	void CloseVS (VxDTE::DTE2* dte, bool hard)
 	{
 		HRESULT hr;
+
+		hr = dte->put_SuppressUI(VARIANT_TRUE);
+		Assert::IsTrue(SUCCEEDED(hr));
+
 		wil::com_ptr_failfast<IUnknown> solution;
 		hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
 		Assert::IsTrue(SUCCEEDED(hr));
-		solution.query<VxDTE::_Solution>()->Close();
+		hr = solution.query<VxDTE::_Solution>()->Close();
+		Assert::IsTrue(SUCCEEDED(hr));
 
 		com_ptr<VxDTE::Window> dteMainWindow;
 		hr = dte->get_MainWindow(&dteMainWindow);
@@ -320,7 +325,8 @@ namespace UITests
 		wil::unique_handle hProcess (OpenProcess (SYNCHRONIZE, FALSE, processID));
 
 		bool exited = false;
-		if (!hard && SUCCEEDED(dte->Quit()))
+		//if (!hard && SUCCEEDED(dte->Quit())) dte->Quit() seems to return immediately and run asynchronously
+		if (!hard && SUCCEEDED(dte->ExecuteCommand(wil::make_bstr_failfast(L"File.Exit").get(), wil::make_bstr_failfast(L"").get())))
 		{
 			auto processExited = [&hProcess] { return WaitForSingleObject(hProcess.get(), 0) == WAIT_OBJECT_0; };
 			exited = WaitWithMessageLoop (processExited, IsDebuggerPresent() ? INFINITE : 10000);

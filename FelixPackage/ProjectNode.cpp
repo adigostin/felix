@@ -162,6 +162,13 @@ public:
 	{
 		HRESULT hr;
 
+		if (uiTestDir)
+		{
+			wil::unique_process_heap_string path;
+			if (SUCCEEDED(wil::str_concat_nothrow(path, uiTestDir, L"ProjectNode")))
+				wil::unique_hfile(CreateFile(path.get(), GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS, 0, 0));
+		}
+
 		hr = _weakRefToThis.InitInstance(static_cast<IVsHierarchy*>(this));
 
 		if (grfCreateFlags & CPF_CLONEFILE)
@@ -229,6 +236,13 @@ public:
 		WI_ASSERT (_updateBuildSolutionEventsCookie == VSCOOKIE_NIL);
 		WI_ASSERT (_cfgProviderEventSinks.empty());
 		WI_ASSERT (_nodePropertyChangeTokens.empty());
+
+		if (uiTestDir)
+		{
+			wil::unique_process_heap_string path;
+			if (SUCCEEDED(wil::str_concat_nothrow(path, uiTestDir, L"ProjectNode")))
+				DeleteFile(path.get());
+		}
 	}
 
 	// If found, returns S_OK and ppItem is non-null.
