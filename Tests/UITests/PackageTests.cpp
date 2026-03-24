@@ -10,7 +10,7 @@ namespace UITests
 		{
 			HRESULT hr;
 
-			auto dte = LaunchVS();
+			auto dte = LaunchVS(true);
 			auto closeVS = wil::scope_exit([&dte] { CloseVS(dte); });
 
 			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"PackageUnloads\\");

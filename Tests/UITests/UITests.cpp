@@ -5,6 +5,7 @@
 
 namespace UITests
 {
+	static wil::critical_section cs;
 	static wil::com_ptr_failfast<IUIAutomation> automation;
 	static wil::com_ptr_failfast<VxDTE::DTE2> defaultInstance;
 
@@ -212,9 +213,16 @@ namespace UITests
 		Assert::Fail();
 	}
 
-	wil::com_ptr_failfast<VxDTE::DTE2> LaunchVS()
+	wil::com_ptr_failfast<VxDTE::DTE2> LaunchVS (bool setEnvVar)
 	{
 		HRESULT hr;
+
+		auto lock = cs.lock();
+		auto resetev = wil::scope_exit([] { SetEnvironmentVariable(L"FelixTestUI", nullptr); });
+		if (setEnvVar)
+			SetEnvironmentVariable(L"FelixTestUI", tempPath);
+		else
+			resetev.release();
 
 		wil::unique_process_heap_string devenvExe;
 		hr = wil::GetEnvironmentVariableW (L"VSAPPIDDIR", devenvExe);

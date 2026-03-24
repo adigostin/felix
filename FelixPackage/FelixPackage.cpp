@@ -67,11 +67,10 @@ public:
 		auto fnres = PathFindFileName(packageDir.get()); RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), fnres == packageDir.get());
 		*fnres = 0;
 
-		wchar_t temp[MAX_PATH + 1];
-		GetTempPathW(_countof(temp), temp);
-		hr = wil::str_concat_nothrow(uiTestDir, temp, L"FelixTestUI\\"); RETURN_IF_FAILED(hr);
-		if (PathFileExists(uiTestDir.get()))
+		wchar_t dir[MAX_PATH]; 
+		if (GetEnvironmentVariable(L"FelixTestUI", dir, _countof(dir)))
 		{
+			uiTestDir = wil::make_process_heap_string_nothrow(dir); RETURN_IF_NULL_ALLOC(dir);
 			wil::unique_process_heap_string path;
 			if (SUCCEEDED(wil::str_concat_nothrow(path, uiTestDir, L"FelixPackageImpl")))
 				wil::unique_hfile(CreateFile(path.get(), GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS, 0, 0));
@@ -83,7 +82,7 @@ public:
 
 	~FelixPackageImpl()
 	{
-		if (PathFileExists(uiTestDir.get()))
+		if (uiTestDir)
 		{
 			wil::unique_process_heap_string path;
 			if (SUCCEEDED(wil::str_concat_nothrow(path, uiTestDir, L"FelixPackageImpl")))
