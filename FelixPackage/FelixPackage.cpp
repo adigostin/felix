@@ -70,6 +70,10 @@ public:
 		wchar_t dir[MAX_PATH]; 
 		if (GetEnvironmentVariable(L"FelixTestUI", dir, _countof(dir)))
 		{
+			// This environment variable is set by some of our tests before launching the VS experimental instance.
+			// Tests on lifetimes can only be done by launching VS and waiting for it to exit, then checking
+			// if objects have been destroyed. I couldn't find any other way to do it, because VS retains a lot
+			// of our objects in RCWs even after closing the project and opening another project.
 			uiTestDir = wil::make_process_heap_string_nothrow(dir); RETURN_IF_NULL_ALLOC(dir);
 			wil::unique_process_heap_string path;
 			if (SUCCEEDED(wil::str_concat_nothrow(path, uiTestDir, L"FelixPackageImpl")))

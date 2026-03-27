@@ -32,12 +32,30 @@ public:
 	HRESULT InitInstance()
 	{
 		HRESULT hr;
+
+		if (uiTestDir)
+		{
+			wil::unique_process_heap_string path;
+			if (SUCCEEDED(wil::str_concat_nothrow(path, uiTestDir, L"FileNode")))
+				wil::unique_hfile(CreateFile(path.get(), GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS, 0, 0));
+		}
+
 		hr = _weakRefToThis.InitInstance(static_cast<IFileNode*>(this)); RETURN_IF_FAILED(hr);
 		hr = MakeConnectionPoint(this, &_propNotifyCP); RETURN_IF_FAILED(hr);
 		hr = MakeConnectionPoint(this, &_propChangeCP); RETURN_IF_FAILED(hr);
 		hr = MakeCustomBuildToolProperties(&_customBuildToolProps); RETURN_IF_FAILED(hr);
 		hr = AdviseSink<IPropertyChangeSink>(_customBuildToolProps, _weakRefToThis, &_cbtPropNotifyToken); RETURN_IF_FAILED(hr);
 		return S_OK;
+	}
+
+	~FileNode()
+	{
+		if (uiTestDir)
+		{
+			wil::unique_process_heap_string path;
+			if (SUCCEEDED(wil::str_concat_nothrow(path, uiTestDir, L"FileNode")))
+				DeleteFile(path.get());
+		}
 	}
 
 	#pragma region IUnknown

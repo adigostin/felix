@@ -36,15 +36,18 @@ namespace UITests
 			Assert::IsFalse(PathFileExists(path.get()));
 		}
 
-		TEST_METHOD(ProjectUnloads)
+		TEST_METHOD(ProjectAndFileUnload)
 		{
 			HRESULT hr;
-			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"ProjectUnloads\\");
+			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"ProjectAndFileUnload\\");
 			auto dte = LaunchVS(testDir.get());
 			auto closeVS = wil::scope_exit([&dte] { CloseVS(dte); });
 
-			auto path = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"ProjectNode");
-			Assert::IsFalse(PathFileExists(path.get()));
+			auto pnpath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"ProjectNode");
+			Assert::IsFalse(PathFileExists(pnpath.get()));
+
+			auto fnpath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"FileNode");
+			Assert::IsFalse(PathFileExists(fnpath.get()));
 
 			{
 				Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
@@ -61,13 +64,22 @@ namespace UITests
 					wil::make_bstr_failfast(testDir.get()).get(),
 					wil::make_bstr_failfast(L"proj.flx").get(), VARIANT_FALSE, &proj);
 				Assert::AreEqual(S_OK, hr);
+
+				auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\folder/test.asm");
+				WriteFileOnDisk(fileFullPath.get(), "");
+				VSADDRESULT addResult;
+				auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000u);
+				hr = proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(fileFullPath.addressof()), nullptr, &addResult);
+				Assert::AreEqual(S_OK, hr);
 			}
 
-			Assert::IsTrue(PathFileExists(path.get()));
+			Assert::IsTrue(PathFileExists(pnpath.get()));
+			Assert::IsTrue(PathFileExists(fnpath.get()));
 
 			closeVS.reset();
 
-			Assert::IsFalse(PathFileExists(path.get()));
+			Assert::IsFalse(PathFileExists(pnpath.get()));
+			Assert::IsFalse(PathFileExists(fnpath.get()));
 		}
 	};
 }
