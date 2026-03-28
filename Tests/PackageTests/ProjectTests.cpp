@@ -333,43 +333,6 @@ namespace FelixTests
 			Assert::AreEqual(V_VSITEMID(&file2ItemId), V_VSITEMID(&firstChildItemId));
 		}
 
-		TEST_METHOD(AddItemNew)
-		{
-			com_ptr<IVsHierarchy> hier;
-			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			com_ptr<IVsProject2> proj;
-			hr = hier->QueryInterface(&proj);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			wchar_t templateFullPath[MAX_PATH];
-			PathCombine(templateFullPath, tempPath, L"template.asm");
-			HANDLE h = CreateFile(templateFullPath, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
-			Assert::AreNotEqual(INVALID_HANDLE_VALUE, h);
-			CloseHandle(h);
-
-			const wchar_t* templateName = templateFullPath;
-			VSADDRESULT result;
-			hr = proj->AddItem(VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"test.asm", 1, &templateName, nullptr, &result);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			auto pip = hier.try_query<IParentNode>();
-			com_ptr<IChildNode> firstChild = pip->FirstChild();
-			Assert::IsNotNull(firstChild.get());
-			Assert::AreNotEqual<VSITEMID>(VSITEMID_NIL, firstChild->GetItemId());
-			Assert::AreEqual<VSITEMID>(VSITEMID_ROOT, GetProperty_VSITEMID(hier, firstChild->GetItemId(), VSHPROPID_Parent));
-
-			pip.reset();
-			proj.reset();
-
-			hier->Close();
-			ULONG refCount = hier.detach()->Release();
-			Assert::AreEqual<ULONG>(0, refCount);
-
-			refCount = firstChild.detach()->Release();
-			Assert::AreEqual<ULONG>(0, refCount);
-		}
 
 		TEST_METHOD(AddItemNewToExistingFolder)
 		{

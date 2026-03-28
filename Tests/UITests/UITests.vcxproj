@@ -111,6 +111,7 @@
     </ClCompile>
     <ClCompile Include="FileTests.cpp" />
     <ClCompile Include="PackageTests.cpp" />
+    <ClCompile Include="ProjectTests.cpp" />
     <ClCompile Include="UITests.cpp" />
   </ItemGroup>
   <ItemGroup>
