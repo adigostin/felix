@@ -28,8 +28,9 @@ namespace UITests
 		{
 			wil::unique_process_heap_string testDir;
 			wil::com_ptr_failfast<VxDTE::_Solution> sln;
-			wil::com_ptr_failfast<VxDTE::Project> proj;
+			wil::com_ptr_failfast<VxDTE::Project> dteproj;
 			wil::com_ptr_failfast<IVsUIHierarchy> hier;
+			wil::com_ptr_failfast<IVsProject> proj;
 
 			TestData (const wchar_t* testName, const wchar_t* projTemplatePath)
 			{
@@ -47,12 +48,13 @@ namespace UITests
 				hr = sln->AddFromTemplate (
 					wil::make_bstr_failfast(projTemplatePath).get(),
 					wil::make_bstr_failfast(testDir.get()).get(),
-					wil::make_bstr_failfast(L"test").get(), VARIANT_TRUE, &proj);
+					wil::make_bstr_failfast(L"test").get(), VARIANT_TRUE, &dteproj);
 				Assert::AreEqual(S_OK, hr);
 				hr = sln->SaveAs(wil::make_bstr_failfast(L"test").get());
 				Assert::AreEqual(S_OK, hr);
 
-				hier = proj.query<IVsUIHierarchy>();
+				hier = dteproj.query<IVsUIHierarchy>();
+				proj = dteproj.query<IVsProject>();
 			}
 
 			~TestData()
@@ -106,7 +108,7 @@ namespace UITests
 			wil::unique_variant folder;
 			hr = td.hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &folder);
 			Assert::AreEqual(S_OK, hr);
-			hr = td.hier->SetProperty (V_VSITEMID(&folder), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"folder"));
+			hr = td.hier->SetProperty (V_VSITEMID(&folder), VSHPROPID_EditLabel, wil::make_variant_bstr_failfast(L"folder"));
 			Assert::AreEqual(S_OK, hr);
 
 			const wchar_t* templateName = TemplatePath_EmptyFile.get();
@@ -135,14 +137,14 @@ namespace UITests
 			hr = td.hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &tf1);
 			Assert::AreEqual(S_OK, hr);
 			Assert::AreEqual<VARTYPE>(VT_VSITEMID, tf1.vt);
-			hr = td.hier->SetProperty (V_VSITEMID(&tf1), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"testfolder1"));
+			hr = td.hier->SetProperty (V_VSITEMID(&tf1), VSHPROPID_EditLabel, wil::make_variant_bstr_failfast(L"testfolder1"));
 			Assert::AreEqual(S_OK, hr);
 
 			wil::unique_variant tf2;
 			hr = td.hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &tf2);
 			Assert::AreEqual(S_OK, hr);
 			Assert::AreEqual<VARTYPE>(VT_VSITEMID, tf2.vt);
-			hr = td.hier->SetProperty (V_VSITEMID(&tf2), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"testfolder2"));
+			hr = td.hier->SetProperty (V_VSITEMID(&tf2), VSHPROPID_EditLabel, wil::make_variant_bstr_failfast(L"testfolder2"));
 			Assert::AreEqual(S_OK, hr);
 
 			VSADDRESULT addResult;
@@ -226,6 +228,75 @@ namespace UITests
 
 		TEST_METHOD(AddItem_DirtyAfter)
 		{
+		}
+
+		TEST_METHOD(AddItemSort)
+		{
+			HRESULT hr;
+			TestData td (L"AddItemSort", TemplatePath_EmptyProject.get());
+
+			VSADDRESULT addResult;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
+
+			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
+			hr = td.proj->AddItem(VSITEMID_ROOT, oper, L"start.asm", 1, templateasm, nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+			hr = td.proj->AddItem(VSITEMID_ROOT, oper, L"lib.asm", 1, templateasm, nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::unique_variant more;
+			hr = td.hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &more);
+			Assert::AreEqual(S_OK, hr);
+			hr = td.hier->SetProperty (V_VSITEMID(&more), VSHPROPID_EditLabel, wil::make_variant_bstr_failfast(L"More"));
+			Assert::AreEqual(S_OK, hr);
+
+			wil::unique_variant evenMore;
+			hr = td.hier->ExecCommand (V_VSITEMID(&more), &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &evenMore);
+			Assert::AreEqual(S_OK, hr);
+			hr = td.hier->SetProperty (V_VSITEMID(&evenMore), VSHPROPID_EditLabel, wil::make_variant_bstr_failfast(L"EvenMore"));
+			Assert::AreEqual(S_OK, hr);
+
+			hr = td.proj->AddItem(V_VSITEMID(&evenMore), oper, L"file.inc", 1, templateasm, nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::unique_variant generatedFiles;
+			hr = td.hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &generatedFiles);
+			Assert::AreEqual(S_OK, hr);
+			hr = td.hier->SetProperty (V_VSITEMID(&generatedFiles), VSHPROPID_EditLabel, wil::make_variant_bstr_failfast(L"GeneratedFiles"));
+			Assert::AreEqual(S_OK, hr);
+
+			hr = td.proj->AddItem(V_VSITEMID(&generatedFiles), oper, L"preinclude.inc", 1, templateasm, nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+			hr = td.proj->AddItem(V_VSITEMID(&generatedFiles), oper, L"postinclude.inc", 1, templateasm, nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+
+			auto genFilesFolder = GetProperty_VSITEMID(td.hier, VSITEMID_ROOT, VSHPROPID_FirstChild);
+			Assert::AreNotEqual<VSITEMID>(VSITEMID_NIL, genFilesFolder);
+			Assert::AreEqual(L"GeneratedFiles", GetProperty_String(td.hier, genFilesFolder, VSHPROPID_SaveName).get());
+
+			auto postinc = GetProperty_VSITEMID(td.hier, genFilesFolder, VSHPROPID_FirstChild);
+			Assert::AreEqual(0, _wcsicmp(L"postinclude.inc", GetProperty_String(td.hier, postinc, VSHPROPID_SaveName).get()));
+
+			auto preinc = GetProperty_VSITEMID(td.hier, postinc, VSHPROPID_NextSibling);
+			Assert::AreEqual(0, _wcsicmp(L"preinclude.inc", GetProperty_String(td.hier, preinc, VSHPROPID_SaveName).get()));
+
+			auto moreFolder = GetProperty_VSITEMID(td.hier, genFilesFolder, VSHPROPID_NextSibling);
+			Assert::AreEqual(L"More", GetProperty_String(td.hier, moreFolder, VSHPROPID_SaveName).get());
+
+			auto evenMoreFolder = GetProperty_VSITEMID(td.hier, moreFolder, VSHPROPID_FirstChild);
+			Assert::AreEqual(L"EvenMore", GetProperty_String(td.hier, evenMoreFolder, VSHPROPID_SaveName).get());
+
+			auto fileinc = GetProperty_VSITEMID(td.hier, evenMoreFolder, VSHPROPID_FirstChild);
+			Assert::AreEqual(L"file.inc", GetProperty_String(td.hier, fileinc, VSHPROPID_SaveName).get());
+
+			auto libasm = GetProperty_VSITEMID(td.hier, moreFolder, VSHPROPID_NextSibling);
+			Assert::AreEqual(L"lib.asm", GetProperty_String(td.hier, libasm, VSHPROPID_SaveName).get());
+
+			auto startasm = GetProperty_VSITEMID(td.hier, libasm, VSHPROPID_NextSibling);
+			Assert::AreEqual(L"start.asm", GetProperty_String(td.hier, startasm, VSHPROPID_SaveName).get());
+
+			auto emp = GetProperty_VSITEMID(td.hier, startasm, VSHPROPID_NextSibling);
+			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, emp);
 		}
 
 		TEST_METHOD(PutItemsTwoFilesOneInFolder)
@@ -368,7 +439,6 @@ namespace UITests
 			Assert::AreEqual(S_OK, hr);
 			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, V_VSITEMID(&firstChild));
 		}
-
 
 		TEST_METHOD(RemoveItemsFromFolderNode)
 		{
