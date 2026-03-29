@@ -211,6 +211,23 @@ namespace UITests
 			Assert::IsTrue(sink->ItemAdded(VSITEMID_ROOT, fileid));
 		}
 
+		TEST_METHOD(AddItemOpen)
+		{
+		}
+
+		TEST_METHOD(AddItemNewWithSubfolder_TestHierarchyEvents)
+		{
+			// test that OnItemAdded and OnPropertyChanged are called
+		}
+
+		TEST_METHOD(AddItemOutsideOfProjectDir)
+		{
+		}
+
+		TEST_METHOD(AddItem_DirtyAfter)
+		{
+		}
+
 		TEST_METHOD(PutItemsTwoFilesOneInFolder)
 		{
 			/*

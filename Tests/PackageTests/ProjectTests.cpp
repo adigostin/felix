@@ -10,23 +10,6 @@ namespace FelixTests
 {
 	TEST_CLASS(ProjectTests)
 	{
-		TEST_METHOD(AddItemOpen)
-		{
-		}
-
-		TEST_METHOD(AddItemNewWithSubfolder_TestHierarchyEvents)
-		{
-			// test that OnItemAdded and OnPropertyChanged are called
-		}
-
-		TEST_METHOD(AddItemOutsideOfProjectDir)
-		{
-		}
-
-		TEST_METHOD(DirtyAfterAddItem)
-		{
-		}
-
 		TEST_METHOD(GetItemsPutItems_WithFolders)
 		{
 			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"GetItemsPutItems_WithFolders");
