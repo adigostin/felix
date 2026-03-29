@@ -12,6 +12,7 @@ wil::unique_process_heap_string TemplatePath_TwoConfigsOneFile;
 wil::unique_process_heap_string TemplatePath_OneConfigOneCustomBuildTool;
 wil::unique_process_heap_string TemplatePath_EmptyProject;
 wil::unique_process_heap_string TemplatePath_EmptyFile;
+LPCOLESTR TemplateEmptyFile[1];
 
 static const char TemplateTwoConfigsOneFileXML[] = ""
 	"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n"
@@ -73,6 +74,7 @@ void MakeTemplates (const wchar_t* tempDirName)
 
 	wil::str_concat_nothrow(TemplatePath_EmptyFile, tempPath, L"template.asm");
 	wil::unique_hfile (CreateFile(TemplatePath_EmptyFile.get(), GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL));
+	TemplateEmptyFile[0] = TemplatePath_EmptyFile.get();
 }
 
 wil::unique_process_heap_string CombinePath (const wchar_t* dir, const wchar_t* pathRelativeToDir)

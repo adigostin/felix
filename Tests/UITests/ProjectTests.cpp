@@ -84,6 +84,20 @@ namespace UITests
 			Assert::AreEqual<VSITEMID>(VSITEMID_ROOT, V_VSITEMID(&parentItemId));
 		}
 
+		TEST_METHOD(AddItemNew_NameAlreadyExists)
+		{
+			HRESULT hr;
+			TestData td (L"AddItemNew_NameAlreadyExists", TemplatePath_EmptyProject.get());
+
+			VSADDRESULT addResult;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
+			hr = td.proj.query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"file.asm", 1, TemplateEmptyFile, nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+
+			hr = td.proj.query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"file.asm", 1, TemplateEmptyFile, nullptr, &addResult);
+			Assert::AreEqual(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), hr);
+		}
+
 		TEST_METHOD(AddItemNewToExistingFolder)
 		{
 			HRESULT hr;

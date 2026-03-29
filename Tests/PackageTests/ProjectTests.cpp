@@ -10,46 +10,6 @@ namespace FelixTests
 {
 	TEST_CLASS(ProjectTests)
 	{
-		struct TD
-		{
-			wil::unique_process_heap_string testDir;
-
-			TD()
-			{
-				testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"FolderTest\\");
-				Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
-			}
-
-			~TD()
-			{
-				RemoveDirectoryTree(testDir.get());
-			}
-		};
-
-		TEST_METHOD(AddItemNew_NameAlreadyExists)
-		{
-			com_ptr<IVsSolution> sol;
-			auto hr = serviceProvider->QueryService(SID_SVsSolution, IID_PPV_ARGS(&sol));
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			static const wchar_t ProjFileName[] = L"TestProject.flx";
-			com_ptr<IVsUIHierarchy> hier;
-			hr = sol->CreateProject(FelixProjectType, TemplatePath_EmptyProject.get(), tempPath, ProjFileName, CPF_CLONEFILE, IID_PPV_ARGS(&hier));
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto close = wil::scope_exit([&hier] { hier->Close(); });
-
-			WriteFileOnDisk(CombinePath(tempPath, L"template.asm").get(), "");
-			wil::unique_process_heap_string templateFileFullPath;
-			wil::str_concat_nothrow(templateFileFullPath, tempPath, L"\\template.asm");
-			auto proj = hier.try_query<IVsProject>();
-			VSADDRESULT addResult;
-			hr = proj->AddItem (VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"file.asm", 1, (LPCOLESTR*)templateFileFullPath.addressof(), nullptr, &addResult);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			hr = proj->AddItem (VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"file.asm", 1, (LPCOLESTR*)templateFileFullPath.addressof(), nullptr, &addResult);
-			Assert::AreEqual<HRESULT>(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), hr);
-		}
-
 		TEST_METHOD(AddItemOpen)
 		{
 		}
