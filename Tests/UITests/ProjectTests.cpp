@@ -184,6 +184,75 @@ namespace UITests
 			// And then file4.
 			auto file4ItemId = GetProperty_VSITEMID(td.hier, file3ItemId, VSHPROPID_NextSibling);
 			Assert::AreEqual(L"file4.asm", GetProperty_String(td.hier, file4ItemId, VSHPROPID_SaveName).get());
+		} 
+
+		TEST_METHOD(RemoveItemsFromRootNode)
+		{
+			HRESULT hr;
+			TestData td (L"RemoveItemsFromRootNode", TemplatePath_EmptyProject.get());
+
+			VSADDRESULT addResult;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
+			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"file.asm", 1,  const_cast<LPCOLESTR*>(TemplatePath_EmptyFile.addressof()), nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+
+			VSITEMID id;
+			hr = td.hier->ParseCanonicalName(L"file.asm", &id);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreNotEqual<VSITEMID>(VSITEMID_NIL, id);
+
+			auto dh = td.proj.query<IVsHierarchyDeleteHandler3>();
+			hr = dh->DeleteItems (1, DELITEMOP_RemoveFromProject, &id, DHO_SUPPRESS_UI);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::unique_variant firstChild;
+			hr = td.hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &firstChild);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, V_VSITEMID(&firstChild));
+		}
+
+
+		TEST_METHOD(RemoveItemsFromFolderNode)
+		{
+		}
+
+		TEST_METHOD(RemoveNestedFoldersNoFiles)
+		{
+		}
+
+		TEST_METHOD(RemoveItem_FirstOfTwo)
+		{
+			HRESULT hr;
+			TestData td (L"RemoveItemsFromRootNode", TemplatePath_EmptyProject.get());
+
+			auto path1 = wil::str_concat_failfast<wil::unique_process_heap_string>(td.testDir, L"file1.asm");
+			WriteFileOnDisk(path1.get(), "");
+			auto path2 = wil::str_concat_failfast<wil::unique_process_heap_string>(td.testDir, L"file2.asm");
+			WriteFileOnDisk(path2.get(), "");
+			const wchar_t* files[] = { path1.get(), path2.get() };
+			VSADDRESULT addResult;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
+			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", _countof(files), files, nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<int>(ADDRESULT_Success & 0xFF, addResult);
+
+			wil::unique_variant file1ItemId;
+			hr = td.hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &file1ItemId);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::unique_variant file2ItemId;
+			hr = td.hier->GetProperty(V_VSITEMID(&file1ItemId), VSHPROPID_NextSibling, &file2ItemId);
+			Assert::AreEqual(S_OK, hr);
+
+			auto dh = td.proj.query<IVsHierarchyDeleteHandler3>();
+			hr = dh->DeleteItems(1, DELITEMOP_RemoveFromProject, (VSITEMID*)&V_VSITEMID(&file1ItemId), DHO_SUPPRESS_UI);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::unique_variant firstChildItemId;
+			hr = td.hier->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &firstChildItemId);
+			Assert::AreEqual(S_OK, hr);
+
+			Assert::AreEqual(V_VSITEMID(&file2ItemId), V_VSITEMID(&firstChildItemId));
 		}
 	};
 }

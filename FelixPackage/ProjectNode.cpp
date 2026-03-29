@@ -1959,7 +1959,7 @@ public:
 				com_ptr<IChildNode> pNewNode;
 				hr = AddNewFile (location, rgpszFilesToOpen[0], pszItemName, &pNewNode); RETURN_IF_FAILED_EXPECTED(hr);
 				if (pResult)
-					*pResult = fromTest ? (VSADDRESULT)10 : ADDRESULT_Success;
+					*pResult = fromTest ? (VSADDRESULT)(ADDRESULT_Success & 0xFF) : ADDRESULT_Success;
 
 				com_ptr<IVsWindowFrame> frame;
 				hr = this->OpenItem (pNewNode->GetItemId(), LOGVIEWID_Primary, DOCDATAEXISTING_UNKNOWN, &frame);
@@ -1984,7 +1984,7 @@ public:
 				}
 
 				if (pResult)
-					*pResult = fromTest ? (VSADDRESULT)10 : ADDRESULT_Success;
+					*pResult = fromTest ? (VSADDRESULT)(ADDRESULT_Success & 0xFF) : ADDRESULT_Success;
 				return hr;
 			}
 
