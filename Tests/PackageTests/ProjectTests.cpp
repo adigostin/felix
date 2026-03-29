@@ -87,62 +87,6 @@ namespace FelixTests
 			*/
 		}
 
-		TEST_METHOD(PutItemsFourFilesUnsorted)
-		{
-			com_ptr<IVsHierarchy> hier;
-			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			auto file1 = MakeFileNode(L"file1.asm");
-			auto file2 = MakeFileNode(L"file2.asm");
-			auto file3 = MakeFileNode(L"file3.asm");
-			auto file4 = MakeFileNode(L"file4.asm");
-
-			{
-				LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
-
-				auto proj = hier.try_query<IVsProject>();
-				// Add to empty parent
-				hr = proj->AddItem(VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"file3.asm", 1, templateasm, nullptr, nullptr);
-				Assert::IsTrue(SUCCEEDED(hr));
-
-				// Insert in first pos
-				hr = proj->AddItem(VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"file1.asm", 1, templateasm, nullptr, nullptr);
-				Assert::IsTrue(SUCCEEDED(hr));
-
-				// Insert between the two above
-				hr = proj->AddItem(VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"file2.asm", 1, templateasm, nullptr, nullptr);
-				Assert::IsTrue(SUCCEEDED(hr));
-
-				// Add at the end
-				hr = proj->AddItem(VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"file4.asm", 1, templateasm, nullptr, nullptr);
-				Assert::IsTrue(SUCCEEDED(hr));
-
-				// First project child should be file1.
-				auto file1ItemId = GetProperty_VSITEMID(hier, VSITEMID_ROOT, VSHPROPID_FirstChild);
-				Assert::AreEqual(L"file1.asm", GetProperty_String(hier, file1ItemId, VSHPROPID_SaveName).get());
-
-				// Next should be file2.
-				auto file2ItemId = GetProperty_VSITEMID(hier, file1ItemId, VSHPROPID_NextSibling);
-				Assert::AreEqual(L"file2.asm", GetProperty_String(hier, file2ItemId, VSHPROPID_SaveName).get());
-
-				// Then file3.
-				auto file3ItemId = GetProperty_VSITEMID(hier, file2ItemId, VSHPROPID_NextSibling);
-				Assert::AreEqual(L"file3.asm", GetProperty_String(hier, file3ItemId, VSHPROPID_SaveName).get());
-
-				// And then file4.
-				auto file4ItemId = GetProperty_VSITEMID(hier, file3ItemId, VSHPROPID_NextSibling);
-				Assert::AreEqual(L"file4.asm", GetProperty_String(hier, file4ItemId, VSHPROPID_SaveName).get());
-			}
-
-			hier->Close();
-			Assert::AreEqual<ULONG>(0, hier.detach()->Release());
-			Assert::AreEqual<ULONG>(0, file1.detach()->Release());
-			Assert::AreEqual<ULONG>(0, file2.detach()->Release());
-			Assert::AreEqual<ULONG>(0, file3.detach()->Release());
-			Assert::AreEqual<ULONG>(0, file4.detach()->Release());
-		}
-
 		TEST_METHOD(PutItemsTwoDirsUnsorted)
 		{
 		}
