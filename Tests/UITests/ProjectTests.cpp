@@ -84,6 +84,34 @@ namespace UITests
 			Assert::AreEqual<VSITEMID>(VSITEMID_ROOT, V_VSITEMID(&parentItemId));
 		}
 
+		TEST_METHOD(AddItemNewToExistingFolder)
+		{
+			HRESULT hr;
+			TestData td (L"AddItemNewToExistingFolder", TemplatePath_EmptyProject.get());
+
+			wil::unique_variant folder;
+			hr = td.hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &folder);
+			Assert::AreEqual(S_OK, hr);
+			hr = td.hier->SetProperty (V_VSITEMID(&folder), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"folder"));
+			Assert::AreEqual(S_OK, hr);
+
+			const wchar_t* templateName = TemplatePath_EmptyFile.get();
+			VSADDRESULT result;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
+			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&folder), oper, L"file.asm", 1, &templateName, nullptr, &result);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::unique_variant folderFirstChild;
+			hr = td.hier->GetProperty(V_VSITEMID(&folder), VSHPROPID_FirstChild, &folderFirstChild);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<VARTYPE>(VT_VSITEMID, folderFirstChild.vt);
+
+			wil::unique_variant fileName;
+			hr = td.hier->GetProperty(V_VSITEMID(&folderFirstChild), VSHPROPID_SaveName, &fileName);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(L"file.asm", fileName.bstrVal);
+		}
+
 		TEST_METHOD(AddItemTwoFilesInTwoFolders)
 		{
 			HRESULT hr;
@@ -141,6 +169,79 @@ namespace UITests
 			Assert::AreEqual(L"file2.asm", GetProperty_String(td.hier, file2ItemId, VSHPROPID_SaveName).get());
 			// and then no more nodes
 			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, GetProperty_VSITEMID(td.hier, file2ItemId, VSHPROPID_NextSibling));
+		}
+
+		TEST_METHOD(PutItemsTwoFilesOneInFolder)
+		{
+			/*
+			com_ptr<IVsHierarchy> hier;
+			auto hr = MakeProjectNode (nullptr, tempPath, nullptr, 0, IID_PPV_ARGS(&hier));
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			auto file1 = MakeFileNode(L"file1.asm");
+			auto file2 = MakeFileNode(L"testfolder/file2.asm");
+
+			com_ptr<IFolderNode> folder;
+
+			{
+			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, file1->GetItemId());
+			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, file2->GetItemId());
+
+			SAFEARRAYBOUND bound = { .cElements = 2, .lLbound = 0 };
+			auto sa = unique_safearray(SafeArrayCreate(VT_DISPATCH, 1, &bound));
+			LONG i = 0;
+			SafeArrayPutElement (sa.get(), &i, file1.try_query<IDispatch>());
+			i++;
+			SafeArrayPutElement (sa.get(), &i, file2.try_query<IDispatch>());
+			hr = hier.try_query<IProjectNodeProperties>()->put_Items(sa.get());
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			// The project should have assigned them item ids
+			Assert::AreNotEqual<VSITEMID>(VSITEMID_NIL, file1->GetItemId());
+			Assert::AreNotEqual<VSITEMID>(VSITEMID_NIL, file2->GetItemId());
+
+			// First project child should be a folder.
+			auto folderItemId = GetProperty_VSITEMID(hier, VSITEMID_ROOT, VSHPROPID_FirstChild);
+			auto folderDisp = GetProperty_Dispatch(hier, folderItemId, VSHPROPID_BrowseObject);
+			folder = folderDisp.try_query<IFolderNode>();
+			Assert::IsNotNull(folder.get());
+			Assert::AreEqual<VSITEMID>(VSITEMID_ROOT, GetProperty_VSITEMID(hier, folderItemId, VSHPROPID_Parent));
+			Assert::AreEqual(L"testfolder", GetProperty_String(hier, folderItemId, VSHPROPID_SaveName).get());
+
+			// Next project child should be our first file.
+			auto file1ItemId = GetProperty_VSITEMID(hier, folderItemId, VSHPROPID_NextSibling);
+			Assert::AreEqual<VSITEMID>(VSITEMID_ROOT, GetProperty_VSITEMID(hier, file1ItemId, VSHPROPID_Parent));
+			Assert::AreEqual(L"file1.asm", GetProperty_String(hier, file1ItemId, VSHPROPID_SaveName).get());
+
+			// There should be no more files after that.
+			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, GetProperty_VSITEMID(hier, file1ItemId, VSHPROPID_NextSibling));
+
+			// First child in the folder should be our second file.
+			auto file2ItemId = GetProperty_VSITEMID (hier, folderItemId, VSHPROPID_FirstChild);
+			Assert::AreEqual<VSITEMID>(folderItemId, GetProperty_VSITEMID(hier, file2ItemId, VSHPROPID_Parent));
+			Assert::AreEqual(L"file2.asm", GetProperty_String(hier, file2ItemId, VSHPROPID_SaveName).get());
+
+			// There should be no more files after that.
+			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, GetProperty_VSITEMID(hier, file2ItemId, VSHPROPID_NextSibling));
+			}
+
+			Assert::AreEqual<ULONG>(0, hier.detach()->Release());
+			Assert::AreEqual<ULONG>(0, folder.detach()->Release());
+			Assert::AreEqual<ULONG>(0, file1.detach()->Release());
+			Assert::AreEqual<ULONG>(0, file2.detach()->Release());
+			*/
+		}
+
+		TEST_METHOD(PutItemsTwoDirsUnsorted)
+		{
+		}
+
+		TEST_METHOD(PutItemsOneFileInOneSubfolder)
+		{
+		}
+
+		TEST_METHOD(PutItemsOutsideOfProjectDir)
+		{
 		}
 
 		TEST_METHOD(PutItemsFourFilesUnsorted)
