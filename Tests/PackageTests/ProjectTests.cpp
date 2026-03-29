@@ -26,29 +26,6 @@ namespace FelixTests
 			}
 		};
 
-		TEST_METHOD(AddExistingItemWithHierarchyEventSinks)
-		{
-			TD td;
-			com_ptr<IVsHierarchy> hier;
-			auto hr = MakeProjectNode (nullptr, td.testDir.get(), nullptr, 0, IID_PPV_ARGS(&hier));
-			auto close = wil::scope_exit([&hier] { hier->Close(); });
-			auto sink = MakeTestHierarchyEventSink();
-			VSCOOKIE cookie;
-			hr = hier->AdviseHierarchyEvents(sink, &cookie);
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto unadvise = wil::scope_exit([cookie, hier=hier.get()] { hier->UnadviseHierarchyEvents(cookie); });
-
-			auto fullPathSource = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH);
-			PathCombine(fullPathSource.get(), td.testDir.get(), L"file.asm");
-			wil::unique_hfile (CreateFile(fullPathSource.get(), GENERIC_WRITE, 0, 0, CREATE_NEW, 0, 0));
-			VSADDRESULT result;
-			hr = hier.try_query<IVsProject>()->AddItem(VSITEMID_ROOT, VSADDITEMOP_OPENFILE, nullptr, 1, (LPCOLESTR*)fullPathSource.addressof(), nullptr, &result);
-			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::AreEqual<DWORD>(ADDRESULT_Success, result);
-
-			// TODO: fill this out
-		}
-
 		TEST_METHOD(AddItemNew_NameAlreadyExists)
 		{
 			com_ptr<IVsSolution> sol;

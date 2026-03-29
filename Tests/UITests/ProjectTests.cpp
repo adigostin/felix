@@ -171,6 +171,32 @@ namespace UITests
 			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, GetProperty_VSITEMID(td.hier, file2ItemId, VSHPROPID_NextSibling));
 		}
 
+		TEST_METHOD(AddExistingItemWithHierarchyEventSinks)
+		{
+			HRESULT hr;
+			TestData td (L"AddExistingItemWithHierarchyEventSinks", TemplatePath_EmptyProject.get());
+
+			auto sink = MakeTestHierarchyEventSink();
+			VSCOOKIE cookie;
+			hr = td.hier->AdviseHierarchyEvents(sink, &cookie);
+			Assert::AreEqual(S_OK, hr);
+			auto unadvise = wil::scope_exit([cookie, &td] { td.hier->UnadviseHierarchyEvents(cookie); });
+
+			auto fullPathSource = wil::str_concat_failfast<wil::unique_process_heap_string>(td.testDir, L"file.asm");
+			wil::unique_hfile (CreateFile(fullPathSource.get(), GENERIC_WRITE, 0, 0, CREATE_NEW, 0, 0));
+			VSADDRESULT addResult;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
+			hr = td.hier.try_query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(fullPathSource.addressof()), nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<int>(ADDRESULT_Success & 0xFF, addResult);
+
+			VSITEMID fileid;
+			hr = td.hier->ParseCanonicalName(L"file.asm", &fileid);
+			Assert::AreEqual(S_OK, hr);
+
+			Assert::IsTrue(sink->ItemAdded(VSITEMID_ROOT, fileid));
+		}
+
 		TEST_METHOD(PutItemsTwoFilesOneInFolder)
 		{
 			/*
