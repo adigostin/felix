@@ -415,6 +415,67 @@ namespace UITests
 			Assert::AreEqual(L"file4.asm", GetProperty_String(td.hier, file4ItemId, VSHPROPID_SaveName).get());
 		} 
 
+		TEST_METHOD(GetItemsPutItems_WithFolders)
+		{
+			HRESULT hr;
+			auto testDir = str_concat(classPath, L"GetItemsPutItems_WithFolders\\");
+			Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
+
+			wil::com_ptr_failfast<IUnknown> solution;
+			hr = GetDefaultVSInstance()->get_Solution((VxDTE::Solution**)solution.addressof());
+			Assert::AreEqual(S_OK, hr);
+			auto sln = solution.query<VxDTE::_Solution>();
+			hr = sln->Create(wil::make_bstr_failfast(testDir.get()).get(), wil::make_bstr_failfast(L"test").get());
+			Assert::AreEqual(S_OK, hr);
+			auto closesln = wil::scope_exit([&sln] { sln->Close(); });
+
+			wil::com_ptr_failfast<VxDTE::Project> proj1;
+			hr = sln->AddFromTemplate (
+				wil::make_bstr_failfast(TemplatePath_EmptyProject.get()).get(),
+				wil::make_bstr_failfast(testDir.get()).get(),
+				wil::make_bstr_failfast(L"test.flx").get(), VARIANT_TRUE, &proj1);
+			Assert::AreEqual(S_OK, hr);
+			hr = sln->SaveAs(wil::make_bstr_failfast(L"test").get());
+			Assert::AreEqual(S_OK, hr);
+
+			wil::unique_variant folder1;
+			hr = proj1.query<IVsUIHierarchy>()->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &folder1);
+			Assert::AreEqual(S_OK, hr);
+			hr = proj1.query<IVsUIHierarchy>()->SetProperty (V_VSITEMID(&folder1), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"folder"));
+			Assert::AreEqual(S_OK, hr);
+
+			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
+			VSADDRESULT addResult;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
+			hr = proj1.query<IVsProject>()->AddItem(V_VSITEMID(&folder1), oper, L"test.asm", 1, templateasm, nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+
+			hr = proj1->Save(nullptr);
+			hr = sln->Close(VARIANT_TRUE);
+			Assert::AreEqual(S_OK, hr);
+
+			// ------------------------------------------------
+
+			auto projfn = str_concat(testDir, L"test.flx");
+			wil::com_ptr_failfast<VxDTE::Project> proj2;
+			hr = sln->AddFromFile (wil::make_bstr_failfast(projfn.get()).get(), VARIANT_TRUE, &proj2);
+			Assert::AreEqual(S_OK, hr);
+
+			auto folder2 = GetProperty_VSITEMID(proj2.query<IVsHierarchy>(), VSITEMID_ROOT, VSHPROPID_FirstChild);
+			Assert::AreNotEqual<VSITEMID>(VSITEMID_NIL, folder2);
+			auto folder2Name = GetProperty_String(proj2.query<IVsHierarchy>(), folder2, VSHPROPID_Name);
+			Assert::AreEqual(L"folder", folder2Name.get());
+
+			auto file2 = GetProperty_VSITEMID(proj2.query<IVsHierarchy>(), folder2, VSHPROPID_FirstChild);
+			Assert::AreNotEqual<VSITEMID>(VSITEMID_NIL, file2);
+			auto file2disp = GetProperty_Dispatch(proj2.query<IVsHierarchy>(), file2, VSHPROPID_BrowseObject);
+			auto file2Props = file2disp.query<IFileNodeProperties>();
+			wil::unique_bstr file2Path;
+			hr = file2Props->get_Path(&file2Path);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(L"test.asm", file2Path.get());
+		}
+
 		TEST_METHOD(RemoveItemsFromRootNode)
 		{
 			HRESULT hr;

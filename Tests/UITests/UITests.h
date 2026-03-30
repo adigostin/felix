@@ -21,8 +21,8 @@ namespace UITests
 	{
 		wil::unique_variant var;
 		auto hr = hier->GetProperty(itemid, propid, &var);
-		Microsoft::VisualStudio::CppUnitTestFramework::Assert::IsTrue(SUCCEEDED(hr));
-		Microsoft::VisualStudio::CppUnitTestFramework::Assert::AreEqual<VARTYPE>(VT_VSITEMID, var.vt);
+		Assert::IsTrue(SUCCEEDED(hr));
+		Assert::AreEqual<VARTYPE>(VT_VSITEMID, var.vt);
 		return V_VSITEMID(&var);
 	}
 
@@ -44,6 +44,14 @@ namespace UITests
 		Assert::IsTrue(SUCCEEDED(hr));
 		Assert::AreEqual<VARTYPE>(VT_BSTR, var.vt);
 		return wil::unique_bstr(var.release().bstrVal);
+	}
+
+	template <typename... arguments>
+	wil::unique_process_heap_string str_concat (arguments&&... args)
+	{
+		wil::unique_process_heap_string result{};
+		FAIL_FAST_IF_FAILED(wil::str_concat_nothrow(result, wistd::forward<arguments>(args)...));
+		return result;
 	}
 }
 

@@ -52,10 +52,16 @@ static const char TemplateXML_EmptyProject[] = ""
 void MakeTemplates (const wchar_t* tempDirName)
 {
 	GetTempPathW (MAX_PATH + 1, tempPath);
-	swprintf_s (tempPath, L"%s%s\\%c", tempPath, tempDirName, '\0');
+	swprintf_s (tempPath, L"%s%s\\", tempPath, tempDirName);
 	if (PathFileExists(tempPath))
-		RemoveDirectoryTree(tempPath);
-	Assert::IsTrue(CreateDirectory(tempPath, 0));
+	{
+		auto buffer = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s*%c", tempPath, L'\0');
+		SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = buffer.get(), .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
+		int ires = SHFileOperation(&file_op);
+		Assert::AreEqual(0, ires);
+	}
+	else
+		Assert::IsTrue(CreateDirectory(tempPath, 0));
 
 	auto templateDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"TemplateTwoConfigsOneFile\\");
 	wil::str_concat_nothrow(TemplatePath_TwoConfigsOneFile, templateDir, L"proj.flx");

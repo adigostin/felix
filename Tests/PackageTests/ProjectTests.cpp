@@ -10,60 +10,6 @@ namespace FelixTests
 {
 	TEST_CLASS(ProjectTests)
 	{
-		TEST_METHOD(GetItemsPutItems_WithFolders)
-		{
-			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"GetItemsPutItems_WithFolders");
-			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
-
-			com_ptr<IVsUIHierarchy> hier1;
-			auto hr = MakeProjectNode (nullptr, testPath.get(), nullptr, 0, IID_PPV_ARGS(&hier1));
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto close1 = wil::scope_exit([&hier1] { hier1->Close(); });
-
-			wil::unique_variant folder1;
-			hr = hier1->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, 0, nullptr, &folder1);
-			Assert::IsTrue(SUCCEEDED(hr));
-			hr = hier1->SetProperty (V_VSITEMID(&folder1), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"folder"));
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
-			hr = hier1.try_query<IVsProject>()->AddItem(V_VSITEMID(&folder1), VSADDITEMOP_CLONEFILE, L"test.asm", 1, templateasm, nullptr, nullptr);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			// ------------------------------------------------
-
-			auto stream = com_ptr(SHCreateMemStream(nullptr, 0));
-			hr = SaveToXml(hier1.try_query<IProjectNodeProperties>(), L"Temp", 0, stream);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			com_ptr<IVsHierarchy> hier2;
-			hr = MakeProjectNode (nullptr, testPath.get(), nullptr, 0, IID_PPV_ARGS(&hier2));
-			Assert::IsTrue(SUCCEEDED(hr));
-			auto close2 = wil::scope_exit([&hier2] { hier2->Close(); });
-
-			hr = stream->Seek({ 0 }, STREAM_SEEK_SET, nullptr);
-			hr = LoadFromXml(hier2.try_query<IProjectNodeProperties>(), L"Temp", stream);
-			Assert::IsTrue(SUCCEEDED(hr));
-
-			// ---------------------
-
-			auto pip2 = hier2.try_query<IParentNode>();
-			Assert::IsNotNull(pip2->FirstChild());
-			auto folder2 = wil::try_com_query_nothrow<IFolderNode>(pip2->FirstChild());
-			Assert::IsNotNull(pip2->FirstChild());
-			wil::unique_bstr folder2Name;
-			hr = folder2.try_query<IFolderNodeProperties>()->get_Name(&folder2Name);
-			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::AreEqual(L"folder", folder2Name.get());
-
-			auto file2 = folder2.try_query<IParentNode>()->FirstChild();
-			Assert::IsNotNull(file2);
-			wil::unique_bstr file2Path;
-			hr = wil::try_com_query_nothrow<IFileNodeProperties>(file2)->get_Path(&file2Path);
-			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::AreEqual(L"test.asm", file2Path.get());
-		}
 
 		TEST_METHOD(RenameFilePresentOnFileSystem)
 		{
