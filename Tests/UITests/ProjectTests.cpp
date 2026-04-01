@@ -543,6 +543,48 @@ namespace UITests
 
 			Assert::AreEqual(V_VSITEMID(&file2ItemId), V_VSITEMID(&firstChildItemId));
 		}
+
+		TEST_METHOD(RenameFilePresentOnFileSystem)
+		{
+			HRESULT hr;
+			TestData td (L"RenameFilePresentOnFileSystem", TemplatePath_EmptyProject.get());
+
+			VSADDRESULT addResult;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
+			hr = td.proj->AddItem(VSITEMID_ROOT, oper, L"file.asm", 1,  const_cast<LPCOLESTR*>(TemplatePath_EmptyFile.addressof()), nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<int>(ADDRESULT_Success & 0xFF, addResult);
+
+			VSITEMID file;
+			hr = td.hier->ParseCanonicalName(L"file.asm", &file);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::unique_bstr oldFullPath;
+			hr = td.proj->GetMkDocument(file, &oldFullPath);
+			Assert::AreEqual(S_OK, hr);
+			PathFindFileName(oldFullPath.get())[0] = 0;
+			auto newFullPath = str_concat(oldFullPath, L"new.asm");
+			Assert::IsFalse(PathFileExists(newFullPath.get()));
+
+			hr = td.hier->SetProperty(file, VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"new.asm"));
+			Assert::AreEqual(S_OK, hr);
+
+			wil::unique_variant newSaveName;
+			hr = td.hier->GetProperty(file, VSHPROPID_SaveName, &newSaveName);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(L"new.asm", newSaveName.bstrVal);
+
+			Assert::IsTrue(PathFileExists(newFullPath.get()));
+		}
+
+		TEST_METHOD(RenameFileMissingOnFileSystem)
+		{
+		}
+
+		TEST_METHOD(RenameFileMissingOnFileSystem_NewNameExists)
+		{
+		}
+
 	};
 }
 
