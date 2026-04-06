@@ -52,9 +52,6 @@ namespace FelixTests
 			if (guidService == SID_SVsRunningDocumentTable)
 				return E_NOTIMPL;
 
-			if (guidService == SID_SVsTrackProjectDocuments)
-				return E_NOTIMPL;
-
 			if (guidService == SID_SVsShell || guidService == SID_SVsUIShell)
 				return _shell->QueryInterface(riid, ppvObject);
 

@@ -585,6 +585,59 @@ namespace UITests
 		{
 		}
 
+
+		TEST_METHOD(RenameFileAndCheckSorted)
+		{
+			HRESULT hr;
+			TestData td (L"RenameFileAndCheckSorted", TemplatePath_EmptyProject.get());
+
+			auto sink = MakeTestHierarchyEventSink();
+			VSCOOKIE hecookie;
+			hr = td.hier->AdviseHierarchyEvents(sink, &hecookie);
+			Assert::AreEqual(S_OK, hr);
+			auto unadvise = wil::scope_exit([hecookie, &td] { td.hier->UnadviseHierarchyEvents(hecookie); });
+
+			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
+
+			// Add files named "B", "C", "D".
+			VSADDRESULT addResult;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
+			hr = td.proj->AddItem (VSITEMID_ROOT, oper, L"B", 1, templateasm, nullptr, &addResult); Assert::AreEqual(S_OK, hr);
+			hr = td.proj->AddItem (VSITEMID_ROOT, oper, L"C", 1, templateasm, nullptr, &addResult); Assert::AreEqual(S_OK, hr);
+			hr = td.proj->AddItem (VSITEMID_ROOT, oper, L"D", 1, templateasm, nullptr, &addResult); Assert::AreEqual(S_OK, hr);
+
+			// First one should be "B", second one should be "C", third "D"
+			auto b = GetProperty_VSITEMID (td.hier, VSITEMID_ROOT, VSHPROPID_FirstChild);
+			Assert::AreEqual(L"B", GetProperty_String(td.hier, b, VSHPROPID_SaveName).get());
+			auto c = GetProperty_VSITEMID (td.hier, b, VSHPROPID_NextSibling);
+			Assert::AreEqual(L"C", GetProperty_String(td.hier, c, VSHPROPID_SaveName).get());
+			auto d = GetProperty_VSITEMID (td.hier, c, VSHPROPID_NextSibling);
+			Assert::AreEqual(L"D", GetProperty_String(td.hier, d, VSHPROPID_SaveName).get());
+
+			Assert::IsFalse(sink->ChildItemsInvalidated(VSITEMID_ROOT));
+
+			// Rename "C" to "A".
+			hr = td.hier->SetProperty (c, VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"A"));
+			Assert::AreEqual(S_OK, hr);
+			auto a = GetProperty_VSITEMID (td.hier, VSITEMID_ROOT, VSHPROPID_FirstChild);
+			Assert::AreEqual(L"A", GetProperty_String(td.hier, a, VSHPROPID_SaveName).get());
+			b = GetProperty_VSITEMID (td.hier, a, VSHPROPID_NextSibling);
+			Assert::AreEqual(L"B", GetProperty_String(td.hier, b, VSHPROPID_SaveName).get());
+			d = GetProperty_VSITEMID (td.hier, b, VSHPROPID_NextSibling);
+			Assert::AreEqual(L"D", GetProperty_String(td.hier, d, VSHPROPID_SaveName).get());
+
+			Assert::IsTrue(sink->ChildItemsInvalidated(VSITEMID_ROOT));
+
+			// Rename "B" to "Z"
+			hr = td.hier->SetProperty (b, VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"Z"));
+			Assert::AreEqual(S_OK, hr);
+			a = GetProperty_VSITEMID (td.hier, VSITEMID_ROOT, VSHPROPID_FirstChild);
+			Assert::AreEqual(L"A", GetProperty_String(td.hier, a, VSHPROPID_SaveName).get());
+			d = GetProperty_VSITEMID (td.hier, a, VSHPROPID_NextSibling);
+			Assert::AreEqual(L"D", GetProperty_String(td.hier, d, VSHPROPID_SaveName).get());
+			auto z = GetProperty_VSITEMID (td.hier, d, VSHPROPID_NextSibling);
+			Assert::AreEqual(L"Z", GetProperty_String(td.hier, z, VSHPROPID_SaveName).get());
+		}
 	};
 }
 
