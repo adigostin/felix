@@ -544,6 +544,74 @@ namespace UITests
 			Assert::AreEqual(V_VSITEMID(&file2ItemId), V_VSITEMID(&firstChildItemId));
 		}
 
+		TEST_METHOD(DeleteItems_File)
+		{
+			HRESULT hr;
+			TestData td (L"DeleteItems_File", TemplatePath_EmptyProject.get());
+
+			VSADDRESULT addResult;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
+			hr = td.hier.try_query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"file.asm", 1, (LPCOLESTR*)TemplatePath_EmptyFile.addressof(), nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+			auto fileItemId = GetProperty_VSITEMID (td.hier, VSITEMID_ROOT, VSHPROPID_FirstChild);
+
+			wil::unique_bstr fileMk;
+			hr = td.proj->GetMkDocument(fileItemId, &fileMk);
+			Assert::AreEqual(S_OK, hr);
+			Assert::IsTrue(PathFileExists(fileMk.get()));
+
+			hr = td.dteproj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(1, DELITEMOP_DeleteFromStorage, &fileItemId, DHO_SUPPRESS_UI);
+			Assert::AreEqual(S_OK, hr);
+
+			fileItemId = GetProperty_VSITEMID (td.hier, VSITEMID_ROOT, VSHPROPID_FirstChild);
+			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, fileItemId);
+			Assert::IsFalse(PathFileExists(fileMk.get()));
+		}
+
+		TEST_METHOD(DeleteItems_Folder)
+		{
+			HRESULT hr;
+			TestData td (L"DeleteItems_Folder", TemplatePath_EmptyProject.get());
+
+			// Add folder and check directory exists in file system.
+			wil::unique_variant itemid;
+			hr = td.hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &itemid);
+			Assert::AreEqual(S_OK, hr);
+			VSITEMID folderItemId = V_VSITEMID(&itemid);
+
+			auto folderName = GetProperty_String (td.hier, folderItemId, VSHPROPID_SaveName);
+			auto directoryFullPath = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s\\%s", td.testDir.get(), folderName.get());
+			Assert::IsTrue(PathFileExists(directoryFullPath.get()));
+
+			// Add file in folder and check it exists in file system.
+			VSADDRESULT result;
+			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
+			hr = td.proj->AddItem (folderItemId, oper, L"file.asm", 1, (LPCOLESTR*)TemplatePath_EmptyFile.addressof(), nullptr, &result);
+			Assert::AreEqual(S_OK, hr);
+
+			auto fileItemId = GetProperty_VSITEMID (td.hier, folderItemId, VSHPROPID_FirstChild);
+			wil::unique_bstr fileMk;
+			hr = td.proj->GetMkDocument(fileItemId, &fileMk);
+			Assert::AreEqual(S_OK, hr);
+			Assert::IsTrue(PathFileExists(fileMk.get()));
+
+			// Delete folder.
+			hr = td.dteproj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(1, DELITEMOP_DeleteFromStorage, &folderItemId, DHO_SUPPRESS_UI);
+			Assert::AreEqual(S_OK, hr);
+
+			// Check there's no node in hierarchy
+			folderItemId = GetProperty_VSITEMID (td.hier, VSITEMID_ROOT, VSHPROPID_FirstChild);
+			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, folderItemId);
+
+			// Check there's no file or directory in the file system.
+			Assert::IsFalse(PathFileExists(fileMk.get()));
+			Assert::IsFalse(PathFileExists(directoryFullPath.get()));
+		}
+
+		TEST_METHOD(DeleteItems_FolderAndOneOfTwoMemberFiles)
+		{
+		}
+
 		TEST_METHOD(RenameFilePresentOnFileSystem)
 		{
 			HRESULT hr;
@@ -584,7 +652,6 @@ namespace UITests
 		TEST_METHOD(RenameFileMissingOnFileSystem_NewNameExists)
 		{
 		}
-
 
 		TEST_METHOD(RenameFileAndCheckSorted)
 		{
