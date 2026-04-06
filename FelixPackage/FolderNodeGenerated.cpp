@@ -57,12 +57,9 @@ public:
 		return _itemId;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE SetItemId (IProjectNode* root, IParentNode* parent) override
+	virtual HRESULT STDMETHODCALLTYPE SetItemId (IProjectNode* root) override
 	{
-		RETURN_HR_IF(E_INVALIDARG, !parent);
 		RETURN_HR_IF(E_UNEXPECTED, _itemId != VSITEMID_NIL);
-		RETURN_HR_IF(E_UNEXPECTED, _parent);
-		auto hr = parent->QueryInterface(IID_PPV_ARGS(_parent.addressof())); RETURN_IF_FAILED(hr);
 		_itemId = VSITEMID_GENFILES;
 		return S_OK;
 	}
@@ -70,9 +67,7 @@ public:
 	virtual HRESULT ClearItemId() override
 	{
 		RETURN_HR_IF(E_UNEXPECTED, _itemId == VSITEMID_NIL);
-		RETURN_HR_IF(E_UNEXPECTED, !_parent);
 		_itemId = VSITEMID_NIL;
-		_parent = nullptr;
 		return S_OK;
 	}
 
@@ -80,6 +75,22 @@ public:
 	{
 		RETURN_HR_IF(E_UNEXPECTED, !_parent);
 		return _parent->QueryInterface(IID_PPV_ARGS(ppParent));
+	}
+
+	virtual HRESULT SetParent (IParentNode* parent) override
+	{
+		if (parent)
+		{
+			RETURN_HR_IF(E_UNEXPECTED, _parent);
+			auto hr = parent->QueryInterface(IID_PPV_ARGS(_parent.addressof())); RETURN_IF_FAILED(hr);
+		}
+		else
+		{
+			RETURN_HR_IF(E_UNEXPECTED, !_parent);
+			_parent = nullptr;
+		}
+
+		return S_OK;
 	}
 
 	virtual IChildNode *STDMETHODCALLTYPE Next() override

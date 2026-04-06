@@ -129,16 +129,25 @@ public:
 		return _parent->QueryInterface(IID_PPV_ARGS(ppParent));
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE SetItemId (IProjectNode* root, IParentNode* parent) override
+	virtual HRESULT SetParent (IParentNode* parent) override
 	{
-		RETURN_HR_IF(E_INVALIDARG, !parent);
+		if (parent)
+		{
+			RETURN_HR_IF(E_UNEXPECTED, _parent);
+			auto hr = parent->QueryInterface(IID_PPV_ARGS(_parent.addressof())); RETURN_IF_FAILED(hr);
+		}
+		else
+		{
+			RETURN_HR_IF(E_UNEXPECTED, !_parent);
+			_parent = nullptr;
+		}
+
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE SetItemId (IProjectNode* root) override
+	{
 		RETURN_HR_IF(E_UNEXPECTED, _itemId != VSITEMID_NIL);
-		RETURN_HR_IF(E_UNEXPECTED, _parent);
-
-		com_ptr<IWeakRef> p;
-		auto hr = parent->QueryInterface(IID_PPV_ARGS(p.addressof())); RETURN_IF_FAILED(hr);
-
-		_parent = std::move(p);
 		_itemId = root->MakeItemId();
 		return S_OK;
 	}
@@ -146,10 +155,7 @@ public:
 	virtual HRESULT ClearItemId() override
 	{
 		RETURN_HR_IF(E_UNEXPECTED, _itemId == VSITEMID_NIL);
-		RETURN_HR_IF(E_UNEXPECTED, !_parent);
-		
 		_itemId = VSITEMID_NIL;
-		_parent = nullptr;
 		return S_OK;
 	}
 
@@ -938,6 +944,9 @@ public:
 	{
 		HRESULT hr;
 
+		com_ptr<IParentNode> parent;
+		hr = _parent->QueryInterface(&parent); RETURN_IF_FAILED(hr);
+
 		RETURN_HR_IF(E_UNEXPECTED, _itemId == VSITEMID_NIL);
 		
 		wil::unique_bstr oldFullPath;
@@ -1012,6 +1021,10 @@ public:
 		// TODO: ignore file change notifications
 		//CSuspendFileChanges suspendFileChanges (strNewName, TRUE );
 
+		// Move the file node so that the list stays sorted by name.
+		hr = RemoveChildFromParent(proj, this); RETURN_IF_FAILED(hr);
+		hr = AddFileToParent(proj, this, parent, nullptr); RETURN_IF_FAILED(hr);
+
 		// Tell packages that care that it happened. No error checking here.
 		if (trackProjectDocs)
 			trackProjectDocs->OnAfterRenameFile (proj->AsVsProject(), oldFullPath.get(), newFullPath.get(), VSRENAMEFILEFLAGS_NoFlags);
@@ -1027,6 +1040,9 @@ public:
 		proj->NotifyPropertyChangedHierNode(_itemId, VSHPROPID_DescriptiveName);
 		proj->NotifyPropertyChangedHierNode(_itemId, VSHPROPID_StateIconIndex);
 		proj->NotifyPropertyChangedHierNode(_itemId, VSHPROPID_IconMonikerId);
+
+		// TODO: keep selected node even if moved.
+		proj->NotifyInvalidateItems(parent->GetItemId());
 
 		// Make sure the property browser is updated.
 		uiShell->RefreshPropertyBrowser(DISPID_UNKNOWN); // refresh all properties

@@ -495,7 +495,10 @@ public:
 		_parentHierarchy = nullptr;
 		_parentHierarchyItemId = VSITEMID_NIL;
 		while(_firstChild)
+		{
+			ClearItemIdsTree(this, _firstChild);
 			RemoveChildFromParent(this, _firstChild);
+		}
 		_configs.clear();
 		_closed = true;
 		return S_OK;
@@ -1836,6 +1839,7 @@ public:
 		// TODO: there's a lot that needs to be called in IVsTrackProjectDocumentsEvents2
 
 		com_ptr<IFileNode> file;
+		IParentNode* parent;
 		if (PathIsSameRoot(pszFullPathSource, _projectDir.get()))
 		{
 			// File is on same drive as the project. We'll keep its path in a form relative to the project dir.
@@ -1855,7 +1859,7 @@ public:
 			{
 				// (1) File is under the project dir.
 				// Find or create path of directories where we need to add our file node.
-				IParentNode* parent = this;
+				parent = this;
 				auto ptrComponent = relative;
 				while (auto nextComp = wcschr(ptrComponent, L'\\'))
 				{
@@ -1889,7 +1893,6 @@ public:
 				}
 
 				hr = MakeFileNodeForExistingFile (ptrComponent, &file); RETURN_IF_FAILED(hr);
-				hr = AddFileToParent(this, file, parent); RETURN_IF_FAILED(hr);
 			}
 			else
 			{
@@ -1897,7 +1900,7 @@ public:
 				// Add as link to the folder selected by the user when starting the UI command.
 				hr = EnsureFilePathUniqueInProject(relative); RETURN_IF_FAILED_EXPECTED(hr);
 				hr = MakeFileNodeForExistingFile (relative, &file); RETURN_IF_FAILED(hr);
-				hr = AddFileToParent(this, file, location); RETURN_IF_FAILED(hr);
+				parent = location;
 			}
 		}
 		else
@@ -1906,10 +1909,17 @@ public:
 			// Add as link to the folder selected by the user when starting the UI command.
 			hr = EnsureFilePathUniqueInProject(pszFullPathSource); RETURN_IF_FAILED_EXPECTED(hr);
 			hr = MakeFileNodeForExistingFile (pszFullPathSource, &file); RETURN_IF_FAILED(hr);
-			hr = AddFileToParent(this, file, location); RETURN_IF_FAILED(hr);
+			parent = location;
 		}
 
+		com_ptr<IChildNode> prevChild;
+		hr = AddFileToParent (this, file, parent, &prevChild); RETURN_IF_FAILED(hr);
+		hr = SetItemIdsTree (this, file, prevChild, parent); RETURN_IF_FAILED(hr);
+
 		_isDirty = true;
+
+		// Since the parent's expandable status may have changed, we need to refresh it in the UI.
+		NotifyPropertyChangedHierNode (parent->GetItemId(), VSHPROPID_Expandable);
 
 		*ppNewFile = file.detach();
 		return S_OK;
@@ -2436,6 +2446,7 @@ public:
 				wil::unique_process_heap_string mk;
 				hr = GetPathOf(this, d, mk); RETURN_IF_FAILED(hr);
 
+				hr = ClearItemIdsTree(this, d); RETURN_IF_FAILED(hr);
 				hr = RemoveChildFromParent(this, d); RETURN_IF_FAILED(hr);
 
 				com_ptr<IShellItem> si;
@@ -2449,6 +2460,7 @@ public:
 			}
 			else
 			{
+				hr = ClearItemIdsTree(this, d); RETURN_IF_FAILED(hr);
 				hr = RemoveChildFromParent(this, d); RETURN_IF_FAILED(hr);
 			}
 		}

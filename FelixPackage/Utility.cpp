@@ -13,7 +13,6 @@ const wchar_t MacroConfigName[] = L"CONFIG_NAME";
 const wchar_t MacroOutputDir[] = L"OUTPUT_DIR";
 const wchar_t MacroOutputFilename[] = L"OUTPUT_FILENAME";
 
-static HRESULT SetItemIdsTree (IProjectNode* root, IChildNode* child, IChildNode* childPrevSibling, IParentNode* addTo);
 HRESULT InsertFolderNode (IProjectNode* proj, IParentNode* parent, IChildNode* insertBefore, IChildNode* insertAfter, IFolderNode* newFolder);
 
 const char* PropIDToString (VSHPROPID propid)
@@ -354,7 +353,9 @@ static HRESULT GeneratePrePostIncludeFilesInner (IProjectNode* proj, IProjectCon
 		if (!file)
 		{
 			hr = MakeFileNodePrePostInc(i.post, &file); RETURN_IF_FAILED(hr);
-			hr = AddFileToParent(proj, file, folder->AsParentNode()); RETURN_IF_FAILED(hr);
+			com_ptr<IChildNode> prevChild;
+			hr = AddFileToParent(proj, file, folder->AsParentNode(), &prevChild); RETURN_IF_FAILED(hr);
+			hr = SetItemIdsTree (proj, file, prevChild, folder->AsParentNode()); RETURN_IF_FAILED(hr);
 		}
 
 		wil::unique_process_heap_string templatePath;
@@ -467,6 +468,7 @@ HRESULT DeletePrePostIncludeFiles (IProjectNode* project)
 		wil::unique_process_heap_string genDirPath;
 		hr = GetPathOf(project, genFilesFolder, genDirPath); RETURN_IF_FAILED(hr);
 
+		hr = ClearItemIdsTree(project, genFilesFolder); RETURN_IF_FAILED(hr);
 		hr = RemoveChildFromParent(project, genFilesFolder); RETURN_IF_FAILED(hr);
 
 		auto buffer = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s%c", genDirPath.get(), L'\0');
@@ -790,15 +792,17 @@ HRESULT GetPathOf (IProjectNode* proj, IChildNode* node, wil::unique_process_hea
 }
 
 // Enum depth-first (just because it's simpler) pre-order mode (so that parents get their ItemId before children).
-static HRESULT SetItemIdsTree (IProjectNode* root, IChildNode* child, IChildNode* childPrevSibling, IParentNode* addTo)
+HRESULT SetItemIdsTree (IProjectNode* root, IChildNode* child, IChildNode* childPrevSibling, IParentNode* addTo)
 {
 	stdext::inplace_function<HRESULT(IChildNode*, IChildNode*, IParentNode*)> enumNodeAndChildren;
 
 	enumNodeAndChildren = [root, &enumNodeAndChildren](IChildNode* node, IChildNode* nodePrevSibling, IParentNode* nodeParent) -> HRESULT
 		{
+			HRESULT hr;
 			root->NotifyNodeInsertingIntoHier(node);
 
-			auto hr = node->SetItemId(root, nodeParent); RETURN_IF_FAILED(hr);
+			hr = node->SetParent(nodeParent); RETURN_IF_FAILED(hr);
+			hr = node->SetItemId(root); RETURN_IF_FAILED(hr);
 
 			com_ptr<IParentNode> nodeAsParent;
 			if (SUCCEEDED(node->QueryInterface(&nodeAsParent)))
@@ -818,14 +822,16 @@ static HRESULT SetItemIdsTree (IProjectNode* root, IChildNode* child, IChildNode
 	return enumNodeAndChildren(child, childPrevSibling, addTo);
 }
 
-HRESULT AddFileToParent (IProjectNode* proj, IFileNode* child, IParentNode* addTo)
+HRESULT AddFileToParent (IProjectNode* proj, IFileNode* child, IParentNode* addTo, IChildNode** ppPrevChild)
 {
 	HRESULT hr;
-	RETURN_HR_IF(E_UNEXPECTED, child->GetItemId() != VSITEMID_NIL);
 
-	IChildNode* prevChild = nullptr;
 	if (!addTo->FirstChild())
+	{
 		addTo->SetFirstChild(child);
+		if (ppPrevChild)
+			*ppPrevChild = nullptr;
+	}
 	else
 	{
 		wil::unique_bstr childPath;
@@ -841,6 +847,8 @@ HRESULT AddFileToParent (IProjectNode* proj, IFileNode* child, IParentNode* addT
 			// Yes
 			child->SetNext(addTo->FirstChild());
 			addTo->SetFirstChild(child);
+			if (ppPrevChild)
+				*ppPrevChild = nullptr;
 		}
 		else
 		{
@@ -864,17 +872,9 @@ HRESULT AddFileToParent (IProjectNode* proj, IFileNode* child, IParentNode* addT
 			child->SetNext(insertAfter->Next());
 			insertAfter->SetNext(child);
 
-			prevChild = insertAfter;
+			if (ppPrevChild)
+				wil::com_copy_to_nothrow(insertAfter, ppPrevChild);
 		}
-	}
-
-	if (addTo->GetItemId() != VSITEMID_NIL)
-	{
-		// Adding it to a hierarchy.
-		hr = SetItemIdsTree (proj, child, prevChild, addTo); RETURN_IF_FAILED(hr);
-
-		// Since our expandable status may have changed, we need to refresh it in the UI.
-		proj->NotifyPropertyChangedHierNode (addTo->GetItemId(), VSHPROPID_Expandable);
 	}
 
 	return S_OK;
@@ -956,7 +956,7 @@ HRESULT InsertFolderNode (IProjectNode* proj, IParentNode* parent, IChildNode* i
 }
 
 // Enum depth-first (just because it's simpler) post-order mode (so that children clear their ItemId before parent).
-static HRESULT ClearItemIdsTree (IProjectNode* root, IChildNode* child)
+HRESULT ClearItemIdsTree (IProjectNode* root, IChildNode* child)
 {
 	stdext::inplace_function<HRESULT(IChildNode*)> enumNodeAndChildren;
 
@@ -992,8 +992,6 @@ HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* node)
 
 	com_ptr<IParentNode> parent;
 	hr = node->GetParent(&parent); RETURN_IF_FAILED(hr);
-
-	hr = ClearItemIdsTree(root, node); RETURN_IF_FAILED(hr);
 
 	auto keepAlive = com_ptr(node);
 

@@ -116,8 +116,6 @@ XCOPY /y /s /q $(SolutionDir)FelixPackageVSIX\Templates $(OutDir)Templates\*</Co
   <ItemGroup>
     <ClCompile Include="PackageTests.cpp" />
     <ClCompile Include="Mocks\MockDebugger.cpp" />
-    <ClCompile Include="Mocks\MockFileChangeEx.cpp" />
-    <ClCompile Include="Mocks\MockOutputWindowPane.cpp" />
     <ClCompile Include="Mocks\MockServiceProvider.cpp" />
     <ClCompile Include="Mocks\MockShell.cpp" />
     <ClCompile Include="Mocks\MockSolution.cpp" />

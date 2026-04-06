@@ -135,6 +135,8 @@ struct TestHierarchyEventSink : ITestHierarchyEventSink
 
 	std::set<VSITEMID> _removed;
 
+	std::set<VSITEMID> _childItemsInvalidated;
+
 	#pragma region IUnknown
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
 	{
@@ -177,6 +179,7 @@ struct TestHierarchyEventSink : ITestHierarchyEventSink
 
 	virtual HRESULT STDMETHODCALLTYPE OnInvalidateItems (VSITEMID itemidParent) override
 	{
+		_childItemsInvalidated.insert(itemidParent);
 		return S_OK;
 	}
 
@@ -209,6 +212,11 @@ struct TestHierarchyEventSink : ITestHierarchyEventSink
 	virtual bool ItemRemoved (VSITEMID itemid) const override
 	{
 		return _removed.contains(itemid);
+	}
+
+	virtual bool ChildItemsInvalidated(VSITEMID itemidParent) const override
+	{
+		return _childItemsInvalidated.contains(itemidParent);
 	}
 	#pragma endregion
 };

@@ -17,10 +17,8 @@ namespace FelixTests
 	void DeleteFileOnDisk(const wchar_t* projectDir, const wchar_t* pathRelativeToProjectDir);
 
 	com_ptr<IProjectConfig> AddDebugProjectConfig (IVsHierarchy* hier);
-	com_ptr<IVsOutputWindowPane2> MakeMockOutputWindowPane (IStream* outputStreamUTF16);
 	com_ptr<IServiceProvider> MakeMockServiceProvider();
 	com_ptr<IVsDebugger> MakeMockDebugger();
-	com_ptr<IVsFileChangeEx> MakeMockFileChangeEx();
 }
 
 inline VSITEMID GetProperty_VSITEMID (IVsHierarchy* hier, VSITEMID itemid, VSHPROPID propid)

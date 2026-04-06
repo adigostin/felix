@@ -21,6 +21,7 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("EBD70B25-9BE7-4C0E-B562-2FE4CDE6F14A") I
 	virtual bool PropertyChanged (VSITEMID itemid, VSHPROPID propid) const = 0;
 	virtual bool ItemAdded (VSITEMID itemidParent, VSITEMID itemidAdded) const = 0;
 	virtual bool ItemRemoved (VSITEMID itemid) const = 0;
+	virtual bool ChildItemsInvalidated(VSITEMID itemidParent) const = 0;
 };
 wil::com_ptr_failfast<ITestHierarchyEventSink> MakeTestHierarchyEventSink();
 

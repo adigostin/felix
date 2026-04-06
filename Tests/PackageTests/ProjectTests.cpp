@@ -26,34 +26,54 @@ namespace FelixTests
 			auto close = wil::scope_exit([&hier] { hier->Close(); });
 			auto hierAsParent = hier.try_query<IParentNode>();
 
+			auto sink = MakeTestHierarchyEventSink();
+			VSCOOKIE hecookie;
+			hr = hier->AdviseHierarchyEvents(sink, &hecookie);
+			Assert::AreEqual(S_OK, hr);
+			auto unadvise = wil::scope_exit([hecookie, &hier] { hier->UnadviseHierarchyEvents(hecookie); });
+
 			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
 
-			// Add file named "B".
+			// Add files named "B", "C", "D".
 			hr = hier.try_query<IVsProject>()->AddItem (VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"B", 1, templateasm, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
-
-			// Add file named "C".
 			hr = hier.try_query<IVsProject>()->AddItem (VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"C", 1, templateasm, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
+			hr = hier.try_query<IVsProject>()->AddItem (VSITEMID_ROOT, VSADDITEMOP_CLONEFILE, L"D", 1, templateasm, nullptr, nullptr);
+			Assert::IsTrue(SUCCEEDED(hr));
 
-			// First one should be "B", second one should be "C"
+			// First one should be "B", second one should be "C", third "D"
 			wil::unique_bstr name;
 			wil::try_com_query_nothrow<IFileNodeProperties>(hierAsParent->FirstChild())->get_Path(&name);
 			Assert::AreEqual(L"B", name.get());
 			wil::try_com_query_nothrow<IFileNodeProperties>(hierAsParent->FirstChild()->Next())->get_Path(&name);
 			Assert::AreEqual(L"C", name.get());
+			wil::try_com_query_nothrow<IFileNodeProperties>(hierAsParent->FirstChild()->Next()->Next())->get_Path(&name);
+			Assert::AreEqual(L"D", name.get());
 
-			// Rename second one to "A".
+			Assert::IsFalse(sink->ChildItemsInvalidated(VSITEMID_ROOT));
+
+			// Rename "C" to "A".
 			hr = hier->SetProperty (hierAsParent->FirstChild()->Next()->GetItemId(), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"A"));
 			Assert::IsTrue(SUCCEEDED(hr));
-
-			// First one should be "A", second one should be "B"
 			wil::try_com_query_nothrow<IFileNodeProperties>(hierAsParent->FirstChild())->get_Path(&name);
 			Assert::AreEqual(L"A", name.get());
 			wil::try_com_query_nothrow<IFileNodeProperties>(hierAsParent->FirstChild()->Next())->get_Path(&name);
 			Assert::AreEqual(L"B", name.get());
+			wil::try_com_query_nothrow<IFileNodeProperties>(hierAsParent->FirstChild()->Next()->Next())->get_Path(&name);
+			Assert::AreEqual(L"D", name.get());
 
-			Assert::Fail(L"TODO: check notifications");
+			Assert::IsTrue(sink->ChildItemsInvalidated(VSITEMID_ROOT));
+
+			// Rename "B" to "Z"
+			hr = hier->SetProperty (hierAsParent->FirstChild()->Next()->GetItemId(), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"Z"));
+			Assert::IsTrue(SUCCEEDED(hr));
+			wil::try_com_query_nothrow<IFileNodeProperties>(hierAsParent->FirstChild())->get_Path(&name);
+			Assert::AreEqual(L"A", name.get());
+			wil::try_com_query_nothrow<IFileNodeProperties>(hierAsParent->FirstChild()->Next())->get_Path(&name);
+			Assert::AreEqual(L"D", name.get());
+			wil::try_com_query_nothrow<IFileNodeProperties>(hierAsParent->FirstChild()->Next()->Next())->get_Path(&name);
+			Assert::AreEqual(L"Z", name.get());
 		}
 
 		TEST_METHOD(DeleteItems_File)

@@ -84,8 +84,16 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("A2EE7852-34B1-49A9-A3DB-36232AC6680C")
 IChildNode : INode
 {
 	virtual HRESULT GetParent (IParentNode** ppParent) = 0;
-	virtual HRESULT SetItemId (IProjectNode* root, IParentNode* parent) = 0;
+
+	// Called when adding the node to a parent (the parent may be in a hierarchy or not).
+	virtual HRESULT SetParent (IParentNode* pParent) = 0;
+
+	// Called just after adding the node to a hierarchy.
+	virtual HRESULT SetItemId (IProjectNode* root) = 0;
+
+	// Called just before removing the node from a hierarchy.
 	virtual HRESULT ClearItemId() = 0;
+
 	virtual IChildNode* Next() = 0;
 	virtual void SetNext (IChildNode* next) = 0;
 	virtual HRESULT GetProperty (IProjectNode* proj, VSHPROPID propid, VARIANT* pvar) = 0;
@@ -293,11 +301,13 @@ HRESULT QueryEditProjectFile (IVsHierarchy* hier);
 HRESULT GetHierarchyWindow (IVsUIHierarchyWindow** ppHierWindow);
 HRESULT GetPathTo (IProjectNode* proj, IChildNode* node, wil::unique_process_heap_string& dir, bool relativeToProjectDir = false);
 HRESULT GetPathOf (IProjectNode* proj, IChildNode* node, wil::unique_process_heap_string& path, bool relativeToProjectDir = false);
-HRESULT AddFileToParent (IProjectNode* proj, IFileNode* child, IParentNode* addTo);
+HRESULT SetItemIdsTree (IProjectNode* root, IChildNode* child, IChildNode* childPrevSibling, IParentNode* addTo);
+HRESULT AddFileToParent (IProjectNode* proj, IFileNode* child, IParentNode* addTo, IChildNode** ppPrevChild = nullptr);
 HRESULT EnsureDirectoryExists (const wchar_t* path);
 HRESULT FindFolderNodeOrInsertLocation (IProjectNode* proj, IParentNode* parent, const wchar_t* folderName,
 	IFolderNode** ppFound, com_ptr<IChildNode>& insertBefore, com_ptr<IChildNode>& insertAfter);
 HRESULT InsertFolderNode (IProjectNode* proj, IParentNode* parent, IChildNode* insertBefore, IChildNode* insertAfter, IFolderNode* newFolder);
+HRESULT ClearItemIdsTree (IProjectNode* root, IChildNode* child);
 HRESULT RemoveChildFromParent (IProjectNode* root, IChildNode* child);
 HRESULT GetItems (IParentNode* itemsIn, HRESULT(*filter)(IChildNode*), SAFEARRAY** itemsOut);
 HRESULT PutItems (SAFEARRAY* sa, IParentNode* items);
