@@ -729,6 +729,18 @@ namespace UITests
 			Assert::AreEqual(S_OK, hr);
 			Assert::IsNotNull(wcsstr(fn.get(), L"%OUTPUT_NAME%"));
 		}
+
+		TEST_METHOD(ProjectDirPropertyEndsWithBackslash)
+		{
+			HRESULT hr;
+			TestData td (L"ProjectDirPropertyEndsWithBackslash", TemplatePath_EmptyProject.get());
+
+			wil::unique_variant projDir;
+			hr = td.hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &projDir);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<VARTYPE>(VT_BSTR, projDir.vt);
+			Assert::AreEqual(L'\\', projDir.bstrVal[SysStringLen(projDir.bstrVal) - 1]);
+		}
 	};
 }
 

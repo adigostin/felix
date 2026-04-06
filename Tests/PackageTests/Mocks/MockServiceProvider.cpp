@@ -46,17 +46,8 @@ namespace FelixTests
 
 		virtual HRESULT STDMETHODCALLTYPE QueryService (REFGUID guidService, REFIID riid, void** ppvObject) override
 		{
-			if (guidService == SID_SVsUIShellOpenDocument)
-				return E_NOTIMPL;
-
-			if (guidService == SID_SVsRunningDocumentTable)
-				return E_NOTIMPL;
-
 			if (guidService == SID_SVsShell || guidService == SID_SVsUIShell)
 				return _shell->QueryInterface(riid, ppvObject);
-
-			if (guidService == SID_SVsQueryEditQuerySave)
-				return E_NOTIMPL;
 
 			if (guidService == SID_SVsSolution)
 				return _solution->QueryInterface(riid, ppvObject);
@@ -66,9 +57,6 @@ namespace FelixTests
 
 			if (guidService == SID_SProfferService)
 				return E_NOTIMPL;
-
-			if (guidService == SID_SVsSolutionBuildManager)
-				return _solution->QueryInterface(riid, ppvObject);
 
 			if (guidService == SID_SVsShellDebugger)
 				return _shellDebugger->QueryInterface(riid, ppvObject);
