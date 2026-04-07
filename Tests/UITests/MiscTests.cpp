@@ -24,12 +24,12 @@ namespace UITests
 		TEST_METHOD_INITIALIZE(MiscTestInit)
 		{
 			dte = GetDefaultVSInstance();
-			testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"MiscTest");
+			testPath = str_concat(tempPath, L"MiscTest");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
 			std::tie(sln, proj) = CreateSolutionAndProject(dte, testPath.get(), L"test", L"proj");
-			slnFilePath = CombinePath(testPath.get(), L"test.sln");
-			projPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\proj");
-			projFilePath = wil::str_concat_failfast<wil::unique_process_heap_string>(projPath, L"\\proj.flx");
+			slnFilePath = str_concat(testPath, L"\\test.sln");
+			projPath = str_concat(testPath, L"\\proj");
+			projFilePath = str_concat(projPath, L"\\proj.flx");
 		}
 
 		TEST_METHOD_CLEANUP(MiscTestCleanup)
@@ -123,7 +123,7 @@ namespace UITests
 			BuildSolution(sln, &buildFailCount);
 			Assert::AreEqual(0l, buildFailCount);
 
-			auto file1Path = CombinePath(projPath.get(), L"subdir\\file1.asm");
+			auto file1Path = str_concat(projPath, L"\\subdir\\file1.asm");
 			WriteFileCreateDirs (file1Path, "\t555555");
 
 			VSADDRESULT addResult;
@@ -434,7 +434,7 @@ namespace UITests
 			//Assert::IsTrue(SUCCEEDED(hr));
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
 
-			auto projPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\proj.flx");
+			auto projPath = str_concat(testPath, L"\\proj.flx");
 			WriteFileCreateDirs(projPath, OldXmlWithGeneratedFilesFolder);
 
 			wil::com_ptr_failfast<VxDTE::Project> proj;
@@ -511,7 +511,7 @@ namespace UITests
 			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, V_VSITEMID(&firstChild));
 
 			// Add the file back.
-			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(projPath, L"\\file.asm");
+			auto filePath = str_concat(projPath, L"\\file.asm");
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
 			hr = proj.query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(filePath.addressof()), nullptr, &addResult);
