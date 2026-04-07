@@ -199,7 +199,7 @@ namespace UITests
 			Assert::AreEqual(S_OK, hr);
 
 			// Make a change in the active configuration and verify that the Pre/PostInclude files are generated.
-			auto genFilesPath = CombinePath(projPath.get(), L"GeneratedFiles");
+			auto genFilesPath = str_concat(projPath, L"\\GeneratedFiles");
 			Assert::IsTrue(PathFileExists(genFilesPath.get()));
 			RemoveDirectoryTree(genFilesPath.get());
 
@@ -234,7 +234,7 @@ namespace UITests
 			// changing the BuildTool to something else.
 
 			// The pre/post-include files should have been generated on project creation.
-			auto genFilesPath = CombinePath(projPath.get(), L"GeneratedFiles");
+			auto genFilesPath = str_concat(projPath, L"\\GeneratedFiles");
 			Assert::IsTrue(PathFileExists(genFilesPath.get()));
 
 			VSITEMID itemid;
@@ -312,7 +312,7 @@ namespace UITests
 		{
 			HRESULT hr;
 			const wchar_t file1RelPath[] = L"test.asm";
-			auto file1Path = CombinePath(projPath.get(), file1RelPath);
+			auto file1Path = str_concat(projPath, L"\\", file1RelPath);
 			WriteFileCreateDirs (file1Path, "; comment");
 			const wchar_t file2RelPath[] = L"..\\test.asm";
 			auto file2Path = CombinePath (projPath.get(), file2RelPath);
@@ -365,7 +365,7 @@ namespace UITests
 			WriteFileCreateDirs (templatePath, "; comment");
 
 			static const wchar_t file1RelPath[] = L"..\\test.asm";
-			auto file1Path = CombinePath(projPath.get(), file1RelPath);
+			auto file1Path = str_concat(projPath, L"\\", file1RelPath);
 			WriteFileCreateDirs(file1Path, "; comment");
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
