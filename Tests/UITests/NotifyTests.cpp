@@ -1,7 +1,6 @@
 
 #include "pch.h"
 #include "shared/com.h"
-#include "../TestsCommon.h"
 #include "../FelixPackage/dispids.h"
 #include "UITests.h"
 
@@ -41,7 +40,7 @@ namespace UITests
 
 			if (testPath)
 			{
-				RemoveDirectoryTree(testPath.get());
+				RemoveDirectoryTree(testPath);
 				testPath.reset();
 			}
 		}

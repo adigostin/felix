@@ -1,6 +1,6 @@
 
 #pragma once
-#include "..\TestsCommon.h"
+#include "../FelixPackage/FelixPackage_h.h"
 #define FORCE_EXPLICIT_DTE_NAMESPACE
 #include <dte.h>
 namespace VxDTE
@@ -126,6 +126,16 @@ namespace UITests
 			BOOL bres = WriteFile(handle.get(), fileContent, (DWORD)strlen(fileContent), NULL, NULL);
 			Assert::IsTrue(bres);
 		}
+	}
+
+	template<typename string_type>
+	void RemoveDirectoryTree (const string_type& dir_str)
+	{
+		const wchar_t* dir = wil::str_raw_ptr(dir_str);
+		auto buffer = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s%c", dir, L'\0');
+		SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = buffer.get(), .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
+		int ires = SHFileOperation(&file_op);
+		Microsoft::VisualStudio::CppUnitTestFramework::Assert::AreEqual(0, ires);
 	}
 }
 

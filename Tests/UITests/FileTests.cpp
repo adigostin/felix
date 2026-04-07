@@ -38,7 +38,7 @@ namespace UITests
 
 			if (testPath)
 			{
-				RemoveDirectoryTree(testPath.get());
+				RemoveDirectoryTree(testPath);
 				testPath.reset();
 			}
 		}

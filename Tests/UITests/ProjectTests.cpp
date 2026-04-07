@@ -21,7 +21,7 @@ namespace UITests
 
 		TEST_CLASS_CLEANUP(ProjectTestsCleanup)
 		{
-			RemoveDirectoryTree(classPath.get());
+			RemoveDirectoryTree(classPath);
 		}
 
 		struct TestData
@@ -60,7 +60,7 @@ namespace UITests
 			~TestData()
 			{
 				sln->Close();
-				RemoveDirectoryTree(testDir.get());
+				RemoveDirectoryTree(testDir);
 			}
 		};
 

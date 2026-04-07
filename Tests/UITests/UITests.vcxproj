@@ -100,7 +100,6 @@
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\TestsCommon.cpp" />
     <ClCompile Include="BuildTests.cpp" />
     <ClCompile Include="FolderTests.cpp" />
     <ClCompile Include="MiscTests.cpp" />
@@ -115,7 +114,6 @@
     <ClCompile Include="UITests.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\TestsCommon.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="UITests.h" />
   </ItemGroup>

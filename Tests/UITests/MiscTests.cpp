@@ -44,7 +44,7 @@ namespace UITests
 
 			if (testPath)
 			{
-				RemoveDirectoryTree(testPath.get());
+				RemoveDirectoryTree(testPath);
 				testPath.reset();
 			}
 		}
@@ -201,7 +201,7 @@ namespace UITests
 			// Make a change in the active configuration and verify that the Pre/PostInclude files are generated.
 			auto genFilesPath = str_concat(projPath, L"\\GeneratedFiles");
 			Assert::IsTrue(PathFileExists(genFilesPath.get()));
-			RemoveDirectoryTree(genFilesPath.get());
+			RemoveDirectoryTree(genFilesPath);
 
 			com_ptr<IProjectConfigProperties> props;
 			hr = cfgs[0]->QueryInterface(IID_PPV_ARGS(&props));
@@ -215,7 +215,7 @@ namespace UITests
 			Assert::IsTrue(PathFileExists(genFilesPath.get()));
 
 			// Now make a change in the inactive configuration.
-			RemoveDirectoryTree(genFilesPath.get());
+			RemoveDirectoryTree(genFilesPath);
 
 			hr = cfgs[1]->QueryInterface(IID_PPV_ARGS(&props));
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -425,7 +425,7 @@ namespace UITests
 			HRESULT hr;
 			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"GenPrePostInclude_LoadOldXml");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([tp=testPath.get()] { RemoveDirectoryTree(tp); });
+			auto delDir = wil::scope_exit([&testPath] { RemoveDirectoryTree(testPath); });
 
 			wil::com_ptr_failfast<IUnknown> solution;
 			hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
