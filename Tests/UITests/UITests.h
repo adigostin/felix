@@ -53,6 +53,31 @@ namespace UITests
 		FAIL_FAST_IF_FAILED(wil::str_concat_nothrow(result, wistd::forward<arguments>(args)...));
 		return result;
 	}
+
+	// Returns true if the condition was met before the timeout expired.
+	template<typename condition_t> requires std::is_invocable_r_v<bool, condition_t>
+	bool WaitWithMessageLoop (const condition_t& condition, DWORD timeoutMilliseconds)
+	{
+		DWORD tickStart = GetTickCount();
+		while (timeoutMilliseconds == INFINITE || GetTickCount() - tickStart < timeoutMilliseconds)
+		{
+			if (condition())
+				return true;
+
+			MSG msg;
+			while(PeekMessage(&msg,0,0,0,PM_NOREMOVE))
+			{
+				if (::GetMessage(&msg, NULL, 0, 0) > 0)
+					::DispatchMessage(&msg);
+			}
+
+			Sleep(20);
+		}
+
+		return false;
+	}
+
+	void DisableGeneratedFiles (VxDTE::Project* proj);
 }
 
 

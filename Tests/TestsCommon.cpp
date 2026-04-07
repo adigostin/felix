@@ -342,15 +342,3 @@ wil::com_ptr_failfast<ITestPropertyNotifySink> MakeTestPropertyNotifySink()
 {
 	return new (std::nothrow) TestPropertyNotifySink();
 }
-
-void DisableGeneratedFiles (VxDTE::Project* proj)
-{
-	wil::com_ptr_failfast<IVsCfg> cfg;
-	ULONG actual;
-	VSCFGFLAGS flags;
-	wil::com_query_failfast<IVsCfgProvider>(proj)->GetCfgs(1, &cfg, &actual, &flags);
-	com_ptr<IProjectConfigAssemblerProperties> asmProps;
-	cfg.query<IProjectConfigProperties>()->get_AssemblerProperties(&asmProps);
-	auto hr = asmProps->put_GeneratePrePostIncludeFiles(VARIANT_FALSE);
-	Assert::AreEqual(S_OK, hr);
-}
