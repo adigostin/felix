@@ -176,15 +176,6 @@
     <ClCompile Include="Z80Xml.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <CopyFileToFolders Include="..\third_party\xaudio2\release\bin\x64\xaudio2_9redist.dll">
-      <FileType>Document</FileType>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="..\third_party\sentry.dll">
-      <FileType>Document</FileType>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="..\third_party\sjasmplus.exe">
-      <FileType>Document</FileType>
-    </CopyFileToFolders>
     <None Include="FelixPackage.def" />
     <None Include="FelixPackage.natstepfilter" />
   </ItemGroup>
