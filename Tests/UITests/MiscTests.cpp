@@ -628,5 +628,28 @@ namespace UITests
 			Assert::AreEqual(S_OK, hr);
 			Assert::AreEqual<VSITEMID>(VSITEMID_GENFILES, V_VSITEMID(&firstChild));
 		}
+
+		TEST_METHOD(Macro_CircularReference)
+		{
+			HRESULT hr;
+
+			wil::com_ptr_failfast<IVsCfg> cfg;
+			ULONG actual;
+			VSCFGFLAGS flags;
+			hr = proj.query<IVsCfgProvider2>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::com_ptr_failfast<IProjectConfigGeneralProperties> generalProps;
+			hr = cfg.query<IProjectConfigProperties>()->get_GeneralProperties(&generalProps);
+			Assert::AreEqual(S_OK, hr);
+
+			hr = generalProps->put_OutputName(wil::make_bstr_failfast(L"%OUTPUT_NAME%").get());
+			Assert::AreEqual(S_OK, hr);
+
+			wil::unique_bstr fn;
+			hr = generalProps->get_OutputFilename(&fn); // this tries to resolve the macro from above
+			Assert::AreEqual(S_OK, hr);
+			Assert::IsNotNull(wcsstr(fn.get(), L"%OUTPUT_NAME%"));
+		}
 	};
 }
