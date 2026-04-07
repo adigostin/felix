@@ -71,7 +71,7 @@ namespace UITests
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"test1.asm", 1,  const_cast<LPCOLESTR*>(TemplatePath_EmptyFile.addressof()), nullptr, &addResult);
+			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"test1.asm", 1,  TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			wil::unique_variant firstChildItemId;
@@ -111,10 +111,9 @@ namespace UITests
 			hr = td.hier->SetProperty (V_VSITEMID(&folder), VSHPROPID_EditLabel, wil::make_variant_bstr_failfast(L"folder"));
 			Assert::AreEqual(S_OK, hr);
 
-			const wchar_t* templateName = TemplatePath_EmptyFile.get();
 			VSADDRESULT result;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&folder), oper, L"file.asm", 1, &templateName, nullptr, &result);
+			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&folder), oper, L"file.asm", 1, TemplateEmptyFile, nullptr, &result);
 			Assert::AreEqual(S_OK, hr);
 
 			wil::unique_variant folderFirstChild;
@@ -149,10 +148,9 @@ namespace UITests
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			auto tmpl = const_cast<LPCOLESTR*>(TemplatePath_EmptyFile.addressof());
-			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&tf1), oper, L"file1.asm", 1, tmpl, nullptr, &addResult);
+			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&tf1), oper, L"file1.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
-			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&tf2), oper, L"file2.asm", 1, tmpl, nullptr, &addResult);
+			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&tf2), oper, L"file2.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			// First project child should be a folder.
@@ -238,10 +236,9 @@ namespace UITests
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
 
-			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
-			hr = td.proj->AddItem(VSITEMID_ROOT, oper, L"start.asm", 1, templateasm, nullptr, &addResult);
+			hr = td.proj->AddItem(VSITEMID_ROOT, oper, L"start.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
-			hr = td.proj->AddItem(VSITEMID_ROOT, oper, L"lib.asm", 1, templateasm, nullptr, &addResult);
+			hr = td.proj->AddItem(VSITEMID_ROOT, oper, L"lib.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			wil::unique_variant more;
@@ -256,7 +253,7 @@ namespace UITests
 			hr = td.hier->SetProperty (V_VSITEMID(&evenMore), VSHPROPID_EditLabel, wil::make_variant_bstr_failfast(L"EvenMore"));
 			Assert::AreEqual(S_OK, hr);
 
-			hr = td.proj->AddItem(V_VSITEMID(&evenMore), oper, L"file.inc", 1, templateasm, nullptr, &addResult);
+			hr = td.proj->AddItem(V_VSITEMID(&evenMore), oper, L"file.inc", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			wil::unique_variant generatedFiles;
@@ -265,9 +262,9 @@ namespace UITests
 			hr = td.hier->SetProperty (V_VSITEMID(&generatedFiles), VSHPROPID_EditLabel, wil::make_variant_bstr_failfast(L"GeneratedFiles"));
 			Assert::AreEqual(S_OK, hr);
 
-			hr = td.proj->AddItem(V_VSITEMID(&generatedFiles), oper, L"preinclude.inc", 1, templateasm, nullptr, &addResult);
+			hr = td.proj->AddItem(V_VSITEMID(&generatedFiles), oper, L"preinclude.inc", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
-			hr = td.proj->AddItem(V_VSITEMID(&generatedFiles), oper, L"postinclude.inc", 1, templateasm, nullptr, &addResult);
+			hr = td.proj->AddItem(V_VSITEMID(&generatedFiles), oper, L"postinclude.inc", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			auto genFilesFolder = GetProperty_VSITEMID(td.hier, VSITEMID_ROOT, VSHPROPID_FirstChild);
@@ -377,25 +374,24 @@ namespace UITests
 			HRESULT hr;
 			TestData td (L"PutItemsFourFilesUnsorted", TemplatePath_EmptyProject.get());
 
-			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
 			auto proj = td.proj.try_query<IVsProject>();
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
 
 			// Add to empty parent
-			hr = proj->AddItem(VSITEMID_ROOT, oper, L"file3.asm", 1, templateasm, nullptr, &addResult);
+			hr = proj->AddItem(VSITEMID_ROOT, oper, L"file3.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			// Insert in first pos
-			hr = proj->AddItem(VSITEMID_ROOT, oper, L"file1.asm", 1, templateasm, nullptr, &addResult);
+			hr = proj->AddItem(VSITEMID_ROOT, oper, L"file1.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			// Insert between the two above
-			hr = proj->AddItem(VSITEMID_ROOT, oper, L"file2.asm", 1, templateasm, nullptr, &addResult);
+			hr = proj->AddItem(VSITEMID_ROOT, oper, L"file2.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			// Add at the end
-			hr = proj->AddItem(VSITEMID_ROOT, oper, L"file4.asm", 1, templateasm, nullptr, &addResult);
+			hr = proj->AddItem(VSITEMID_ROOT, oper, L"file4.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			// First project child should be file1.
@@ -444,10 +440,9 @@ namespace UITests
 			hr = proj1.query<IVsUIHierarchy>()->SetProperty (V_VSITEMID(&folder1), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"folder"));
 			Assert::AreEqual(S_OK, hr);
 
-			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = proj1.query<IVsProject>()->AddItem(V_VSITEMID(&folder1), oper, L"test.asm", 1, templateasm, nullptr, &addResult);
+			hr = proj1.query<IVsProject>()->AddItem(V_VSITEMID(&folder1), oper, L"test.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			hr = proj1->Save(nullptr);
@@ -483,7 +478,7 @@ namespace UITests
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"file.asm", 1,  const_cast<LPCOLESTR*>(TemplatePath_EmptyFile.addressof()), nullptr, &addResult);
+			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"file.asm", 1,  TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			VSITEMID id;
@@ -551,7 +546,7 @@ namespace UITests
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.hier.try_query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"file.asm", 1, (LPCOLESTR*)TemplatePath_EmptyFile.addressof(), nullptr, &addResult);
+			hr = td.hier.try_query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"file.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 			auto fileItemId = GetProperty_VSITEMID (td.hier, VSITEMID_ROOT, VSHPROPID_FirstChild);
 
@@ -586,7 +581,7 @@ namespace UITests
 			// Add file in folder and check it exists in file system.
 			VSADDRESULT result;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj->AddItem (folderItemId, oper, L"file.asm", 1, (LPCOLESTR*)TemplatePath_EmptyFile.addressof(), nullptr, &result);
+			hr = td.proj->AddItem (folderItemId, oper, L"file.asm", 1, TemplateEmptyFile, nullptr, &result);
 			Assert::AreEqual(S_OK, hr);
 
 			auto fileItemId = GetProperty_VSITEMID (td.hier, folderItemId, VSHPROPID_FirstChild);
@@ -619,7 +614,7 @@ namespace UITests
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj->AddItem(VSITEMID_ROOT, oper, L"file.asm", 1,  const_cast<LPCOLESTR*>(TemplatePath_EmptyFile.addressof()), nullptr, &addResult);
+			hr = td.proj->AddItem(VSITEMID_ROOT, oper, L"file.asm", 1,  TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 			Assert::AreEqual<int>(ADDRESULT_Success & 0xFF, addResult);
 
@@ -664,14 +659,12 @@ namespace UITests
 			Assert::AreEqual(S_OK, hr);
 			auto unadvise = wil::scope_exit([hecookie, &td] { td.hier->UnadviseHierarchyEvents(hecookie); });
 
-			LPCOLESTR templateasm[] = { TemplatePath_EmptyFile.get() };
-
 			// Add files named "B", "C", "D".
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj->AddItem (VSITEMID_ROOT, oper, L"B", 1, templateasm, nullptr, &addResult); Assert::AreEqual(S_OK, hr);
-			hr = td.proj->AddItem (VSITEMID_ROOT, oper, L"C", 1, templateasm, nullptr, &addResult); Assert::AreEqual(S_OK, hr);
-			hr = td.proj->AddItem (VSITEMID_ROOT, oper, L"D", 1, templateasm, nullptr, &addResult); Assert::AreEqual(S_OK, hr);
+			hr = td.proj->AddItem (VSITEMID_ROOT, oper, L"B", 1, TemplateEmptyFile, nullptr, &addResult); Assert::AreEqual(S_OK, hr);
+			hr = td.proj->AddItem (VSITEMID_ROOT, oper, L"C", 1, TemplateEmptyFile, nullptr, &addResult); Assert::AreEqual(S_OK, hr);
+			hr = td.proj->AddItem (VSITEMID_ROOT, oper, L"D", 1, TemplateEmptyFile, nullptr, &addResult); Assert::AreEqual(S_OK, hr);
 
 			// First one should be "B", second one should be "C", third "D"
 			auto b = GetProperty_VSITEMID (td.hier, VSITEMID_ROOT, VSHPROPID_FirstChild);

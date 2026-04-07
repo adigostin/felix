@@ -46,7 +46,7 @@ namespace UITests
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"Name", 1, const_cast<LPCOLESTR*>(TemplatePath_EmptyFile.addressof()), NULL, &addResult);
+			hr = td.proj.query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"Name", 1, TemplateEmptyFile, NULL, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			VSITEMID fileItemId;

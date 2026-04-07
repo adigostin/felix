@@ -145,7 +145,7 @@ namespace UITests
 			// Add file
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
 			VSADDRESULT addResult;
-			hr = proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"1.asm", 1, const_cast<LPCOLESTR*>(TemplatePath_EmptyFile.addressof()), nullptr, &addResult);
+			hr = proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"1.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
 			VSITEMID itemIdFileAdded;
 			hr = hier->ParseCanonicalName(L"1.asm", &itemIdFileAdded);

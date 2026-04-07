@@ -290,7 +290,7 @@ namespace UITests
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = proj.query<IVsProject>()->AddItem (V_UI4(&folderItemId), oper, L"file2.asm", 1, const_cast<LPCOLESTR*>(TemplatePath_EmptyFile.addressof()), NULL, &addResult);
+			hr = proj.query<IVsProject>()->AddItem (V_UI4(&folderItemId), oper, L"file2.asm", 1, TemplateEmptyFile, NULL, &addResult);
 			Assert::AreEqual (S_OK, hr);
 
 			VSITEMID itemId;
@@ -461,7 +461,7 @@ namespace UITests
 			// Now if we add an .asm file, we should have the generated files.
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = proj.query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"file.asm", 1, const_cast<LPCOLESTR*>(TemplatePath_EmptyFile.addressof()), NULL, &addResult);
+			hr = proj.query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"file.asm", 1, TemplateEmptyFile, NULL, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			hr = proj.query<IVsHierarchy>()->GetProperty(VSITEMID_ROOT, VSHPROPID_FirstChild, &var);

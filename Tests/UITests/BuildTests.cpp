@@ -285,8 +285,7 @@ namespace UITests
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&folder), oper, L"file1.asm", 1,
-				const_cast<LPCOLESTR*>(TemplatePath_EmptyFile.addressof()), NULL, &addResult);
+			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&folder), oper, L"file1.asm", 1, TemplateEmptyFile, NULL, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			wil::unique_variant subfolder;
@@ -297,8 +296,7 @@ namespace UITests
 			//hr = hier->SetProperty (V_VSITEMID(&subfolder), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"subfolder"));
 			//Assert::IsTrue(SUCCEEDED(hr));
 
-			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&subfolder), oper, L"file2.asm", 1, 
-				const_cast<LPCOLESTR*>(TemplatePath_EmptyFile.addressof()), NULL, &addResult);
+			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&subfolder), oper, L"file2.asm", 1, TemplateEmptyFile, NULL, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			wil::com_ptr_failfast<IVsCfg> cfg;
