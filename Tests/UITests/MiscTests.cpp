@@ -315,7 +315,7 @@ namespace UITests
 			auto file1Path = str_concat(projPath, L"\\", file1RelPath);
 			WriteFileCreateDirs (file1Path, "; comment");
 			const wchar_t file2RelPath[] = L"..\\test.asm";
-			auto file2Path = CombinePath (projPath.get(), file2RelPath);
+			auto file2Path = str_concat(projPath, L"\\", file2RelPath);
 			WriteFileCreateDirs (file2Path, "; comment");
 			wchar_t file3Path[] = L"D:\\FelixTest\\test.asm";
 			WriteFileCreateDirs (file3Path, "; comment");
@@ -361,7 +361,7 @@ namespace UITests
 		TEST_METHOD(CloneFile_SameNameAsFileOutsideProjectDir)
 		{
 			HRESULT hr;
-			auto templatePath = CombinePath(testPath.get(), L"template.asm");
+			auto templatePath = str_concat(testPath, L"\\template.asm");
 			WriteFileCreateDirs (templatePath, "; comment");
 
 			static const wchar_t file1RelPath[] = L"..\\test.asm";
@@ -380,7 +380,7 @@ namespace UITests
 		TEST_METHOD(CloneFileToFolderMissingOnDisk)
 		{
 			HRESULT hr;
-			auto templatePath = CombinePath (testPath.get(), L"template.asm");
+			auto templatePath = str_concat(testPath, L"\\template.asm");
 			WriteFileCreateDirs (templatePath, "; comment");
 
 			wil::unique_variant folderItemId;
@@ -449,7 +449,7 @@ namespace UITests
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::AreEqual<VARTYPE>(VT_VSITEMID, var.vt);
 			Assert::AreEqual<VSITEMID>(VSITEMID_NIL, V_VSITEMID(&var));
-			auto genFilesPath = CombinePath(testPath.get(), L"GeneratedFiles");
+			auto genFilesPath = str_concat(testPath, L"\\GeneratedFiles");
 			Assert::IsFalse(PathFileExists(genFilesPath.get()));
 
 			// And the project should not be dirty just after loading from XML.
