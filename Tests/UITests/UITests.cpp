@@ -1,7 +1,7 @@
 
 #include "pch.h"
-#include "shared/com.h"
 #include "UITests.h"
+#include "shared/com.h"
 #include <unordered_map>
 #include <set>
 
@@ -31,16 +31,16 @@ namespace UITests
 		DWORD vsMajorVersion = fi->dwProductVersionMS >> 16;
 		auto progId = wil::str_printf_failfast<wil::unique_process_heap_string> (L"!VisualStudio.DTE.%u.0:%u", vsMajorVersion, processId);
 
-		com_ptr<IUnknown> runningObject;
-		com_ptr<IBindCtx> bindCtx;
-		com_ptr<IRunningObjectTable> rot;
-		com_ptr<IEnumMoniker> enumMonikers;
+		wil::com_ptr_failfast<IUnknown> runningObject;
+		wil::com_ptr_failfast<IBindCtx> bindCtx;
+		wil::com_ptr_failfast<IRunningObjectTable> rot;
+		wil::com_ptr_failfast<IEnumMoniker> enumMonikers;
 
 		hr = CreateBindCtx(0, &bindCtx); RETURN_IF_FAILED_EXPECTED(hr);
 		hr = bindCtx->GetRunningObjectTable(&rot); RETURN_IF_FAILED_EXPECTED(hr);
 		hr = rot->EnumRunning(&enumMonikers); RETURN_IF_FAILED_EXPECTED(hr);
 
-		com_ptr<IMoniker> moniker;
+		wil::com_ptr_failfast<IMoniker> moniker;
 		ULONG numberFetched = 0;
 		while (enumMonikers->Next (1, moniker.addressof(), &numberFetched) == S_OK)
 		{
@@ -98,10 +98,10 @@ namespace UITests
 	{
 		HRESULT hr;
 		auto dbg3 = wil::com_query_failfast<VxDTE::Debugger3>(debugger);
-		com_ptr<VxDTE::Processes> processes;
+		wil::com_ptr_failfast<VxDTE::Processes> processes;
 		hr = dbg3->get_LocalProcesses(&processes);
 		Assert::IsTrue(SUCCEEDED(hr));
-		com_ptr<IUnknown> newEnum;
+		wil::com_ptr_failfast<IUnknown> newEnum;
 		hr = processes->_NewEnum(&newEnum);
 		Assert::IsTrue(SUCCEEDED(hr));
 		auto enumProcesses = wil::com_query_failfast<IEnumVARIANT>(newEnum);
@@ -176,14 +176,14 @@ namespace UITests
 			DWORD vspid = pids.get()[i];
 			if (vspid == targetVsProcessId)
 				continue;
-			com_ptr<VxDTE::DTE2> dte;
+			wil::com_ptr_failfast<VxDTE::DTE2> dte;
 			if (SUCCEEDED(GetDTE(vspid, &dte)))
 			{
-				com_ptr<VxDTE::Debugger> debugger;
+				wil::com_ptr_failfast<VxDTE::Debugger> debugger;
 				VxDTE::dbgDebugMode mode;
-				com_ptr<VxDTE::Processes> processes;
-				com_ptr<IUnknown> newEnum;
-				com_ptr<IEnumVARIANT> enumVar;
+				wil::com_ptr_failfast<VxDTE::Processes> processes;
+				wil::com_ptr_failfast<IUnknown> newEnum;
+				wil::com_ptr_failfast<IEnumVARIANT> enumVar;
 				if (SUCCEEDED(dte->get_Debugger(&debugger))
 					&& SUCCEEDED(debugger->get_CurrentMode(&mode))
 					&& mode != VxDTE::dbgDesignMode
@@ -195,7 +195,7 @@ namespace UITests
 					ULONG fetched;
 					while (enumVar->Next(1, &var, &fetched) == S_OK)
 					{
-						com_ptr<VxDTE::Process> process;
+						wil::com_ptr_failfast<VxDTE::Process> process;
 						if (var.vt == VT_DISPATCH && SUCCEEDED(var.pdispVal->QueryInterface(IID_PPV_ARGS(&process))))
 						{
 							long pid;
@@ -254,7 +254,7 @@ namespace UITests
 		Assert::IsNotNull(dte.get(), L"Failed to start VS");
 
 		// The window we get from DTE is the main window (even if it's invisible), not the splash window.
-		com_ptr<VxDTE::Window> dteMainWindow;
+		wil::com_ptr_failfast<VxDTE::Window> dteMainWindow;
 		hr = dte->get_MainWindow(&dteMainWindow);
 		Assert::IsTrue(SUCCEEDED(hr));
 		long dteMainWindowHWnd;
@@ -266,19 +266,19 @@ namespace UITests
 		if (handle != (HWND)(size_t)(DWORD)dteMainWindowHWnd)
 		{
 			// We have the splash window up.
-			com_ptr<IUIAutomationElement> topLevelWindow;
+			wil::com_ptr_failfast<IUIAutomationElement> topLevelWindow;
 			hr = automation->ElementFromHandle(handle, &topLevelWindow);
 			Assert::IsTrue(SUCCEEDED(hr));
-			com_ptr<IUIAutomationCondition> condition;
+			wil::com_ptr_failfast<IUIAutomationCondition> condition;
 			hr = automation->CreatePropertyCondition(UIA_NamePropertyId, wil::make_variant_bstr_failfast(L"Continue without code"), &condition);
 			Assert::IsTrue(SUCCEEDED(hr));
-			com_ptr<IUIAutomationElement> cwc;
+			wil::com_ptr_failfast<IUIAutomationElement> cwc;
 			hr = topLevelWindow->FindFirst(TreeScope_Descendants, condition, &cwc);
 			Assert::IsTrue(SUCCEEDED(hr));
-			com_ptr<IUnknown> patternUnk;
+			wil::com_ptr_failfast<IUnknown> patternUnk;
 			hr = cwc->GetCurrentPattern(UIA_InvokePatternId, &patternUnk);
 			Assert::IsTrue(SUCCEEDED(hr));
-			com_ptr<IUIAutomationInvokePattern> invpat;
+			wil::com_ptr_failfast<IUIAutomationInvokePattern> invpat;
 			hr = patternUnk->QueryInterface(IID_PPV_ARGS(&invpat));
 			Assert::IsTrue(SUCCEEDED(hr));
 			hr = invpat->Invoke();
@@ -316,7 +316,7 @@ namespace UITests
 		hr = solution.query<VxDTE::_Solution>()->Close();
 		Assert::IsTrue(SUCCEEDED(hr));
 
-		com_ptr<VxDTE::Window> dteMainWindow;
+		wil::com_ptr_failfast<VxDTE::Window> dteMainWindow;
 		hr = dte->get_MainWindow(&dteMainWindow);
 		Assert::IsTrue(SUCCEEDED(hr));
 		long dteMainWindowHWnd;
@@ -428,7 +428,7 @@ namespace UITests
 	{
 		HRESULT hr;
 
-		com_ptr<VxDTE::SolutionBuild> solutionBuild;
+		wil::com_ptr_failfast<VxDTE::SolutionBuild> solutionBuild;
 		hr = sln->get_SolutionBuild(&solutionBuild);
 		Assert::IsTrue(SUCCEEDED(hr));
 
@@ -502,7 +502,7 @@ namespace UITests
 		ULONG actual;
 		VSCFGFLAGS flags;
 		wil::com_query_failfast<IVsCfgProvider>(proj)->GetCfgs(1, &cfg, &actual, &flags);
-		com_ptr<IProjectConfigAssemblerProperties> asmProps;
+		wil::com_ptr_failfast<IProjectConfigAssemblerProperties> asmProps;
 		cfg.query<IProjectConfigProperties>()->get_AssemblerProperties(&asmProps);
 		auto hr = asmProps->put_GeneratePrePostIncludeFiles(VARIANT_FALSE);
 		Assert::AreEqual(S_OK, hr);
@@ -673,7 +673,7 @@ namespace UITests
 	struct TestPropertyNotifySink : ITestPropertyNotifySink
 	{
 		ULONG _refCount = 0;
-		vector_nothrow<DISPID> _changed;
+		std::set<DISPID> _changed;
 
 		#pragma region IUnknown
 		virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
@@ -696,9 +696,7 @@ namespace UITests
 		#pragma region IPropertyNotifySink
 		virtual HRESULT STDMETHODCALLTYPE OnChanged (DISPID dispID) override
 		{
-			auto it = _changed.find(dispID);
-			if (it == _changed.end())
-				_changed.try_push_back(dispID);
+			_changed.insert(dispID);
 			return S_OK;
 		}
 
