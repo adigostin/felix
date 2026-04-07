@@ -26,7 +26,7 @@ namespace UITests
 			testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"NotifyTest");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
 			std::tie(sln, proj) = CreateSolutionAndProject(dte, testPath.get(), L"test", L"proj");
-			slnFilePath = CombinePath(testPath.get(), L"test.sln");
+			slnFilePath = str_concat(testPath, L"\\test.sln");
 			projPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\proj");
 		}
 
