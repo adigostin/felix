@@ -13,6 +13,13 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace UITests
 {
+	extern wchar_t tempPath[MAX_PATH + 1];
+	extern wil::unique_process_heap_string TemplatePath_TwoConfigsOneFile;
+	extern wil::unique_process_heap_string TemplatePath_OneConfigOneCustomBuildTool;
+	extern wil::unique_process_heap_string TemplatePath_EmptyProject;
+	extern wil::unique_process_heap_string TemplatePath_EmptyFile;
+	extern LPCOLESTR TemplateEmptyFile[1];
+
 	wil::com_ptr_failfast<VxDTE::DTE2> GetDefaultVSInstance();
 	wil::com_ptr_failfast<VxDTE::DTE2> LaunchVS (const wchar_t* envVar = nullptr);
 	void CloseVS (VxDTE::DTE2* dte, bool hard = false);
