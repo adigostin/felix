@@ -2,6 +2,8 @@
 #include "pch.h"
 #include "shared/com.h"
 #include "UITests.h"
+#include <unordered_map>
+#include <set>
 
 namespace UITests
 {
@@ -504,5 +506,224 @@ namespace UITests
 		cfg.query<IProjectConfigProperties>()->get_AssemblerProperties(&asmProps);
 		auto hr = asmProps->put_GeneratePrePostIncludeFiles(VARIANT_FALSE);
 		Assert::AreEqual(S_OK, hr);
+	}
+
+
+	struct TestHierarchyEventSink : ITestHierarchyEventSink
+	{
+		ULONG _refCount = 0;
+		std::unordered_map<VSITEMID, std::set<VSHPROPID>> _changedProps;
+
+		struct Added { VSITEMID itemidParent; VSITEMID itemidSiblingPrev; VSITEMID itemidAdded; };
+		std::vector<Added> _added;
+
+		std::set<VSITEMID> _removed;
+
+		std::set<VSITEMID> _childItemsInvalidated;
+
+		#pragma region IUnknown
+		virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
+		{
+			if (   TryQI<IUnknown>(this, riid, ppvObject)
+				|| TryQI<IVsHierarchyEvents>(this, riid, ppvObject)
+				|| TryQI<ITestHierarchyEventSink>(this, riid, ppvObject)
+				)
+				return S_OK;
+
+			*ppvObject = nullptr;
+			return E_NOINTERFACE;
+		}
+		virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
+		virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
+		#pragma endregion
+
+		#pragma region IVsHierarchyEvents
+		virtual HRESULT STDMETHODCALLTYPE OnItemAdded (VSITEMID itemidParent, VSITEMID itemidSiblingPrev, VSITEMID itemidAdded) override
+		{
+			_added.push_back({ itemidParent, itemidSiblingPrev, itemidAdded });
+			return S_OK;
+		}
+
+		virtual HRESULT STDMETHODCALLTYPE OnItemsAppended (VSITEMID itemidParent) override
+		{
+			Assert::Fail();
+		}
+
+		virtual HRESULT STDMETHODCALLTYPE OnItemDeleted (VSITEMID itemid) override
+		{
+			_removed.insert(itemid);
+			return S_OK;
+		}
+
+		virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged (VSITEMID itemid, VSHPROPID propid, DWORD flags) override
+		{
+			_changedProps[itemid].insert(propid);
+			return S_OK;
+		}
+
+		virtual HRESULT STDMETHODCALLTYPE OnInvalidateItems (VSITEMID itemidParent) override
+		{
+			_childItemsInvalidated.insert(itemidParent);
+			return S_OK;
+		}
+
+		virtual HRESULT STDMETHODCALLTYPE OnInvalidateIcon (HICON hicon) override
+		{
+			return S_OK;
+		}
+		#pragma endregion
+
+		#pragma region ITestHierarchyEventSink
+		virtual bool PropertyChanged (VSITEMID itemid, VSHPROPID propid) const override
+		{
+			auto it = _changedProps.find(itemid);
+			if (it == _changedProps.end())
+				return false;
+			return it->second.contains(propid);
+		}
+
+		virtual bool ItemAdded (VSITEMID itemidParent, VSITEMID itemidAdded) const override
+		{
+			for (auto& a : _added)
+			{
+				if (a.itemidParent == itemidParent && a.itemidAdded == itemidAdded)
+					return true;
+			}
+
+			return false;
+		}
+
+		virtual bool ItemRemoved (VSITEMID itemid) const override
+		{
+			return _removed.contains(itemid);
+		}
+
+		virtual bool ChildItemsInvalidated(VSITEMID itemidParent) const override
+		{
+			return _childItemsInvalidated.contains(itemidParent);
+		}
+		#pragma endregion
+	};
+
+	wil::com_ptr_failfast<ITestHierarchyEventSink> MakeTestHierarchyEventSink()
+	{
+		return wil::com_ptr_failfast(new (std::nothrow) TestHierarchyEventSink());
+	}
+
+	struct TestPropertyChangeSink : ITestPropertyChangeSink
+	{
+		ULONG _refCount = 0;
+		std::unordered_map<wil::com_ptr_failfast<IDispatch>, std::set<DISPID>, std::hash<IDispatch*>> _changing;
+		std::unordered_map<wil::com_ptr_failfast<IDispatch>, std::set<DISPID>, std::hash<IDispatch*>> _changed;
+
+		#pragma region IUnknown
+		virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
+		{
+			if (   TryQI<IUnknown>(this, riid, ppvObject)
+				|| TryQI<IPropertyChangeSink>(this, riid, ppvObject)
+				|| TryQI<ITestPropertyChangeSink>(this, riid, ppvObject)
+				)
+				return S_OK;
+
+			*ppvObject = nullptr;
+			return E_NOINTERFACE;
+		}
+		virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
+		virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
+		#pragma endregion
+
+		#pragma region IPropertyChangeSink
+		virtual HRESULT STDMETHODCALLTYPE OnPropertyChanging (IDispatch* pObject, DISPID dispID, PropertyChangeArgs args) override
+		{
+			_changing[pObject].insert(dispID);
+			return S_OK;
+		}
+
+		virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged (IDispatch* pObject, DISPID dispID, PropertyChangeArgs args) override
+		{
+			_changed[pObject].insert(dispID);
+			return S_OK;
+		}
+		#pragma endregion
+
+		#pragma region ITestPropertyChangeSink
+		virtual bool Called (IDispatch* obj, std::initializer_list<DISPID> dispIDs) const override
+		{
+			for (DISPID dispID : dispIDs)
+			{
+				auto it = _changing.find(obj);
+				if (it == _changing.end() || !it->second.contains(dispID))
+					return false;
+				it = _changed.find(obj);
+				if (it == _changed.end() || !it->second.contains(dispID))
+					return false;
+			}
+
+			return true;
+		}
+
+		#pragma endregion
+	};
+
+	wil::com_ptr_failfast<ITestPropertyChangeSink> MakeTestPropertyChangeSink()
+	{
+		return new TestPropertyChangeSink();
+	}
+
+	struct TestPropertyNotifySink : ITestPropertyNotifySink
+	{
+		ULONG _refCount = 0;
+		vector_nothrow<DISPID> _changed;
+
+		#pragma region IUnknown
+		virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
+		{
+			if (   TryQI<IUnknown>(static_cast<IPropertyNotifySink*>(this), riid, ppvObject)
+				|| TryQI<IPropertyNotifySink>(this, riid, ppvObject)
+				|| TryQI<ITestPropertyNotifySink>(this, riid, ppvObject)
+				)
+				return S_OK;
+
+			*ppvObject = nullptr;
+			return E_NOINTERFACE;
+		}
+
+		virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
+
+		virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
+		#pragma endregion
+
+		#pragma region IPropertyNotifySink
+		virtual HRESULT STDMETHODCALLTYPE OnChanged (DISPID dispID) override
+		{
+			auto it = _changed.find(dispID);
+			if (it == _changed.end())
+				_changed.try_push_back(dispID);
+			return S_OK;
+		}
+
+		virtual HRESULT STDMETHODCALLTYPE OnRequestEdit (DISPID dispID) override
+		{
+			return E_NOTIMPL;
+		}
+		#pragma endregion
+
+		#pragma region ITestPropertyNotifySink
+		virtual bool Called (std::initializer_list<DISPID> dispIDs) const override
+		{
+			for (auto dispID : dispIDs)
+			{
+				if (_changed.find(dispID) == _changed.end())
+					return false;
+			}
+
+			return true;
+		}
+		#pragma endregion
+	};
+
+	wil::com_ptr_failfast<ITestPropertyNotifySink> MakeTestPropertyNotifySink()
+	{
+		return new (std::nothrow) TestPropertyNotifySink();
 	}
 }
