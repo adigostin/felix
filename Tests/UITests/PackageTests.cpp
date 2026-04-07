@@ -66,7 +66,7 @@ namespace UITests
 				Assert::AreEqual(S_OK, hr);
 
 				auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\folder/test.asm");
-				WriteFileOnDisk(fileFullPath.get(), "");
+				WriteFileCreateDirs(fileFullPath, "");
 				VSADDRESULT addResult;
 				auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000u);
 				hr = proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(fileFullPath.addressof()), nullptr, &addResult);

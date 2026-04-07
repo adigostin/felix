@@ -85,7 +85,7 @@ namespace UITests
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::AreEqual(0l, buildFailCount);
 
-			WriteFileOnDisk (CombinePath(td.projDir.get(), L"file.asm").get(), "\tabcde");
+			WriteFileCreateDirs (CombinePath(td.projDir.get(), L"file.asm"), "\tabcde");
 			hr = td.slnBuild->Build(VARIANT_TRUE);
 			Assert::IsTrue(SUCCEEDED(hr));
 			// LastBuildInfo returns the number of failed projects, despite the parameter name.
@@ -224,7 +224,7 @@ namespace UITests
 
 			// Add new file
 			auto filePath = CombinePath(td.projDir.get(), L"Folder\\single.asm");
-			WriteFileOnDisk(filePath.get(), "\tnop\r\n\tend");
+			WriteFileCreateDirs(filePath, "\tnop\r\n\tend");
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
 			hr = td.proj.query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(filePath.addressof()), NULL, &addResult);
@@ -320,17 +320,17 @@ namespace UITests
 
 			// file 1 in project dir
 			auto file1FullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\file1.asm");
-			WriteFileOnDisk(file1FullPath.get(), "");
+			WriteFileCreateDirs(file1FullPath, "");
 			// file 2 in project sub dir
 			auto file2FullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\subdir\\file2.asm");
-			WriteFileOnDisk(file2FullPath.get(), "");
+			WriteFileCreateDirs(file2FullPath, "");
 			// file 3 outside project dir but on same drive
 			auto file3FullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.testDir, L"\\file3.asm");
-			WriteFileOnDisk(file3FullPath.get(), "");
+			WriteFileCreateDirs(file3FullPath, "");
 			// file 4 on different drive
 			auto temp = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\file4.asm");
 			auto file4FullPath = MakeVolumeGuidPath(temp.get());
-			WriteFileOnDisk(file4FullPath.get(), "");
+			WriteFileCreateDirs(file4FullPath, "");
 
 			LPCOLESTR files[] = { file1FullPath.get(), file2FullPath.get(), file3FullPath.get(), file4FullPath.get() };
 
@@ -370,7 +370,7 @@ namespace UITests
 		{
 			HRESULT hr;
 			TD td (TemplatePath_TwoConfigsOneFile.get());
-			WriteFileOnDisk (CombinePath(td.projDir.get(), L"file.asm").get(), "\tabcde");
+			WriteFileCreateDirs (CombinePath(td.projDir.get(), L"file.asm"), "\tabcde");
 			hr = td.slnBuild->Build(VARIANT_TRUE);
 			Assert::AreEqual(S_OK, hr);
 			long buildFailCount;
@@ -624,7 +624,7 @@ namespace UITests
 			HeavyLoad hl;
 
 			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\file.asm");
-			WriteFileOnDisk(filePath.get(), "content_xxx");
+			WriteFileCreateDirs(filePath, "content_xxx");
 			SetCustomBuildToolParams (td.proj, L"file.asm", L"cmd /c type file.asm", nullptr);
 			hr = td.slnBuild->Build(VARIANT_TRUE);
 			Assert::AreEqual(S_OK, hr);
@@ -646,7 +646,7 @@ namespace UITests
 			HeavyLoad hl;
 
 			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\file.asm");
-			WriteFileOnDisk(filePath.get(), "content_xxx\r\n");
+			WriteFileCreateDirs(filePath, "content_xxx\r\n");
 			SetCustomBuildToolParams (td.proj, L"file.asm", L"cmd /c type file.asm", nullptr);
 			hr = td.slnBuild->Build(VARIANT_TRUE);
 			Assert::AreEqual(S_OK, hr);

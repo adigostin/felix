@@ -406,18 +406,18 @@ namespace UITests
 
 		auto templateDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"TemplateTwoConfigsOneFile\\");
 		wil::str_concat_nothrow(TemplatePath_TwoConfigsOneFile, templateDir, L"proj.flx");
-		WriteFileOnDisk(TemplatePath_TwoConfigsOneFile.get(), TemplateTwoConfigsOneFileXML);
+		WriteFileCreateDirs(TemplatePath_TwoConfigsOneFile, TemplateTwoConfigsOneFileXML);
 		auto file = wil::str_concat_failfast<wil::unique_process_heap_string>(templateDir, L"file.asm");
-		WriteFileOnDisk(file.get(), "start:\tret");
+		WriteFileCreateDirs(file, "start:\tret");
 
 		templateDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"TemplateOneConfigOneCustomBuildTool\\");
 		wil::str_concat_nothrow(TemplatePath_OneConfigOneCustomBuildTool, templateDir, L"proj.flx");
-		WriteFileOnDisk(TemplatePath_OneConfigOneCustomBuildTool.get(), TemplateXML_OneConfigOneCustomBuildTool);
+		WriteFileCreateDirs(TemplatePath_OneConfigOneCustomBuildTool, TemplateXML_OneConfigOneCustomBuildTool);
 		file = wil::str_concat_failfast<wil::unique_process_heap_string>(templateDir, L"file.asm");
-		WriteFileOnDisk(file.get(), "start:\tret");
+		WriteFileCreateDirs(file, "start:\tret");
 
 		wil::str_concat_nothrow(TemplatePath_EmptyProject, tempPath, L"TemplateEmpty\\proj.flx");
-		WriteFileOnDisk(TemplatePath_EmptyProject.get(), TemplateXML_EmptyProject);
+		WriteFileCreateDirs(TemplatePath_EmptyProject, TemplateXML_EmptyProject);
 
 		wil::str_concat_nothrow(TemplatePath_EmptyFile, tempPath, L"template.asm");
 		wil::unique_hfile (CreateFile(TemplatePath_EmptyFile.get(), GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL));

@@ -124,7 +124,7 @@ namespace UITests
 			Assert::AreEqual(0l, buildFailCount);
 
 			auto file1Path = CombinePath(projPath.get(), L"subdir\\file1.asm");
-			WriteFileOnDisk (file1Path.get(), "\t555555");
+			WriteFileCreateDirs (file1Path, "\t555555");
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
@@ -313,12 +313,12 @@ namespace UITests
 			HRESULT hr;
 			const wchar_t file1RelPath[] = L"test.asm";
 			auto file1Path = CombinePath(projPath.get(), file1RelPath);
-			WriteFileOnDisk (file1Path.get(), "; comment");
+			WriteFileCreateDirs (file1Path, "; comment");
 			const wchar_t file2RelPath[] = L"..\\test.asm";
 			auto file2Path = CombinePath (projPath.get(), file2RelPath);
-			WriteFileOnDisk (file2Path.get(), "; comment");
+			WriteFileCreateDirs (file2Path, "; comment");
 			wchar_t file3Path[] = L"D:\\FelixTest\\test.asm";
-			WriteFileOnDisk (file3Path, "; comment");
+			WriteFileCreateDirs (file3Path, "; comment");
 
 			LPCOLESTR filesToOpen[] = { file1Path.get(), file2Path.get(), file3Path };
 			VSADDRESULT addResult;
@@ -362,11 +362,11 @@ namespace UITests
 		{
 			HRESULT hr;
 			auto templatePath = CombinePath(testPath.get(), L"template.asm");
-			WriteFileOnDisk (templatePath.get(), "; comment");
+			WriteFileCreateDirs (templatePath, "; comment");
 
 			static const wchar_t file1RelPath[] = L"..\\test.asm";
 			auto file1Path = CombinePath(projPath.get(), file1RelPath);
-			WriteFileOnDisk(file1Path.get(), "; comment");
+			WriteFileCreateDirs(file1Path, "; comment");
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
 			hr = proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(file1Path.addressof()), nullptr, &addResult);
@@ -381,7 +381,7 @@ namespace UITests
 		{
 			HRESULT hr;
 			auto templatePath = CombinePath (testPath.get(), L"template.asm");
-			WriteFileOnDisk (templatePath.get(), "; comment");
+			WriteFileCreateDirs (templatePath, "; comment");
 
 			wil::unique_variant folderItemId;
 			hr = proj.query<IVsUIHierarchy>()->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &folderItemId);
@@ -435,7 +435,7 @@ namespace UITests
 			auto close = wil::scope_exit([sln=sln.get()] { sln->Close(); });
 
 			auto projPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\proj.flx");
-			WriteFileOnDisk(projPath.get(), OldXmlWithGeneratedFilesFolder);
+			WriteFileCreateDirs(projPath, OldXmlWithGeneratedFilesFolder);
 
 			wil::com_ptr_failfast<VxDTE::Project> proj;
 			hr = sln->AddFromFile (wil::make_bstr_failfast(projPath.get()).get(), VARIANT_TRUE, &proj);

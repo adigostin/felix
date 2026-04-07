@@ -6,5 +6,4 @@
 
 
 wil::unique_process_heap_string CombinePath (const wchar_t* dir, const wchar_t* pathRelativeToDir);
-void WriteFileOnDisk (wchar_t* path, const char* fileContent);
 void RemoveDirectoryTree (const wchar_t* dir);

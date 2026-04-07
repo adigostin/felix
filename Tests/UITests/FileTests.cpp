@@ -68,7 +68,7 @@ namespace UITests
 		{
 			HRESULT hr;
 			auto fullPathOld = wil::str_concat_failfast<wil::unique_process_heap_string>(projPath, L"\\folder/test.asm");
-			WriteFileOnDisk(fullPathOld.get(), nullptr);
+			WriteFileCreateDirs(fullPathOld, nullptr);
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000u);
@@ -135,7 +135,7 @@ namespace UITests
 			VSADDRESULT addResult;
 			hr = proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(fileFullPath.addressof()), nullptr, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
-			WriteFileOnDisk(fileFullPath.get(), nullptr);
+			WriteFileCreateDirs(fileFullPath, nullptr);
 
 			VSITEMID id;
 			hr = proj.query<IVsHierarchy>()->ParseCanonicalName(fileFullPath.get(), &id);
@@ -151,7 +151,7 @@ namespace UITests
 		TEST_METHOD(AddFileAlreadyExists)
 		{
 			auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(projPath, L"\\folder/test.asm");
-			WriteFileOnDisk(fileFullPath.get(), "");
+			WriteFileCreateDirs(fileFullPath, "");
 
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000u);
 			VSADDRESULT addResult;

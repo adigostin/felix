@@ -20,25 +20,6 @@ wil::unique_process_heap_string CombinePath (const wchar_t* dir, const wchar_t* 
 	return wil::make_process_heap_string_failfast(path.get());
 }
 
-void WriteFileOnDisk (wchar_t* path, const char* fileContent)
-{
-	Assert::IsFalse(PathIsRelativeW(path));
-	auto fn = PathFindFileName(path);
-	Assert::IsTrue(fn > path);
-	fn[-1] = L'\0'; // temporarily terminate to get the directory path
-	auto hr = wil::CreateDirectoryDeepNoThrow(path);
-	Assert::IsTrue(SUCCEEDED(hr));
-
-	fn[-1] = L'\\'; // restore full path
-	wil::unique_hfile handle (CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL));
-	Assert::IsTrue(handle.is_valid());
-	if (fileContent)
-	{
-		BOOL bres = WriteFile(handle.get(), fileContent, (DWORD)strlen(fileContent), NULL, NULL);
-		Assert::IsTrue(bres);
-	}
-}
-
 void RemoveDirectoryTree (const wchar_t* dir)
 {
 	auto buffer = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s%c", dir, L'\0');

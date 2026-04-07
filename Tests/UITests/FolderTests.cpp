@@ -96,7 +96,7 @@ namespace UITests
 			RemoveDirectory(fileMk.get()); //remove any leftover directory (we're ok with the leftover for this test)
 
 			// Now put the file back on disk and remove it from the hierarchy, and try again to add the folder.
-			WriteFileOnDisk(fileMk.get(), "");
+			WriteFileCreateDirs(fileMk, "");
 			hr = td.proj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(1, DELITEMOP_RemoveFromProject, &fileItemId, DHO_SUPPRESS_UI);
 			Assert::AreEqual(S_OK, hr);
 			tryAddFolder();
@@ -113,7 +113,7 @@ namespace UITests
 			Assert::AreEqual(S_OK, hr);
 
 			auto filePath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\NAME\\file.txt");
-			WriteFileOnDisk(filePath.get(), "");
+			WriteFileCreateDirs(filePath, "");
 
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000u);
 			VSADDRESULT addResult;

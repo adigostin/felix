@@ -510,9 +510,9 @@ namespace UITests
 			TestData td (L"RemoveItemsFromRootNode", TemplatePath_EmptyProject.get());
 
 			auto path1 = wil::str_concat_failfast<wil::unique_process_heap_string>(td.testDir, L"file1.asm");
-			WriteFileOnDisk(path1.get(), "");
+			WriteFileCreateDirs(path1, "");
 			auto path2 = wil::str_concat_failfast<wil::unique_process_heap_string>(td.testDir, L"file2.asm");
-			WriteFileOnDisk(path2.get(), "");
+			WriteFileCreateDirs(path2, "");
 			const wchar_t* files[] = { path1.get(), path2.get() };
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
