@@ -16,7 +16,7 @@ static ATOM wndClassAtom;
 
 HRESULT STDMETHODCALLTYPE MakeHC91ROM (Bus* memory_bus, Bus* io_bus, const wchar_t* binaryFilename, wistd::unique_ptr<IMemoryDevice>* ppDevice);
 HRESULT STDMETHODCALLTYPE MakeHC91RAM (Bus* memory_bus, Bus* io_bus, wistd::unique_ptr<IMemoryDevice>* ppDevice);
-HRESULT STDMETHODCALLTYPE MakeBeeper (Bus* io_bus, wistd::unique_ptr<IDevice>* ppDevice);
+HRESULT STDMETHODCALLTYPE MakeBeeper (Bus* io_bus, IXAudio2* xaudio2, wistd::unique_ptr<IDevice>* ppDevice);
 
 using unique_cotaskmem_bitmapinfo = wil::unique_any<BITMAPINFO*, decltype(&::CoTaskMemFree), ::CoTaskMemFree>;
 
@@ -64,11 +64,15 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, ICon
 	wistd::unique_ptr<IMemoryDevice> _romDevice;
 	wistd::unique_ptr<IMemoryDevice> _ramDevice;
 	wistd::unique_ptr<IDevice> _beeper;
+	wistd::unique_ptr<ITapPlayerDevice> _tapPlayer;
 	vector_nothrow<IDevice*> _active_devices_;
 	bool _showCRTSnapshot = false;
 
 	// Passed via WM_SCREEN_COMPLETE from simulator thread to GUI thread while simulation is running.
 	unique_cotaskmem_bitmapinfo _screenComplete;
+
+	wil::com_ptr_nothrow<IXAudio2> _xaudio2;
+	IXAudio2MasteringVoice* _mastering_voice = nullptr;
 
 public:
 	HRESULT InitInstance (LPCWSTR romFilename)
@@ -77,20 +81,30 @@ public:
 		
 		hr = MakeConnectionPoint(this, &_eventHandlers); RETURN_IF_FAILED(hr);
 
+		hr = XAudio2Create (&_xaudio2, 0, XAUDIO2_DEFAULT_PROCESSOR); RETURN_IF_FAILED(hr);
+		//XAUDIO2_DEBUG_CONFIGURATION xadc = { };
+		//xadc.TraceMask = XAUDIO2_LOG_WARNINGS | XAUDIO2_LOG_DETAIL;
+		//xadc.BreakMask = XAUDIO2_LOG_WARNINGS;
+		//_xaudio2->SetDebugConfiguration(&xadc);
+		uint32_t sound_channel_count = 1;
+		hr = _xaudio2->CreateMasteringVoice(&_mastering_voice, sound_channel_count, sample_freq); RETURN_IF_FAILED(hr);
+
 		hr = MakeZ80CPU(&memoryBus, &ioBus, &irq, &_cpu); RETURN_IF_FAILED(hr);
 
 		hr = MakeScreenDevice(&memoryBus, &ioBus, &irq, this, &_screen); RETURN_IF_FAILED(hr);
 
 		hr = MakeKeyboardDevice(&ioBus, &_keyboard); RETURN_IF_FAILED(hr);
 		
-		hr = MakeBeeper(&ioBus, &_beeper); RETURN_IF_FAILED(hr);
+		hr = MakeBeeper(&ioBus, _xaudio2, &_beeper); RETURN_IF_FAILED(hr);
+
+		hr = MakeTapPlayer(&ioBus, _xaudio2, _tapPlayer); RETURN_IF_FAILED(hr);
 
 		hr = MakeHC91ROM (&memoryBus, &ioBus, romFilename, &_romDevice); RETURN_IF_FAILED(hr);
 ///		hr = _romDevice->AdviseBusAddressRangeChange(this); RETURN_IF_FAILED(hr);
 
 		hr = MakeHC91RAM (&memoryBus, &ioBus, &_ramDevice); RETURN_IF_FAILED(hr);
 
-		bool pushed = _active_devices_.try_push_back({ _screen.get(), _keyboard.get(), _romDevice.get(), _ramDevice.get(), _beeper.get() }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		bool pushed = _active_devices_.try_push_back({ _screen.get(), _keyboard.get(), _romDevice.get(), _ramDevice.get(), _beeper.get(), _tapPlayer.get() }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 
 		QueryPerformanceFrequency(&qpFrequency);
 
@@ -139,6 +153,15 @@ public:
 			BOOL bres = ::DestroyWindow(_hwnd); LOG_LAST_ERROR_IF(!bres);
 			_hwnd = nullptr;
 			bres = UnregisterClass (WndClassName, (HINSTANCE)&__ImageBase); LOG_LAST_ERROR_IF(!bres);
+		}
+
+		// Destroy the devices using XAudio before destroying the mastering voice
+		_beeper.reset();
+		_tapPlayer.reset();
+		if (_mastering_voice)
+		{
+			_mastering_voice->DestroyVoice();
+			_mastering_voice = nullptr;
 		}
 	}
 
@@ -1176,6 +1199,55 @@ public:
 		return S_OK;
 	}
 
+	HRESULT LoadTap (const wchar_t* pFileName)
+	{
+		com_ptr<IStream> stream;
+		auto hr = SHCreateStreamOnFileEx (pFileName, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream);
+		if (FAILED(hr))
+			return SetErrorInfo (E_FAIL, L"Cannot open \"%s\"\r\n\r\nHRESULT 0x%08x", pFileName, hr);
+
+		RETURN_IF_FAILED_EXPECTED(hr);
+
+		STATSTG stat;
+		hr = stream->Stat (&stat, STATFLAG_NONAME); RETURN_IF_FAILED_EXPECTED(hr);
+
+		vector_nothrow<tap_block_t> blocks;
+		while(true)
+		{
+			uint16_t blockLen;
+			ULONG cbRead;
+			hr = stream->Read(&blockLen, 2, &cbRead); RETURN_IF_FAILED(hr);
+			if (cbRead == 0)
+				break;
+			if (cbRead != 2)
+				return SetMalformedErrorInfo(L"");
+			tap_block_t block = wil::unique_process_heap_ptr<uint8_t[]>((uint8_t*)::HeapAlloc(::GetProcessHeap(), 0, 2 + blockLen)); RETURN_IF_NULL_ALLOC(block);
+			memcpy (block.get(), &blockLen, 2);
+			hr = stream->Read(block.get() + 2, blockLen, &cbRead); RETURN_IF_FAILED(hr);
+			if (cbRead != blockLen)
+				return SetMalformedErrorInfo(L"");
+			bool pushed = blocks.try_push_back(std::move(block)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		}
+
+		hr = RunOnSimulatorThread([this, &blocks]
+		{
+			auto hr = _tapPlayer->ClearBlocks();
+			if (FAILED(hr))
+				return hr;
+
+			for (auto& block : blocks)
+			{
+				hr = _tapPlayer->AddBlock(std::move(block));
+				if (FAILED(hr))
+					return hr;
+			}
+
+			return S_OK;
+		}); RETURN_IF_FAILED(hr);
+
+		return S_OK;
+	}
+
 	virtual HRESULT STDMETHODCALLTYPE LoadFile (LPCWSTR pFileName) override
 	{
 		auto* ext = PathFindExtension(pFileName);
@@ -1185,6 +1257,9 @@ public:
 
 		if (!_wcsicmp(ext, L".z80"))
 			return LoadZ80(pFileName);
+
+		if (!_wcsicmp(ext, L".tap"))
+			return LoadTap(pFileName);
 
 		return SetErrorInfo (E_FAIL, L"The file extension %s is not recognized.", ext);
 	}

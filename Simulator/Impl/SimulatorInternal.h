@@ -2,6 +2,7 @@
 #pragma once
 #include "../Simulator.h"
 #include "shared/vector_nothrow.h"
+#include "xaudio2/include/xaudio2redist.h"
 
 struct DECLSPEC_NOVTABLE IDevice
 {
@@ -307,3 +308,73 @@ struct IKeyboardDevice : IDevice
 	virtual HRESULT STDMETHODCALLTYPE ProcessKeyUp (uint32_t vkey, uint32_t modifiers) = 0;
 };
 HRESULT STDMETHODCALLTYPE MakeKeyboardDevice (Bus* io_bus, wistd::unique_ptr<IKeyboardDevice>* ppDevice);
+
+using tap_block_t = wil::unique_process_heap_ptr<uint8_t[]>;
+
+struct DECLSPEC_NOVTABLE ITapPlayerDevice : IDevice
+{
+	virtual HRESULT STDMETHODCALLTYPE ClearBlocks() = 0;
+
+	// First two bytes are the length of the block that follow.
+	virtual HRESULT STDMETHODCALLTYPE AddBlock (tap_block_t block) = 0;
+};
+HRESULT STDMETHODCALLTYPE MakeTapPlayer (Bus* io_bus, IXAudio2* xaudio2, wistd::unique_ptr<ITapPlayerDevice>& ppDevice);
+
+static constexpr uint32_t osc_freq = 3'500'000;
+static constexpr uint32_t sample_freq = 35000;
+static constexpr uint8_t bits_per_sample = 8;
+static constexpr uint32_t max_delay_ms = 20;
+static constexpr uint32_t max_delay_t_states = osc_freq * max_delay_ms / 1000;
+static constexpr uint32_t buffer_length_samples = sample_freq * max_delay_ms / 1000;
+static constexpr uint32_t audio_increment = osc_freq / sample_freq;
+static constexpr uint8_t audio_level_low = 64;
+static constexpr uint8_t audio_level_silence = 128;
+static constexpr uint8_t audio_level_high = 192;
+
+inline void SendSamplesToXAudio (IXAudio2SourceVoice* source_voice, const uint8_t* data, uint32_t data_size_bytes)
+{
+	XAUDIO2_VOICE_STATE state;
+	source_voice->GetState (&state);
+	if (state.BuffersQueued == XAUDIO2_MAX_QUEUED_BUFFERS)
+	{
+		// At the time of this writing, this happens when the processor is starved, and can be easily reproduced
+		// by running in the simulator SAVE "D" CODE 0,10000 while running something like HeavyLoad,
+		// on all processor cores, with Above Normal priority, for about 30 seconds; when stopping HeavyLoad,
+		// the simulator tries to catch up (bad idea - needs fixing), so it generates many audio buffers.
+		return;
+	}
+
+	auto copy = (uint8_t*)malloc (data_size_bytes);
+	if (!copy)
+		return;
+	memcpy (copy, data, data_size_bytes);
+
+	XAUDIO2_BUFFER buffer = { };
+	buffer.pAudioData = copy;
+	buffer.AudioBytes = data_size_bytes;
+	buffer.pContext = copy;
+	auto hr = source_voice->SubmitSourceBuffer (&buffer);
+	if (FAILED(hr))
+		// Not sure how to handle this. We're not on the GUI thread here so our telemetry dialog code will probably crash.
+		free(copy);
+}
+
+struct XAudio2VoiceCallback : IXAudio2VoiceCallback
+{
+	virtual void STDMETHODCALLTYPE OnVoiceProcessingPassStart (UINT32 BytesRequired) override { }
+
+	virtual void STDMETHODCALLTYPE OnVoiceProcessingPassEnd() override { }
+
+	virtual void STDMETHODCALLTYPE OnStreamEnd() override { }
+
+	virtual void STDMETHODCALLTYPE OnBufferStart (void* pBufferContext) override { }
+
+	virtual void STDMETHODCALLTYPE OnBufferEnd (void* pBufferContext) override
+	{
+		free (pBufferContext);
+	}
+
+	virtual void STDMETHODCALLTYPE OnLoopEnd (void* pBufferContext) override { }
+
+	virtual void STDMETHODCALLTYPE OnVoiceError (void* pBufferContext, HRESULT Error) override { }
+};

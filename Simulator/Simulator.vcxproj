@@ -101,6 +101,7 @@
     <ClCompile Include="Impl\Keyboard.cpp" />
     <ClCompile Include="Impl\ScreenDevice.cpp" />
     <ClCompile Include="Impl\Simulator.cpp" />
+    <ClCompile Include="Impl\TapPlayer.cpp" />
     <ClCompile Include="Impl\Z80CPU.cpp" />
     <ClCompile Include="Impl\pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>

@@ -697,7 +697,7 @@ public:
 		of.pwzFileName = filename;
 		of.nMaxFileName = (DWORD)ARRAYSIZE(filename);
 		of.pwzInitialDir = initial_directory.get();
-		of.pwzFilter = L"ZX Spectrum files (*.sna;*.z80)\0*.sna;*.z80\0All Files (*.*)\0*.*\0";
+		of.pwzFilter = L"ZX Spectrum files (*.sna;*.z80;*.tap)\0*.sna;*.z80;*.tap\0All Files (*.*)\0*.*\0";
 		hr = uiShell->GetOpenFileNameViaDlg(&of);
 		if (hr == OLE_E_PROMPTSAVECANCELLED)
 			return S_OK;
