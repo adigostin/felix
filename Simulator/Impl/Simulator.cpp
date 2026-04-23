@@ -5,7 +5,7 @@
 #include "shared/unordered_map_nothrow.h"
 #include "shared/com.h"
 #include "shared/inplace_function.h"
-#include <optional>
+#include <variant>
 
 #pragma comment (lib, "Shlwapi")
 
@@ -32,13 +32,17 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, ICon
 
 	LARGE_INTEGER qpFrequency;
 
+	struct ri_paused { };
+
 	struct running_info
 	{
-		UINT64 start_time; // tick count of the simulated clock
-		LARGE_INTEGER start_time_perf_counter;
+		UINT64 start_time;                     // tick count of the simulated clock when simulation is reset or resumed from pause.
+		LARGE_INTEGER start_time_perf_counter; // value of the Windows perf counter when simulation is reset or resumed from pause.
 	};
 
-	std::optional<running_info> _running_info; // this is used only by the simulator thread
+	struct ri_max_speed { };
+
+	std::variant<ri_paused, running_info, ri_max_speed> _running_info; // this is used only by the simulator thread
 	bool _running = false; // and this only by the main thread
 	wil::unique_handle _cpuThread;
 	wil::unique_handle _cpu_thread_exit_request;
@@ -73,6 +77,7 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, ICon
 
 	wil::com_ptr_nothrow<IXAudio2> _xaudio2;
 	IXAudio2MasteringVoice* _mastering_voice = nullptr;
+	uint32_t _speed_ = 100;
 
 public:
 	HRESULT InitInstance (LPCWSTR romFilename)
@@ -225,14 +230,15 @@ public:
 	UINT64 real_time() const
 	{
 		//WI_ASSERT(::GetCurrentThreadId() == GetThreadId(_cpuThread.get()));
-		//WI_ASSERT(_running_info);
-		
+		WI_ASSERT(std::holds_alternative<running_info>(_running_info));
+		auto& ri = std::get<running_info>(_running_info);
+
 		LARGE_INTEGER timeNow;
 		QueryPerformanceCounter(&timeNow);
-		
-		auto perf_counter_delta = timeNow.QuadPart - _running_info->start_time_perf_counter.QuadPart;
 
-		auto tick_count = _running_info->start_time + perf_counter_delta * 3500 / (qpFrequency.QuadPart / 1000);
+		auto perf_counter_delta = timeNow.QuadPart - ri.start_time_perf_counter.QuadPart;
+
+		auto tick_count = ri.start_time + perf_counter_delta * 3500 / (qpFrequency.QuadPart / 1000);
 		return tick_count;
 	}
 
@@ -259,137 +265,225 @@ public:
 		}
 	}
 
+	IDevice* FindDeviceToSyncOn (UINT64& time_to_sync_to_)
+	{
+		IDevice* device_to_sync_on = nullptr;
+		for (auto& d : _active_devices_)
+		{
+			UINT64 t;
+			if (d->NeedSyncWithRealTime(&t)
+				&& (!device_to_sync_on || (t < time_to_sync_to_)))
+			{
+				device_to_sync_on = d;
+				time_to_sync_to_ = t;
+			}
+		}
+		WI_ASSERT(device_to_sync_on);
+		return device_to_sync_on;
+	}
+
+	void SimulateToTime (UINT64 time_to_sync_to)
+	{
+		while(true)
+		{
+			// First ask the CPU to simulate itself; then ask the devices
+			// to simulate themselves until they catch up with the CPU, not more.
+			// We don't want the devices to go far ahead of the CPU; if the CPU will stop at a breakpoint,
+			// we'll want to show to the user the devices at a time as close as possible to the CPU time;
+			// we can do that only if the devices are at all times behind the CPU or only slightly
+			// (a few clock cycles) ahead of it.
+			BreakpointsHit bpsHit = { };
+			while (_cpu->Time() < time_to_sync_to)
+			{
+				bool advanced = _cpu->SimulateOne(&bpsHit);
+				if (!advanced || bpsHit.size)
+					break;
+			}
+
+			// Whatever the outcome of the above simulation, we must first bring the devices close to the CPU time.
+			simulate_devices_to(_cpu->Time());
+
+			if (bpsHit.size)
+			{
+				on_bp_hit(&bpsHit);
+				break;
+			}
+
+			if (_cpu->Time() >= time_to_sync_to)
+				break;
+		}
+	}
+
+	void simulation_thread_proc_running (bool& exit_request)
+	{
+		auto& ri = std::get<running_info>(_running_info);
+		UINT64 rt = real_time();
+
+		#pragma region Catch up with real time
+		// Before we attempt simulation, let's check if some devices are lagging far behind the real time.
+		// This happens while debugging the VSIX, or it may happen when this thread is starved. 
+		// If we have any such device, we "erase" the same length of time from all of the devices;
+		// we do this by rebasing the simulation startup time held in the _running_info variable.
+		{
+			auto slowestTime = _cpu->Time();
+			INT64 slowest_offset_from_rt = (INT64)_cpu->Time() - (INT64)rt;
+			for (auto& d : _active_devices_)
+			{
+				INT64 offset_from_rt = (UINT64)(d->Time() - rt);
+				if (offset_from_rt < slowest_offset_from_rt)
+				{
+					slowestTime = d->Time();
+					slowest_offset_from_rt = offset_from_rt;
+				}
+			}
+
+			if (slowest_offset_from_rt < -(INT64)milliseconds_to_ticks(50))
+			{
+				// Slowest device is more than 50 ms behind real time. Let's see what time offset
+				// it would need to be 50 ms _ahead_ of real time, and add that offset to all devices.
+				UINT64 tick_offset = rt + milliseconds_to_ticks(50) - slowestTime;
+				UINT64 perf_counter_offset = tick_offset * (qpFrequency.QuadPart / 1000) / 3500;
+				ri.start_time_perf_counter.QuadPart += perf_counter_offset;
+			}
+		}
+		#pragma endregion
+
+		// Let's find out how far we can simulate, and try to simulate to that point in time.
+		UINT64 time_to_sync_to;
+		IDevice* device_to_sync_on = FindDeviceToSyncOn (time_to_sync_to);
+		SimulateToTime(time_to_sync_to);
+		if (std::holds_alternative<ri_paused>(_running_info))
+			return;
+
+		HANDLE waitHandles[3] = { _run_on_simulator_thread_request.get(), _cpu_thread_exit_request.get(), _waitableTimer.get() };
+		DWORD waitHandleCount = 2;
+		DWORD waitTimeout = 0;
+
+		if (_cpu->Time() >= time_to_sync_to)
+		{
+			// Now let's see how long we need to wait for the real time to catch up.
+			if (time_to_sync_to > rt)
+			{
+				uint64_t hundredsOfNanoseconds = ticks_to_hundreds_of_nanoseconds(time_to_sync_to - rt);
+				LARGE_INTEGER dueTime = { .QuadPart = -(INT64)hundredsOfNanoseconds };
+				BOOL bRes = SetWaitableTimer (_waitableTimer.get(), &dueTime, 0, nullptr, nullptr, FALSE); WI_ASSERT(bRes);
+				waitHandleCount = 3;
+				waitTimeout = INFINITE;
+			}
+		}
+
+		DWORD waitResult = WaitForMultipleObjects (waitHandleCount, waitHandles, FALSE, waitTimeout);
+		switch (waitResult)
+		{
+		case WAIT_TIMEOUT:
+			// We're lagging behind real time, or...
+			[[fallthrough]];
+		case WAIT_OBJECT_0 + 2: // _waitableTimer
+			// ... real time has caught up with the simulated time.
+			// Let's unblock the device that was waiting.
+			WI_ASSERT(device_to_sync_on);
+			if (device_to_sync_on->Time() < time_to_sync_to + 1)
+			{
+				uint64_t timeBefore = device_to_sync_on->Time();
+				device_to_sync_on->SimulateTo(time_to_sync_to + 1);
+				WI_ASSERT(device_to_sync_on->Time() > timeBefore);
+			}
+			break;
+
+		case WAIT_OBJECT_0: // _run_on_simulator_thread_request
+			_runOnSimulatorThreadResult = _runOnSimulatorThreadFunction();
+			SetEvent(_runOnSimulatorThreadComplete.get());
+			break;
+
+		case WAIT_OBJECT_0 + 1: // _cpu_thread_exit_request
+			exit_request = true;
+			break;
+
+		default:
+			WI_ASSERT(false); // TODO: handle error conditions
+		}
+	}
+
+	void simulation_thread_proc_max_speed (bool& exit_request)
+	{
+		// Let's find out how far we can simulate, and try to simulate to that point in time.
+		UINT64 time_to_sync_to;
+		IDevice* device_to_sync_on = FindDeviceToSyncOn (time_to_sync_to);
+		SimulateToTime(time_to_sync_to);
+		if (std::holds_alternative<ri_paused>(_running_info))
+			return;
+
+		HANDLE waitHandles[2] = { _run_on_simulator_thread_request.get(), _cpu_thread_exit_request.get() };
+		DWORD waitResult = WaitForMultipleObjects (_countof(waitHandles), waitHandles, FALSE, 0);
+		switch (waitResult)
+		{
+		case WAIT_TIMEOUT:
+			// Let's unblock the device that was waiting.
+			WI_ASSERT(device_to_sync_on);
+			if (device_to_sync_on->Time() < time_to_sync_to + 1)
+			{
+				uint64_t timeBefore = device_to_sync_on->Time();
+				device_to_sync_on->SimulateTo(time_to_sync_to + 1);
+				WI_ASSERT(device_to_sync_on->Time() > timeBefore);
+			}
+			break;
+
+		case WAIT_OBJECT_0: // _run_on_simulator_thread_request
+			_runOnSimulatorThreadResult = _runOnSimulatorThreadFunction();
+			SetEvent(_runOnSimulatorThreadComplete.get());
+			break;
+
+		case WAIT_OBJECT_0 + 1: // _cpu_thread_exit_request
+			exit_request = true;
+			break;
+
+		default:
+			WI_ASSERT(false); // TODO: handle error conditions
+		}
+	}
+
+	void simulation_thread_proc_paused (bool& exit_request)
+	{
+		HANDLE waitHandles[2] = { _run_on_simulator_thread_request.get(), _cpu_thread_exit_request.get() };
+		DWORD waitResult = WaitForMultipleObjects (_countof(waitHandles), waitHandles, FALSE, INFINITE);
+		switch (waitResult)
+		{
+		case WAIT_OBJECT_0: // _run_on_simulator_thread_request
+			_runOnSimulatorThreadResult = _runOnSimulatorThreadFunction();
+			SetEvent(_runOnSimulatorThreadComplete.get());
+			break;
+
+		case WAIT_OBJECT_0 + 1: // _cpu_thread_exit_request
+			exit_request = true;
+			break;
+
+		default:
+			WI_ASSERT(false); // TODO: handle error conditions
+		}
+	}
+
 	DWORD simulation_thread_proc()
 	{
-		HANDLE waitHandles[3] = { _run_on_simulator_thread_request.get(), _cpu_thread_exit_request.get(), _waitableTimer.get() };
 		bool exit_request = false;
 		while(!exit_request)
 		{
 			// TODO: add support for syncing on multiple devices, needed in case two devices need to sync on
 			// the same time _and_ the first is waiting for the second (we'd have an infinite loop with the code as it is now).
 
-			DWORD waitHandleCount = 2;
-			DWORD waitTimeout = INFINITE;
-			IDevice* device_to_sync_on = nullptr;
-			UINT64 time_to_sync_to_ = 0;
-
-			if (_running_info)
+			if (std::holds_alternative<running_info>(_running_info))
 			{
-				UINT64 rt = real_time();
-
-				#pragma region Catch up with real time
-				// Before we attempt simulation, let's check if some devices are lagging far behind the real time.
-				// This happens while debugging the VSIX, or it may happen when this thread is starved. 
-				// If we have any such device, we "erase" the same length of time from all of the devices;
-				// we do this by rebasing the simulation startup time held in the _running_info variable.
-				{
-					auto slowestTime = _cpu->Time();
-					INT64 slowest_offset_from_rt = (UINT64)(_cpu->Time() - rt);
-					for (auto& d : _active_devices_)
-					{
-						INT64 offset_from_rt = (UINT64)(d->Time() - rt);
-						if (offset_from_rt < slowest_offset_from_rt)
-						{
-							slowestTime = d->Time();
-							slowest_offset_from_rt = offset_from_rt;
-						}
-					}
-
-					if (slowest_offset_from_rt < -(INT64)milliseconds_to_ticks(50))
-					{
-						// Slowest device is more than 50 ms behind real time. Let's see what time offset
-						// it would need to be 50 ms _ahead_ of real time, and add that offset to all devices.
-						UINT64 tick_offset = rt + milliseconds_to_ticks(50) - slowestTime;
-						UINT64 perf_counter_offset = tick_offset * (qpFrequency.QuadPart / 1000) / 3500;
-						_running_info->start_time += tick_offset;
-						_running_info->start_time_perf_counter.QuadPart += perf_counter_offset;
-					}
-				}
-				#pragma endregion
-
-				// Let's find out how far we can simulate, and try to simulate to that point in time.
-				for (auto& d : _active_devices_)
-				{
-					UINT64 t;
-					if (d->NeedSyncWithRealTime(&t)
-						&& (!device_to_sync_on || (t < time_to_sync_to_)))
-					{
-						device_to_sync_on = d;
-						time_to_sync_to_ = t;
-					}
-				}
-
-				while(true)
-				{
-					// First ask the CPU to simulate itself; then ask the devices
-					// to simulate themselves until they catch up with the CPU, not more.
-					// We don't want the devices to go far ahead of the CPU; if the CPU will stop at a breakpoint,
-					// we'll want to show to the user the devices at a time as close as possible to the CPU time;
-					// we can do that only if the devices are at all times behind the CPU or only slightly
-					// (a few clock cycles) ahead of it.
-					BreakpointsHit bpsHit = { };
-					while (_cpu->Time() < time_to_sync_to_)
-					{
-						bool advanced = _cpu->SimulateOne(&bpsHit);
-						if (!advanced || bpsHit.size)
-							break;
-					}
-
-					// Whatever the outcome of the above simulation, we must first bring the devices close to the CPU time.
-					simulate_devices_to(_cpu->Time());
-
-					if (bpsHit.size)
-					{
-						on_bp_hit(&bpsHit);
-						break;
-					}
-
-					if (_cpu->Time() >= time_to_sync_to_)
-					{
-						// Now let's see how long we need to wait for the real time to catch up.
-						WI_ASSERT(device_to_sync_on);
-						if (time_to_sync_to_ > rt)
-						{
-							uint64_t hundredsOfNanoseconds = ticks_to_hundreds_of_nanoseconds(time_to_sync_to_ - rt);
-							LARGE_INTEGER dueTime = { .QuadPart = -(INT64)hundredsOfNanoseconds };
-							BOOL bRes = SetWaitableTimer (_waitableTimer.get(), &dueTime, 0, nullptr, nullptr, FALSE); WI_ASSERT(bRes);
-							waitHandleCount = 3;
-						}
-						else
-							waitTimeout = 0; // We're lagging behind real time, so we won't wait.
-						break;
-					}
-				}
+				simulation_thread_proc_running(exit_request);
 			}
-
-			DWORD waitResult = WaitForMultipleObjects (waitHandleCount, waitHandles, FALSE, waitTimeout);
-			switch (waitResult)
+			else if (std::holds_alternative<ri_max_speed>(_running_info))
 			{
-				case WAIT_TIMEOUT:
-				case WAIT_OBJECT_0 + 2: // _waitableTimer
-					// Real time has caught up with the simulated time.
-					// Let's unblock the device that was waiting for this time point.
-					WI_ASSERT(device_to_sync_on);
-					if (device_to_sync_on->Time() < time_to_sync_to_ + 1)
-					{
-						uint64_t timeBefore = device_to_sync_on->Time();
-						device_to_sync_on->SimulateTo(time_to_sync_to_ + 1);
-						WI_ASSERT(device_to_sync_on->Time() > timeBefore);
-					}
-					break;
-
-				case WAIT_OBJECT_0: // _run_on_simulator_thread_request
-					_runOnSimulatorThreadResult = _runOnSimulatorThreadFunction();
-					SetEvent(_runOnSimulatorThreadComplete.get());
-					break;
-
-				case WAIT_OBJECT_0 + 1: // _cpu_thread_exit_request
-					exit_request = true;
-					break;
-
-				default:
-					WI_ASSERT(false); // TODO: handle error conditions
+				simulation_thread_proc_max_speed (exit_request);
 			}
+			else if (std::holds_alternative<ri_paused>(_running_info))
+			{
+				simulation_thread_proc_paused(exit_request);
+			}
+			else
+				WI_ASSERT(false);
 		}
 
 		return 0;
@@ -454,8 +548,8 @@ public:
 
 		auto bpsCopy = wil::make_unique_hlocal_nothrow<BreakpointsHit>(*bps); RETURN_IF_NULL_ALLOC_EXPECTED(bpsCopy);
 
-		WI_ASSERT(_running_info);
-		_running_info.reset();
+		WI_ASSERT(std::holds_alternative<running_info>(_running_info) || std::holds_alternative<ri_max_speed>(_running_info));
+		_running_info = ri_paused{ };
 
 		unique_cotaskmem_bitmapinfo screen;
 		POINT beam;
@@ -540,10 +634,10 @@ public:
 	{
 		auto hr = RunOnSimulatorThread ([this, startAddress]
 			{
-				if (_running_info)
+				if (auto* ri = std::get_if<running_info>(&_running_info))
 				{
-					_running_info.value().start_time = 0;
-					QueryPerformanceCounter(&_running_info.value().start_time_perf_counter);
+					ri->start_time = 0;
+					QueryPerformanceCounter(&ri->start_time_perf_counter);
 				}
 				
 				_cpu->Reset();
@@ -627,8 +721,8 @@ public:
 
 		auto hr = RunOnSimulatorThread([this]
 			{
-				WI_ASSERT(_running_info);
-				_running_info.reset();
+				WI_ASSERT(std::holds_alternative<running_info>(_running_info));
+				_running_info = ri_paused{ };
 				return S_OK;
 			});
 		RETURN_IF_FAILED(hr);
@@ -665,17 +759,26 @@ public:
 			{
 				AssertDevicesUpToDateWithCPU();
 
-				auto start_time = _cpu->Time();
-				LARGE_INTEGER perf_counter;
-				QueryPerformanceCounter(&perf_counter);
-
-				if (!checkBreakpointsAtCurrentPC)
+				if (_speed_ == 100)
 				{
-					bool advanced = _cpu->SimulateOne(nullptr);
-					WI_ASSERT(advanced);
-				}
+					auto start_time = _cpu->Time();
+					LARGE_INTEGER perf_counter;
+					QueryPerformanceCounter(&perf_counter);
 
-				_running_info = running_info { .start_time = start_time, .start_time_perf_counter = perf_counter };
+					if (!checkBreakpointsAtCurrentPC)
+					{
+						bool advanced = _cpu->SimulateOne(nullptr);
+						WI_ASSERT(advanced);
+					}
+
+					_running_info = running_info { .start_time = start_time, .start_time_perf_counter = perf_counter };
+				}
+				else if (_speed_ == UINT32_MAX)
+				{
+					_running_info = ri_max_speed{ };
+				}
+				else
+					WI_ASSERT(false);
 				return S_OK;
 			});
 		RETURN_IF_FAILED(hr);
@@ -698,7 +801,7 @@ public:
 	void AssertDevicesUpToDateWithCPU()
 	{
 		#ifdef _DEBUG
-		WI_ASSERT(!_running_info);
+		WI_ASSERT(std::holds_alternative<ri_paused>(_running_info));
 
 		// While simulation is not running devices are supposed to be up to date with the processor's time.
 		uint64_t cpuTime = _cpu->Time();
@@ -879,16 +982,21 @@ public:
 				regs.sp += 2;
 				_cpu->SetZ80Registers(&regs);
 
-				if (_running_info)
+				if (auto* ri = std::get_if<running_info>(&_running_info))
 				{
-					_running_info.value().start_time = 0;
-					QueryPerformanceCounter(&_running_info.value().start_time_perf_counter);
+					ri->start_time = 0;
+					QueryPerformanceCounter(&ri->start_time_perf_counter);
 				}
-				else
+				else if (std::holds_alternative<ri_max_speed>(_running_info))
+				{
+				}
+				else if (std::holds_alternative<ri_paused>(_running_info))
 				{
 					hr = _screen->GenerateScreen(); RETURN_IF_FAILED_EXPECTED(hr);
 					hr = _screen->CopyBuffer(TRUE, &screen, &beam); RETURN_IF_FAILED_EXPECTED(hr);
 				}
+				else
+					WI_ASSERT(false);
 
 				return S_OK;
 			});
@@ -1169,16 +1277,21 @@ public:
 				regs.pc = pc;
 				_cpu->SetZ80Registers(&regs);
 
-				if (_running_info)
+				if (auto* ri = std::get_if<running_info>(&_running_info))
 				{
-					_running_info.value().start_time = 0;
-					QueryPerformanceCounter(&_running_info.value().start_time_perf_counter);
+					ri->start_time = 0;
+					QueryPerformanceCounter(&ri->start_time_perf_counter);
 				}
-				else
+				else if (std::holds_alternative<ri_max_speed>(_running_info))
+				{
+				}
+				else if (std::holds_alternative<ri_paused>(_running_info))
 				{
 					hr = _screen->GenerateScreen(); RETURN_IF_FAILED_EXPECTED(hr);
 					hr = _screen->CopyBuffer(TRUE, &screen, &beam); RETURN_IF_FAILED_EXPECTED(hr);
 				}
+				else
+					WI_ASSERT(false);
 
 				return S_OK;
 			});
@@ -1462,6 +1575,38 @@ public:
 
 		return S_OK;
 	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetSpeed (uint32_t* percent) override
+	{
+		*percent = _speed_;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE SetSpeed (uint32_t percent) override
+	{
+		RETURN_HR_IF(E_INVALIDARG, percent != 100 && percent != UINT32_MAX);
+		if (_speed_ != percent)
+		{
+			if (percent == UINT32_MAX && std::holds_alternative<running_info>(_running_info))
+			{
+				// Setting max speed while running at 100% speed.
+				auto hr = RunOnSimulatorThread([this] { _running_info = ri_max_speed{ }; return S_OK; }); RETURN_IF_FAILED(hr);
+			}
+			else if (percent == 100 && std::holds_alternative<ri_max_speed>(_running_info))
+			{
+				// Setting normal speed while running at max speed.
+				auto hr = RunOnSimulatorThread([this] { 
+					LARGE_INTEGER perf_counter;
+					QueryPerformanceCounter(&perf_counter);
+					_running_info = running_info { .start_time = _cpu->Time(), .start_time_perf_counter = perf_counter };
+					return S_OK;
+				}); RETURN_IF_FAILED(hr);
+			}
+
+			_speed_ = percent;
+		}
+		return S_OK;
+	}
 	#pragma endregion
 
 	#pragma region IScreenDeviceCompleteEventHandler
@@ -1471,7 +1616,7 @@ public:
 		// and in case of error it would probably freeze the app.
 
 		// TODO: register for this callback when simulation starts running, unregister when simulation paused.
-		if (_running_info)
+		//if (std::holds_alternative<running_info>(_running_info))
 		{
 			// This callback is called when the screen device finishes rendering a complete screen. This means
 			// the image on the simulated screen is identical to the image in the video memory. Thus CopyBuffer

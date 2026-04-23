@@ -35,5 +35,6 @@
 #define cmdidPropertyPageContextMenu 0x10D
 #define cmdidPropertyPageGroup 0x10E
 #define cmdidPropertyPageReset 0x10F
+#define cmdidSimulationMaxSpeed 0x110
 
 #endif // __COMMANDIDS_H_

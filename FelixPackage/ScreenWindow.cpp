@@ -808,6 +808,8 @@ public:
 	#pragma region IOleCommandTarget
 	virtual HRESULT STDMETHODCALLTYPE QueryStatus (const GUID *pguidCmdGroup, ULONG cCmds, OLECMD prgCmds[], OLECMDTEXT* pCmdText) override
 	{
+		HRESULT hr;
+
 		if (*pguidCmdGroup == CLSID_FelixPackageCmdSet)
 		{
 			RETURN_HR_IF(E_NOTIMPL, cCmds != 1);
@@ -826,6 +828,15 @@ public:
 				return S_OK;
 			}
 
+			if (prgCmds[0].cmdID == cmdidSimulationMaxSpeed)
+			{
+				uint32_t percent;
+				hr = simulator->GetSpeed(&percent); RETURN_IF_FAILED(hr);
+				prgCmds[0].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED
+					| (percent == UINT32_MAX ? OLECMDF_LATCHED : 0);
+				return S_OK;
+			}
+
 			return OLECMDERR_E_NOTSUPPORTED;
 		}
 
@@ -834,6 +845,8 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE Exec (const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT* pvaIn, VARIANT* pvaOut) override
 	{
+		HRESULT hr;
+
 		if (*pguidCmdGroup == CMDSETID_StandardCommandSet97)
 		{
 			// These are the cmdidXxxYyy constants from stdidcmd.h
@@ -844,7 +857,7 @@ public:
 		{
 			if (nCmdID == cmdidResetSimulator)
 			{
-				auto hr = ConfirmStopDebugging(); RETURN_IF_FAILED(hr);
+				hr = ConfirmStopDebugging(); RETURN_IF_FAILED(hr);
 				if (hr == S_FALSE)
 					return S_OK;
 				hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
@@ -873,6 +886,21 @@ public:
 
 			if (nCmdID == cmdidSaveRAM)
 				return SaveRAM();
+
+			if (nCmdID == cmdidSimulationMaxSpeed)
+			{
+				uint32_t percent;
+				hr = simulator->GetSpeed(&percent); RETURN_IF_FAILED(hr);
+				if (percent == UINT32_MAX)
+				{
+					hr = simulator->SetSpeed(100); RETURN_IF_FAILED(hr);
+				}
+				else
+				{
+					hr = simulator->SetSpeed(UINT32_MAX); RETURN_IF_FAILED(hr);
+				}
+				return S_OK;
+			}
 
 			return OLECMDERR_E_NOTSUPPORTED;
 		}

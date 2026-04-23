@@ -67,6 +67,8 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{56344845-3DDA-4BC0-9645-7EBA3FE94A93}")
 	virtual HRESULT STDMETHODCALLTYPE SetRegisters (const z80_register_set* buffer, uint32_t size) = 0;
 	virtual HRESULT STDMETHODCALLTYPE GetShowCRTSnapshot() = 0; // returns S_OK or S_FALSE
 	virtual HRESULT STDMETHODCALLTYPE SetShowCRTSnapshot(BOOL val) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetSpeed (uint32_t* percent) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetSpeed (uint32_t percent) = 0; // Only 100 and UINT32_MAX supported for now
 };
 
 HRESULT MakeSimulator (LPCWSTR romFilename, ISimulator** to);
