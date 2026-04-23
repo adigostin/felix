@@ -335,7 +335,9 @@ inline void SendSamplesToXAudio (IXAudio2SourceVoice* source_voice, const uint8_
 {
 	XAUDIO2_VOICE_STATE state;
 	source_voice->GetState (&state);
-	if (state.BuffersQueued == XAUDIO2_MAX_QUEUED_BUFFERS)
+	// No point queueing more than a few buffers, as the delay between audio and video becomes annoying.
+	// Dropping audio buffers is not as bad, and when simulating at max speed it becomes a necessity.
+	if (state.BuffersQueued == 4)
 	{
 		// At the time of this writing, this happens when the processor is starved, and can be easily reproduced
 		// by running in the simulator SAVE "D" CODE 0,10000 while running something like HeavyLoad,

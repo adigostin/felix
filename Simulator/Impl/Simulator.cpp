@@ -34,15 +34,18 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, ICon
 
 	struct ri_paused { };
 
-	struct running_info
+	struct ri_running
 	{
 		UINT64 start_time;                     // tick count of the simulated clock when simulation is reset or resumed from pause.
 		LARGE_INTEGER start_time_perf_counter; // value of the Windows perf counter when simulation is reset or resumed from pause.
 	};
 
-	struct ri_max_speed { };
+	struct ri_max_speed
+	{
+		LARGE_INTEGER last_screen_complete_perf_counter;
+	};
 
-	std::variant<ri_paused, running_info, ri_max_speed> _running_info; // this is used only by the simulator thread
+	std::variant<ri_paused, ri_running, ri_max_speed> _running_info; // this is used only by the simulator thread
 	bool _running = false; // and this only by the main thread
 	wil::unique_handle _cpuThread;
 	wil::unique_handle _cpu_thread_exit_request;
@@ -230,8 +233,8 @@ public:
 	UINT64 real_time() const
 	{
 		//WI_ASSERT(::GetCurrentThreadId() == GetThreadId(_cpuThread.get()));
-		WI_ASSERT(std::holds_alternative<running_info>(_running_info));
-		auto& ri = std::get<running_info>(_running_info);
+		WI_ASSERT(std::holds_alternative<ri_running>(_running_info));
+		auto& ri = std::get<ri_running>(_running_info);
 
 		LARGE_INTEGER timeNow;
 		QueryPerformanceCounter(&timeNow);
@@ -316,7 +319,7 @@ public:
 
 	void simulation_thread_proc_running (bool& exit_request)
 	{
-		auto& ri = std::get<running_info>(_running_info);
+		auto& ri = std::get<ri_running>(_running_info);
 		UINT64 rt = real_time();
 
 		#pragma region Catch up with real time
@@ -470,7 +473,7 @@ public:
 			// TODO: add support for syncing on multiple devices, needed in case two devices need to sync on
 			// the same time _and_ the first is waiting for the second (we'd have an infinite loop with the code as it is now).
 
-			if (std::holds_alternative<running_info>(_running_info))
+			if (std::holds_alternative<ri_running>(_running_info))
 			{
 				simulation_thread_proc_running(exit_request);
 			}
@@ -548,7 +551,7 @@ public:
 
 		auto bpsCopy = wil::make_unique_hlocal_nothrow<BreakpointsHit>(*bps); RETURN_IF_NULL_ALLOC_EXPECTED(bpsCopy);
 
-		WI_ASSERT(std::holds_alternative<running_info>(_running_info) || std::holds_alternative<ri_max_speed>(_running_info));
+		WI_ASSERT(std::holds_alternative<ri_running>(_running_info) || std::holds_alternative<ri_max_speed>(_running_info));
 		_running_info = ri_paused{ };
 
 		unique_cotaskmem_bitmapinfo screen;
@@ -634,7 +637,7 @@ public:
 	{
 		auto hr = RunOnSimulatorThread ([this, startAddress]
 			{
-				if (auto* ri = std::get_if<running_info>(&_running_info))
+				if (auto* ri = std::get_if<ri_running>(&_running_info))
 				{
 					ri->start_time = 0;
 					QueryPerformanceCounter(&ri->start_time_perf_counter);
@@ -721,7 +724,7 @@ public:
 
 		auto hr = RunOnSimulatorThread([this]
 			{
-				WI_ASSERT(std::holds_alternative<running_info>(_running_info));
+				WI_ASSERT(std::holds_alternative<ri_running>(_running_info));
 				_running_info = ri_paused{ };
 				return S_OK;
 			});
@@ -771,7 +774,7 @@ public:
 						WI_ASSERT(advanced);
 					}
 
-					_running_info = running_info { .start_time = start_time, .start_time_perf_counter = perf_counter };
+					_running_info = ri_running { .start_time = start_time, .start_time_perf_counter = perf_counter };
 				}
 				else if (_speed_ == UINT32_MAX)
 				{
@@ -982,7 +985,7 @@ public:
 				regs.sp += 2;
 				_cpu->SetZ80Registers(&regs);
 
-				if (auto* ri = std::get_if<running_info>(&_running_info))
+				if (auto* ri = std::get_if<ri_running>(&_running_info))
 				{
 					ri->start_time = 0;
 					QueryPerformanceCounter(&ri->start_time_perf_counter);
@@ -1277,7 +1280,7 @@ public:
 				regs.pc = pc;
 				_cpu->SetZ80Registers(&regs);
 
-				if (auto* ri = std::get_if<running_info>(&_running_info))
+				if (auto* ri = std::get_if<ri_running>(&_running_info))
 				{
 					ri->start_time = 0;
 					QueryPerformanceCounter(&ri->start_time_perf_counter);
@@ -1587,7 +1590,7 @@ public:
 		RETURN_HR_IF(E_INVALIDARG, percent != 100 && percent != UINT32_MAX);
 		if (_speed_ != percent)
 		{
-			if (percent == UINT32_MAX && std::holds_alternative<running_info>(_running_info))
+			if (percent == UINT32_MAX && std::holds_alternative<ri_running>(_running_info))
 			{
 				// Setting max speed while running at 100% speed.
 				auto hr = RunOnSimulatorThread([this] { _running_info = ri_max_speed{ }; return S_OK; }); RETURN_IF_FAILED(hr);
@@ -1598,7 +1601,7 @@ public:
 				auto hr = RunOnSimulatorThread([this] { 
 					LARGE_INTEGER perf_counter;
 					QueryPerformanceCounter(&perf_counter);
-					_running_info = running_info { .start_time = _cpu->Time(), .start_time_perf_counter = perf_counter };
+					_running_info = ri_running { .start_time = _cpu->Time(), .start_time_perf_counter = perf_counter };
 					return S_OK;
 				}); RETURN_IF_FAILED(hr);
 			}
@@ -1616,28 +1619,38 @@ public:
 		// and in case of error it would probably freeze the app.
 
 		// TODO: register for this callback when simulation starts running, unregister when simulation paused.
-		//if (std::holds_alternative<running_info>(_running_info))
+		
+		if (auto* ri = std::get_if<ri_max_speed>(&_running_info))
 		{
-			// This callback is called when the screen device finishes rendering a complete screen. This means
-			// the image on the simulated screen is identical to the image in the video memory. Thus CopyBuffer
-			// creates the same image regardless of the value of its "BOOL crt" parameter. Let's pass TRUE
-			// since the screen is already generated as a BITMAPINFO and it's much faster to simply copy it.
-			BOOL crt = TRUE;
+			// At max simulation speed, rendering the simulated screen to the HWND becomes a bottleneck.
+			// Let's limit it to around 50 fps.
+			LARGE_INTEGER now;
+			QueryPerformanceCounter(&now);
+			if (now.QuadPart - ri->last_screen_complete_perf_counter.QuadPart < (qpFrequency.QuadPart / 50))
+				return;
 
-			unique_cotaskmem_bitmapinfo screen;
-			auto hr = _screen->CopyBuffer (crt, screen.addressof(), nullptr);
-			if (SUCCEEDED(hr))
+			ri->last_screen_complete_perf_counter = now;
+		}
+
+		// This callback is called when the screen device finishes rendering a complete screen. This means
+		// the image on the simulated screen is identical to the image in the video memory. Thus CopyBuffer
+		// creates the same image regardless of the value of its "BOOL crt" parameter. Let's pass TRUE
+		// since the screen is already generated as a BITMAPINFO and it's much faster to simply copy it.
+		BOOL crt = TRUE;
+
+		unique_cotaskmem_bitmapinfo screen;
+		auto hr = _screen->CopyBuffer (crt, screen.addressof(), nullptr);
+		if (SUCCEEDED(hr))
+		{
+			auto lock = _mainThreadQueueLock.lock_exclusive();
+			bool messagePosted = _screenComplete.is_valid();
+			_screenComplete = std::move(screen);
+			if (!messagePosted)
 			{
-				auto lock = _mainThreadQueueLock.lock_exclusive();
-				bool messagePosted = _screenComplete.is_valid();
-				_screenComplete = std::move(screen);
-				if (!messagePosted)
+				BOOL posted = PostMessageW (_hwnd, WM_SCREEN_COMPLETE, 0, 0);
+				if (!posted)
 				{
-					BOOL posted = PostMessageW (_hwnd, WM_SCREEN_COMPLETE, 0, 0);
-					if (!posted)
-					{
-						// Ignoring this error condition for now, don't know how to handle it.
-					}
+					// Ignoring this error condition for now, don't know how to handle it.
 				}
 			}
 		}
