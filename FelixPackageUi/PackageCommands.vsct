@@ -158,6 +158,16 @@ parts that the beam hasn't reached yet.
 				</Strings>
 			</Button>
 
+			<Button guid="guidFelixPackageCmdSet" id="cmdidTapPlayStop" priority="0x0109" type="Button">
+				<Parent guid="guidFelixPackageCmdSet" id="TWToolbarGroup" />
+				<Icon guid="guidImages" id="10" />
+				<CommandFlag>DynamicVisibility</CommandFlag>
+				<CommandFlag>AllowVisibilityChangeOnToolBar</CommandFlag>
+				<Strings>
+					<ButtonText>Stop Tape</ButtonText>
+				</Strings>
+			</Button>
+
 			<Button guid="guidFelixPackageCmdSet" id="cmdidPropertyPageReset" priority="0x0106" type="Button">
 				<Parent guid="guidFelixPackageCmdSet" id="cmdidPropertyPageGroup" />
 				<Strings>
@@ -175,7 +185,7 @@ parts that the beam hasn't reached yet.
             inside a button definition. An important aspect of this declaration is that the element id 
             must be the actual index (1-based) of the bitmap inside the bitmap strip. -->
 
-			<Bitmap guid="guidImages" href="Z80Images.png" usedList="1,2,3,4,5,6,7,8,9" />
+			<Bitmap guid="guidImages" href="Z80Images.png" usedList="1,2,3,4,5,6,7,8,9,10" />
 		</Bitmaps>
 
 		<Menus>

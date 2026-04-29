@@ -22,7 +22,7 @@ using unique_cotaskmem_bitmapinfo = wil::unique_any<BITMAPINFO*, decltype(&::CoT
 
 // ============================================================================
 
-class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, IConnectionPointContainer
+class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, ITapPlayerEventHandler, IConnectionPointContainer
 {
 	ULONG _refCount = 0;
 
@@ -51,6 +51,7 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, ICon
 	wil::unique_handle _cpu_thread_exit_request;
 	com_ptr<ConnectionPointImpl<ISimulatorEventNotifySink>> _eventHandlers;
 	com_ptr<IScreenCompleteEventHandler> _screenCompleteHandler;
+	com_ptr<ConnectionPointImpl<ITapPlayNotifySink>> _tapPlayHandlers;
 
 	using RunOnSimulatorThreadFunction = HRESULT(*)(void*);
 	stdext::inplace_function<HRESULT(), 64> _runOnSimulatorThreadFunction;
@@ -88,6 +89,7 @@ public:
 		HRESULT hr;
 		
 		hr = MakeConnectionPoint(this, &_eventHandlers); RETURN_IF_FAILED(hr);
+		hr = MakeConnectionPoint(this, &_tapPlayHandlers); RETURN_IF_FAILED(hr);
 
 		hr = XAudio2Create (&_xaudio2, 0, XAUDIO2_DEFAULT_PROCESSOR); RETURN_IF_FAILED(hr);
 		//XAUDIO2_DEBUG_CONFIGURATION xadc = { };
@@ -105,7 +107,7 @@ public:
 		
 		hr = MakeBeeper(&ioBus, _xaudio2, &_beeper); RETURN_IF_FAILED(hr);
 
-		hr = MakeTapPlayer(&ioBus, _xaudio2, _tapPlayer); RETURN_IF_FAILED(hr);
+		hr = MakeTapPlayer(&ioBus, _xaudio2, this, _tapPlayer); RETURN_IF_FAILED(hr);
 
 		hr = MakeHC91ROM (&memoryBus, &ioBus, romFilename, &_romDevice); RETURN_IF_FAILED(hr);
 ///		hr = _romDevice->AdviseBusAddressRangeChange(this); RETURN_IF_FAILED(hr);
@@ -143,6 +145,7 @@ public:
 
 	~SimulatorImpl()
 	{
+		WI_ASSERT (_tapPlayHandlers->empty());
 		WI_ASSERT (_eventHandlers->empty());
 		WI_ASSERT (!_screenCompleteHandler);
 
@@ -630,6 +633,18 @@ public:
 			{ return sink->NotifySimulatorEvent(event, __uuidof(event)); });
 
 		return S_OK;
+	}
+
+	void PostWorkToMainThread (stdext::inplace_function<void()> work)
+	{
+		auto lock = _mainThreadQueueLock.lock_exclusive();
+		bool pushed = _mainThreadWorkQueue.try_push_back(std::move(work));
+		if (pushed)
+		{
+			BOOL posted = PostMessageW (_hwnd, WM_MAIN_THREAD_WORK, 0, 0);
+			if (!posted)
+				_mainThreadWorkQueue.remove(_mainThreadWorkQueue.end() - 1);
+		}
 	}
 
 	#pragma region ISimulator
@@ -1347,16 +1362,9 @@ public:
 
 		hr = RunOnSimulatorThread([this, &blocks]
 		{
-			auto hr = _tapPlayer->ClearBlocks();
+			auto hr = _tapPlayer->AddBlocks(std::move(blocks));
 			if (FAILED(hr))
 				return hr;
-
-			for (auto& block : blocks)
-			{
-				hr = _tapPlayer->AddBlock(std::move(block));
-				if (FAILED(hr))
-					return hr;
-			}
 
 			return S_OK;
 		}); RETURN_IF_FAILED(hr);
@@ -1610,6 +1618,11 @@ public:
 		}
 		return S_OK;
 	}
+
+	virtual HRESULT STDMETHODCALLTYPE StopTap() override
+	{
+		return RunOnSimulatorThread([this] { return _tapPlayer->StopPlaying(); });
+	}
 	#pragma endregion
 
 	#pragma region IScreenDeviceCompleteEventHandler
@@ -1657,6 +1670,18 @@ public:
 	}
 	#pragma endregion
 
+	#pragma region ITapPlayerEventHandler
+	virtual void OnTapPlayStarting() override
+	{
+		PostWorkToMainThread([this] { _tapPlayHandlers->Notify([](ITapPlayNotifySink* sink) { return sink->NotifyTapPlayStarting(); }); });
+	}
+
+	virtual void OnTapPlayComplete() override
+	{
+		PostWorkToMainThread([this] { _tapPlayHandlers->Notify([](ITapPlayNotifySink* sink) { return sink->NotifyTapPlayComplete(); }); });
+	}
+	#pragma endregion
+
 	#pragma region IConnectionPointContainer
 	virtual HRESULT STDMETHODCALLTYPE EnumConnectionPoints (IEnumConnectionPoints **ppEnum) override
 	{
@@ -1666,11 +1691,10 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE FindConnectionPoint (REFIID riid, IConnectionPoint **ppCP) override
 	{
 		if (riid == __uuidof(ISimulatorEventNotifySink))
-		{
-			*ppCP = _eventHandlers;
-			(*ppCP)->AddRef();
-			return S_OK;
-		}
+			return copy_to(_eventHandlers, ppCP);
+		
+		if (riid == __uuidof(ITapPlayNotifySink))
+			return copy_to(_tapPlayHandlers, ppCP);
 
 		RETURN_HR(E_NOTIMPL);
 	}

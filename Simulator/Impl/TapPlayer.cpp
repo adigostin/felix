@@ -5,6 +5,7 @@
 class TapPlayer : public ITapPlayerDevice
 {
 	Bus* _io_bus;
+	ITapPlayerEventHandler* _eh;
 	UINT64 _time = 0;
 	bool _iolevel = false;
 	uint32_t _index;
@@ -24,10 +25,11 @@ class TapPlayer : public ITapPlayerDevice
 	XAudio2VoiceCallback callback;
 
 public:
-	HRESULT InitInstance (Bus* io_bus, IXAudio2* xaudio2)
+	HRESULT InitInstance (Bus* io_bus, IXAudio2* xaudio2, ITapPlayerEventHandler* eh)
 	{
 		HRESULT hr;
 		_io_bus = io_bus;
+		_eh = eh;
 		bool pushed = io_bus->read_responders.try_push_back({ this, &ProcessIoReadRequest }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 		
 		static const WAVEFORMATEX wfx = {
@@ -51,11 +53,7 @@ public:
 	{
 		_time = 0;
 		_iolevel = false;
-		_pulse_lengths.clear();
-		_queued_blocks.clear();
-		audio[0] = audio_level_silence;
-		SendSamplesToXAudio (_source_voice, audio, 1);
-		audio_size = 0;
+		StopPlaying();
 	}
 
 	virtual UINT64 STDMETHODCALLTYPE Time() override { return _time; }
@@ -154,28 +152,43 @@ public:
 				if (_queued_blocks.empty())
 				{
 					_time = requested_time;
+					_eh->OnTapPlayComplete();
 					break;
 				}
 
 				_time = next_block_time;
-				GenerateTimestamps();
+				GeneratePulses();
 			}
 		}
 	}
 	#pragma endregion
 
 	#pragma region ITapPlayerDevice
-	virtual HRESULT STDMETHODCALLTYPE ClearBlocks() override
+	virtual HRESULT STDMETHODCALLTYPE AddBlocks (vector_nothrow<tap_block_t> blocks) override
 	{
-		return S_OK;
+		if (!_queued_blocks.empty())
+			return E_UNEXPECTED;
+		if (!_pulse_lengths.empty())
+			return E_UNEXPECTED;
+		_queued_blocks = std::move(blocks);
+		_eh->OnTapPlayStarting();
+		return GeneratePulses();
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE AddBlock (tap_block_t block) override
+	virtual HRESULT STDMETHODCALLTYPE StopPlaying() override
 	{
-		bool pushed = _queued_blocks.try_push_back(std::move(block)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		if (_pulse_lengths.size())
+		{
+			// currently playing
+			_pulse_lengths.clear();
+			_queued_blocks.clear();
 
-		if (_pulse_lengths.empty())
-			return GenerateTimestamps();
+			audio[0] = audio_level_silence;
+			SendSamplesToXAudio (_source_voice, audio, 1);
+			audio_size = 0;
+
+			_eh->OnTapPlayComplete();
+		}
 
 		return S_OK;
 	}
@@ -193,7 +206,7 @@ public:
 		return 0xFF;
 	}
 
-	HRESULT GenerateTimestamps()
+	HRESULT GeneratePulses()
 	{
 		auto block = _queued_blocks.remove(_queued_blocks.begin());
 		_pulse_lengths.clear();
@@ -237,10 +250,10 @@ public:
 	}
 };
 
-HRESULT STDMETHODCALLTYPE MakeTapPlayer (Bus* io_bus, IXAudio2* xaudio2, wistd::unique_ptr<ITapPlayerDevice>& ppDevice)
+HRESULT STDMETHODCALLTYPE MakeTapPlayer (Bus* io_bus, IXAudio2* xaudio2, ITapPlayerEventHandler* eh, wistd::unique_ptr<ITapPlayerDevice>& ppDevice)
 {
 	auto d = wil::make_unique_nothrow<TapPlayer>(); RETURN_IF_NULL_ALLOC(d);
-	auto hr = d->InitInstance(io_bus, xaudio2); RETURN_IF_FAILED(hr);
+	auto hr = d->InitInstance(io_bus, xaudio2, eh); RETURN_IF_FAILED(hr);
 	ppDevice = std::move(d);
 	return S_OK;
 }

@@ -10,16 +10,9 @@
 
 using unique_cotaskmem_bitmapinfo = wil::unique_any<BITMAPINFO*, decltype(&::CoTaskMemFree), ::CoTaskMemFree>;
 
-class ScreenWindowImpl 
-	: public IVsWindowPane
-	, public IVsDpiAware
-	, public IVsDebuggerEvents
-	, public IVsWindowFrameNotify4
-	, public IVsWindowFrameNotify3
-	, public IOleCommandTarget
-	, public ISimulatorEventNotifySink
-	, public IScreenCompleteEventHandler
-	, public IVsBroadcastMessageEvents
+class ScreenWindowImpl : public IVsWindowPane, IVsDpiAware, IVsDebuggerEvents, IVsWindowFrameNotify4
+	, IVsWindowFrameNotify3, IOleCommandTarget, ISimulatorEventNotifySink, IScreenCompleteEventHandler
+	, IVsBroadcastMessageEvents, ITapPlayNotifySink
 {
 	ULONG _refCount = 0;
 	static const WNDCLASS wndClass;
@@ -33,6 +26,7 @@ class ScreenWindowImpl
 	DWORD _debugger_events_cookie = 0;
 	bool _advisingScreenCompleteEvents = false;
 	AdviseSinkToken _simulatorEventsToken;
+	AdviseSinkToken _tapPlayEventsToken;
 	struct Rational { LONG numerator; LONG denominator; };
 	Rational _zoom;
 	wil::unique_hfont _debugFont;
@@ -51,6 +45,8 @@ class ScreenWindowImpl
 	std::deque<render_perf_info> perf_info_queue;
 	unique_cotaskmem_bitmapinfo _bitmap;
 	POINT beamLocation;
+
+	bool _tapPlaying = false;
 
 public:
 	HRESULT InitInstance()
@@ -86,6 +82,7 @@ public:
 			|| TryQI<ISimulatorEventNotifySink>(this, riid, ppvObject)
 			|| TryQI<IScreenCompleteEventHandler>(this, riid, ppvObject)
 			|| TryQI<IVsBroadcastMessageEvents>(this, riid, ppvObject)
+			|| TryQI<ITapPlayNotifySink>(this, riid, ppvObject)
 		)
 			return S_OK;
 
@@ -114,6 +111,7 @@ public:
 			|| riid == IID_IVsCodeWindow
 			|| riid == IID_IServiceProvider
 			|| riid == IID_IVsTextView
+			|| riid == IID_IAsyncDocView
 		)
 			return E_NOINTERFACE;
 		#endif
@@ -455,6 +453,8 @@ public:
 
 		hr = AdviseSink<ISimulatorEventNotifySink>(simulator, static_cast<IVsWindowPane*>(this), &_simulatorEventsToken); RETURN_IF_FAILED(hr);
 
+		hr = AdviseSink<ITapPlayNotifySink>(simulator, static_cast<IVsWindowPane*>(this), &_tapPlayEventsToken); RETURN_IF_FAILED(hr);
+
 		com_ptr<IVsDebugger> debugger;
 		hr = _sp->QueryService(SID_SVsShellDebugger, &debugger); RETURN_IF_FAILED(hr);
 		hr = debugger->AdviseDebuggerEvents(this, &_debugger_events_cookie); RETURN_IF_FAILED(hr);
@@ -517,6 +517,7 @@ public:
 			_debugger_events_cookie = 0;
 		}
 
+		_tapPlayEventsToken.reset();
 		_simulatorEventsToken.reset();
 
 		if (_advisingScreenCompleteEvents)
@@ -837,6 +838,12 @@ public:
 				return S_OK;
 			}
 
+			if (prgCmds[0].cmdID == cmdidTapPlayStop)
+			{
+				prgCmds[0].cmdf = OLECMDF_SUPPORTED | (_tapPlaying ? OLECMDF_ENABLED : OLECMDF_INVISIBLE);
+				return S_OK;
+			}
+
 			return OLECMDERR_E_NOTSUPPORTED;
 		}
 
@@ -902,6 +909,12 @@ public:
 				return S_OK;
 			}
 
+			if (nCmdID == cmdidTapPlayStop)
+			{
+				simulator->StopTap();
+				return S_OK;
+			}
+
 			return OLECMDERR_E_NOTSUPPORTED;
 		}
 
@@ -961,6 +974,22 @@ public:
 	#pragma region IVsWindowFrameNotify4
 	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanged(VSFPROPID propid) override
 	{
+		return S_OK;
+	}
+	#pragma endregion
+
+	#pragma region ITapPlayNotifySink
+	virtual HRESULT STDMETHODCALLTYPE NotifyTapPlayStarting() override
+	{
+		_tapPlaying = true;
+		uiShell->UpdateCommandUI(FALSE);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE NotifyTapPlayComplete() override
+	{
+		_tapPlaying = false;
+		uiShell->UpdateCommandUI(FALSE);
 		return S_OK;
 	}
 	#pragma endregion

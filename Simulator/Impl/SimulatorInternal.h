@@ -309,16 +309,21 @@ struct IKeyboardDevice : IDevice
 };
 HRESULT STDMETHODCALLTYPE MakeKeyboardDevice (Bus* io_bus, wistd::unique_ptr<IKeyboardDevice>* ppDevice);
 
+struct ITapPlayerEventHandler
+{
+	virtual void OnTapPlayStarting() = 0;
+	virtual void OnTapPlayComplete() = 0;
+};
+
+// First two bytes are the length of the block that follow.
 using tap_block_t = wil::unique_process_heap_ptr<uint8_t[]>;
 
 struct DECLSPEC_NOVTABLE ITapPlayerDevice : IDevice
 {
-	virtual HRESULT STDMETHODCALLTYPE ClearBlocks() = 0;
-
-	// First two bytes are the length of the block that follow.
-	virtual HRESULT STDMETHODCALLTYPE AddBlock (tap_block_t block) = 0;
+	virtual HRESULT STDMETHODCALLTYPE AddBlocks (vector_nothrow<tap_block_t> blocks) = 0;
+	virtual HRESULT STDMETHODCALLTYPE StopPlaying() = 0;
 };
-HRESULT STDMETHODCALLTYPE MakeTapPlayer (Bus* io_bus, IXAudio2* xaudio2, wistd::unique_ptr<ITapPlayerDevice>& ppDevice);
+HRESULT STDMETHODCALLTYPE MakeTapPlayer (Bus* io_bus, IXAudio2* xaudio2, ITapPlayerEventHandler* eh, wistd::unique_ptr<ITapPlayerDevice>& ppDevice);
 
 static constexpr uint32_t osc_freq = 3'500'000;
 static constexpr uint32_t sample_freq = 35000;
