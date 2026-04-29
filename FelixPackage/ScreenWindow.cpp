@@ -676,11 +676,95 @@ public:
 		return S_OK;
 	}
 
+	HRESULT ResetAndSimulateLoad()
+	{
+		HRESULT hr;
+
+		// Reset and simulator to the EDITOR function
+		wil::unique_process_heap_string dll;
+		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, dll); RETURN_IF_FAILED(hr);
+		PathFindFileName(dll.get())[0] = 0; // remove file name
+		wil::unique_process_heap_string rom_debug_info_path;
+		hr = wil::str_concat_nothrow(rom_debug_info_path, dll, L"ROMs\\Spectrum48K.z80sym"); RETURN_IF_NULL_ALLOC(rom_debug_info_path);
+		com_ptr<IFelixSymbols> romSymbols;
+		hr = MakeZ80SymSymbols (rom_debug_info_path.get(), &romSymbols); RETURN_IF_FAILED(hr);
+		UINT16 editorFunctionAddr;
+		hr = romSymbols->GetAddressFromSymbol(L"EDITOR", &editorFunctionAddr); RETURN_IF_FAILED(hr);
+		hr = simulator->Break(); RETURN_IF_FAILED(hr);
+		SIM_BP_COOKIE editorBP = 0;
+		hr = simulator->AddBreakpoint (BreakpointType::Code, false, editorFunctionAddr, &editorBP); RETURN_IF_FAILED(hr);
+		auto removebp = wil::scope_exit([&editorBP] { simulator->RemoveBreakpoint(editorBP); });
+		hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
+		hr = simulator->Resume(true); RETURN_IF_FAILED(hr);
+		hr = simulator->SetSpeed(UINT32_MAX); RETURN_IF_FAILED(hr);
+
+		DWORD tickStart = GetTickCount();
+		while ((IsDebuggerPresent() || GetTickCount() - tickStart < 1000) && simulator->Running_HR() == S_OK)
+		{
+			MSG msg;
+			while(PeekMessage(&msg,0,0,0,PM_NOREMOVE))
+			{
+				if (::GetMessage(&msg, NULL, 0, 0) > 0)
+					::DispatchMessage(&msg);
+			}
+
+			Sleep(20);
+		}
+
+		RETURN_HR_IF(E_UNEXPECTED, simulator->Running_HR() == S_OK);
+
+		// Simulate what the EDITOR function would do when typing LOAD "".
+		auto ReadZxSpectrumSystemVar = [&romSymbols](LPCWSTR name, UINT16* value) -> HRESULT
+			{
+				UINT16 addr;
+				auto hr = romSymbols->GetAddressFromSymbol(name, &addr); RETURN_IF_FAILED(hr);
+				hr = simulator->ReadMemoryBus(addr, 2, value); RETURN_IF_FAILED(hr);
+				return S_OK;
+			};
+
+		auto WriteZxSpectrumSystemVar = [&romSymbols](LPCWSTR name, UINT16 value) -> HRESULT
+			{
+				UINT16 addr;
+				auto hr = romSymbols->GetAddressFromSymbol(name, &addr); RETURN_IF_FAILED(hr);
+				hr = simulator->WriteMemoryBus(addr, 2, &value); RETURN_IF_FAILED(hr);
+				return S_OK;
+			};
+
+		// The command line is from E-LINE to WORKSP.
+		UINT16 eline, worksp;
+		hr = ReadZxSpectrumSystemVar(L"E-LINE", &eline); RETURN_IF_FAILED(hr);
+		hr = ReadZxSpectrumSystemVar(L"WORKSP", &worksp); RETURN_IF_FAILED(hr);
+
+		// For now let's assume that STKBOT and STKEND have the same value as WORKSP.
+		// This is true since we just reset the processor and simulated to the EDITOR function.
+		UINT16 stkbot, stkend;
+		hr = ReadZxSpectrumSystemVar(L"STKBOT", &stkbot); RETURN_IF_FAILED(hr);
+		hr = ReadZxSpectrumSystemVar(L"STKEND", &stkend); RETURN_IF_FAILED(hr);
+		RETURN_HR_IF (E_FAIL, (stkbot != worksp) || (stkend != worksp));
+
+		// We need to replace the command line with LOAD "".
+		static const uint8_t cmdLine[] = { 0xEF, 0x22, 0x22, 0x0D, 0x80 };
+		hr = simulator->WriteMemoryBus (eline, (uint16_t)_countof(cmdLine), cmdLine); RETURN_IF_FAILED(hr);
+		hr = WriteZxSpectrumSystemVar (L"K-CUR", eline + _countof(cmdLine) - 2); RETURN_IF_FAILED(hr);
+		hr = WriteZxSpectrumSystemVar (L"WORKSP", eline + _countof(cmdLine)); RETURN_IF_FAILED(hr);
+		hr = WriteZxSpectrumSystemVar (L"STKBOT", eline + _countof(cmdLine)); RETURN_IF_FAILED(hr);
+		hr = WriteZxSpectrumSystemVar (L"STKEND", eline + _countof(cmdLine)); RETURN_IF_FAILED(hr);
+
+		// Jump to some RET instruction, say the one at 0F91h.
+		uint8_t testRet;
+		hr = simulator->ReadMemoryBus(0x0F91, 1, &testRet); RETURN_IF_FAILED(hr);
+		RETURN_HR_IF(E_FAIL, testRet != 0xC9);
+		hr = simulator->SetPC(0x0F91); RETURN_IF_FAILED(hr);
+
+		return S_OK;
+	}
+
 	HRESULT LoadFile (bool start_debugging)
 	{
 		auto hr = ConfirmStopDebugging(); RETURN_IF_FAILED(hr);
 		if (hr == S_FALSE)
 			return S_OK;
+		WI_ASSERT(simulator->HasBreakpoints_HR() == S_FALSE);
 
 		wil::unique_bstr initial_directory;
 		com_ptr<IVsWritableSettingsStore> settings_store;
@@ -713,6 +797,11 @@ public:
 					hr = settings_store->SetString (SettingsCollection, SettingLoadSavePath, dir.get()); LOG_IF_FAILED(hr);
 				}
 			}
+		}
+
+		if (!wcsicmp(PathFindExtension(filename), L".tap"))
+		{
+			hr = ResetAndSimulateLoad(); RETURN_IF_FAILED(hr);
 		}
 
 		if (!start_debugging)

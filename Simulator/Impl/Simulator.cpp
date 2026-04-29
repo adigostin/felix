@@ -138,7 +138,15 @@ public:
 		_cpu_thread_exit_request.reset (CreateEvent(nullptr, FALSE, FALSE, nullptr)); RETURN_LAST_ERROR_IF_NULL(_cpu_thread_exit_request);
 		_cpuThread.reset (CreateThread(nullptr, 100'000, simulation_thread_proc_static, this, 0, nullptr)); RETURN_LAST_ERROR_IF_NULL(_cpuThread);
 
-		//SetThreadDescription(_cpuThread.get(), L"Simulator");
+		if (auto h = LoadLibrary(L"KernelBase.dll"))
+		{
+			using std_h = decltype(SetThreadDescription)*;
+			if (std_h std = (std_h)GetProcAddress(h, "SetThreadDescription"))
+			{
+				std(_cpuThread.get(), L"Simulator");
+			}
+			FreeLibrary(h);
+		}
 
 		return S_OK;
 	};
