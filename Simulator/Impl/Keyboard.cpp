@@ -4,7 +4,6 @@
 
 struct keyboard : IKeyboardDevice
 {
-	UINT64 _time = 0;
 	Bus* io_bus;
 	uint8_t keys_down[8] = { };
 
@@ -36,11 +35,6 @@ struct keyboard : IKeyboardDevice
 
 		WI_ASSERT (_time < requested_time);
 		_time = requested_time;
-	}
-
-	virtual UINT64 STDMETHODCALLTYPE Time() override
-	{
-		return _time;
 	}
 
 	static uint8_t process_read_request (IDevice* d, uint16_t address)

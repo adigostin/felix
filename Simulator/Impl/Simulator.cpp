@@ -264,11 +264,11 @@ public:
 			bool advanced = false;
 			for (auto& d : _active_devices_)
 			{
-				if (d->Time() < time)
+				if (d->_time < time)
 				{
-					uint64_t timeBefore = d->Time();
+					uint64_t timeBefore = d->_time;
 					d->SimulateTo(time);
-					advanced |= (d->Time() > timeBefore);
+					advanced |= (d->_time > timeBefore);
 				}
 			}
 
@@ -307,7 +307,7 @@ public:
 			// we can do that only if the devices are at all times behind the CPU or only slightly
 			// (a few clock cycles) ahead of it.
 			BreakpointsHit bpsHit = { };
-			while (_cpu->Time() < time_to_sync_to)
+			while (_cpu->cpu_time < time_to_sync_to)
 			{
 				bool advanced = _cpu->SimulateOne(&bpsHit);
 				if (!advanced || bpsHit.size)
@@ -315,7 +315,7 @@ public:
 			}
 
 			// Whatever the outcome of the above simulation, we must first bring the devices close to the CPU time.
-			simulate_devices_to(_cpu->Time());
+			simulate_devices_to(_cpu->cpu_time);
 
 			if (bpsHit.size)
 			{
@@ -323,7 +323,7 @@ public:
 				break;
 			}
 
-			if (_cpu->Time() >= time_to_sync_to)
+			if (_cpu->cpu_time >= time_to_sync_to)
 				break;
 		}
 	}
@@ -339,14 +339,14 @@ public:
 		// If we have any such device, we "erase" the same length of time from all of the devices;
 		// we do this by rebasing the simulation startup time held in the _running_info variable.
 		{
-			auto slowestTime = _cpu->Time();
-			INT64 slowest_offset_from_rt = (INT64)_cpu->Time() - (INT64)rt;
+			auto slowestTime = _cpu->cpu_time;
+			INT64 slowest_offset_from_rt = (INT64)_cpu->cpu_time - (INT64)rt;
 			for (auto& d : _active_devices_)
 			{
-				INT64 offset_from_rt = (UINT64)(d->Time() - rt);
+				INT64 offset_from_rt = (UINT64)(d->_time - rt);
 				if (offset_from_rt < slowest_offset_from_rt)
 				{
-					slowestTime = d->Time();
+					slowestTime = d->_time;
 					slowest_offset_from_rt = offset_from_rt;
 				}
 			}
@@ -373,7 +373,7 @@ public:
 		DWORD waitHandleCount = 2;
 		DWORD waitTimeout = 0;
 
-		if (_cpu->Time() >= time_to_sync_to)
+		if (_cpu->cpu_time >= time_to_sync_to)
 		{
 			// Now let's see how long we need to wait for the real time to catch up.
 			if (time_to_sync_to > rt)
@@ -396,11 +396,11 @@ public:
 			// ... real time has caught up with the simulated time.
 			// Let's unblock the device that was waiting.
 			WI_ASSERT(device_to_sync_on);
-			if (device_to_sync_on->Time() < time_to_sync_to + 1)
+			if (device_to_sync_on->_time < time_to_sync_to + 1)
 			{
-				uint64_t timeBefore = device_to_sync_on->Time();
+				uint64_t timeBefore = device_to_sync_on->_time;
 				device_to_sync_on->SimulateTo(time_to_sync_to + 1);
-				WI_ASSERT(device_to_sync_on->Time() > timeBefore);
+				WI_ASSERT(device_to_sync_on->_time > timeBefore);
 			}
 			break;
 
@@ -434,11 +434,11 @@ public:
 		case WAIT_TIMEOUT:
 			// Let's unblock the device that was waiting.
 			WI_ASSERT(device_to_sync_on);
-			if (device_to_sync_on->Time() < time_to_sync_to + 1)
+			if (device_to_sync_on->_time < time_to_sync_to + 1)
 			{
-				uint64_t timeBefore = device_to_sync_on->Time();
+				uint64_t timeBefore = device_to_sync_on->_time;
 				device_to_sync_on->SimulateTo(time_to_sync_to + 1);
-				WI_ASSERT(device_to_sync_on->Time() > timeBefore);
+				WI_ASSERT(device_to_sync_on->_time > timeBefore);
 			}
 			break;
 
@@ -787,7 +787,7 @@ public:
 
 				if (_speed_ == 100)
 				{
-					auto start_time = _cpu->Time();
+					auto start_time = _cpu->cpu_time;
 					LARGE_INTEGER perf_counter;
 					QueryPerformanceCounter(&perf_counter);
 
@@ -830,14 +830,14 @@ public:
 		WI_ASSERT(std::holds_alternative<ri_paused>(_running_info));
 
 		// While simulation is not running devices are supposed to be up to date with the processor's time.
-		uint64_t cpuTime = _cpu->Time();
+		uint64_t cpuTime = _cpu->_time;
 		for (auto& d : _active_devices_)
 		{
-			uint64_t deviceTime = d->Time();
+			uint64_t deviceTime = d->_time;
 			if (deviceTime < cpuTime)
 			{
 				d->SimulateTo(cpuTime);
-				uint64_t deviceNewTime = d->Time();
+				uint64_t deviceNewTime = d->_time;
 				WI_ASSERT(deviceNewTime == deviceTime);
 			}
 		}
@@ -856,7 +856,7 @@ public:
 				{
 					bool advanced = _cpu->SimulateOne(nullptr);
 					WI_ASSERT(advanced);
-					simulate_devices_to(_cpu->Time());
+					simulate_devices_to(_cpu->cpu_time);
 				}
 				else
 				{
@@ -864,7 +864,7 @@ public:
 					{
 						bool advanced = _cpu->SimulateOne(nullptr);
 						WI_ASSERT(advanced);
-						simulate_devices_to(_cpu->Time());
+						simulate_devices_to(_cpu->cpu_time);
 					} while (_cpu->Halted());
 				}
 
@@ -1617,7 +1617,7 @@ public:
 				auto hr = RunOnSimulatorThread([this] { 
 					LARGE_INTEGER perf_counter;
 					QueryPerformanceCounter(&perf_counter);
-					_running_info = ri_running { .start_time = _cpu->Time(), .start_time_perf_counter = perf_counter };
+					_running_info = ri_running { .start_time = _cpu->cpu_time, .start_time_perf_counter = perf_counter };
 					return S_OK;
 				}); RETURN_IF_FAILED(hr);
 			}

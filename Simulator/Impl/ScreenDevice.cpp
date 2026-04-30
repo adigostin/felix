@@ -32,7 +32,6 @@ class ScreenDeviceImpl : public IScreenDevice, public IInterruptingDevice
 	Bus* memory;
 	Bus* io;
 	irq_line_i* irq;
-	UINT64 _time = 0;
 	std::optional<UINT64> _pending_irq_time;
 	uint8_t _border;
 	wil::unique_process_heap_ptr<BITMAPINFO> _screenData;
@@ -93,11 +92,6 @@ public:
 		_pending_irq_time.reset();
 	}
 	
-	virtual UINT64 STDMETHODCALLTYPE Time() override
-	{
-		return _time;
-	}
-
 	static constexpr uint32_t low_brightness_colors[] = 
 		{ 0xFF000000, 0xFF0000C0, 0xFFC00000, 0xFFC000C0, 0xFF00C000, 0xFF00C0C0, 0xFFC0C000, 0xFFC0C0C0 };
 

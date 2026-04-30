@@ -6,7 +6,6 @@ class TapPlayer : public ITapPlayerDevice
 {
 	Bus* _io_bus;
 	ITapPlayerEventHandler* _eh;
-	UINT64 _time = 0;
 	bool _iolevel = false;
 	uint32_t _index;
 	vector_nothrow<tap_block_t> _queued_blocks;
@@ -55,8 +54,6 @@ public:
 		_iolevel = false;
 		StopPlaying();
 	}
-
-	virtual UINT64 STDMETHODCALLTYPE Time() override { return _time; }
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { return FALSE; }
 

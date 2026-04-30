@@ -7,7 +7,6 @@ class HC_ROM : public IMemoryDevice
 {
 	Bus* _memory_bus;
 	Bus* _io_bus;
-	UINT64 _time = 0;
 	bool _cpmSrc = false; // false - reading from index 0 of _data; true - reading from index 24K of _data.
 	bool _cpmDst = false; // false - responding to bus address range 0-3FFF; true - responding to bus address range E000-FFFF
 	wil::unique_hlocal_string _binaryFilename;
@@ -52,8 +51,6 @@ public:
 	{
 		_time = 0;
 	}
-
-	virtual UINT64 STDMETHODCALLTYPE Time() override { return _time; }
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { return FALSE; }
 

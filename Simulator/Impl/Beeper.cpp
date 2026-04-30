@@ -7,7 +7,6 @@ class Beeper : public IDevice
 	static constexpr uint8_t bits_per_sample = 8;
 
 	bool _level = false;
-	UINT64 _time = 0;
 
 	uint8_t data[buffer_length_samples * bits_per_sample / 8];
 	size_t size = 0;
@@ -62,8 +61,6 @@ public:
 		data[0] = audio_level_silence;
 		SendSamplesToXAudio (_source_voice, data, 1);
 	}
-
-	virtual UINT64 STDMETHODCALLTYPE Time() override { return _time; }
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { return FALSE; }
 

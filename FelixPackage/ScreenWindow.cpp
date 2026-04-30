@@ -46,7 +46,7 @@ class ScreenWindowImpl : public IVsWindowPane, IVsDpiAware, IVsDebuggerEvents, I
 	unique_cotaskmem_bitmapinfo _bitmap;
 	POINT beamLocation;
 
-	bool _tapPlaying = false;
+	uint64_t _tapPlayStartTime = 0; // 0 - nothing playing
 
 public:
 	HRESULT InitInstance()
@@ -696,7 +696,6 @@ public:
 		auto removebp = wil::scope_exit([&editorBP] { simulator->RemoveBreakpoint(editorBP); });
 		hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
 		hr = simulator->Resume(true); RETURN_IF_FAILED(hr);
-		hr = simulator->SetSpeed(UINT32_MAX); RETURN_IF_FAILED(hr);
 
 		DWORD tickStart = GetTickCount();
 		while ((IsDebuggerPresent() || GetTickCount() - tickStart < 1000) && simulator->Running_HR() == S_OK)
@@ -799,14 +798,17 @@ public:
 			}
 		}
 
-		if (!wcsicmp(PathFindExtension(filename), L".tap"))
-		{
-			hr = ResetAndSimulateLoad(); RETURN_IF_FAILED(hr);
-		}
 
 		if (!start_debugging)
 		{
+			if (!wcsicmp(PathFindExtension(filename), L".tap"))
+			{
+				hr = simulator->SetSpeed(UINT32_MAX); RETURN_IF_FAILED(hr);
+				hr = ResetAndSimulateLoad(); RETURN_IF_FAILED(hr);
+			}
+
 			hr = simulator->LoadFile(filename); RETURN_IF_FAILED_EXPECTED(hr);
+
 			if (simulator->Running_HR() == S_FALSE)
 			{
 				hr = simulator->Resume(false); RETURN_IF_FAILED_EXPECTED(hr);
@@ -929,7 +931,7 @@ public:
 
 			if (prgCmds[0].cmdID == cmdidTapPlayStop)
 			{
-				prgCmds[0].cmdf = OLECMDF_SUPPORTED | (_tapPlaying ? OLECMDF_ENABLED : OLECMDF_INVISIBLE);
+				prgCmds[0].cmdf = OLECMDF_SUPPORTED | (_tapPlayStartTime ? OLECMDF_ENABLED : OLECMDF_INVISIBLE);
 				return S_OK;
 			}
 
@@ -1070,14 +1072,24 @@ public:
 	#pragma region ITapPlayNotifySink
 	virtual HRESULT STDMETHODCALLTYPE NotifyTapPlayStarting() override
 	{
-		_tapPlaying = true;
+		_tapPlayStartTime = GetTickCount64();
 		uiShell->UpdateCommandUI(FALSE);
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE NotifyTapPlayComplete() override
 	{
-		_tapPlaying = false;
+		HRESULT hr;
+
+		if (IsDebuggerPresent())
+		{
+			UINT64 duration = GetTickCount64() - _tapPlayStartTime;
+			auto b = wil::str_printf_failfast<wil::unique_process_heap_string>(L"TAP loaded in %u.%u seconds.\r\n", duration / 1000, duration % 1000);
+			OutputDebugString(b.get());
+		}
+
+		_tapPlayStartTime = 0;
+		hr = simulator->SetSpeed(100); RETURN_IF_FAILED(hr);
 		uiShell->UpdateCommandUI(FALSE);
 		return S_OK;
 	}

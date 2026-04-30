@@ -11,7 +11,6 @@ class HC_RAM : public IMemoryDevice
 {
 	Bus* _memory_bus;
 	Bus* _io_bus;
-	UINT64 _time = 0;
 	bool _cpm = false; // false - responds to range 4000-FFFF; true - responds to range 0-DFFF
 	uint8_t _data[0x10000]; // this one last
 
@@ -42,8 +41,6 @@ public:
 		for (size_t i = 0; i < sizeof(_data); i++)
 			_data[i] = (uint8_t)rand();
 	}
-
-	virtual UINT64 STDMETHODCALLTYPE Time() override { return _time; }
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { return false; }
 

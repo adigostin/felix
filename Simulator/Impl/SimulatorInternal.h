@@ -6,9 +6,10 @@
 
 struct DECLSPEC_NOVTABLE IDevice
 {
+	uint64_t _time = 0;
+
 	virtual ~IDevice() = default;
 	virtual void Reset() = 0;
-	virtual uint64_t Time() = 0;
 	virtual BOOL NeedSyncWithRealTime (UINT64* sync_time) = 0;
 	virtual void SimulateTo (UINT64 requested_time) = 0;
 };
@@ -23,8 +24,9 @@ struct BreakpointsHit
 
 struct DECLSPEC_NOVTABLE ICPU
 {
+	uint64_t cpu_time = 0;
+
 	virtual ~ICPU() = default;
-	virtual uint64_t Time() = 0;
 	virtual void Reset() = 0;
 	virtual UINT16 GetStackStartAddress() const = 0;
 	virtual BOOL STDMETHODCALLTYPE Halted() = 0;
@@ -175,7 +177,7 @@ struct DECLSPEC_NOVTABLE Bus
 		uint8_t temp = 0xFF;
 		for (auto& d : read_responders)
 		{
-			if (d.Device->Time() < requested_time)
+			if (d.Device->_time < requested_time)
 			{
 				// A read responder is at an earlier time point. Let's try to simulate it
 				// up to the requested time. In the vast majority of cases our caller is
@@ -186,10 +188,10 @@ struct DECLSPEC_NOVTABLE Bus
 				// in case the device is blocked on some other device that's also blocked.
 				// This kind of scenario is taken care of in the simulator class.
 
-				uint64_t timeBefore = d.Device->Time();
+				uint64_t timeBefore = d.Device->_time;
 				d.Device->SimulateTo(requested_time);
-				bool advanced = d.Device->Time() > timeBefore;
-				if (!advanced || (d.Device->Time() < requested_time))
+				bool advanced = d.Device->_time > timeBefore;
+				if (!advanced || (d.Device->_time < requested_time))
 					return false;
 			}
 
@@ -205,13 +207,13 @@ struct DECLSPEC_NOVTABLE Bus
 	{
 		for (auto& d : write_responders)
 		{
-			if (d.Device->Time() < requested_time)
+			if (d.Device->_time < requested_time)
 			{
 				// Comment from try_read_request applies here too.
-				uint64_t timeBefore = d.Device->Time();
+				uint64_t timeBefore = d.Device->_time;
 				d.Device->SimulateTo(requested_time);
-				bool advanced = d.Device->Time() > timeBefore;
-				if (!advanced || (d.Device->Time() < requested_time))
+				bool advanced = d.Device->_time > timeBefore;
+				if (!advanced || (d.Device->_time < requested_time))
 					return false;
 			}
 		}
@@ -262,7 +264,7 @@ struct __declspec(novtable) irq_line_i
 	{
 		for (auto d : interrupting_devices)
 		{
-			if (d->as_device()->Time() < cpu_time)
+			if (d->as_device()->_time < cpu_time)
 				return false;
 
 			UINT64 irq_time;

@@ -154,7 +154,6 @@ class cpu : public IZ80CPU
 	Bus*       io;
 	irq_line_i*  irq;
 
-	UINT64 cpu_time = 0;
 	z80_register_set regs = { };
 
 	// The "EI" instruction sets this to 2.
@@ -1625,11 +1624,6 @@ public:
 	}
 
 	// ========================================================================
-
-	virtual UINT64 Time() override
-	{
-		return cpu_time;
-	}
 
 	virtual void Reset() override
 	{
