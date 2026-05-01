@@ -64,7 +64,7 @@ public:
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { return FALSE; }
 
-	virtual void SimulateTo (UINT64 requested_time) override
+	virtual void SimulateDeviceTo (UINT64 requested_time) override
 	{
 		WI_ASSERT (_time < requested_time);
 

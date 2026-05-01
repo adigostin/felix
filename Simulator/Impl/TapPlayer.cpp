@@ -68,7 +68,7 @@ public:
 		}
 	}
 
-	virtual void SimulateTo (UINT64 requested_time) override
+	virtual void SimulateDeviceTo (UINT64 requested_time) override
 	{
 		if (_pulse_lengths.empty())
 		{

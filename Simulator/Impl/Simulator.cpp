@@ -267,7 +267,7 @@ public:
 				if (d->_time < time)
 				{
 					uint64_t timeBefore = d->_time;
-					d->SimulateTo(time);
+					d->SimulateDeviceTo(time);
 					advanced |= (d->_time > timeBefore);
 				}
 			}
@@ -399,7 +399,7 @@ public:
 			if (device_to_sync_on->_time < time_to_sync_to + 1)
 			{
 				uint64_t timeBefore = device_to_sync_on->_time;
-				device_to_sync_on->SimulateTo(time_to_sync_to + 1);
+				device_to_sync_on->SimulateDeviceTo(time_to_sync_to + 1);
 				WI_ASSERT(device_to_sync_on->_time > timeBefore);
 			}
 			break;
@@ -437,7 +437,7 @@ public:
 			if (device_to_sync_on->_time < time_to_sync_to + 1)
 			{
 				uint64_t timeBefore = device_to_sync_on->_time;
-				device_to_sync_on->SimulateTo(time_to_sync_to + 1);
+				device_to_sync_on->SimulateDeviceTo(time_to_sync_to + 1);
 				WI_ASSERT(device_to_sync_on->_time > timeBefore);
 			}
 			break;
@@ -830,13 +830,13 @@ public:
 		WI_ASSERT(std::holds_alternative<ri_paused>(_running_info));
 
 		// While simulation is not running devices are supposed to be up to date with the processor's time.
-		uint64_t cpuTime = _cpu->_time;
+		uint64_t cpuTime = _cpu->cpu_time;
 		for (auto& d : _active_devices_)
 		{
 			uint64_t deviceTime = d->_time;
 			if (deviceTime < cpuTime)
 			{
-				d->SimulateTo(cpuTime);
+				d->SimulateDeviceTo(cpuTime);
 				uint64_t deviceNewTime = d->_time;
 				WI_ASSERT(deviceNewTime == deviceTime);
 			}

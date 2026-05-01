@@ -1480,9 +1480,6 @@ public:
 
 	virtual bool SimulateOne (BreakpointsHit* bps) override
 	{
-		if (bps)
-			bps->size = 0;
-
 		if (regs.iff1)
 		{
 			bool interrupted;

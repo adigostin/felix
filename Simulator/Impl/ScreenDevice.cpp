@@ -115,7 +115,7 @@ public:
 		return (uint32_t*)bi->bmiColors + (screen_height - 1 - row) * screen_width + col;
 	}
 
-	virtual void SimulateTo (UINT64 requested_time) override
+	virtual void SimulateDeviceTo (UINT64 requested_time) override
 	{
 		WI_ASSERT (_time < requested_time);
 

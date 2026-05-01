@@ -11,7 +11,7 @@ struct DECLSPEC_NOVTABLE IDevice
 	virtual ~IDevice() = default;
 	virtual void Reset() = 0;
 	virtual BOOL NeedSyncWithRealTime (UINT64* sync_time) = 0;
-	virtual void SimulateTo (UINT64 requested_time) = 0;
+	virtual void SimulateDeviceTo (UINT64 requested_time) = 0;
 };
 
 struct BreakpointsHit
@@ -189,7 +189,7 @@ struct DECLSPEC_NOVTABLE Bus
 				// This kind of scenario is taken care of in the simulator class.
 
 				uint64_t timeBefore = d.Device->_time;
-				d.Device->SimulateTo(requested_time);
+				d.Device->SimulateDeviceTo(requested_time);
 				bool advanced = d.Device->_time > timeBefore;
 				if (!advanced || (d.Device->_time < requested_time))
 					return false;
@@ -211,7 +211,7 @@ struct DECLSPEC_NOVTABLE Bus
 			{
 				// Comment from try_read_request applies here too.
 				uint64_t timeBefore = d.Device->_time;
-				d.Device->SimulateTo(requested_time);
+				d.Device->SimulateDeviceTo(requested_time);
 				bool advanced = d.Device->_time > timeBefore;
 				if (!advanced || (d.Device->_time < requested_time))
 					return false;
