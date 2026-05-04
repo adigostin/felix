@@ -41,9 +41,10 @@ public:
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { Assert::Fail(); return false; }
 
-	virtual void SimulateDeviceTo (UINT64 requested_time) override
+	virtual bool SimulateDeviceTo (UINT64 requested_time) override
 	{
 		_time = requested_time;
+		return true;
 	}
 
 	static uint8_t process_mem_read_request (IDevice* d, uint16_t address)
@@ -87,9 +88,10 @@ public:
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { Assert::Fail(); return false; }
 
-	virtual void SimulateDeviceTo (UINT64 requested_time) override
+	virtual bool SimulateDeviceTo (UINT64 requested_time) override
 	{
 		_time = requested_time;
+		return true;
 	}
 
 	static uint8_t process_io_read_request (IDevice* d, uint16_t address)

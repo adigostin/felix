@@ -68,13 +68,13 @@ public:
 		}
 	}
 
-	virtual void SimulateDeviceTo (UINT64 requested_time) override
+	virtual bool SimulateDeviceTo (UINT64 requested_time) override
 	{
 		if (_pulse_lengths.empty())
 		{
 			// Nothing playing.
 			_time = requested_time;
-			return;
+			return true;
 		}
 		
 		while(true)
@@ -157,6 +157,8 @@ public:
 				GeneratePulses();
 			}
 		}
+
+		return true;
 	}
 	#pragma endregion
 

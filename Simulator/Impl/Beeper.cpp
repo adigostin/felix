@@ -64,7 +64,7 @@ public:
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { return FALSE; }
 
-	virtual void SimulateDeviceTo (UINT64 requested_time) override
+	virtual bool SimulateDeviceTo (UINT64 requested_time) override
 	{
 		WI_ASSERT (_time < requested_time);
 
@@ -126,6 +126,8 @@ public:
 
 			_time += audio_increment;
 		}
+
+		return true;
 	}
 	#pragma endregion
 

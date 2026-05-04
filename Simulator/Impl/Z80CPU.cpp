@@ -1537,9 +1537,13 @@ public:
 		}
 
 		uint8_t opcode;
-		bool b = memory->try_read_request (regs.pc, opcode, cpu_time);
-		if (!b)
-			return false;
+		//bool b = memory->try_read_request (regs.pc, opcode, cpu_time);
+		//if (!b)
+		//	return false;
+		// At the moment the CPU is the only one changing the memory state (we have no DMA chip, for example).
+		// This allows us to simply read the memory, without checking how far in time we simulated it.
+		// This single optimization improves simulation speed (in Release) by ~15%.
+		opcode = memory->read(regs.pc);
 
 		uint16_t oldpc = regs.pc;
 		uint8_t oldr = regs.r;

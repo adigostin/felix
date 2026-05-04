@@ -50,13 +50,17 @@ public:
 	virtual void STDMETHODCALLTYPE Reset() override
 	{
 		_time = 0;
+		_cpmSrc = false;
+		_cpmDst = false;
 	}
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { return FALSE; }
 
-	virtual void SimulateDeviceTo (UINT64 requested_time) override
+	virtual bool SimulateDeviceTo (UINT64 requested_time) override
 	{
+		// Comment from HC_RAM applies here as well.
 		_time = requested_time;
+		return true;
 	}
 
 	static uint8_t process_mem_read_request (IDevice* d, uint16_t address)

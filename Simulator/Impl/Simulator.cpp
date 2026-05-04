@@ -265,11 +265,7 @@ public:
 			for (auto& d : _active_devices_)
 			{
 				if (d->_time < time)
-				{
-					uint64_t timeBefore = d->_time;
-					d->SimulateDeviceTo(time);
-					advanced |= (d->_time > timeBefore);
-				}
+					advanced |= d->SimulateDeviceTo(time);
 			}
 
 			if (!advanced)

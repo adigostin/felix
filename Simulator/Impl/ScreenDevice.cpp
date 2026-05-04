@@ -115,7 +115,7 @@ public:
 		return (uint32_t*)bi->bmiColors + (screen_height - 1 - row) * screen_width + col;
 	}
 
-	virtual void SimulateDeviceTo (UINT64 requested_time) override
+	virtual bool SimulateDeviceTo (UINT64 requested_time) override
 	{
 		WI_ASSERT (_time < requested_time);
 
@@ -144,7 +144,7 @@ public:
 					if (requested_offset < offset_to_irq)
 					{
 						_time = requested_time;
-						return;
+						return true;
 					}
 
 					_time += offset_to_irq;
@@ -160,7 +160,7 @@ public:
 				if (requested_offset <= offset_to_border_row_0)
 				{
 					_time = requested_time;
-					return;
+					return true;
 				}
 
 				_time += offset_to_border_row_0;
@@ -178,7 +178,7 @@ public:
 				if (requested_offset <= offset_to_border_col_0)
 				{
 					_time = requested_time;
-					return;
+					return true;
 				}
 
 				_time += offset_to_border_col_0;
@@ -196,7 +196,7 @@ public:
 				col++;
 				_time++;
 				if (_time == requested_time)
-					return;
+					return true;
 			}
 
 			if (col < hsync_col_count + border_size_left_ticks + 128)
@@ -216,7 +216,7 @@ public:
 						col++;
 						_time++;
 						if (_time == requested_time)
-							return;
+							return true;
 					}
 				}
 				else
@@ -236,13 +236,12 @@ public:
 						uint16_t src_pixel_attr = 0x5800 | ((y >> 3) << 5) | x;
 						//WI_ASSERT (src_pixel_attr < 0x5B00);
 						
-						uint8_t data, attr;
+						uint8_t data;
 						if (!memory->try_read_request(src_pixel_data, data, _time))
-							return;
-						if (!memory->try_read_request(src_pixel_attr, attr, _time))
-							return;
-						//data = memory->read(src_pixel_data);
-						//attr = memory->read(src_pixel_attr);
+							return false;
+
+						// We assume the attribute is in the same memory area as the pixel, so read it directly.
+						uint8_t attr = memory->read(src_pixel_attr);
 
 						uint32_t* dest_pixel = get_dest_pixel (_screenData.get(), row - vsync_row_count, (col - hsync_col_count) * 2);
 
@@ -258,7 +257,7 @@ public:
 						col += 4;
 						_time += 4;
 						if (requested_offset <= 4)
-							return;
+							return true;
 					}
 				}
 			}
@@ -277,7 +276,7 @@ public:
 				col++;
 				_time++;
 				if (_time == requested_time)
-					return;
+					return true;
 			}
 
 			WI_ASSERT(col == ticks_per_row);

@@ -44,9 +44,15 @@ public:
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { return false; }
 
-	virtual void SimulateDeviceTo (UINT64 requested_time) override
+	virtual bool SimulateDeviceTo (UINT64 requested_time) override
 	{
+		// To bring the device to the requested time, we must first simulate any other device
+		// that might change our state, meaning every device that initiates writes to either bus.
+		// We "know" some implementation details of the simulator: (1) currently the only thing that writes
+		// to these buses is the CPU, and (2) the simulator keeps the CPU ahead of all devices;
+		// thus there's no need to do anything here other than advance to the requested time.
 		_time = requested_time;
+		return true;
 	}
 
 	static uint8_t process_mem_read_request (IDevice* d, uint16_t address)
