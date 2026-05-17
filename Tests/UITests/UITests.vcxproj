@@ -101,6 +101,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="BuildTests.cpp" />
+    <ClCompile Include="DebuggerTests.cpp" />
     <ClCompile Include="FolderTests.cpp" />
     <ClCompile Include="MiscTests.cpp" />
     <ClCompile Include="NotifyTests.cpp" />
