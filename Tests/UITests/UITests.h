@@ -20,9 +20,16 @@ namespace UITests
 	extern wil::unique_process_heap_string TemplatePath_EmptyFile;
 	extern LPCOLESTR TemplateEmptyFile[1];
 
+	struct VSInstance
+	{
+		wil::com_ptr_failfast<VxDTE::DTE2> dte;
+		wil::com_ptr_failfast<VxDTE::Process> attachedProcess; // NULL if not debugging
+		DWORD processID;
+	};
+
 	wil::com_ptr_failfast<VxDTE::DTE2> GetDefaultVSInstance();
-	wil::com_ptr_failfast<VxDTE::DTE2> LaunchVS (const wchar_t* envVar = nullptr);
-	void CloseVS (VxDTE::DTE2* dte, bool hard = false);
+	VSInstance LaunchVS (const wchar_t* envVar = nullptr);
+	void CloseVS (VSInstance& vs, bool hard = false);
 
 	inline VSITEMID GetProperty_VSITEMID (IVsHierarchy* hier, VSITEMID itemid, VSHPROPID propid)
 	{

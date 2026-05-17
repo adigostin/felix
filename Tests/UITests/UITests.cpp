@@ -9,7 +9,7 @@ namespace UITests
 {
 	static wil::critical_section cs;
 	static wil::com_ptr_failfast<IUIAutomation> automation;
-	static wil::com_ptr_failfast<VxDTE::DTE2> defaultInstance;
+	static VSInstance defaultInstance;
 
 	wchar_t tempPath[MAX_PATH + 1];
 	wil::unique_process_heap_string TemplatePath_TwoConfigsOneFile;
@@ -136,7 +136,7 @@ namespace UITests
 		return data.window_handle;
 	}
 
-	static void Attach (DWORD targetVSProcessID, VxDTE::_DTE* targetVSDTE, DWORD debuggerVsProcessId, VxDTE::Debugger* debugger)
+	static void Attach (DWORD targetVSProcessID, VxDTE::_DTE* targetVSDTE, VxDTE::Debugger* debugger, VxDTE::Process** ppTargetVSAttachedProcess)
 	{
 		HRESULT hr;
 		auto dbg3 = wil::com_query_failfast<VxDTE::Debugger3>(debugger);
@@ -162,6 +162,7 @@ namespace UITests
 					hr = targetProcess->Attach2(wil::make_variant_bstr_failfast(L"Native"));
 					targetVSDTE->put_SuppressUI(VARIANT_FALSE);
 					Assert::IsTrue(SUCCEEDED(hr));
+					*ppTargetVSAttachedProcess = targetProcess.detach();
 					return;
 				}
 			}
@@ -170,7 +171,7 @@ namespace UITests
 		Assert::Fail();
 	}
 
-	static void FindAndAttach (DWORD targetVsProcessId, VxDTE::_DTE* targetVSDTE)
+	static void FindAndAttach (DWORD targetVsProcessId, VxDTE::_DTE* targetVSDTE, VxDTE::Process** ppTargetVSAttachedProcess)
 	{
 		HRESULT hr;
 
@@ -245,7 +246,7 @@ namespace UITests
 								&& (DWORD)pid == selfId)
 							{
 								// This is the correct VS, so attach and return.
-								Attach (targetVsProcessId, targetVSDTE, vspid, debugger);
+								Attach (targetVsProcessId, targetVSDTE, debugger, ppTargetVSAttachedProcess);
 								return;
 							}
 						}
@@ -257,7 +258,7 @@ namespace UITests
 		Assert::Fail();
 	}
 
-	wil::com_ptr_failfast<VxDTE::DTE2> LaunchVS (const wchar_t* envVar)
+	VSInstance LaunchVS (const wchar_t* envVar)
 	{
 		HRESULT hr;
 
@@ -339,38 +340,41 @@ namespace UITests
 			}
 		}
 
+		wil::com_ptr_failfast<VxDTE::Process> targetVSAttachedProcess;
 		if (IsDebuggerPresent())
-			FindAndAttach(pi.dwProcessId, dte);
+			FindAndAttach(pi.dwProcessId, dte, &targetVSAttachedProcess);
 
-		return dte;
+		return VSInstance{ .dte = std::move(dte), .attachedProcess = std::move(targetVSAttachedProcess), .processID = pi.dwProcessId };
 	}
 
-	void CloseVS (VxDTE::DTE2* dte, bool hard)
+	void CloseVS (VSInstance& vs, bool hard)
 	{
 		HRESULT hr;
 
-		hr = dte->put_SuppressUI(VARIANT_TRUE);
+		if (vs.attachedProcess)
+		{
+			vs.attachedProcess->Detach(VARIANT_FALSE);
+			vs.attachedProcess.reset();
+		}
+
+		// Comment this macro to keep VS running after running the test. Useful for debugging.
+		#define CLOSE_IT
+
+		#ifdef CLOSE_IT
+		hr = vs.dte->put_SuppressUI(VARIANT_TRUE);
 		Assert::IsTrue(SUCCEEDED(hr));
 
 		wil::com_ptr_failfast<IUnknown> solution;
-		hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
+		hr = vs.dte->get_Solution((VxDTE::Solution**)solution.addressof());
 		Assert::IsTrue(SUCCEEDED(hr));
 		hr = solution.query<VxDTE::_Solution>()->Close();
 		Assert::IsTrue(SUCCEEDED(hr));
 
-		wil::com_ptr_failfast<VxDTE::Window> dteMainWindow;
-		hr = dte->get_MainWindow(&dteMainWindow);
-		Assert::IsTrue(SUCCEEDED(hr));
-		long dteMainWindowHWnd;
-		hr = dteMainWindow->get_HWnd(&dteMainWindowHWnd);
-		Assert::IsTrue(SUCCEEDED(hr));
-		DWORD processID;
-		GetWindowThreadProcessId((HWND)(size_t)(DWORD)dteMainWindowHWnd, &processID);
-		wil::unique_handle hProcess (OpenProcess (SYNCHRONIZE, FALSE, processID));
+		wil::unique_handle hProcess (OpenProcess (SYNCHRONIZE, FALSE, vs.processID));
 
 		bool exited = false;
 		//if (!hard && SUCCEEDED(dte->Quit())) dte->Quit() seems to return immediately and run asynchronously
-		if (!hard && SUCCEEDED(dte->ExecuteCommand(wil::make_bstr_failfast(L"File.Exit").get(), wil::make_bstr_failfast(L"").get())))
+		if (!hard && SUCCEEDED(vs.dte->ExecuteCommand(wil::make_bstr_failfast(L"File.Exit").get(), wil::make_bstr_failfast(L"").get())))
 		{
 			auto processExited = [&hProcess] { return WaitForSingleObject(hProcess.get(), 0) == WAIT_OBJECT_0; };
 			exited = WaitWithMessageLoop (processExited, IsDebuggerPresent() ? INFINITE : 10000);
@@ -378,6 +382,7 @@ namespace UITests
 
 		if (!exited)
 			TerminateProcess(hProcess.get(), 1234);
+		#endif
 	}
 	#pragma endregion
 
@@ -429,10 +434,10 @@ namespace UITests
 
 	TEST_MODULE_CLEANUP(UITestsCleanup)
 	{
-		if (defaultInstance)
+		if (defaultInstance.dte)
 		{
 			CloseVS(defaultInstance);
-			defaultInstance = nullptr;
+			defaultInstance = { };
 		}
 
 		automation.reset();
@@ -448,10 +453,10 @@ namespace UITests
 
 	wil::com_ptr_failfast<VxDTE::DTE2> GetDefaultVSInstance()
 	{
-		if (!defaultInstance)
+		if (!defaultInstance.dte)
 			defaultInstance = LaunchVS();
 
-		return defaultInstance;
+		return defaultInstance.dte;
 	}
 
 	// <param name="testDir">The directory in which to create the solution.</param>

@@ -10,12 +10,12 @@ namespace UITests
 		{
 			HRESULT hr;
 			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"PackageUnloads\\");
-			auto dte = LaunchVS(testDir.get());
-			auto closeVS = wil::scope_exit([&dte] { CloseVS(dte); });
+			auto vs = LaunchVS(testDir.get());
+			auto closeVS = wil::scope_exit([&vs] { CloseVS(vs); });
 
 			Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
 			wil::com_ptr_failfast<IUnknown> solution;
-			hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
+			hr = vs.dte->get_Solution((VxDTE::Solution**)solution.addressof());
 			Assert::AreEqual(S_OK, hr);
 			auto sln = solution.query<VxDTE::_Solution>();
 			hr = sln->Create(wil::make_bstr_failfast(testDir.get()).get(), wil::make_bstr_failfast(L"test").get());
@@ -40,8 +40,8 @@ namespace UITests
 		{
 			HRESULT hr;
 			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"ProjectAndFileUnload\\");
-			auto dte = LaunchVS(testDir.get());
-			auto closeVS = wil::scope_exit([&dte] { CloseVS(dte); });
+			auto vs = LaunchVS(testDir.get());
+			auto closeVS = wil::scope_exit([&vs] { CloseVS(vs); });
 
 			auto pnpath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"ProjectNode");
 			Assert::IsFalse(PathFileExists(pnpath.get()));
@@ -52,7 +52,7 @@ namespace UITests
 			{
 				Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
 				wil::com_ptr_failfast<IUnknown> solution;
-				hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
+				hr = vs.dte->get_Solution((VxDTE::Solution**)solution.addressof());
 				Assert::AreEqual(S_OK, hr);
 				auto sln = solution.query<VxDTE::_Solution>();
 				hr = sln->Create(wil::make_bstr_failfast(testDir.get()).get(), wil::make_bstr_failfast(L"test").get());
