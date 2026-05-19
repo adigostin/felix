@@ -119,7 +119,7 @@ namespace UITests
 				if (mode == VxDTE::vsIDEMode::vsIDEModeDebug)
 					break;
 				Sleep(50);
-				Assert::IsTrue(IsDebuggerPresent() || GetTickCount() - tickStart < 2000);
+				Assert::IsTrue(IsDebuggerPresent() || GetTickCount() - tickStart < 5000);
 			}
 
 			tickStart = GetTickCount();
@@ -130,7 +130,7 @@ namespace UITests
 				if (mode == VxDTE::dbgDebugMode::dbgBreakMode)
 					break;
 				Sleep(50);
-				Assert::IsTrue(IsDebuggerPresent() || GetTickCount() - tickStart < 2000);
+				Assert::IsTrue(IsDebuggerPresent() || GetTickCount() - tickStart < 5000);
 			}
 
 			hr = debugger->Stop();

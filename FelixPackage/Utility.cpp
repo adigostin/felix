@@ -1308,6 +1308,8 @@ const wchar_t* GetOutputExtensionFromOutputType (OutputFileType type)
 		return L".bin";
 	if (type == OutputFileType::Sna)
 		return L".sna";
+	if (type == OutputFileType::Tap)
+		return L".tap";
 	WI_ASSERT(false); return L"";
 }
 

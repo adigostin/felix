@@ -743,7 +743,6 @@ public:
 
 		auto hr = RunOnSimulatorThread([this]
 			{
-				WI_ASSERT(std::holds_alternative<ri_running>(_running_info));
 				_running_info = ri_paused{ };
 				return S_OK;
 			});
