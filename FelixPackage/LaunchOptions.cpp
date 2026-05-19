@@ -11,7 +11,7 @@ class LaunchOptionsImpl
 	ULONG _refCount = 0;
 	wil::unique_process_heap_string _projectDir;
 	DWORD _baseAddress;
-	DWORD _entryPointAddress;
+	wil::unique_process_heap_string _entryPointAddress;
 
 public:
 	HRESULT InitInstance()
@@ -66,16 +66,14 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE get_EntryPointAddress (DWORD *pdwAddress) override
+	virtual HRESULT STDMETHODCALLTYPE get_EntryPointAddress (BSTR* pbstrAddress) override
 	{
-		*pdwAddress = _entryPointAddress;
-		return S_OK;
+		return GetBSTR(_entryPointAddress, pbstrAddress);
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE put_EntryPointAddress (DWORD dwAddress) override
+	virtual HRESULT STDMETHODCALLTYPE put_EntryPointAddress (BSTR bstrAddress) override
 	{
-		_entryPointAddress = dwAddress;
-		return S_OK;
+		return PutBSTR(_entryPointAddress, bstrAddress);
 	}
 
 	#pragma endregion

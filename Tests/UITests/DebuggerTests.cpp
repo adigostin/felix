@@ -27,12 +27,18 @@ namespace UITests
 	TEST_CLASS(DebuggerTests)
 	{
 		static inline wil::com_ptr_failfast<VxDTE::DTE2> dte;
+		static inline wil::com_ptr_failfast<VxDTE::Debugger> debugger;
 		static inline wil::unique_process_heap_string TemplateProjectPath;
 		static inline wil::unique_process_heap_string testClassPath;
 
 		TEST_CLASS_INITIALIZE(ClassInit)
 		{
+			HRESULT hr;
+
 			dte = GetDefaultVSInstance();
+
+			hr = dte->get_Debugger(&debugger);
+			Assert::AreEqual(S_OK, hr);
 
 			testClassPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"DebuggerTests\\");
 			Assert::IsTrue(CreateDirectory(testClassPath.get(), nullptr));
@@ -46,6 +52,7 @@ namespace UITests
 
 		TEST_CLASS_CLEANUP(ClassCleanup)
 		{
+			debugger.reset();
 			dte.reset();
 		}
 
@@ -81,35 +88,21 @@ namespace UITests
 		{
 			if (sln)
 			{
-//				sln->Close();
+				sln->Close();
 				sln.reset();
 				proj.reset();
 			}
 
 			if (testDir)
 			{
-//				RemoveDirectoryTree(testDir);
+				RemoveDirectoryTree(testDir);
 				testDir.reset();
 			}
 		}
 
-		TEST_METHOD(DebugBinaryWithBreakpoint)
+		void WaitDebugMode()
 		{
 			HRESULT hr;
-
-			wil::com_ptr_failfast<VxDTE::Debugger> debugger;
-			hr = dte->get_Debugger(&debugger);
-
-			wil::com_ptr_failfast<VxDTE::Breakpoints> breakpoints;
-			hr = debugger->get_Breakpoints(&breakpoints);
-
-			wil::com_ptr_failfast<VxDTE::Breakpoints> added;
-			hr = breakpoints->Add (nullptr, wil::make_bstr_failfast(L"file.asm").get(), 1, 1, nullptr,
-				VxDTE::dbgBreakpointConditionTypeWhenTrue, nullptr, nullptr, 0, nullptr, 0, VxDTE::dbgHitCountTypeNone, &added);
-			Assert::AreEqual(S_OK, hr);
-
-			hr = dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.Start").get());
-			Assert::AreEqual(S_OK, hr);
 
 			DWORD tickStart = GetTickCount();
 			while(true)
@@ -121,8 +114,11 @@ namespace UITests
 				Sleep(50);
 				Assert::IsTrue(IsDebuggerPresent() || GetTickCount() - tickStart < 5000);
 			}
+		}
 
-			tickStart = GetTickCount();
+		void WaitDebugBreakMode()
+		{
+			DWORD tickStart = GetTickCount();
 			while(true)
 			{
 				VxDTE::dbgDebugMode mode = (VxDTE::dbgDebugMode)0;
@@ -132,9 +128,57 @@ namespace UITests
 				Sleep(50);
 				Assert::IsTrue(IsDebuggerPresent() || GetTickCount() - tickStart < 5000);
 			}
+		}
 
-			hr = debugger->Stop();
+		TEST_METHOD(DebugBinaryWithBreakpoint)
+		{
+			HRESULT hr;
+
+			wil::com_ptr_failfast<VxDTE::Breakpoints> breakpoints;
+			debugger->get_Breakpoints(&breakpoints);
+
+			wil::com_ptr_failfast<VxDTE::Breakpoints> added;
+			hr = breakpoints->Add (nullptr, wil::make_bstr_failfast(L"file.asm").get(), 1, 1, nullptr,
+				VxDTE::dbgBreakpointConditionTypeWhenTrue, nullptr, nullptr, 0, nullptr, 0, VxDTE::dbgHitCountTypeNone, &added);
 			Assert::AreEqual(S_OK, hr);
+
+			hr = dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.Start").get());
+			Assert::AreEqual(S_OK, hr);
+
+			WaitDebugMode();
+			WaitDebugBreakMode();
+
+			debugger->Stop();
+		}
+
+		TEST_METHOD(DebugBinary_EntryPointIsNumber)
+		{
+			HRESULT hr;
+
+			wil::com_ptr_failfast<IVsCfg> cfg;
+			ULONG actual;
+			VSCFGFLAGS flags;
+			hr = proj.query<IVsCfgProvider>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::com_ptr_failfast<IProjectConfigAssemblerProperties> asmProps;
+			cfg.query<IProjectConfigProperties>()->get_AssemblerProperties(&asmProps);
+			DWORD baseAddress;
+			hr = asmProps->get_BaseAddress(&baseAddress);
+			Assert::AreEqual(S_OK, hr);
+
+			wchar_t buffer[10];
+			swprintf_s(buffer, L"0x%x", baseAddress);
+			hr = asmProps->put_EntryPointAddress(wil::make_bstr_failfast(buffer).get());
+			Assert::AreEqual(S_OK, hr);
+
+			hr = dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.StepInto").get());
+			Assert::AreEqual(S_OK, hr);
+
+			WaitDebugMode();
+			WaitDebugBreakMode();
+
+			debugger->Stop();
 		}
 	};
 }

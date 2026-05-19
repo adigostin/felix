@@ -212,7 +212,7 @@ public:
 	}
 	#pragma endregion
 
-	HRESULT MakeLaunchOptionsString (IFelixSymbols* symbols, BSTR* pOptionsString)
+	HRESULT MakeLaunchOptionsString (BSTR* pOptionsString)
 	{
 		com_ptr<IFelixLaunchOptions> opts;
 		auto hr = MakeLaunchOptions(&opts); RETURN_IF_FAILED(hr);
@@ -233,27 +233,7 @@ public:
 		wil::unique_bstr epAddressStr;
 		hr = _assemblerProps->get_EntryPointAddress(&epAddressStr); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF(E_NOTIMPL, !epAddressStr || !epAddressStr.get()[0]);
-		if (isdigit(epAddressStr.get()[0]))
-		{
-			DWORD epAddress;
-			hr = ParseNumber(epAddressStr.get(), &epAddress);
-			if (hr != S_OK)
-				return SetFelixErrorInfo(E_FAIL, IDS_WRONG_FORMAT_ENTRY_POINT_ADDRESS_S, epAddressStr.get());
-			opts->put_EntryPointAddress(epAddress);
-		}
-		else
-		{
-			UINT16 epAddress;
-			hr = symbols->GetAddressFromSymbol(epAddressStr.get(), &epAddress);
-			if (hr != S_OK)
-			{
-				wil::unique_bstr filename;
-				symbols->GetFilename(&filename);
-				return SetFelixErrorInfo(E_FAIL, IDS_CANNOT_RESOLVE_ENTRY_POINT_ADDRESS_S_S, epAddressStr.get(), filename ? filename.get() : L"");
-			}
-
-			opts->put_EntryPointAddress(epAddress);
-		}
+		hr = opts->put_EntryPointAddress(epAddressStr.get()); RETURN_IF_FAILED(hr);
 
 		com_ptr<IStream> stream;
 		hr = CreateStreamOnHGlobal (nullptr, TRUE, &stream); RETURN_IF_FAILED(hr);
@@ -282,14 +262,6 @@ public:
 		hr = ResolveMacros (launchTarget.get(), this, exePath); RETURN_IF_FAILED(hr);
 		auto exePathBstr = wil::make_bstr_nothrow(exePath.get()); RETURN_IF_NULL_ALLOC(exePathBstr);
 
-		auto sldFilename = wil::make_process_heap_string_nothrow(output_filename.get(), wcslen(output_filename.get()) + 10); RETURN_IF_NULL_ALLOC(sldFilename);
-		PathRenameExtension(sldFilename.get(), L".sld");
-		wil::unique_process_heap_string sldPath;
-		hr = wil::str_concat_nothrow(sldPath, output_dir, sldFilename); RETURN_IF_FAILED(hr);
-		hr = ResolveMacros (sldPath.get(), this, sldPath); RETURN_IF_FAILED(hr);
-		com_ptr<IFelixSymbols> symbols;
-		hr = MakeSldSymbols(sldPath.get(), &symbols); RETURN_IF_FAILED(hr);
-		
 		if (grfLaunch & DBGLAUNCH_NoDebug)
 		{
 			HWND parent;
@@ -303,7 +275,7 @@ public:
 			WI_ASSERT(!grfLaunch); // TODO: read these flags and act on them
 
 			wil::unique_bstr options;
-			hr = MakeLaunchOptionsString(symbols, &options); RETURN_IF_FAILED_EXPECTED(hr);
+			hr = MakeLaunchOptionsString(&options); RETURN_IF_FAILED_EXPECTED(hr);
 
 			auto portNameBstr = wil::make_bstr_nothrow(SingleDebugPortName); RETURN_IF_NULL_ALLOC(portNameBstr);
 			VsDebugTargetInfo dti = { };
@@ -884,7 +856,7 @@ struct GeneralPageProperties
 		if (wcscmp(_outputDirectory.get(), bstrOutputDirectory))
 		{
 			NotifyPropertyChanging(_propChangeCP, this, { dispidOutputDirectory });
-			auto hr = PutBSTR(_outputDirectory, bstrOutputDirectory);
+			auto hr = EnsureDirHasBackslash(bstrOutputDirectory, _outputDirectory);
 			NotifyPropertyChanged(_propChangeCP, this, { dispidOutputDirectory });
 			NotifyPropertyChanged(_propNotifyCP, { dispidOutputDirectory });
 			RETURN_HR(hr);

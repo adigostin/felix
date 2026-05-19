@@ -208,8 +208,8 @@ library ATLProject1Lib
 		[propget] HRESULT BaseAddress ([out, retval] DWORD* pdwAddress);
 		[propput] HRESULT BaseAddress (DWORD dwAddress);
 
-		[propget] HRESULT EntryPointAddress ([out, retval] DWORD* pdwAddress);
-		[propput] HRESULT EntryPointAddress (DWORD dwAddress);
+		[propget] HRESULT EntryPointAddress ([out, retval] BSTR* pbstrAddress);
+		[propput] HRESULT EntryPointAddress (BSTR bstrAddress);
 	}
 
 	[object, uuid(4C8F0355-C1B4-4DB1-A996-0C28A3BF352C), oleautomation, dual, nonextensible]

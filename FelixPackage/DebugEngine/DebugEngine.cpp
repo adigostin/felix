@@ -23,6 +23,7 @@ class Z80DebugEngine : public IDebugEngine2, IDebugEngineLaunch2, ISimulatorEven
 	SIM_BP_COOKIE _entryPointBreakpoint = 0;
 	SIM_BP_COOKIE _exitPointBreakpoint = 0;
 	AdviseSinkToken _simulatorEventsToken;
+	com_ptr<IFelixSymbols> _romSymbols;
 
 public:
 	#pragma region IUnknown
@@ -453,6 +454,9 @@ public:
 		com_ptr<IDebugModuleCollection> mcoll;
 		hr = _program->QueryInterface(&mcoll); RETURN_IF_FAILED(hr);
 		hr = mcoll->AddModule(romModule.get()); RETURN_IF_FAILED(hr);
+		com_ptr<IZ80Module> rom;
+		hr = romModule->QueryInterface(&rom); RETURN_IF_FAILED(hr);
+		hr = rom->GetSymbols(&_romSymbols); RETURN_IF_FAILED(hr);
 
 		hr = AdviseSink<ISimulatorEventNotifySink>(simulator, static_cast<IDebugEngine2*>(this), &_simulatorEventsToken); RETURN_IF_FAILED(hr);
 
@@ -466,16 +470,13 @@ public:
 		{
 			// Simulate some instructions until the EDITOR function is called.
 			// TODO: use timeout
-			wil::com_ptr_nothrow<IZ80Module> rom;
-			hr = romModule->QueryInterface(&rom); RETURN_IF_FAILED(hr);
-			wil::com_ptr_nothrow<IFelixSymbols> romSymbols;
-			hr = rom->GetSymbols(&romSymbols); RETURN_IF_FAILED(hr);
 			UINT16 editorFunctionAddr;
-			hr = romSymbols->GetAddressFromSymbol(L"EDITOR", &editorFunctionAddr); RETURN_IF_FAILED(hr);
+			hr = _romSymbols->GetAddressFromSymbol(L"EDITOR", &editorFunctionAddr); RETURN_IF_FAILED(hr);
 			WI_ASSERT(!_entryPointBreakpoint);
 			WI_ASSERT(!_editorFunctionBreakpoint);
 			hr = simulator->AddBreakpoint (BreakpointType::Code, false, editorFunctionAddr, &_editorFunctionBreakpoint); RETURN_IF_FAILED(hr);
 			hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
+			hr = simulator->SetSpeed(UINT32_MAX); RETURN_IF_FAILED(hr);
 			if (simulator->Running_HR() == S_FALSE)
 			{
 				hr = simulator->Resume(true); RETURN_IF_FAILED(hr);
@@ -504,7 +505,7 @@ public:
 
 			// Let's put a breakpoint at the exit point.
 			uint16_t addr;
-			hr = ResolveZxSpectrumSymbol (L"MAIN-4", &addr); RETURN_IF_FAILED(hr);
+			hr = _romSymbols->GetAddressFromSymbol(L"MAIN-4", &addr); RETURN_IF_FAILED(hr);
 			hr = simulator->AddBreakpoint(BreakpointType::Code, false, addr, &_exitPointBreakpoint); RETURN_IF_FAILED(hr);
 		}
 		else
@@ -551,38 +552,10 @@ public:
 	;               
 	*/
 
-	HRESULT ResolveZxSpectrumSymbol (LPCWSTR name, UINT16* address)
-	{
-		wil::com_ptr_nothrow<IEnumDebugModules2> modules;
-		auto hr = _program->EnumModules(&modules); RETURN_IF_FAILED(hr);
-
-		while(true)
-		{
-			com_ptr<IDebugModule2> module;
-			hr = modules->Next(1, &module, nullptr); RETURN_IF_FAILED(hr);
-			if (hr == S_FALSE)
-				return E_SYMBOL_NOT_IN_SYMBOL_FILE;
-	
-			wil::com_ptr_nothrow<IZ80Module> fm;
-			hr = module->QueryInterface(&fm); LOG_IF_FAILED(hr);
-			if (SUCCEEDED(hr))
-			{
-				wil::com_ptr_nothrow<IFelixSymbols> romSymbols;
-				hr = fm->GetSymbols(&romSymbols); LOG_IF_FAILED(hr);
-				if (SUCCEEDED(hr))
-				{
-					hr = romSymbols->GetAddressFromSymbol(name, address);
-					if (SUCCEEDED(hr))
-						return S_OK;
-				}
-			}
-		}
-	}
-
 	HRESULT ReadZxSpectrumSystemVar (LPCWSTR name, UINT16* value)
 	{
 		UINT16 addr;
-		auto hr = ResolveZxSpectrumSymbol (name, &addr); RETURN_IF_FAILED(hr);
+		auto hr = _romSymbols->GetAddressFromSymbol (name, &addr); RETURN_IF_FAILED(hr);
 		hr = simulator->ReadMemoryBus(addr, 2, value); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
@@ -590,48 +563,15 @@ public:
 	HRESULT WriteZxSpectrumSystemVar (LPCWSTR name, UINT16 value)
 	{
 		UINT16 addr;
-		auto hr = ResolveZxSpectrumSymbol (name, &addr); RETURN_IF_FAILED(hr);
+		auto hr = _romSymbols->GetAddressFromSymbol (name, &addr); RETURN_IF_FAILED(hr);
 		hr = simulator->WriteMemoryBus(addr, 2, &value); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
-	
-	HRESULT ProcessEditorFunctionBreakpointHit()
+
+	// Simulate what the EDITOR function would do when typing a command.
+	HRESULT SimulateBasicCommand (const char* pszCommand)
 	{
-		WI_ASSERT(_editorFunctionBreakpoint);
-		auto hr = simulator->RemoveBreakpoint(_editorFunctionBreakpoint); LOG_IF_FAILED(hr);
-		_editorFunctionBreakpoint = 0;
-
-		com_ptr<IDebugProcess2> process;
-		hr = _program->GetProcess(&process); RETURN_IF_FAILED(hr);
-		wil::unique_bstr exePath;
-		hr = process->GetName (GN_FILENAME, &exePath); RETURN_IF_FAILED(hr);
-		if (!exePath)
-			RETURN_HR(E_NO_EXE_FILENAME);
-
-		DWORD baseAddress;
-		hr = _launchOptions->get_BaseAddress(&baseAddress); RETURN_IF_FAILED(hr);
-		DWORD launchAddress;
-		hr = _launchOptions->get_EntryPointAddress(&launchAddress); RETURN_IF_FAILED(hr);
-
-		// Load the binary file.
-		DWORD loadedSize;
-		hr = simulator->LoadBinary(exePath.get(), baseAddress, &loadedSize);
-		if (FAILED(hr))
-		{
-			uiShell->ReportErrorInfo(hr);
-			TerminateInternal();
-			return hr;
-		}
-		auto debug_info_path = wil::make_process_heap_string_nothrow(exePath.get(), MAX_PATH); RETURN_IF_NULL_ALLOC(debug_info_path);
-		BOOL bres = PathRenameExtension (debug_info_path.get(), L".sld"); RETURN_HR_IF(CO_E_BAD_PATH, !bres);
-		com_ptr<IDebugModuleCollection> moduleColl;
-		hr = _program->QueryInterface(&moduleColl); RETURN_IF_FAILED(hr);
-		wil::com_ptr_nothrow<IDebugModule2> exe_module;
-		hr = MakeModule (baseAddress, loadedSize, exePath.get(), debug_info_path.get(), true,
-			this, _program.get(), _callback.get(), &exe_module); RETURN_IF_FAILED(hr);
-		hr = moduleColl->AddModule(exe_module.get()); RETURN_IF_FAILED(hr);
-
-		// Simulate what the EDITOR function would do when typing "PRINT USR <LaunchAddress>".
+		HRESULT hr;
 
 		// The command line is from E-LINE to WORKSP.
 		UINT16 eline, worksp;
@@ -645,14 +585,108 @@ public:
 		hr = ReadZxSpectrumSystemVar(L"STKEND", &stkend); RETURN_IF_FAILED(hr);
 		RETURN_HR_IF (E_FAIL, (stkbot != worksp) || (stkend != worksp));
 
-		// We need to replace the command line with PRINT USR <addr>.
-		char cmdLine[16];
-		int cmdLineLen = sprintf_s (cmdLine, "\xF5\xC0%u\x0D\x80", launchAddress); RETURN_HR_IF(E_FAIL, cmdLineLen < 0);
-		hr = simulator->WriteMemoryBus (eline, (uint16_t)cmdLineLen, cmdLine); RETURN_IF_FAILED(hr);
+		size_t cmdLineLen = strlen(pszCommand);
+		hr = simulator->WriteMemoryBus (eline, (uint16_t)cmdLineLen, pszCommand); RETURN_IF_FAILED(hr);
 		hr = WriteZxSpectrumSystemVar (L"K-CUR", eline + cmdLineLen - 2); RETURN_IF_FAILED(hr);
 		hr = WriteZxSpectrumSystemVar (L"WORKSP", eline + cmdLineLen); RETURN_IF_FAILED(hr);
 		hr = WriteZxSpectrumSystemVar (L"STKBOT", eline + cmdLineLen); RETURN_IF_FAILED(hr);
 		hr = WriteZxSpectrumSystemVar (L"STKEND", eline + cmdLineLen); RETURN_IF_FAILED(hr);
+
+		// Jump to some RET instruction, say the one at 0F91h.
+		uint8_t testRet;
+		hr = simulator->ReadMemoryBus(0x0F91, 1, &testRet); RETURN_IF_FAILED(hr);
+		RETURN_HR_IF(E_FAIL, testRet != 0xC9);
+		hr = simulator->SetPC(0x0F91); RETURN_IF_FAILED(hr);
+
+		return S_OK;
+	}
+
+	static HRESULT ResolveEntryPointAddress (IDebugProgram2* program, IFelixLaunchOptions* _launchOptions, UINT16* pAddress)
+	{
+		HRESULT hr;
+
+		wil::unique_bstr epAddressStr;
+		hr = _launchOptions->get_EntryPointAddress(&epAddressStr); RETURN_IF_FAILED(hr);
+		if (isdigit(epAddressStr.get()[0]))
+		{
+			DWORD addr;
+			hr = ParseNumber(epAddressStr.get(), &addr);
+			if (hr != S_OK || addr > 0xFFFF)
+				return SetFelixErrorInfo(hr, IDS_WRONG_FORMAT_ENTRY_POINT_ADDRESS_S, epAddressStr.get());
+			*pAddress = (UINT16)addr;
+			return S_OK;
+		}
+
+		// symbol as entry point
+		com_ptr<IEnumDebugModules2> modules;
+		hr = program->EnumModules(&modules); RETURN_IF_FAILED(hr);
+		while(true)
+		{
+			com_ptr<IDebugModule2> module;
+			hr = modules->Next(1, &module, nullptr); RETURN_IF_FAILED(hr);
+			if (hr == S_FALSE)
+				return SetFelixErrorInfo(hr, IDS_CANNOT_RESOLVE_ENTRY_POINT_ADDRESS_S_S, epAddressStr.get(), L"");
+
+			com_ptr<IZ80Module> fm;
+			hr = module->QueryInterface(&fm); RETURN_IF_FAILED(hr);
+			com_ptr<IFelixSymbols> symbols;
+			hr = fm->GetSymbols(&symbols);
+			if (SUCCEEDED(hr))
+			{
+				hr = symbols->GetAddressFromSymbol(epAddressStr.get(), pAddress);
+				if (SUCCEEDED(hr))
+					return S_OK;
+			}
+		}
+	}
+
+	HRESULT ProcessEditorFunctionBreakpointHit()
+	{
+		WI_ASSERT(_editorFunctionBreakpoint);
+		auto hr = simulator->RemoveBreakpoint(_editorFunctionBreakpoint); LOG_IF_FAILED(hr);
+		_editorFunctionBreakpoint = 0;
+
+		hr = simulator->SetSpeed(100); RETURN_IF_FAILED(hr);
+
+		auto terminateOnError = wil::scope_exit([this] { TerminateInternal(); });
+
+		com_ptr<IDebugProcess2> process;
+		hr = _program->GetProcess(&process); RETURN_IF_FAILED(hr);
+		wil::unique_bstr exePath;
+		hr = process->GetName (GN_FILENAME, &exePath); RETURN_IF_FAILED(hr);
+		if (!exePath)
+			RETURN_HR(E_NO_EXE_FILENAME);
+
+		DWORD baseAddress;
+		hr = _launchOptions->get_BaseAddress(&baseAddress); RETURN_IF_FAILED(hr);
+
+		// Load the binary file.
+		DWORD loadedSize;
+		hr = simulator->LoadBinary(exePath.get(), baseAddress, &loadedSize);
+		if (FAILED(hr))
+			return uiShell->ReportErrorInfo(hr), hr;
+
+		// Make a module as large as the binary file.
+		auto debug_info_path = wil::make_process_heap_string_nothrow(exePath.get(), MAX_PATH); RETURN_IF_NULL_ALLOC(debug_info_path);
+		BOOL bres = PathRenameExtension (debug_info_path.get(), L".sld"); RETURN_HR_IF(CO_E_BAD_PATH, !bres);
+		com_ptr<IDebugModuleCollection> moduleColl;
+		hr = _program->QueryInterface(&moduleColl); RETURN_IF_FAILED(hr);
+		wil::com_ptr_nothrow<IDebugModule2> exe_module;
+		hr = MakeModule (baseAddress, loadedSize, exePath.get(), debug_info_path.get(), true,
+			this, _program.get(), _callback.get(), &exe_module); RETURN_IF_FAILED(hr);
+		hr = moduleColl->AddModule(exe_module.get()); RETURN_IF_FAILED(hr);
+
+		// Now that we created all modules, let's try to resolve the entry point address string.
+		// If we can't resolve the entry point, we don't have an address for PRINT USR, so we can't launch.
+		UINT16 launchAddress;
+		hr = ResolveEntryPointAddress(_program, _launchOptions, &launchAddress);
+		if (FAILED(hr))
+			return uiShell->ReportErrorInfo(hr), hr;
+
+		// PRINT USR <addr>
+		char cmdLine[16];
+		int cmdLineLen = sprintf_s (cmdLine, "\xF5\xC0%u\x0D\x80", launchAddress); RETURN_HR_IF(E_FAIL, cmdLineLen < 0);
+		hr = SimulateBasicCommand(cmdLine); RETURN_IF_FAILED(hr);
 
 		// Jump to some RET instruction, say the one at 0F91h.
 		uint8_t testRet;
@@ -665,9 +699,12 @@ public:
 		hr = simulator->AddBreakpoint (BreakpointType::Code, false, launchAddress, &_entryPointBreakpoint); RETURN_IF_FAILED(hr);
 		// Resume simulation so that the ZX Spectrum ROM parses our command and calls the Z80 program.
 		hr = simulator->Resume(true); RETURN_IF_FAILED(hr);
+
+		terminateOnError.release();
+
 		return S_OK;
 	}
-	
+
 	HRESULT ProcessEntryPointBreakpointHit()
 	{
 		WI_ASSERT(_entryPointBreakpoint);
@@ -690,7 +727,7 @@ public:
 
 		// Let's put a breakpoint at the exit point.
 		uint16_t stackBC;
-		hr = ResolveZxSpectrumSymbol (L"STACK-BC", &stackBC); RETURN_IF_FAILED(hr);
+		hr = _romSymbols->GetAddressFromSymbol(L"STACK-BC", &stackBC); RETURN_IF_FAILED(hr);
 		hr = simulator->AddBreakpoint(BreakpointType::Code, false, stackBC, &_exitPointBreakpoint); RETURN_IF_FAILED(hr);
 
 		// The simulation paused execution before calling us, and we sent the entry point even which is a stopping event.
