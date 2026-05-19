@@ -21,7 +21,7 @@ library ATLProject1Lib
 	interface IProjectConfigPrePostBuildProperties;
 
 	[uuid(15412FDD-6A57-420C-933E-0A89A1DF497D)]
-	enum OutputFileType { Binary, Sna };
+	enum OutputFileType { Binary, Sna, Tap };
 
 	[object, uuid(A6F7B8F9-7FD3-4819-963A-5238B32F4123), dual, nonextensible, pointer_default(unique)]
 	interface IProjectConfigProperties : IDispatch

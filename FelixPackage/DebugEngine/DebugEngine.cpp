@@ -466,7 +466,7 @@ public:
 			RETURN_HR(E_NO_EXE_FILENAME);
 
 		auto fileExt = PathFindExtension(exePath.get());
-		if (!_wcsicmp(fileExt, L".bin"))
+		if (!_wcsicmp(fileExt, L".bin") || !_wcsicmp(fileExt, L".tap"))
 		{
 			// Simulate some instructions until the EDITOR function is called.
 			// TODO: use timeout
@@ -640,6 +640,100 @@ public:
 		}
 	}
 
+	HRESULT LoadBinary (const wchar_t* exePath)
+	{
+		HRESULT hr;
+
+		hr = simulator->SetSpeed(100); RETURN_IF_FAILED(hr);
+
+		DWORD baseAddress;
+		hr = _launchOptions->get_BaseAddress(&baseAddress); RETURN_IF_FAILED(hr);
+
+		DWORD loadedSize;
+		hr = simulator->LoadBinary(exePath, baseAddress, &loadedSize);
+		if (FAILED(hr))
+			return uiShell->ReportErrorInfo(hr), hr;
+
+		// Make a module as large as the loaded binary file.
+		com_ptr<IDebugModuleCollection> moduleColl;
+		hr = _program->QueryInterface(&moduleColl); RETURN_IF_FAILED(hr);
+		wil::com_ptr_nothrow<IDebugModule2> exe_module;
+		hr = MakeModule (baseAddress, loadedSize, exePath, nullptr, true,
+			this, _program.get(), _callback.get(), &exe_module); RETURN_IF_FAILED(hr);
+		hr = moduleColl->AddModule(exe_module.get()); RETURN_IF_FAILED(hr);
+
+		// Now that we created all modules, let's try to resolve the entry point address string.
+		// If we can't resolve the entry point, we don't have an address for PRINT USR, so we can't launch.
+		UINT16 launchAddress;
+		hr = ResolveEntryPointAddress(_program, _launchOptions, &launchAddress);
+		if (FAILED(hr))
+			return uiShell->ReportErrorInfo(hr), hr;
+
+		// PRINT USR <LaunchAddress>
+		char cmdLine[16];
+		int cmdLineLen = sprintf_s (cmdLine, "\xF5\xC0%u\x0D\x80", launchAddress); RETURN_HR_IF(E_FAIL, cmdLineLen < 0);
+		hr = SimulateBasicCommand(cmdLine); RETURN_IF_FAILED(hr);
+
+		// Now put another breakpoint at the entry point of the Z80 program.
+		WI_ASSERT(!_entryPointBreakpoint);
+		hr = simulator->AddBreakpoint (BreakpointType::Code, false, launchAddress, &_entryPointBreakpoint); RETURN_IF_FAILED(hr);
+		// Resume simulation so that the ZX Spectrum ROM parses our command and calls the Z80 program.
+		hr = simulator->Resume(true); RETURN_IF_FAILED(hr);
+
+		return S_OK;
+	}
+
+	HRESULT LoadTap (const wchar_t* exePath)
+	{
+		HRESULT hr;
+
+		RETURN_HR(E_NOTIMPL);
+		//static const auto outputToDebugPane = [](const wchar_t* message) -> HRESULT
+		//	{
+		//		com_ptr<IVsOutputWindow> ow;
+		//		auto hr = serviceProvider->QueryService (SID_SVsOutputWindow, &ow); RETURN_IF_FAILED(hr);
+		//		com_ptr<IVsOutputWindowPane> op;
+		//		hr = ow->GetPane(guidDebugOutputPane, &op); RETURN_IF_FAILED(hr);
+		//		op->OutputString(message);
+		//		op->OutputString(L"\r\n");
+		//		op->Activate();
+		//		return S_OK;
+		//	};
+
+		/*
+		// Make a module from the end of the ROM module to the end of the RAM, since we don't know how much we're going to load from tape.
+		com_ptr<IDebugModule2> exe_module;
+		hr = MakeModule (0x5CCB, 0x10000 - 0x5CCB, exePath, nullptr, true,
+			this, _program.get(), _callback.get(), &exe_module); RETURN_IF_FAILED(hr);
+
+		com_ptr<IDebugModuleCollection> moduleColl;
+		hr = _program->QueryInterface(&moduleColl); RETURN_IF_FAILED(hr);
+		hr = moduleColl->AddModule(exe_module); RETURN_IF_FAILED(hr);
+
+		// Now that we created all modules, let's try to resolve the entry point address string.
+		// We purposefully ignore errors of the kind "entry point not found". It's too late to do
+		// something meaningful about it now. We should have checked that the entry point can be resolved
+		// in our implementation of IVsDebuggableProjectCfg::DebugLaunch, and asked the user whether to proceed
+		// if the entry point cannot be resolved. Here we'll just launch the binary; the user can Break Into Program at any time.
+		UINT16 ep;
+		hr = TryResolveEntryPointAddress(_program, _launchOptions, &ep); // Ignoring errors on purpose, see comment above.
+		if (hr == S_OK)
+		{
+			// Now put another breakpoint at the entry point of the Z80 program.
+			WI_ASSERT(!_entryPointBreakpoint);
+			hr = simulator->AddBreakpoint (BreakpointType::Code, false, ep, &_entryPointBreakpoint); RETURN_IF_FAILED(hr);
+		}
+
+		// LOAD "".
+		hr = SimulateBasicCommand ("\xEF\x22\x22\x0D\x80"); RETURN_IF_FAILED(hr);
+
+		// Resume simulation so that the ZX Spectrum ROM parses our command and calls the Z80 program.
+		hr = simulator->Resume(true); RETURN_IF_FAILED(hr);
+
+		return S_OK;
+		*/
+	}
+
 	HRESULT ProcessEditorFunctionBreakpointHit()
 	{
 		WI_ASSERT(_editorFunctionBreakpoint);
@@ -657,48 +751,17 @@ public:
 		if (!exePath)
 			RETURN_HR(E_NO_EXE_FILENAME);
 
-		DWORD baseAddress;
-		hr = _launchOptions->get_BaseAddress(&baseAddress); RETURN_IF_FAILED(hr);
-
-		// Load the binary file.
-		DWORD loadedSize;
-		hr = simulator->LoadBinary(exePath.get(), baseAddress, &loadedSize);
-		if (FAILED(hr))
-			return uiShell->ReportErrorInfo(hr), hr;
-
-		// Make a module as large as the binary file.
-		auto debug_info_path = wil::make_process_heap_string_nothrow(exePath.get(), MAX_PATH); RETURN_IF_NULL_ALLOC(debug_info_path);
-		BOOL bres = PathRenameExtension (debug_info_path.get(), L".sld"); RETURN_HR_IF(CO_E_BAD_PATH, !bres);
-		com_ptr<IDebugModuleCollection> moduleColl;
-		hr = _program->QueryInterface(&moduleColl); RETURN_IF_FAILED(hr);
-		wil::com_ptr_nothrow<IDebugModule2> exe_module;
-		hr = MakeModule (baseAddress, loadedSize, exePath.get(), debug_info_path.get(), true,
-			this, _program.get(), _callback.get(), &exe_module); RETURN_IF_FAILED(hr);
-		hr = moduleColl->AddModule(exe_module.get()); RETURN_IF_FAILED(hr);
-
-		// Now that we created all modules, let's try to resolve the entry point address string.
-		// If we can't resolve the entry point, we don't have an address for PRINT USR, so we can't launch.
-		UINT16 launchAddress;
-		hr = ResolveEntryPointAddress(_program, _launchOptions, &launchAddress);
-		if (FAILED(hr))
-			return uiShell->ReportErrorInfo(hr), hr;
-
-		// PRINT USR <addr>
-		char cmdLine[16];
-		int cmdLineLen = sprintf_s (cmdLine, "\xF5\xC0%u\x0D\x80", launchAddress); RETURN_HR_IF(E_FAIL, cmdLineLen < 0);
-		hr = SimulateBasicCommand(cmdLine); RETURN_IF_FAILED(hr);
-
-		// Jump to some RET instruction, say the one at 0F91h.
-		uint8_t testRet;
-		hr = simulator->ReadMemoryBus(0x0F91, 1, &testRet); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(E_FAIL, testRet != 0xC9);
-		hr = simulator->SetPC(0x0F91); RETURN_IF_FAILED(hr);
-			
-		// Now put another breakpoint at the entry point of the Z80 program.
-		WI_ASSERT(!_entryPointBreakpoint);
-		hr = simulator->AddBreakpoint (BreakpointType::Code, false, launchAddress, &_entryPointBreakpoint); RETURN_IF_FAILED(hr);
-		// Resume simulation so that the ZX Spectrum ROM parses our command and calls the Z80 program.
-		hr = simulator->Resume(true); RETURN_IF_FAILED(hr);
+		auto extension = PathFindExtensionW(exePath.get());
+		if (!_wcsicmp(extension, L".bin"))
+		{
+			hr = LoadBinary(exePath.get()); RETURN_IF_FAILED_EXPECTED(hr);
+		}
+		else if (!_wcsicmp(extension, L".tap"))
+		{
+			hr = LoadTap(exePath.get()); RETURN_IF_FAILED_EXPECTED(hr);
+		}
+		else
+			RETURN_HR(E_NOTIMPL);
 
 		terminateOnError.release();
 

@@ -130,6 +130,21 @@ namespace UITests
 			}
 		}
 
+		wil::com_ptr_failfast<IProjectConfigAssemblerProperties> GetAsmProps()
+		{
+			wil::com_ptr_failfast<IVsCfg> cfg;
+			ULONG actual;
+			VSCFGFLAGS flags;
+			auto hr = proj.query<IVsCfgProvider>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::com_ptr_failfast<IProjectConfigAssemblerProperties> asmProps;
+			hr = cfg.query<IProjectConfigProperties>()->get_AssemblerProperties(&asmProps);
+			Assert::AreEqual(S_OK, hr);
+
+			return asmProps;
+		}
+
 		TEST_METHOD(DebugBinaryWithBreakpoint)
 		{
 			HRESULT hr;
@@ -155,14 +170,8 @@ namespace UITests
 		{
 			HRESULT hr;
 
-			wil::com_ptr_failfast<IVsCfg> cfg;
-			ULONG actual;
-			VSCFGFLAGS flags;
-			hr = proj.query<IVsCfgProvider>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
-			Assert::AreEqual(S_OK, hr);
+			auto asmProps = GetAsmProps();
 
-			wil::com_ptr_failfast<IProjectConfigAssemblerProperties> asmProps;
-			cfg.query<IProjectConfigProperties>()->get_AssemblerProperties(&asmProps);
 			DWORD baseAddress;
 			hr = asmProps->get_BaseAddress(&baseAddress);
 			Assert::AreEqual(S_OK, hr);
