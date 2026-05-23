@@ -199,7 +199,12 @@ public:
 	template<typename predicate_t> requires wistd::is_invocable_r_v<HRESULT, predicate_t, ISink*>
 	HRESULT Notify (const predicate_t& pred)
 	{
+		vector_nothrow<CONNECTDATA> copy;
+		bool reserved = copy.try_reserve(_cps.size()); RETURN_HR_IF(E_OUTOFMEMORY, !reserved);
 		for (auto& c : _cps)
+			copy.try_push_back(c);
+
+		for (auto& c : copy)
 		{
 			com_ptr<ISink> sink;
 			auto hr = c.pUnk->QueryInterface(IID_PPV_ARGS(&sink)); RETURN_IF_FAILED(hr);
