@@ -712,49 +712,8 @@ public:
 
 		RETURN_HR_IF(E_UNEXPECTED, simulator->Running_HR() == S_OK);
 
-		// Simulate what the EDITOR function would do when typing LOAD "".
-		auto ReadZxSpectrumSystemVar = [&romSymbols](LPCWSTR name, UINT16* value) -> HRESULT
-			{
-				UINT16 addr;
-				auto hr = romSymbols->GetAddressFromSymbol(name, &addr); RETURN_IF_FAILED(hr);
-				hr = simulator->ReadMemoryBus(addr, 2, value); RETURN_IF_FAILED(hr);
-				return S_OK;
-			};
-
-		auto WriteZxSpectrumSystemVar = [&romSymbols](LPCWSTR name, UINT16 value) -> HRESULT
-			{
-				UINT16 addr;
-				auto hr = romSymbols->GetAddressFromSymbol(name, &addr); RETURN_IF_FAILED(hr);
-				hr = simulator->WriteMemoryBus(addr, 2, &value); RETURN_IF_FAILED(hr);
-				return S_OK;
-			};
-
-		// The command line is from E-LINE to WORKSP.
-		UINT16 eline, worksp;
-		hr = ReadZxSpectrumSystemVar(L"E-LINE", &eline); RETURN_IF_FAILED(hr);
-		hr = ReadZxSpectrumSystemVar(L"WORKSP", &worksp); RETURN_IF_FAILED(hr);
-
-		// For now let's assume that STKBOT and STKEND have the same value as WORKSP.
-		// This is true since we just reset the processor and simulated to the EDITOR function.
-		UINT16 stkbot, stkend;
-		hr = ReadZxSpectrumSystemVar(L"STKBOT", &stkbot); RETURN_IF_FAILED(hr);
-		hr = ReadZxSpectrumSystemVar(L"STKEND", &stkend); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF (E_FAIL, (stkbot != worksp) || (stkend != worksp));
-
-		// We need to replace the command line with LOAD "".
-		static const uint8_t cmdLine[] = { 0xEF, 0x22, 0x22, 0x0D, 0x80 };
-		hr = simulator->WriteMemoryBus (eline, (uint16_t)_countof(cmdLine), cmdLine); RETURN_IF_FAILED(hr);
-		hr = WriteZxSpectrumSystemVar (L"K-CUR", eline + _countof(cmdLine) - 2); RETURN_IF_FAILED(hr);
-		hr = WriteZxSpectrumSystemVar (L"WORKSP", eline + _countof(cmdLine)); RETURN_IF_FAILED(hr);
-		hr = WriteZxSpectrumSystemVar (L"STKBOT", eline + _countof(cmdLine)); RETURN_IF_FAILED(hr);
-		hr = WriteZxSpectrumSystemVar (L"STKEND", eline + _countof(cmdLine)); RETURN_IF_FAILED(hr);
-
-		// Jump to some RET instruction, say the one at 0F91h.
-		uint8_t testRet;
-		hr = simulator->ReadMemoryBus(0x0F91, 1, &testRet); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(E_FAIL, testRet != 0xC9);
-		hr = simulator->SetPC(0x0F91); RETURN_IF_FAILED(hr);
-
+		// LOAD "".
+		hr = SimulateBasicCommand (romSymbols, "\xEF\x22\x22\x0D\x80"); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 

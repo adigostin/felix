@@ -523,84 +523,6 @@ public:
 		return S_OK;
 	}
 
-	/* From https://github.com/reclaimed/prettybasic/blob/master/doc/ZX%20Spectrum%2048K%20ROM%20Original%20Disassembly.asm
-	; The memory.
-	;
-	; +---------+-----------+------------+--------------+-------------+--
-	; | BASIC   |  Display  | Attributes | ZX Printer   |    System   | 
-	; |  ROM    |   File    |    File    |   Buffer     |  Variables  | 
-	; +---------+-----------+------------+--------------+-------------+--
-	; ^         ^           ^            ^              ^             ^
-	; $0000   $4000       $5800        $5B00          $5C00         $5CB6 = CHANS 
-	;
-	;
-	;  --+----------+---+---------+-----------+---+------------+--+---+--
-	;    | Channel  |$80|  BASIC  | Variables |$80| Edit Line  |NL|$80|
-	;    |   Info   |   | Program |   Area    |   | or Command |  |   |
-	;  --+----------+---+---------+-----------+---+------------+--+---+--
-	;    ^              ^         ^               ^                   ^
-	;  CHANS           PROG      VARS           E_LINE              WORKSP
-	;
-	;
-	;                             ---5-->         <---2---  <--3---
-	;  --+-------+--+------------+-------+-------+---------+-------+-+---+------+
-	;    | INPUT |NL| Temporary  | Calc. | Spare | Machine | GOSUB |?|$3E| UDGs |
-	;    | data  |  | Work Space | Stack |       |  Stack  | Stack | |   |      |
-	;  --+-------+--+------------+-------+-------+---------+-------+-+---+------+
-	;    ^                       ^       ^       ^                   ^   ^      ^
-	;  WORKSP                  STKBOT  STKEND   sp               RAMTOP UDG  P_RAMT
-	;               
-	*/
-
-	HRESULT ReadZxSpectrumSystemVar (LPCWSTR name, UINT16* value)
-	{
-		UINT16 addr;
-		auto hr = _romSymbols->GetAddressFromSymbol (name, &addr); RETURN_IF_FAILED(hr);
-		hr = simulator->ReadMemoryBus(addr, 2, value); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
-
-	HRESULT WriteZxSpectrumSystemVar (LPCWSTR name, UINT16 value)
-	{
-		UINT16 addr;
-		auto hr = _romSymbols->GetAddressFromSymbol (name, &addr); RETURN_IF_FAILED(hr);
-		hr = simulator->WriteMemoryBus(addr, 2, &value); RETURN_IF_FAILED(hr);
-		return S_OK;
-	}
-
-	// Simulate what the EDITOR function would do when typing a command.
-	HRESULT SimulateBasicCommand (const char* pszCommand)
-	{
-		HRESULT hr;
-
-		// The command line is from E-LINE to WORKSP.
-		UINT16 eline, worksp;
-		hr = ReadZxSpectrumSystemVar(L"E-LINE", &eline); RETURN_IF_FAILED(hr);
-		hr = ReadZxSpectrumSystemVar(L"WORKSP", &worksp); RETURN_IF_FAILED(hr);
-
-		// For now let's assume that STKBOT and STKEND have the same value as WORKSP.
-		// This is true since we just reset the processor and simulated to the EDITOR function.
-		UINT16 stkbot, stkend;
-		hr = ReadZxSpectrumSystemVar(L"STKBOT", &stkbot); RETURN_IF_FAILED(hr);
-		hr = ReadZxSpectrumSystemVar(L"STKEND", &stkend); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF (E_FAIL, (stkbot != worksp) || (stkend != worksp));
-
-		size_t cmdLineLen = strlen(pszCommand);
-		hr = simulator->WriteMemoryBus (eline, (uint16_t)cmdLineLen, pszCommand); RETURN_IF_FAILED(hr);
-		hr = WriteZxSpectrumSystemVar (L"K-CUR", eline + cmdLineLen - 2); RETURN_IF_FAILED(hr);
-		hr = WriteZxSpectrumSystemVar (L"WORKSP", eline + cmdLineLen); RETURN_IF_FAILED(hr);
-		hr = WriteZxSpectrumSystemVar (L"STKBOT", eline + cmdLineLen); RETURN_IF_FAILED(hr);
-		hr = WriteZxSpectrumSystemVar (L"STKEND", eline + cmdLineLen); RETURN_IF_FAILED(hr);
-
-		// Jump to some RET instruction, say the one at 0F91h.
-		uint8_t testRet;
-		hr = simulator->ReadMemoryBus(0x0F91, 1, &testRet); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(E_FAIL, testRet != 0xC9);
-		hr = simulator->SetPC(0x0F91); RETURN_IF_FAILED(hr);
-
-		return S_OK;
-	}
-
 	static HRESULT ResolveEntryPointAddress (IDebugProgram2* program, IFelixLaunchOptions* _launchOptions, UINT16* pAddress)
 	{
 		HRESULT hr;
@@ -672,7 +594,7 @@ public:
 		// PRINT USR <LaunchAddress>
 		char cmdLine[16];
 		int cmdLineLen = sprintf_s (cmdLine, "\xF5\xC0%u\x0D\x80", launchAddress); RETURN_HR_IF(E_FAIL, cmdLineLen < 0);
-		hr = SimulateBasicCommand(cmdLine); RETURN_IF_FAILED(hr);
+		hr = SimulateBasicCommand(_romSymbols, cmdLine); RETURN_IF_FAILED(hr);
 
 		// Now put another breakpoint at the entry point of the Z80 program.
 		WI_ASSERT(!_entryPointBreakpoint);
@@ -725,7 +647,7 @@ public:
 		}
 
 		// LOAD "".
-		hr = SimulateBasicCommand ("\xEF\x22\x22\x0D\x80"); RETURN_IF_FAILED(hr);
+		hr = SimulateBasicCommand (_romSymbols, "\xEF\x22\x22\x0D\x80"); RETURN_IF_FAILED(hr);
 
 		// Resume simulation so that the ZX Spectrum ROM parses our command and calls the Z80 program.
 		hr = simulator->Resume(true); RETURN_IF_FAILED(hr);

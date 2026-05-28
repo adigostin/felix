@@ -328,3 +328,6 @@ HRESULT NotifyPropertyChanging (ConnectionPointImpl<IPropertyChangeSink>* cp, ID
 HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyChangeSink>* cp, IDispatch* pDisp, std::initializer_list<DISPID> dispids);
 HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyNotifySink>* cp, DISPID dispid);
 HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyNotifySink>* cp, std::initializer_list<DISPID> dispids);
+HRESULT ReadZxSpectrumSystemVar (IFelixSymbols* romSymbols, LPCWSTR name, UINT16* value);
+HRESULT WriteZxSpectrumSystemVar (IFelixSymbols* romSymbols, LPCWSTR name, UINT16 value);
+HRESULT SimulateBasicCommand (IFelixSymbols* romSymbols, const char* pszCommand);

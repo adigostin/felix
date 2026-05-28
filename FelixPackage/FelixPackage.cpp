@@ -891,3 +891,89 @@ void SetResultLoggingCallback(decltype(wil::details::g_pfnLoggingCallback) callb
 {
 	wil::SetResultLoggingCallback(callbackFunction);
 }
+
+HRESULT ReadZxSpectrumSystemVar (IFelixSymbols* romSymbols, LPCWSTR name, UINT16* value)
+{
+	UINT16 addr;
+	auto hr = romSymbols->GetAddressFromSymbol (name, &addr); RETURN_IF_FAILED(hr);
+	hr = simulator->ReadMemoryBus(addr, 2, value); RETURN_IF_FAILED(hr);
+	return S_OK;
+}
+
+HRESULT WriteZxSpectrumSystemVar (IFelixSymbols* romSymbols, LPCWSTR name, UINT16 value)
+{
+	UINT16 addr;
+	auto hr = romSymbols->GetAddressFromSymbol (name, &addr); RETURN_IF_FAILED(hr);
+	hr = simulator->WriteMemoryBus(addr, 2, &value); RETURN_IF_FAILED(hr);
+	return S_OK;
+}
+
+/* From https://github.com/reclaimed/prettybasic/blob/master/doc/ZX%20Spectrum%2048K%20ROM%20Original%20Disassembly.asm
+; The memory.
+;
+; +---------+-----------+------------+--------------+-------------+--
+; | BASIC   |  Display  | Attributes | ZX Printer   |    System   | 
+; |  ROM    |   File    |    File    |   Buffer     |  Variables  | 
+; +---------+-----------+------------+--------------+-------------+--
+; ^         ^           ^            ^              ^             ^
+; $0000   $4000       $5800        $5B00          $5C00         $5CB6 = CHANS 
+;
+;
+;  --+----------+---+---------+-----------+---+------------+--+---+--
+;    | Channel  |$80|  BASIC  | Variables |$80| Edit Line  |NL|$80|
+;    |   Info   |   | Program |   Area    |   | or Command |  |   |
+;  --+----------+---+---------+-----------+---+------------+--+---+--
+;    ^              ^         ^               ^                   ^
+;  CHANS           PROG      VARS           E_LINE              WORKSP
+;
+;
+;                             ---5-->         <---2---  <--3---
+;  --+-------+--+------------+-------+-------+---------+-------+-+---+------+
+;    | INPUT |NL| Temporary  | Calc. | Spare | Machine | GOSUB |?|$3E| UDGs |
+;    | data  |  | Work Space | Stack |       |  Stack  | Stack | |   |      |
+;  --+-------+--+------------+-------+-------+---------+-------+-+---+------+
+;    ^                       ^       ^       ^                   ^   ^      ^
+;  WORKSP                  STKBOT  STKEND   sp               RAMTOP UDG  P_RAMT
+;               
+*/
+
+// Simulate what the EDITOR function would do when typing a command.
+HRESULT SimulateBasicCommand (IFelixSymbols* romSymbols, const char* pszCommand)
+{
+	HRESULT hr;
+
+	// This function expects execution to be halted at the beginning of the EDITOR function. Let's check this.
+	UINT16 pc;
+	hr = simulator->GetPC(&pc); RETURN_IF_FAILED(hr);
+	UINT16 editorAddr;
+	hr = romSymbols->GetAddressFromSymbol(L"EDITOR", &editorAddr); RETURN_IF_FAILED(hr);
+	RETURN_HR_IF(E_UNEXPECTED, pc != editorAddr);
+	
+	// The command line is from E-LINE to WORKSP.
+	UINT16 eline, worksp;
+	hr = ReadZxSpectrumSystemVar(romSymbols, L"E-LINE", &eline); RETURN_IF_FAILED(hr);
+	hr = ReadZxSpectrumSystemVar(romSymbols, L"WORKSP", &worksp); RETURN_IF_FAILED(hr);
+
+	// For now let's assume that STKBOT and STKEND have the same value as WORKSP.
+	// This is true since we just reset the processor and simulated to the EDITOR function.
+	UINT16 stkbot, stkend;
+	hr = ReadZxSpectrumSystemVar(romSymbols, L"STKBOT", &stkbot); RETURN_IF_FAILED(hr);
+	hr = ReadZxSpectrumSystemVar(romSymbols, L"STKEND", &stkend); RETURN_IF_FAILED(hr);
+	RETURN_HR_IF (E_FAIL, (stkbot != worksp) || (stkend != worksp));
+
+	size_t cmdLineLen = strlen(pszCommand);
+	hr = simulator->WriteMemoryBus (eline, (uint16_t)cmdLineLen, pszCommand); RETURN_IF_FAILED(hr);
+	hr = WriteZxSpectrumSystemVar (romSymbols, L"K-CUR", eline + cmdLineLen - 2); RETURN_IF_FAILED(hr);
+	hr = WriteZxSpectrumSystemVar (romSymbols, L"WORKSP", eline + cmdLineLen); RETURN_IF_FAILED(hr);
+	hr = WriteZxSpectrumSystemVar (romSymbols, L"STKBOT", eline + cmdLineLen); RETURN_IF_FAILED(hr);
+	hr = WriteZxSpectrumSystemVar (romSymbols, L"STKEND", eline + cmdLineLen); RETURN_IF_FAILED(hr);
+
+	// Jump to some RET instruction, say the one at 0F91h.
+	uint8_t testRet;
+	hr = simulator->ReadMemoryBus(0x0F91, 1, &testRet); RETURN_IF_FAILED(hr);
+	RETURN_HR_IF(E_FAIL, testRet != 0xC9);
+	hr = simulator->SetPC(0x0F91); RETURN_IF_FAILED(hr);
+
+	return S_OK;
+}
+
