@@ -82,6 +82,7 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, ITap
 	wil::com_ptr_nothrow<IXAudio2> _xaudio2;
 	IXAudio2MasteringVoice* _mastering_voice = nullptr;
 	uint32_t _speed_ = 100;
+	bool _breakOnTapComplete;
 
 public:
 	HRESULT InitInstance (LPCWSTR romFilename)
@@ -190,18 +191,22 @@ public:
 		RETURN_HR_IF(E_POINTER, !ppvObject);
 
 		if (   TryQI<IUnknown>(static_cast<ISimulator*>(this), riid, ppvObject)
+			|| TryQI<IDispatch>(this, riid, ppvObject)
+			|| TryQI<ISimulator_>(this, riid, ppvObject)
 			|| TryQI<ISimulator>(this, riid, ppvObject)
 			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
 		)
 			return S_OK;
 
-		RETURN_HR(E_NOINTERFACE);
+		return E_NOINTERFACE;
 	}
 
 	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
 
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
+
+	IMPLEMENT_IDISPATCH(ISimulator_);
 
 	static LRESULT CALLBACK window_proc (HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
@@ -306,7 +311,7 @@ public:
 			while (_cpu->cpu_time < time_to_sync_to)
 			{
 				bool advanced = _cpu->SimulateOne(&bpsHit);
-				if (!advanced || bpsHit.size)
+				if (!advanced || bpsHit.size || std::holds_alternative<ri_paused>(_running_info))
 					break;
 			}
 
@@ -318,6 +323,9 @@ public:
 				on_bp_hit(&bpsHit);
 				break;
 			}
+			
+			if (std::holds_alternative<ri_paused>(_running_info))
+				break;
 
 			if (_cpu->cpu_time >= time_to_sync_to)
 				break;
@@ -741,6 +749,12 @@ public:
 		if (!_running)
 			return S_FALSE;
 
+		// We have a race condition here: If the simulation thread breaks simulation for any reason
+		// (for example because the CPU hit a breakpoint), it will post a callback to the main thread,
+		// and that callback will be executed after we exit this Break() function. The callback
+		// will find execution already stopped. A fix would be to check _running_info before assigning it
+		// in the function we pass to RunOnSimulatorThread(), and return something like S_FALSE if simulation
+		// is already stopped.
 		auto hr = RunOnSimulatorThread([this]
 			{
 				_running_info = ri_paused{ };
@@ -1333,14 +1347,12 @@ public:
 		return S_OK;
 	}
 
-	HRESULT LoadTap (const wchar_t* pFileName)
+	virtual HRESULT STDMETHODCALLTYPE LoadTapFile (LPCWSTR pFileName, BOOL maxSpeed, BOOL breakOnComplete) override
 	{
 		com_ptr<IStream> stream;
 		auto hr = SHCreateStreamOnFileEx (pFileName, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream);
 		if (FAILED(hr))
-			return SetErrorInfo (E_FAIL, L"Cannot open \"%s\"\r\n\r\nHRESULT 0x%08x", pFileName, hr);
-
-		RETURN_IF_FAILED_EXPECTED(hr);
+			return SetErrorInfo (hr, L"Cannot open \"%s\"\r\n\r\nHRESULT 0x%08x", pFileName, hr);
 
 		STATSTG stat;
 		hr = stream->Stat (&stat, STATFLAG_NONAME); RETURN_IF_FAILED_EXPECTED(hr);
@@ -1363,12 +1375,13 @@ public:
 			bool pushed = blocks.try_push_back(std::move(block)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 		}
 
-		hr = RunOnSimulatorThread([this, &blocks]
+		hr = RunOnSimulatorThread([this, &blocks, breakOnComplete]
 		{
 			auto hr = _tapPlayer->AddBlocks(std::move(blocks));
 			if (FAILED(hr))
 				return hr;
 
+			_breakOnTapComplete = breakOnComplete;
 			return S_OK;
 		}); RETURN_IF_FAILED(hr);
 
@@ -1385,8 +1398,8 @@ public:
 		if (!_wcsicmp(ext, L".z80"))
 			return LoadZ80(pFileName);
 
-		if (!_wcsicmp(ext, L".tap"))
-			return LoadTap(pFileName);
+		//if (!_wcsicmp(ext, L".tap"))
+		//	return LoadTap(pFileName);
 
 		return SetErrorInfo (E_FAIL, L"The file extension %s is not recognized.", ext);
 	}
@@ -1681,7 +1694,48 @@ public:
 
 	virtual void OnTapPlayComplete() override
 	{
-		PostWorkToMainThread([this] { _tapPlayHandlers->Notify([](ITapPlayNotifySink* sink) { return sink->NotifyTapPlayComplete(); }); });
+		WI_ASSERT(std::holds_alternative<ri_running>(_running_info) || std::holds_alternative<ri_max_speed>(_running_info));
+
+		if (_breakOnTapComplete)
+		{
+			_running_info = ri_paused{ };
+
+			unique_cotaskmem_bitmapinfo screen;
+			POINT beam;
+			_screen->CopyBuffer (_showCRTSnapshot, screen.addressof(), &beam);
+
+			PostWorkToMainThread ([this, screen=std::move(screen), beam]() mutable
+				{
+					WI_ASSERT(_running);
+					_running = false;
+					if (auto event = com_ptr(new (std::nothrow) SimulatorEvent<ISimulatorBreakEvent>()))
+					{
+						_eventHandlers->Notify([&event](ISimulatorEventNotifySink* sink)
+							{ return sink->NotifySimulatorEvent(event, __uuidof(event)); });
+					}
+
+					_tapPlayHandlers->Notify([](ITapPlayNotifySink* sink) {
+						return sink->NotifyTapPlayComplete();
+					});
+
+					_screenComplete = nullptr;
+					if (_screenCompleteHandler && screen)
+					{
+						auto hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
+						if (SUCCEEDED(hr))
+							screen.release();
+					}
+				});
+		}
+		else
+		{
+			PostWorkToMainThread([this]
+				{
+					_tapPlayHandlers->Notify([](ITapPlayNotifySink* sink) {
+						return sink->NotifyTapPlayComplete();
+					});
+				});
+		}
 	}
 	#pragma endregion
 
@@ -1700,6 +1754,15 @@ public:
 			return copy_to(_tapPlayHandlers, ppCP);
 
 		RETURN_HR(E_NOTIMPL);
+	}
+	#pragma endregion
+
+	#pragma region ISimulator_
+	virtual HRESULT STDMETHODCALLTYPE ReadMemoryBus8 (UINT16 address, UINT8* pData) override
+	{
+		RETURN_HR_IF(E_UNEXPECTED, _running);
+		*pData = memoryBus.read(address);
+		return S_OK;
 	}
 	#pragma endregion
 };

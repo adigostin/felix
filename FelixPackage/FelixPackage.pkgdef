@@ -27,6 +27,7 @@
 
 [$RootKey$\Packages\{768BC57B-42A8-42AB-B389-457946C4FC6A}\Automation]
 "TestHelper"=""
+"SimulatorWindow"=""
 
 ; Be sure to keep DisplayProjectFileExtensions in sync with Z80Project::GetFormatList.
 [$RootKey$\Projects\{D438161C-F032-4014-BC5C-20A80EAFF59B}]

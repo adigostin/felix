@@ -1,6 +1,7 @@
 
 #pragma once
 #include "shared/z80_register_set.h"
+#include "Simulator_h.h"
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{E420CF93-E250-4C0A-A96D-A58D52651D14}") ISimulatorEvent : IUnknown
 {
@@ -48,11 +49,10 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("69B65530-004E-4EA3-A321-2A1E8852E83D") I
 	virtual HRESULT STDMETHODCALLTYPE NotifyTapPlayComplete() = 0;
 };
 
-struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{56344845-3DDA-4BC0-9645-7EBA3FE94A93}") ISimulator : IUnknown
+struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{56344845-3DDA-4BC0-9645-7EBA3FE94A93}") ISimulator : ISimulator_
 {
 	virtual HRESULT STDMETHODCALLTYPE ReadMemoryBus  (uint16_t address, uint16_t size, void* to) = 0;
 	virtual HRESULT STDMETHODCALLTYPE WriteMemoryBus (uint16_t address, uint16_t size, const void* from) = 0;
-	virtual HRESULT STDMETHODCALLTYPE Break() = 0;
 	virtual HRESULT STDMETHODCALLTYPE Resume (BOOL checkBreakpointsAtCurrentPC) = 0;
 	virtual HRESULT STDMETHODCALLTYPE Reset (UINT16 startAddress) = 0;
 	virtual HRESULT STDMETHODCALLTYPE Running_HR() = 0;
@@ -75,6 +75,7 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{56344845-3DDA-4BC0-9645-7EBA3FE94A93}")
 	virtual HRESULT STDMETHODCALLTYPE SetShowCRTSnapshot(BOOL val) = 0;
 	virtual HRESULT STDMETHODCALLTYPE GetSpeed (uint32_t* percent) = 0;
 	virtual HRESULT STDMETHODCALLTYPE SetSpeed (uint32_t percent) = 0; // Only 100 and UINT32_MAX supported for now
+	virtual HRESULT STDMETHODCALLTYPE LoadTapFile (LPCWSTR pFileName, BOOL maxSpeed, BOOL breakOnComplete) = 0;
 	virtual HRESULT STDMETHODCALLTYPE StopTap() = 0;
 };
 

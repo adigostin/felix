@@ -596,7 +596,23 @@ public:
 			hr = TestHelper_CreateInstance(&testHelper); RETURN_IF_FAILED(hr);
 			*ppDisp = testHelper.detach();
 			return S_OK;
-		}	
+		}
+
+		if (!wcscmp(pszPropName, L"SimulatorWindow"))
+		{
+			if (!_simulatorWindowFrame)
+			{
+				hr = CreateSimulatorToolWindow(&_simulatorWindowFrame); RETURN_IF_FAILED(hr);
+				hr = _simulatorWindowFrame->ShowNoActivate(); RETURN_IF_FAILED(hr);
+			}
+
+			wil::unique_variant var;
+			hr = _simulatorWindowFrame->GetProperty(VSFPROPID_DocView, &var); RETURN_IF_FAILED(hr);
+
+			hr = var.pdispVal->QueryInterface(ppDisp); RETURN_IF_FAILED(hr);
+
+			return S_OK;
+		}
 
 		RETURN_HR(E_NOTIMPL);
 	}

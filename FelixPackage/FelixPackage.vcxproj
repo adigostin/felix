@@ -52,6 +52,7 @@
       <TypeLibraryName>$(IntDir)%(FileName).tlb</TypeLibraryName>
       <HeaderFileName>%(RelativeDir)%(Filename)_h.h</HeaderFileName>
       <InterfaceIdentifierFileName>%(RelativeDir)%(FileName)_i.c</InterfaceIdentifierFileName>
+      <AdditionalIncludeDirectories>$(SolutionDir)Simulator;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
@@ -90,6 +91,7 @@
       <TypeLibraryName>$(IntDir)%(FileName).tlb</TypeLibraryName>
       <HeaderFileName>%(RelativeDir)%(Filename)_h.h</HeaderFileName>
       <InterfaceIdentifierFileName>%(RelativeDir)%(FileName)_i.c</InterfaceIdentifierFileName>
+      <AdditionalIncludeDirectories>$(SolutionDir)Simulator;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </Midl>
     <ClCompile>
       <AdditionalOptions>/Oxs /Zc:strictStrings-</AdditionalOptions>

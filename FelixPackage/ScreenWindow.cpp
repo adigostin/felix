@@ -12,9 +12,10 @@ using unique_cotaskmem_bitmapinfo = wil::unique_any<BITMAPINFO*, decltype(&::CoT
 
 class ScreenWindowImpl : public IVsWindowPane, IVsDpiAware, IVsDebuggerEvents, IVsWindowFrameNotify4
 	, IVsWindowFrameNotify3, IOleCommandTarget, ISimulatorEventNotifySink, IScreenCompleteEventHandler
-	, IVsBroadcastMessageEvents, ITapPlayNotifySink
+	, IVsBroadcastMessageEvents, ITapPlayNotifySink, ISimulatorWindowAutomationObject
 {
 	ULONG _refCount = 0;
+	WeakRefToThis _weakRefToThis;
 	static const WNDCLASS wndClass;
 	static ATOM wndClassAtom;
 	HWND _hwnd = nullptr;
@@ -51,6 +52,8 @@ class ScreenWindowImpl : public IVsWindowPane, IVsDpiAware, IVsDebuggerEvents, I
 public:
 	HRESULT InitInstance()
 	{
+		HRESULT hr;
+
 		QueryPerformanceFrequency(&_performance_counter_frequency);
 
 		if (!wndClassAtom)
@@ -59,6 +62,8 @@ public:
 			RETURN_LAST_ERROR_IF(!wndClassAtom);
 		}
 		
+		hr = _weakRefToThis.InitInstance(static_cast<IVsWindowPane*>(this)); RETURN_IF_FAILED(hr);
+
 		return S_OK;
 	}
 
@@ -83,8 +88,13 @@ public:
 			|| TryQI<IScreenCompleteEventHandler>(this, riid, ppvObject)
 			|| TryQI<IVsBroadcastMessageEvents>(this, riid, ppvObject)
 			|| TryQI<ITapPlayNotifySink>(this, riid, ppvObject)
+			|| TryQI<ISimulatorWindowAutomationObject>(this, riid, ppvObject)
+			|| TryQI<IDispatch>(this, riid, ppvObject)
 		)
 			return S_OK;
+
+		if (riid == __uuidof(IWeakRef))
+			return _weakRefToThis.QueryIWeakRef(ppvObject);
 
 		#ifdef _DEBUG
 		if (riid == IID_IManagedObject
@@ -119,6 +129,8 @@ public:
 		return E_NOINTERFACE;
 	}
 	#pragma endregion
+
+	IMPLEMENT_IDISPATCH(ISimulatorWindowAutomationObject);
 
 	static LRESULT CALLBACK WindowProcStatic (HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
@@ -453,8 +465,6 @@ public:
 
 		hr = AdviseSink<ISimulatorEventNotifySink>(simulator, static_cast<IVsWindowPane*>(this), &_simulatorEventsToken); RETURN_IF_FAILED(hr);
 
-		hr = AdviseSink<ITapPlayNotifySink>(simulator, static_cast<IVsWindowPane*>(this), &_tapPlayEventsToken); RETURN_IF_FAILED(hr);
-
 		com_ptr<IVsDebugger> debugger;
 		hr = _sp->QueryService(SID_SVsShellDebugger, &debugger); RETURN_IF_FAILED(hr);
 		hr = debugger->AdviseDebuggerEvents(this, &_debugger_events_cookie); RETURN_IF_FAILED(hr);
@@ -517,7 +527,6 @@ public:
 			_debugger_events_cookie = 0;
 		}
 
-		_tapPlayEventsToken.reset();
 		_simulatorEventsToken.reset();
 
 		if (_advisingScreenCompleteEvents)
@@ -676,48 +685,69 @@ public:
 		return S_OK;
 	}
 
-	HRESULT ResetAndSimulateLoad()
+	HRESULT OpenFileInternal (const wchar_t* filename)
 	{
 		HRESULT hr;
 
-		// Reset and simulator to the EDITOR function
-		wil::unique_process_heap_string dll;
-		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, dll); RETURN_IF_FAILED(hr);
-		PathFindFileName(dll.get())[0] = 0; // remove file name
-		wil::unique_process_heap_string rom_debug_info_path;
-		hr = wil::str_concat_nothrow(rom_debug_info_path, dll, L"ROMs\\Spectrum48K.z80sym"); RETURN_IF_NULL_ALLOC(rom_debug_info_path);
-		com_ptr<IFelixSymbols> romSymbols;
-		hr = MakeZ80SymSymbols (rom_debug_info_path.get(), &romSymbols); RETURN_IF_FAILED(hr);
-		UINT16 editorFunctionAddr;
-		hr = romSymbols->GetAddressFromSymbol(L"EDITOR", &editorFunctionAddr); RETURN_IF_FAILED(hr);
-		hr = simulator->Break(); RETURN_IF_FAILED(hr);
-		SIM_BP_COOKIE editorBP = 0;
-		hr = simulator->AddBreakpoint (BreakpointType::Code, false, editorFunctionAddr, &editorBP); RETURN_IF_FAILED(hr);
-		auto removebp = wil::scope_exit([&editorBP] { simulator->RemoveBreakpoint(editorBP); });
-		hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
-		hr = simulator->Resume(true); RETURN_IF_FAILED(hr);
-
-		DWORD tickStart = GetTickCount();
-		while ((IsDebuggerPresent() || GetTickCount() - tickStart < 1000) && simulator->Running_HR() == S_OK)
+		if (!wcsicmp(PathFindExtension(filename), L".tap"))
 		{
-			MSG msg;
-			while(PeekMessage(&msg,0,0,0,PM_NOREMOVE))
+			// Reset and simulate to the EDITOR function
+			wil::unique_process_heap_string dll;
+			hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, dll); RETURN_IF_FAILED(hr);
+			PathFindFileName(dll.get())[0] = 0; // remove file name
+			wil::unique_process_heap_string rom_debug_info_path;
+			hr = wil::str_concat_nothrow(rom_debug_info_path, dll, L"ROMs\\Spectrum48K.z80sym"); RETURN_IF_NULL_ALLOC(rom_debug_info_path);
+			com_ptr<IFelixSymbols> romSymbols;
+			hr = MakeZ80SymSymbols (rom_debug_info_path.get(), &romSymbols); RETURN_IF_FAILED(hr);
+			UINT16 editorFunctionAddr;
+			hr = romSymbols->GetAddressFromSymbol(L"EDITOR", &editorFunctionAddr); RETURN_IF_FAILED(hr);
+			hr = simulator->Break(); RETURN_IF_FAILED(hr);
+			SIM_BP_COOKIE editorBP = 0;
+			hr = simulator->AddBreakpoint (BreakpointType::Code, false, editorFunctionAddr, &editorBP); RETURN_IF_FAILED(hr);
+			auto removebp = wil::scope_exit([&editorBP] { simulator->RemoveBreakpoint(editorBP); });
+			hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
+			hr = simulator->Resume(true); RETURN_IF_FAILED(hr);
+			hr = simulator->SetSpeed(UINT32_MAX); RETURN_IF_FAILED(hr);
+			auto resetSpeed = wil::scope_exit([] { simulator->SetSpeed(100); });
+
+			DWORD tickStart = GetTickCount();
+			while ((IsDebuggerPresent() || GetTickCount() - tickStart < 1000) && simulator->Running_HR() == S_OK)
 			{
-				if (::GetMessage(&msg, NULL, 0, 0) > 0)
-					::DispatchMessage(&msg);
+				MSG msg;
+				while(PeekMessage(&msg,0,0,0,PM_NOREMOVE))
+				{
+					if (::GetMessage(&msg, NULL, 0, 0) > 0)
+						::DispatchMessage(&msg);
+				}
+
+				Sleep(20);
 			}
 
-			Sleep(20);
+			RETURN_HR_IF(E_UNEXPECTED, simulator->Running_HR() == S_OK);
+
+			// LOAD "".
+			hr = SimulateBasicCommand (romSymbols, "\xEF\x22\x22\x0D\x80"); RETURN_IF_FAILED(hr);
+
+			hr = AdviseSink<ITapPlayNotifySink>(simulator, _weakRefToThis, &_tapPlayEventsToken); RETURN_IF_FAILED(hr);
+
+			hr = simulator->LoadTapFile(filename, TRUE, FALSE); RETURN_IF_FAILED(hr);
+			hr = simulator->Resume(false); RETURN_IF_FAILED_EXPECTED(hr);
+
+			resetSpeed.release();
+		}
+		else
+		{
+			hr = simulator->LoadFile(filename); RETURN_IF_FAILED_EXPECTED(hr);
+			if (simulator->Running_HR() == S_FALSE)
+			{
+				hr = simulator->Resume(false); RETURN_IF_FAILED_EXPECTED(hr);
+			}
 		}
 
-		RETURN_HR_IF(E_UNEXPECTED, simulator->Running_HR() == S_OK);
-
-		// LOAD "".
-		hr = SimulateBasicCommand (romSymbols, "\xEF\x22\x22\x0D\x80"); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
-	HRESULT LoadFile (bool start_debugging)
+	HRESULT PickFile (wil::unique_process_heap_string& filename)
 	{
 		auto hr = ConfirmStopDebugging(); RETURN_IF_FAILED(hr);
 		if (hr == S_FALSE)
@@ -729,21 +759,20 @@ public:
 		if (SUCCEEDED(_sm->GetWritableSettingsStore (SettingsScope_UserSettings, &settings_store)))
 			settings_store->GetString (SettingsCollection, SettingLoadSavePath, &initial_directory); // no need to check for errors
 
-		wchar_t filename[MAX_PATH];
-		filename[0] = 0;
+		filename = wil::make_process_heap_string_nothrow (nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(filename);
 		HWND dialogOwner;
 		hr = uiShell->GetDialogOwnerHwnd(&dialogOwner); RETURN_IF_FAILED(hr);
 		VSOPENFILENAMEW of = { };
 		of.lStructSize = (DWORD)sizeof(of);
 		of.hwndOwner = dialogOwner;
 		of.pwzDlgTitle = L"ABC";
-		of.pwzFileName = filename;
-		of.nMaxFileName = (DWORD)ARRAYSIZE(filename);
+		of.pwzFileName = filename.get();
+		of.nMaxFileName = MAX_PATH;
 		of.pwzInitialDir = initial_directory.get();
 		of.pwzFilter = L"ZX Spectrum files (*.sna;*.z80;*.tap)\0*.sna;*.z80;*.tap\0All Files (*.*)\0*.*\0";
 		hr = uiShell->GetOpenFileNameViaDlg(&of);
 		if (hr == OLE_E_PROMPTSAVECANCELLED)
-			return S_OK;
+			return hr;
 		RETURN_IF_FAILED(hr);
 
 		if (settings_store)
@@ -757,23 +786,12 @@ public:
 			}
 		}
 
+		return S_OK;
+	}
 
-		if (!start_debugging)
-		{
-			if (!wcsicmp(PathFindExtension(filename), L".tap"))
-			{
-				hr = simulator->SetSpeed(UINT32_MAX); RETURN_IF_FAILED(hr);
-				hr = ResetAndSimulateLoad(); RETURN_IF_FAILED(hr);
-			}
-
-			hr = simulator->LoadFile(filename); RETURN_IF_FAILED_EXPECTED(hr);
-
-			if (simulator->Running_HR() == S_FALSE)
-			{
-				hr = simulator->Resume(false); RETURN_IF_FAILED_EXPECTED(hr);
-			}
-			return S_OK;
-		}
+	HRESULT DebugFileInternal (const wchar_t* filename)
+	{
+		HRESULT hr;
 
 		com_ptr<IVsDebugger2> debugger2;
 		hr = _sp->QueryService(SID_SVsShellDebugger, &debugger2); RETURN_IF_FAILED(hr);
@@ -782,10 +800,12 @@ public:
 		dti.cbSize = sizeof(dti);
 		dti.dlo = DLO_CreateProcess;
 		dti.LaunchFlags = DBGLAUNCH_StopAtEntryPoint;
-		dti.bstrExe = SysAllocString(of.pwzFileName); RETURN_IF_NULL_ALLOC(dti.bstrExe);
+		dti.bstrExe = SysAllocString(filename); RETURN_IF_NULL_ALLOC(dti.bstrExe);
+		auto free1 = wil::scope_exit([&dti] { SysFreeString(dti.bstrExe); });
 		dti.guidLaunchDebugEngine = Engine_Id;
 		dti.guidPortSupplier = PortSupplier_Id;
 		dti.bstrPortName = SysAllocString(SingleDebugPortName); RETURN_IF_NULL_ALLOC(dti.bstrPortName);
+		auto free2 = wil::scope_exit([&dti] { SysFreeString(dti.bstrPortName); });
 		dti.fSendToOutputWindow = TRUE;
 		hr = debugger2->LaunchDebugTargets2 (1, &dti); RETURN_IF_FAILED_EXPECTED(hr);
 		return S_OK;
@@ -922,10 +942,18 @@ public:
 			}
 
 			if (nCmdID == cmdidOpenZ80File)
-				return LoadFile(false);
+			{
+				wil::unique_process_heap_string filename;
+				hr = PickFile(filename); RETURN_IF_FAILED_EXPECTED(hr);
+				return OpenFileInternal(filename.get());
+			}
 
 			if (nCmdID == cmdidDebugZ80File)
-				return LoadFile(true);
+			{
+				wil::unique_process_heap_string filename;
+				hr = PickFile(filename); RETURN_IF_FAILED_EXPECTED(hr);
+				return DebugFileInternal(filename.get());
+			}
 
 			if (nCmdID == cmdidScreenWindowDebug)
 			{
@@ -1040,6 +1068,9 @@ public:
 	{
 		HRESULT hr;
 
+		WI_ASSERT(_tapPlayEventsToken);
+		_tapPlayEventsToken.reset();
+
 		if (IsDebuggerPresent())
 		{
 			UINT64 duration = GetTickCount64() - _tapPlayStartTime;
@@ -1051,6 +1082,60 @@ public:
 		hr = simulator->SetSpeed(100); RETURN_IF_FAILED(hr);
 		uiShell->UpdateCommandUI(FALSE);
 		return S_OK;
+	}
+	#pragma endregion
+
+	HRESULT WaitTapLoadComplete (DWORD loadTimeoutMilliseconds)
+	{
+		WI_ASSERT(_tapPlayEventsToken);
+
+		DWORD tickStart = GetTickCount();
+		while ((IsDebuggerPresent() || GetTickCount() - tickStart < loadTimeoutMilliseconds) && _tapPlayEventsToken)
+		{
+			MSG msg;
+			while(PeekMessage(&msg,0,0,0,PM_NOREMOVE))
+			{
+				if (::GetMessage(&msg, NULL, 0, 0) > 0)
+					::DispatchMessage(&msg);
+			}
+
+			Sleep(20);
+		}
+
+		if (_tapPlayEventsToken)
+		{
+			_tapPlayEventsToken.reset();
+			RETURN_HR(E_UNEXPECTED);
+		}
+
+		return S_OK;
+	}
+
+	#pragma region ISimulatorWindowAutomationObject
+	virtual HRESULT STDMETHODCALLTYPE OpenTapFile (BSTR pFilename, DWORD loadTimeoutMilliseconds) override
+	{
+		RETURN_HR_IF(E_INVALIDARG, _wcsicmp(PathFindExtension(pFilename), L".tap"));
+
+		auto hr = OpenFileInternal(pFilename); RETURN_IF_FAILED(hr);
+
+		hr = WaitTapLoadComplete(loadTimeoutMilliseconds); RETURN_IF_FAILED(hr);
+
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE DebugTapFile (BSTR pFilename, DWORD loadTimeoutMilliseconds) override
+	{
+		RETURN_HR_IF(E_INVALIDARG, _wcsicmp(PathFindExtension(pFilename), L".tap"));
+
+		//auto hr = DebugFileInternal(pFilename); RETURN_IF_FAILED(hr);
+		//hr = WaitTapLoadComplete(loadTimeoutMilliseconds); RETURN_IF_FAILED(hr);
+		//return S_OK;
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetSimulator (ISimulator_** ppSimulator) override
+	{
+		return copy_to(simulator, ppSimulator);
 	}
 	#pragma endregion
 };

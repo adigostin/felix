@@ -131,6 +131,15 @@ public:
 					audio[0] = audio_level_silence;
 					SendSamplesToXAudio (_source_voice, audio, 1);
 					audio_size = 0;
+
+					if (_queued_blocks.empty())
+					{
+						// This was the last block
+						_pulse_lengths.clear();
+						_time = requested_time;
+						_eh->OnTapPlayComplete();
+						break;
+					}
 				}
 			}
 			else
@@ -144,15 +153,6 @@ public:
 				}
 
 				// silence period ends
-				_pulse_lengths.clear();
-				_next_pulse_index = 0;
-				if (_queued_blocks.empty())
-				{
-					_time = requested_time;
-					_eh->OnTapPlayComplete();
-					break;
-				}
-
 				_time = next_block_time;
 				GeneratePulses();
 			}

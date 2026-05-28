@@ -1,12 +1,9 @@
 
 import "docobj.idl";
 import "vsshell.idl";
-#include "dispids.h"
+import "Simulator.idl";
 
-//cpp_quote("#ifdef __midl")
-typedef DWORD VSITEMID;
-typedef LONG VSHPROPID;
-//cpp_quote("#endif")
+#include "dispids.h"
 
 [uuid(C045D7BF-B8F2-4F6E-8E4A-0D4DF3322AC7)]
 library ATLProject1Lib
@@ -234,5 +231,14 @@ library ATLProject1Lib
 	{
 		HRESULT OnPropertyChanging ([in] IDispatch* pObject, [in] DISPID dispID, [in] PropertyChangeArgs args);
 		HRESULT OnPropertyChanged  ([in] IDispatch* pObject, [in] DISPID dispID, [in] PropertyChangeArgs args);
+	}
+
+	[object, uuid(E0A37F2F-5B5B-4A5E-9926-EC08865EE8CE), dual, nonextensible]
+	interface ISimulatorWindowAutomationObject : IDispatch
+	{
+		HRESULT OpenTapFile ([in] BSTR pFilename, DWORD loadTimeoutMilliseconds);
+		HRESULT DebugTapFile ([in] BSTR pFilename, DWORD loadTimeoutMilliseconds);
+
+		HRESULT GetSimulator ([out] ISimulator_** ppSimulator);
 	}
 };

@@ -1,0 +1,16 @@
+import "oaidl.idl";
+import "ocidl.idl";
+
+[uuid(BF18FAC3-6756-48C8-B99B-01A974DB241B)]
+library SimulatorLib
+{
+	//importlib("stdole2.tlb");
+
+	[object, uuid(976F76E5-8EB1-422B-8A86-16E7AFCB1F9B), dual, nonextensible]
+	interface ISimulator_ : IDispatch
+	{
+		HRESULT Break();
+		HRESULT ReadMemoryBus8 (UINT16 address, UINT8* pData);
+	}
+
+}

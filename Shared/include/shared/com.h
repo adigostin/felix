@@ -359,6 +359,10 @@ public:
 		return this;
 	}
 
+	operator bool() const
+	{
+		return _dwCookie != 0;
+	}
 };
 
 template<typename ISink>
