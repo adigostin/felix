@@ -692,7 +692,7 @@ public:
 		HRESULT hr;
 
 		// If a .tap is currently playing, cancel it.
-		hr = simulator->CancelPlayTapFile(); RETURN_IF_FAILED(hr);
+		//hr = simulator->CancelPlayTapFile(); RETURN_IF_FAILED(hr);
 
 		if (!wcsicmp(PathFindExtension(filename), L".tap"))
 		{
