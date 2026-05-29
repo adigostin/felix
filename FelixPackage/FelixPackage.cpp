@@ -924,6 +924,46 @@ HRESULT WriteZxSpectrumSystemVar (IFelixSymbols* romSymbols, LPCWSTR name, UINT1
 	return S_OK;
 }
 
+HRESULT ResetAndSimulateToEDITOR (IFelixSymbols* romSymbols)
+{
+	HRESULT hr;
+
+	UINT16 editorFunctionAddr;
+	hr = romSymbols->GetAddressFromSymbol(L"EDITOR", &editorFunctionAddr); RETURN_IF_FAILED(hr);
+
+	hr = simulator->Break(); RETURN_IF_FAILED(hr);
+	hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
+
+	SIM_BP_COOKIE editorBP = 0;
+	hr = simulator->AddBreakpoint (BreakpointType::Code, false, editorFunctionAddr, &editorBP); RETURN_IF_FAILED(hr);
+	auto removebp = wil::scope_exit([&editorBP] { simulator->RemoveBreakpoint(editorBP); });
+
+	hr = simulator->Resume(true); RETURN_IF_FAILED(hr);
+	hr = simulator->SetSpeed(UINT32_MAX); RETURN_IF_FAILED(hr);
+	auto resetSpeed = wil::scope_exit([] { simulator->SetSpeed(100); });
+
+	// Even in a Debug build this is almost instant.
+	DWORD tickStart = GetTickCount();
+	while (simulator->Running_HR() == S_OK)
+	{
+		MSG msg;
+		while(PeekMessage(&msg,0,0,0,PM_NOREMOVE))
+		{
+			if (::GetMessage(&msg, NULL, 0, 0) > 0)
+				::DispatchMessage(&msg);
+		}
+
+		if (!IsDebuggerPresent() && GetTickCount() - tickStart >= 1000)
+			RETURN_HR(HRESULT_FROM_WIN32(WAIT_TIMEOUT));
+
+		Sleep(20);
+	}
+
+	resetSpeed.release();
+
+	return S_OK;
+}
+
 /* From https://github.com/reclaimed/prettybasic/blob/master/doc/ZX%20Spectrum%2048K%20ROM%20Original%20Disassembly.asm
 ; The memory.
 ;

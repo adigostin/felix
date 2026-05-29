@@ -528,6 +528,7 @@ public:
 		}
 
 		_simulatorEventsToken.reset();
+		_tapPlayEventsToken.reset();
 
 		if (_advisingScreenCompleteEvents)
 		{
@@ -685,13 +686,16 @@ public:
 		return S_OK;
 	}
 
-	HRESULT OpenFileInternal (const wchar_t* filename)
+	// TODO: split this function so that "maxSpeed" only exists when opening a .tap.
+	HRESULT OpenFileInternal (const wchar_t* filename, BOOL maxSpeed)
 	{
 		HRESULT hr;
 
+		// If a .tap is currently playing, cancel it.
+		hr = simulator->CancelPlayTapFile(); RETURN_IF_FAILED(hr);
+
 		if (!wcsicmp(PathFindExtension(filename), L".tap"))
 		{
-			// Reset and simulate to the EDITOR function
 			wil::unique_process_heap_string dll;
 			hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, dll); RETURN_IF_FAILED(hr);
 			PathFindFileName(dll.get())[0] = 0; // remove file name
@@ -699,41 +703,18 @@ public:
 			hr = wil::str_concat_nothrow(rom_debug_info_path, dll, L"ROMs\\Spectrum48K.z80sym"); RETURN_IF_NULL_ALLOC(rom_debug_info_path);
 			com_ptr<IFelixSymbols> romSymbols;
 			hr = MakeZ80SymSymbols (rom_debug_info_path.get(), &romSymbols); RETURN_IF_FAILED(hr);
-			UINT16 editorFunctionAddr;
-			hr = romSymbols->GetAddressFromSymbol(L"EDITOR", &editorFunctionAddr); RETURN_IF_FAILED(hr);
-			hr = simulator->Break(); RETURN_IF_FAILED(hr);
-			SIM_BP_COOKIE editorBP = 0;
-			hr = simulator->AddBreakpoint (BreakpointType::Code, false, editorFunctionAddr, &editorBP); RETURN_IF_FAILED(hr);
-			auto removebp = wil::scope_exit([&editorBP] { simulator->RemoveBreakpoint(editorBP); });
-			hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
-			hr = simulator->Resume(true); RETURN_IF_FAILED(hr);
-			hr = simulator->SetSpeed(UINT32_MAX); RETURN_IF_FAILED(hr);
-			auto resetSpeed = wil::scope_exit([] { simulator->SetSpeed(100); });
 
-			DWORD tickStart = GetTickCount();
-			while ((IsDebuggerPresent() || GetTickCount() - tickStart < 1000) && simulator->Running_HR() == S_OK)
-			{
-				MSG msg;
-				while(PeekMessage(&msg,0,0,0,PM_NOREMOVE))
-				{
-					if (::GetMessage(&msg, NULL, 0, 0) > 0)
-						::DispatchMessage(&msg);
-				}
+			hr = ResetAndSimulateToEDITOR(romSymbols); RETURN_IF_FAILED(hr);
 
-				Sleep(20);
-			}
-
-			RETURN_HR_IF(E_UNEXPECTED, simulator->Running_HR() == S_OK);
-
-			// LOAD "".
+			// LOAD ""
 			hr = SimulateBasicCommand (romSymbols, "\xEF\x22\x22\x0D\x80"); RETURN_IF_FAILED(hr);
 
 			hr = AdviseSink<ITapPlayNotifySink>(simulator, _weakRefToThis, &_tapPlayEventsToken); RETURN_IF_FAILED(hr);
 
-			hr = simulator->LoadTapFile(filename, TRUE, FALSE); RETURN_IF_FAILED(hr);
+			hr = simulator->BeginPlayTapFile(filename, FALSE); RETURN_IF_FAILED(hr);
+			UINT32 speed = maxSpeed ? UINT32_MAX : 100;
+			hr = simulator->SetSpeed(speed); RETURN_IF_FAILED(hr);
 			hr = simulator->Resume(false); RETURN_IF_FAILED_EXPECTED(hr);
-
-			resetSpeed.release();
 		}
 		else
 		{
@@ -945,7 +926,7 @@ public:
 			{
 				wil::unique_process_heap_string filename;
 				hr = PickFile(filename); RETURN_IF_FAILED_EXPECTED(hr);
-				return OpenFileInternal(filename.get());
+				return OpenFileInternal(filename.get(), TRUE);
 			}
 
 			if (nCmdID == cmdidDebugZ80File)
@@ -989,7 +970,7 @@ public:
 
 			if (nCmdID == cmdidTapPlayStop)
 			{
-				simulator->StopTap();
+				simulator->CancelPlayTapFile();
 				return S_OK;
 			}
 
@@ -1085,52 +1066,25 @@ public:
 	}
 	#pragma endregion
 
-	HRESULT WaitTapLoadComplete (DWORD loadTimeoutMilliseconds)
-	{
-		WI_ASSERT(_tapPlayEventsToken);
-
-		DWORD tickStart = GetTickCount();
-		while ((IsDebuggerPresent() || GetTickCount() - tickStart < loadTimeoutMilliseconds) && _tapPlayEventsToken)
-		{
-			MSG msg;
-			while(PeekMessage(&msg,0,0,0,PM_NOREMOVE))
-			{
-				if (::GetMessage(&msg, NULL, 0, 0) > 0)
-					::DispatchMessage(&msg);
-			}
-
-			Sleep(20);
-		}
-
-		if (_tapPlayEventsToken)
-		{
-			_tapPlayEventsToken.reset();
-			RETURN_HR(E_UNEXPECTED);
-		}
-
-		return S_OK;
-	}
-
 	#pragma region ISimulatorWindowAutomationObject
-	virtual HRESULT STDMETHODCALLTYPE OpenTapFile (BSTR pFilename, DWORD loadTimeoutMilliseconds) override
+	virtual HRESULT STDMETHODCALLTYPE OpenTapFile (BSTR pFilename, BOOL maxSpeed) override
 	{
 		RETURN_HR_IF(E_INVALIDARG, _wcsicmp(PathFindExtension(pFilename), L".tap"));
-
-		auto hr = OpenFileInternal(pFilename); RETURN_IF_FAILED(hr);
-
-		hr = WaitTapLoadComplete(loadTimeoutMilliseconds); RETURN_IF_FAILED(hr);
-
+		auto hr = OpenFileInternal(pFilename, maxSpeed); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE DebugTapFile (BSTR pFilename, DWORD loadTimeoutMilliseconds) override
+	virtual HRESULT STDMETHODCALLTYPE DebugTapFile (BSTR pFilename, BOOL maxSpeed) override
 	{
 		RETURN_HR_IF(E_INVALIDARG, _wcsicmp(PathFindExtension(pFilename), L".tap"));
-
 		//auto hr = DebugFileInternal(pFilename); RETURN_IF_FAILED(hr);
-		//hr = WaitTapLoadComplete(loadTimeoutMilliseconds); RETURN_IF_FAILED(hr);
 		//return S_OK;
 		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE IsTapFileLoading() override
+	{
+		return _tapPlayEventsToken ? S_OK : S_FALSE;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetSimulator (ISimulator_** ppSimulator) override

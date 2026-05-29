@@ -1347,7 +1347,7 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE LoadTapFile (LPCWSTR pFileName, BOOL maxSpeed, BOOL breakOnComplete) override
+	virtual HRESULT STDMETHODCALLTYPE BeginPlayTapFile (LPCWSTR pFileName, BOOL breakOnComplete) override
 	{
 		com_ptr<IStream> stream;
 		auto hr = SHCreateStreamOnFileEx (pFileName, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream);
@@ -1635,9 +1635,23 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE StopTap() override
+	virtual HRESULT STDMETHODCALLTYPE CancelPlayTapFile() override
 	{
-		return RunOnSimulatorThread([this] { return _tapPlayer->StopPlaying(); });
+		auto hr = RunOnSimulatorThread([this] { return _tapPlayer->StopPlaying(); }); RETURN_IF_FAILED(hr);
+		if (hr == S_FALSE)
+			return S_FALSE;
+
+		// Drain _mainThreadWorkQueue to make sure we call the registered ITapPlayNotifySink.
+		MSG msg;
+		while(PeekMessage(&msg, _hwnd, WM_MAIN_THREAD_WORK, WM_MAIN_THREAD_WORK, PM_REMOVE))
+		{
+			auto lock = _mainThreadQueueLock.lock_exclusive();
+			auto work = _mainThreadWorkQueue.remove(_mainThreadWorkQueue.begin());
+			lock.reset();
+			work();
+		}
+
+		return S_OK;
 	}
 	#pragma endregion
 

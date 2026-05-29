@@ -187,9 +187,10 @@ public:
 			audio_size = 0;
 
 			_eh->OnTapPlayComplete();
+			return S_OK;
 		}
 
-		return S_OK;
+		return S_FALSE;
 	}
 	#pragma endregion
 

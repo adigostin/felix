@@ -236,8 +236,9 @@ library ATLProject1Lib
 	[object, uuid(E0A37F2F-5B5B-4A5E-9926-EC08865EE8CE), dual, nonextensible]
 	interface ISimulatorWindowAutomationObject : IDispatch
 	{
-		HRESULT OpenTapFile ([in] BSTR pFilename, DWORD loadTimeoutMilliseconds);
-		HRESULT DebugTapFile ([in] BSTR pFilename, DWORD loadTimeoutMilliseconds);
+		HRESULT OpenTapFile ([in] BSTR pFilename, BOOL maxSpeed);
+		HRESULT DebugTapFile ([in] BSTR pFilename, BOOL maxSpeed);
+		HRESULT IsTapFileLoading();
 
 		HRESULT GetSimulator ([out] ISimulator_** ppSimulator);
 	}

@@ -330,4 +330,5 @@ HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyNotifySink>* cp, DIS
 HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyNotifySink>* cp, std::initializer_list<DISPID> dispids);
 HRESULT ReadZxSpectrumSystemVar (IFelixSymbols* romSymbols, LPCWSTR name, UINT16* value);
 HRESULT WriteZxSpectrumSystemVar (IFelixSymbols* romSymbols, LPCWSTR name, UINT16 value);
+HRESULT ResetAndSimulateToEDITOR (IFelixSymbols* romSymbols);
 HRESULT SimulateBasicCommand (IFelixSymbols* romSymbols, const char* pszCommand);
