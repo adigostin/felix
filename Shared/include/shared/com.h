@@ -380,7 +380,7 @@ inline HRESULT AdviseSink (IUnknown* source, IUnknown* sink, AdviseSinkToken* pT
 	DWORD dwCookie;
 	hr = cp->Advise(sink, &dwCookie); RETURN_IF_FAILED(hr);
 	pToken->reset();
-	pToken->_cp = cp;
+	pToken->_cp = std::move(cp);
 	pToken->_dwCookie = dwCookie;
 	return S_OK;
 }

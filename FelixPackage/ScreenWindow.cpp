@@ -1077,14 +1077,8 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE DebugTapFile (BSTR pFilename, BOOL maxSpeed) override
 	{
 		RETURN_HR_IF(E_INVALIDARG, _wcsicmp(PathFindExtension(pFilename), L".tap"));
-		//auto hr = DebugFileInternal(pFilename); RETURN_IF_FAILED(hr);
-		//return S_OK;
-		RETURN_HR(E_NOTIMPL);
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE IsTapFileLoading() override
-	{
-		return _tapPlayEventsToken ? S_OK : S_FALSE;
+		auto hr = DebugFileInternal(pFilename); RETURN_IF_FAILED(hr);
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetSimulator (ISimulator_** ppSimulator) override

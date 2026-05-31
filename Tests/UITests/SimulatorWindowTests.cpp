@@ -10,6 +10,8 @@ namespace UITests
 		static inline wil::com_ptr_failfast<VxDTE::DTE2> dte;
 		static inline wil::com_ptr_failfast<VxDTE::Debugger> debugger;
 		static inline wil::unique_process_heap_string testClassPath;
+		static inline wil::com_ptr_failfast<ISimulatorWindowAutomationObject> simWindow;
+		static inline wil::com_ptr_failfast<ISimulator_> simulator;
 
 		TEST_CLASS_INITIALIZE(ClassInit)
 		{
@@ -21,10 +23,21 @@ namespace UITests
 
 			testClassPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"SimulatorWindowTests\\");
 			Assert::IsTrue(CreateDirectory(testClassPath.get(), nullptr));
+
+			wil::com_ptr_failfast<IDispatch> simWindowDisp;
+			hr = dte->GetObject(wil::make_bstr_failfast(L"SimulatorWindow").get(), &simWindowDisp);
+			Assert::AreEqual(S_OK, hr);
+
+			simWindow = simWindowDisp.query<ISimulatorWindowAutomationObject>();
+
+			hr = simWindow->GetSimulator(&simulator);
+			Assert::AreEqual(S_OK, hr);
 		}
 
 		TEST_CLASS_CLEANUP(ClassCleanup)
 		{
+			simulator.reset();
+			simWindow.reset();
 			debugger.reset();
 			dte.reset();
 		}
@@ -47,6 +60,34 @@ namespace UITests
 			Assert::AreEqual(0ul, exitCode);
 		}
 
+		static UINT8 ReadMemoryBus (UINT16 addr)
+		{
+			UINT8 data;
+			auto hr = simulator->ReadMemoryBus8(addr, &data);
+			Assert::AreEqual(S_OK, hr);
+			return data;
+		}
+
+		void WaitDebugMode (VxDTE::dbgDebugMode mode, DWORD timeoutMilliseconds = 5000)
+		{
+			DWORD tickStart = GetTickCount();
+			while(true)
+			{
+				VxDTE::dbgDebugMode current;
+				auto hr = debugger->get_CurrentMode(&current);
+				if (SUCCEEDED(hr))
+				{
+					if (current == mode)
+						break;
+				}
+				else
+					Assert::AreEqual(RPC_E_CALL_REJECTED, hr);
+				if (GetTickCount() - tickStart >= timeoutMilliseconds)
+					Assert::Fail();
+				Sleep(20);
+			}
+		}
+
 		TEST_METHOD(SimulatorWindow_TapLoad)
 		{
 			HRESULT hr;
@@ -55,38 +96,22 @@ namespace UITests
 			auto tapPath = str_concat(testClassPath, L"test.tap");
 			Bas2Tap (basic, tapPath.get());
 
-			wil::com_ptr_failfast<IDispatch> simWindowDisp;
-			hr = dte->GetObject(wil::make_bstr_failfast(L"SimulatorWindow").get(), &simWindowDisp);
-			Assert::AreEqual(S_OK, hr);
-
-			auto simWindow = simWindowDisp.query<ISimulatorWindowAutomationObject>();
 			hr = simWindow->OpenTapFile (wil::make_bstr_failfast(tapPath.get()).get(), TRUE);
 			Assert::AreEqual(S_OK, hr);
-			hr = simWindow->IsTapFileLoading();
-			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(S_OK, simulator->IsTapFileLoading());
 
 			DWORD tickStart = GetTickCount();
-			while(simWindow->IsTapFileLoading() == S_OK)
+			while(simulator->IsTapFileLoading() == S_OK)
 			{
 				if (GetTickCount() - tickStart >= 5000)
 					Assert::Fail();
 				Sleep(20);
 			}
 
-			wil::com_ptr_failfast<ISimulator_> simulator;
-			hr = simWindow->GetSimulator(&simulator);
-			Assert::AreEqual(S_OK, hr);
-
 			simulator->Break();
 
-			UINT8 data;
-			hr = simulator->ReadMemoryBus8(32768, &data);
-			Assert::AreEqual(S_OK, hr);
-			Assert::AreEqual<UINT8>(85, data);
-
-			hr = simulator->ReadMemoryBus8(32769, &data);
-			Assert::AreEqual(S_OK, hr);
-			Assert::AreEqual<UINT8>(170, data);
+			Assert::AreEqual<UINT8>(85, ReadMemoryBus(32768));
+			Assert::AreEqual<UINT8>(170, ReadMemoryBus(32769));
 		}
 
 		TEST_METHOD(SimulatorWindow_TapLoadWhileTapLoading)
@@ -97,16 +122,10 @@ namespace UITests
 			auto tapPath = str_concat(testClassPath, L"test.tap");
 			Bas2Tap (basic, tapPath.get());
 
-			wil::com_ptr_failfast<IDispatch> simWindowDisp;
-			hr = dte->GetObject(wil::make_bstr_failfast(L"SimulatorWindow").get(), &simWindowDisp);
-			Assert::AreEqual(S_OK, hr);
-
-			auto simWindow = simWindowDisp.query<ISimulatorWindowAutomationObject>();
 			hr = simWindow->OpenTapFile (wil::make_bstr_failfast(tapPath.get()).get(), FALSE);
 			Assert::AreEqual(S_OK, hr);
 			
-			hr = simWindow->IsTapFileLoading();
-			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(S_OK, simulator->IsTapFileLoading());
 
 			Sleep(500);
 
@@ -116,7 +135,7 @@ namespace UITests
 			// Second time we called OpenTapFile, we called with maxSpeed=TRUE.
 			// It should take much less than a second to load.
 			DWORD tickStart = GetTickCount();
-			while(simWindow->IsTapFileLoading() == S_OK)
+			while(simulator->IsTapFileLoading() == S_OK)
 			{
 				if (!IsDebuggerPresent() && GetTickCount() - tickStart >= 1000)
 					Assert::Fail();
@@ -124,20 +143,10 @@ namespace UITests
 			}
 
 
-			wil::com_ptr_failfast<ISimulator_> simulator;
-			hr = simWindow->GetSimulator(&simulator);
-			Assert::AreEqual(S_OK, hr);
-
 			simulator->Break();
 
-			UINT8 data;
-			hr = simulator->ReadMemoryBus8(32768, &data);
-			Assert::AreEqual(S_OK, hr);
-			Assert::AreEqual<UINT8>(85, data);
-
-			hr = simulator->ReadMemoryBus8(32769, &data);
-			Assert::AreEqual(S_OK, hr);
-			Assert::AreEqual<UINT8>(170, data);
+			Assert::AreEqual<UINT8>(85, ReadMemoryBus(32768));
+			Assert::AreEqual<UINT8>(170, ReadMemoryBus(32769));
 		}
 
 		struct TapPlayNotifySink : ITapPlayNotifySink
@@ -184,15 +193,6 @@ namespace UITests
 			auto tapPath = str_concat(testClassPath, L"test.tap");
 			Bas2Tap (basic, tapPath.get());
 
-			wil::com_ptr_failfast<IDispatch> simWindowDisp;
-			hr = dte->GetObject(wil::make_bstr_failfast(L"SimulatorWindow").get(), &simWindowDisp);
-			Assert::AreEqual(S_OK, hr);
-			auto simWindow = simWindowDisp.query<ISimulatorWindowAutomationObject>();
-
-			wil::com_ptr_failfast<ISimulator_> simulator;
-			hr = simWindow->GetSimulator(&simulator);
-			Assert::AreEqual(S_OK, hr);
-
 			wil::com_ptr_failfast<IConnectionPoint> cp;
 			hr = simulator.query<IConnectionPointContainer>()->FindConnectionPoint(__uuidof(ITapPlayNotifySink), &cp);
 			Assert::AreEqual(S_OK, hr);
@@ -223,6 +223,43 @@ namespace UITests
 
 		TEST_METHOD(SimulatorWindow_TapDebug)
 		{
+			HRESULT hr;
+
+			static const char basic[] = "10 POKE 32768, 85\r\n20 POKE 32769,170";
+			auto tapPath = str_concat(testClassPath, L"test.tap");
+			Bas2Tap (basic, tapPath.get());
+
+			wil::com_ptr_failfast<VxDTE::Debugger> debugger;
+			hr = dte->get_Debugger(&debugger);
+			Assert::AreEqual(S_OK, hr);
+
+			VxDTE::dbgDebugMode debugMode;
+			hr = debugger->get_CurrentMode(&debugMode);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<UINT>(VxDTE::dbgDesignMode, debugMode);
+
+			hr = simWindow->DebugTapFile (wil::make_bstr_failfast(tapPath.get()).get(), TRUE);
+			Assert::AreEqual(S_OK, hr);
+
+			Assert::AreEqual(S_OK, simulator->IsTapFileLoading());
+
+			hr = debugger->get_CurrentMode(&debugMode);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<UINT>(VxDTE::dbgRunMode, debugMode);
+
+			WaitDebugMode(VxDTE::dbgBreakMode);
+
+			Assert::AreEqual<UINT8>(0, ReadMemoryBus(32768));
+			Assert::AreEqual<UINT8>(0, ReadMemoryBus(32769));
+
+			dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.Start").get());
+			// Will go to dbgRunMode and then quickly to dbgDesignMode.
+
+			WaitDebugMode(VxDTE::dbgDesignMode);
+
+			simulator->Break();
+			Assert::AreEqual<UINT8>(85, ReadMemoryBus(32768));
+			Assert::AreEqual<UINT8>(170, ReadMemoryBus(32769));
 		}
 	};
 }

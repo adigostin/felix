@@ -324,6 +324,7 @@ struct DECLSPEC_NOVTABLE ITapPlayerDevice : IDevice
 {
 	virtual HRESULT STDMETHODCALLTYPE AddBlocks (vector_nothrow<tap_block_t> blocks) = 0;
 	virtual HRESULT STDMETHODCALLTYPE StopPlaying() = 0;
+	virtual HRESULT STDMETHODCALLTYPE IsPlaying() = 0;
 };
 HRESULT STDMETHODCALLTYPE MakeTapPlayer (Bus* io_bus, IXAudio2* xaudio2, ITapPlayerEventHandler* eh, wistd::unique_ptr<ITapPlayerDevice>& ppDevice);
 

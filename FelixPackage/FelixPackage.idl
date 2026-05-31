@@ -238,8 +238,6 @@ library ATLProject1Lib
 	{
 		HRESULT OpenTapFile ([in] BSTR pFilename, BOOL maxSpeed);
 		HRESULT DebugTapFile ([in] BSTR pFilename, BOOL maxSpeed);
-		HRESULT IsTapFileLoading();
-
-		HRESULT GetSimulator ([out] ISimulator_** ppSimulator);
+		HRESULT GetSimulator ([out, retval] ISimulator_** ppSimulator);
 	}
 };

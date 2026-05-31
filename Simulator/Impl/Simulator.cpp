@@ -1659,6 +1659,11 @@ public:
 		DrainWorkQueue();
 		return S_OK;
 	}
+
+	virtual HRESULT STDMETHODCALLTYPE IsTapFileLoading() override
+	{
+		return RunOnSimulatorThread([this] { return _tapPlayer->IsPlaying(); });
+	}
 	#pragma endregion
 
 	#pragma region IScreenDeviceCompleteEventHandler

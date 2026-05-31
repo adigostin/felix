@@ -10,8 +10,10 @@
 #include "../FelixPackageUi/resource.h"
 
 class Z80DebugEngine : public IDebugEngine2, IDebugEngineLaunch2, ISimulatorEventNotifySink, IFelixLaunchOptionsProvider
+	, ITapPlayNotifySink
 {
 	ULONG _refCount = 0;
+	WeakRefToThis _weakRefToThis;
 	wil::unique_bstr _registryRoot;
 	WORD langId = 0;
 	com_ptr<IDebugEventCallback2> _callback;
@@ -19,13 +21,19 @@ class Z80DebugEngine : public IDebugEngine2, IDebugEngineLaunch2, ISimulatorEven
 	com_ptr<IDebugProgram2> _program;
 	com_ptr<IFelixLaunchOptions> _launchOptions;
 	com_ptr<IBreakpointManager> _bpman;
-	SIM_BP_COOKIE _editorFunctionBreakpoint = 0;
 	SIM_BP_COOKIE _entryPointBreakpoint = 0;
 	SIM_BP_COOKIE _exitPointBreakpoint = 0;
 	AdviseSinkToken _simulatorEventsToken;
+	AdviseSinkToken _tapPlaySinkToken;
 	com_ptr<IFelixSymbols> _romSymbols;
 
 public:
+	HRESULT InitInstance()
+	{
+		auto hr = _weakRefToThis.InitInstance(static_cast<IDebugEngine2*>(this)); RETURN_IF_FAILED(hr);
+		return S_OK;
+	}
+
 	#pragma region IUnknown
 	virtual HRESULT __stdcall QueryInterface(REFIID riid, void** ppvObject) override
 	{
@@ -37,8 +45,12 @@ public:
 			|| TryQI<IDebugEngineLaunch2>(this, riid, ppvObject)
 			|| TryQI<ISimulatorEventNotifySink>(this, riid, ppvObject)
 			|| TryQI<IFelixLaunchOptionsProvider>(this, riid, ppvObject)
+			|| TryQI<ITapPlayNotifySink>(this, riid, ppvObject)
 		)
 			return S_OK;
+
+		if (riid == __uuidof(IWeakRef))
+			return _weakRefToThis.QueryIWeakRef(ppvObject);
 
 		#ifdef _DEBUG
 		// Stuff which we'll never implement.
@@ -458,7 +470,7 @@ public:
 		hr = romModule->QueryInterface(&rom); RETURN_IF_FAILED(hr);
 		hr = rom->GetSymbols(&_romSymbols); RETURN_IF_FAILED(hr);
 
-		hr = AdviseSink<ISimulatorEventNotifySink>(simulator, static_cast<IDebugEngine2*>(this), &_simulatorEventsToken); RETURN_IF_FAILED(hr);
+		hr = AdviseSink<ISimulatorEventNotifySink>(simulator, _weakRefToThis, &_simulatorEventsToken); RETURN_IF_FAILED(hr);
 
 		wil::unique_bstr exePath;
 		hr = pProcess->GetName (GN_FILENAME, &exePath); RETURN_IF_FAILED(hr);
@@ -468,19 +480,21 @@ public:
 		auto fileExt = PathFindExtension(exePath.get());
 		if (!_wcsicmp(fileExt, L".bin") || !_wcsicmp(fileExt, L".tap"))
 		{
-			// Simulate some instructions until the EDITOR function is called.
-			// TODO: use timeout
-			UINT16 editorFunctionAddr;
-			hr = _romSymbols->GetAddressFromSymbol(L"EDITOR", &editorFunctionAddr); RETURN_IF_FAILED(hr);
-			WI_ASSERT(!_entryPointBreakpoint);
-			WI_ASSERT(!_editorFunctionBreakpoint);
-			hr = simulator->AddBreakpoint (BreakpointType::Code, false, editorFunctionAddr, &_editorFunctionBreakpoint); RETURN_IF_FAILED(hr);
-			hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
-			hr = simulator->SetSpeed(UINT32_MAX); RETURN_IF_FAILED(hr);
-			if (simulator->Running_HR() == S_FALSE)
+			hr = ResetAndSimulateToEDITOR(_romSymbols); RETURN_IF_FAILED(hr);
+
+			auto terminateOnError = wil::scope_exit([this] { TerminateInternal(); });
+
+			if (!_wcsicmp(fileExt, L".bin"))
 			{
-				hr = simulator->Resume(true); RETURN_IF_FAILED(hr);
+				hr = simulator->SetSpeed(100); RETURN_IF_FAILED(hr);
+				hr = LoadBinary(exePath.get()); RETURN_IF_FAILED_EXPECTED(hr);
 			}
+			else //if (!_wcsicmp(fileExt, L".tap"))
+			{
+				hr = LoadTap(exePath.get()); RETURN_IF_FAILED_EXPECTED(hr);
+			}
+
+			terminateOnError.release();
 		}
 		else if (!_wcsicmp(fileExt, L".sna"))
 		{
@@ -500,13 +514,7 @@ public:
 			hr = MakeModule (0x4000, 0xC000, exePath.get(), nullptr, true, this, _program, _callback, &ram_module); RETURN_IF_FAILED(hr);
 			hr = mcoll->AddModule(ram_module); RETURN_IF_FAILED(hr);
 
-			hr = SendLoadCompleteEvent (_callback, this, _program, thread); RETURN_IF_FAILED(hr);
-			hr = SendEntryPointEvent (_callback, this, _program, thread); RETURN_IF_FAILED(hr);
-
-			// Let's put a breakpoint at the exit point.
-			uint16_t addr;
-			hr = _romSymbols->GetAddressFromSymbol(L"MAIN-4", &addr); RETURN_IF_FAILED(hr);
-			hr = simulator->AddBreakpoint(BreakpointType::Code, false, addr, &_exitPointBreakpoint); RETURN_IF_FAILED(hr);
+			hr = ProcessEntryPointBreakpointHit(); RETURN_IF_FAILED(hr);
 		}
 		else
 		{
@@ -534,7 +542,7 @@ public:
 			DWORD addr;
 			hr = ParseNumber(epAddressStr.get(), &addr);
 			if (hr != S_OK || addr > 0xFFFF)
-				return SetFelixErrorInfo(hr, IDS_WRONG_FORMAT_ENTRY_POINT_ADDRESS_S, epAddressStr.get());
+				return SetFelixErrorInfo(S_FALSE, IDS_WRONG_FORMAT_ENTRY_POINT_ADDRESS_S, epAddressStr.get());
 			*pAddress = (UINT16)addr;
 			return S_OK;
 		}
@@ -547,7 +555,7 @@ public:
 			com_ptr<IDebugModule2> module;
 			hr = modules->Next(1, &module, nullptr); RETURN_IF_FAILED(hr);
 			if (hr == S_FALSE)
-				return SetFelixErrorInfo(hr, IDS_CANNOT_RESOLVE_ENTRY_POINT_ADDRESS_S_S, epAddressStr.get(), L"");
+				return SetFelixErrorInfo(S_FALSE, IDS_CANNOT_RESOLVE_ENTRY_POINT_ADDRESS_S_S, epAddressStr.get(), L"");
 
 			com_ptr<IZ80Module> fm;
 			hr = module->QueryInterface(&fm); RETURN_IF_FAILED(hr);
@@ -565,8 +573,6 @@ public:
 	HRESULT LoadBinary (const wchar_t* exePath)
 	{
 		HRESULT hr;
-
-		hr = simulator->SetSpeed(100); RETURN_IF_FAILED(hr);
 
 		DWORD baseAddress;
 		hr = _launchOptions->get_BaseAddress(&baseAddress); RETURN_IF_FAILED(hr);
@@ -588,7 +594,7 @@ public:
 		// If we can't resolve the entry point, we don't have an address for PRINT USR, so we can't launch.
 		UINT16 launchAddress;
 		hr = ResolveEntryPointAddress(_program, _launchOptions, &launchAddress);
-		if (FAILED(hr))
+		if (hr != S_OK)
 			return uiShell->ReportErrorInfo(hr), hr;
 
 		// PRINT USR <LaunchAddress>
@@ -609,20 +615,6 @@ public:
 	{
 		HRESULT hr;
 
-		RETURN_HR(E_NOTIMPL);
-		//static const auto outputToDebugPane = [](const wchar_t* message) -> HRESULT
-		//	{
-		//		com_ptr<IVsOutputWindow> ow;
-		//		auto hr = serviceProvider->QueryService (SID_SVsOutputWindow, &ow); RETURN_IF_FAILED(hr);
-		//		com_ptr<IVsOutputWindowPane> op;
-		//		hr = ow->GetPane(guidDebugOutputPane, &op); RETURN_IF_FAILED(hr);
-		//		op->OutputString(message);
-		//		op->OutputString(L"\r\n");
-		//		op->Activate();
-		//		return S_OK;
-		//	};
-
-		/*
 		// Make a module from the end of the ROM module to the end of the RAM, since we don't know how much we're going to load from tape.
 		com_ptr<IDebugModule2> exe_module;
 		hr = MakeModule (0x5CCB, 0x10000 - 0x5CCB, exePath, nullptr, true,
@@ -632,18 +624,11 @@ public:
 		hr = _program->QueryInterface(&moduleColl); RETURN_IF_FAILED(hr);
 		hr = moduleColl->AddModule(exe_module); RETURN_IF_FAILED(hr);
 
-		// Now that we created all modules, let's try to resolve the entry point address string.
-		// We purposefully ignore errors of the kind "entry point not found". It's too late to do
-		// something meaningful about it now. We should have checked that the entry point can be resolved
-		// in our implementation of IVsDebuggableProjectCfg::DebugLaunch, and asked the user whether to proceed
-		// if the entry point cannot be resolved. Here we'll just launch the binary; the user can Break Into Program at any time.
-		UINT16 ep;
-		hr = TryResolveEntryPointAddress(_program, _launchOptions, &ep); // Ignoring errors on purpose, see comment above.
-		if (hr == S_OK)
+		// If we have launch options, we were probably launched from Start Debugging.
+		// If we don't have launch options, we were probably launched from Simulator Window -> Debug File.
+		if (_launchOptions)
 		{
-			// Now put another breakpoint at the entry point of the Z80 program.
-			WI_ASSERT(!_entryPointBreakpoint);
-			hr = simulator->AddBreakpoint (BreakpointType::Code, false, ep, &_entryPointBreakpoint); RETURN_IF_FAILED(hr);
+			RETURN_HR(E_NOTIMPL);
 		}
 
 		// LOAD "".
@@ -652,49 +637,18 @@ public:
 		// Resume simulation so that the ZX Spectrum ROM parses our command and calls the Z80 program.
 		hr = simulator->Resume(true); RETURN_IF_FAILED(hr);
 
-		return S_OK;
-		*/
-	}
+		hr = AdviseSink<ITapPlayNotifySink>(simulator, _weakRefToThis, &_tapPlaySinkToken); LOG_IF_FAILED(hr);
 
-	HRESULT ProcessEditorFunctionBreakpointHit()
-	{
-		WI_ASSERT(_editorFunctionBreakpoint);
-		auto hr = simulator->RemoveBreakpoint(_editorFunctionBreakpoint); LOG_IF_FAILED(hr);
-		_editorFunctionBreakpoint = 0;
-
-		hr = simulator->SetSpeed(100); RETURN_IF_FAILED(hr);
-
-		auto terminateOnError = wil::scope_exit([this] { TerminateInternal(); });
-
-		com_ptr<IDebugProcess2> process;
-		hr = _program->GetProcess(&process); RETURN_IF_FAILED(hr);
-		wil::unique_bstr exePath;
-		hr = process->GetName (GN_FILENAME, &exePath); RETURN_IF_FAILED(hr);
-		if (!exePath)
-			RETURN_HR(E_NO_EXE_FILENAME);
-
-		auto extension = PathFindExtensionW(exePath.get());
-		if (!_wcsicmp(extension, L".bin"))
-		{
-			hr = LoadBinary(exePath.get()); RETURN_IF_FAILED_EXPECTED(hr);
-		}
-		else if (!_wcsicmp(extension, L".tap"))
-		{
-			hr = LoadTap(exePath.get()); RETURN_IF_FAILED_EXPECTED(hr);
-		}
-		else
-			RETURN_HR(E_NOTIMPL);
-
-		terminateOnError.release();
+		hr = simulator->BeginPlayTapFile(exePath, TRUE);
+		if (FAILED(hr))
+			return uiShell->ReportErrorInfo(hr), hr;
 
 		return S_OK;
 	}
 
 	HRESULT ProcessEntryPointBreakpointHit()
 	{
-		WI_ASSERT(_entryPointBreakpoint);
-		auto hr = simulator->RemoveBreakpoint(_entryPointBreakpoint); LOG_IF_FAILED(hr);
-		_entryPointBreakpoint = 0;
+		HRESULT hr;
 
 		com_ptr<IDebugThread2> thread;
 		{
@@ -711,9 +665,9 @@ public:
 		hr = SendEntryPointEvent (_callback.get(), this, _program.get(), thread.get()); LOG_IF_FAILED(hr);
 
 		// Let's put a breakpoint at the exit point.
-		uint16_t stackBC;
-		hr = _romSymbols->GetAddressFromSymbol(L"STACK-BC", &stackBC); RETURN_IF_FAILED(hr);
-		hr = simulator->AddBreakpoint(BreakpointType::Code, false, stackBC, &_exitPointBreakpoint); RETURN_IF_FAILED(hr);
+		uint16_t addr;
+		hr = _romSymbols->GetAddressFromSymbol(L"MAIN-4", &addr); RETURN_IF_FAILED(hr);
+		hr = simulator->AddBreakpoint(BreakpointType::Code, false, addr, &_exitPointBreakpoint); RETURN_IF_FAILED(hr);
 
 		// The simulation paused execution before calling us, and we sent the entry point even which is a stopping event.
 		// If the user started debugging with Start Debugging, VS will call our implementation of IDebugProgram2::Continue.
@@ -734,10 +688,6 @@ public:
 
 	HRESULT ProcessExitPointBreakpointHit()
 	{
-		WI_ASSERT(_exitPointBreakpoint);
-		auto hr = simulator->RemoveBreakpoint(_exitPointBreakpoint); LOG_IF_FAILED(hr);
-		_exitPointBreakpoint = 0;
-
 		//z80_register_set regs;
 		//hr = simulator->GetRegisters(&regs, (uint32_t)sizeof(regs));
 		//uint16_t bc = SUCCEEDED(hr) ? regs.main.bc : 0xFFFF;
@@ -767,12 +717,9 @@ public:
 
 	virtual HRESULT __stdcall TerminateProcess(IDebugProcess2* pProcess) override
 	{
-		if (_editorFunctionBreakpoint)
-		{
-			auto hr = simulator->RemoveBreakpoint(_editorFunctionBreakpoint); LOG_IF_FAILED(hr);
-			_editorFunctionBreakpoint = 0;
-		}
-		
+		_tapPlaySinkToken.reset();
+		_simulatorEventsToken.reset();
+
 		if (_entryPointBreakpoint)
 		{
 			auto hr = simulator->RemoveBreakpoint(_entryPointBreakpoint); LOG_IF_FAILED(hr);
@@ -804,6 +751,8 @@ public:
 	#pragma region ISimulatorEventNotifySink
 	virtual HRESULT STDMETHODCALLTYPE NotifySimulatorEvent (ISimulatorEvent* event, REFIID riidEvent) override
 	{
+		HRESULT hr;
+
 		if (riidEvent == __uuidof(ISimulatorResumeEvent))
 		{
 			return S_OK;
@@ -819,12 +768,18 @@ public:
 				auto hr = bpe->GetBreakpointAt(i, &bp); LOG_IF_FAILED(hr);
 				if (SUCCEEDED(hr))
 				{
-					if (bp == _editorFunctionBreakpoint)
-						ProcessEditorFunctionBreakpointHit();
-					else if (bp == _entryPointBreakpoint)
+					if (bp == _entryPointBreakpoint)
+					{
+						hr = simulator->RemoveBreakpoint(_entryPointBreakpoint); LOG_IF_FAILED(hr);
+						_entryPointBreakpoint = 0;
 						ProcessEntryPointBreakpointHit();
+					}
 					else if (bp == _exitPointBreakpoint)
+					{
+						hr = simulator->RemoveBreakpoint(_exitPointBreakpoint); LOG_IF_FAILED(hr);
+						_exitPointBreakpoint = 0;
 						ProcessExitPointBreakpointHit();
+					}
 					else
 					{ } // some other breakpoint, not interesting for us
 				}
@@ -843,11 +798,32 @@ public:
 		return _launchOptions.copy_to(ppOptions);
 	}
 	#pragma endregion
+
+	#pragma region ITapPlayNotifySink
+	virtual HRESULT STDMETHODCALLTYPE NotifyTapPlayStarting() override
+	{
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE NotifyTapPlayComplete() override
+	{
+		HRESULT hr;
+
+		WI_ASSERT(_tapPlaySinkToken);
+		_tapPlaySinkToken.reset();
+
+		hr = simulator->SetSpeed(100); LOG_IF_FAILED(hr);
+		hr = simulator->Break(); LOG_IF_FAILED(hr);
+		hr = ProcessEntryPointBreakpointHit(); LOG_IF_FAILED(hr);
+		return S_OK;
+	}
+	#pragma endregion
 };
 
 HRESULT MakeDebugEngine (IDebugEngine2** to)
 {
 	wil::com_ptr_nothrow<Z80DebugEngine> p = new (std::nothrow) Z80DebugEngine(); RETURN_IF_NULL_ALLOC(p);
+	auto hr = p->InitInstance(); RETURN_IF_FAILED(hr);
 	*to = p.detach();
 	return S_OK;
 }

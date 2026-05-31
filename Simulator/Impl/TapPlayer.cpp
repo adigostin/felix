@@ -192,6 +192,11 @@ public:
 
 		return S_FALSE;
 	}
+
+	virtual HRESULT STDMETHODCALLTYPE IsPlaying() override
+	{
+		return _pulse_lengths.size() ? S_OK : S_FALSE;
+	}
 	#pragma endregion
 
 	static uint8_t ProcessIoReadRequest (IDevice* device, uint16_t address)
