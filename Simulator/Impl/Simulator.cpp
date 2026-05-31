@@ -191,7 +191,6 @@ public:
 		RETURN_HR_IF(E_POINTER, !ppvObject);
 
 		if (   TryQI<IUnknown>(static_cast<ISimulator*>(this), riid, ppvObject)
-			|| TryQI<IDispatch>(this, riid, ppvObject)
 			|| TryQI<ISimulator_>(this, riid, ppvObject)
 			|| TryQI<ISimulator>(this, riid, ppvObject)
 			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
@@ -205,8 +204,6 @@ public:
 
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
-
-	IMPLEMENT_IDISPATCH(ISimulator_);
 
 	static LRESULT CALLBACK window_proc (HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
@@ -1400,6 +1397,8 @@ public:
 			return S_OK;
 		}); RETURN_IF_FAILED(hr);
 
+		DrainWorkQueue();
+
 		return S_OK;
 	}
 
@@ -1710,13 +1709,17 @@ public:
 	#pragma region ITapPlayerEventHandler
 	virtual void OnTapPlayStarting() override
 	{
-		PostWorkToMainThread([this] { _tapPlayHandlers->Notify([](ITapPlayNotifySink* sink) { return sink->NotifyTapPlayStarting(); }); });
+		PostWorkToMainThread([this]
+		{
+			_tapPlayHandlers->Notify([](ITapPlayNotifySink* sink)
+			{
+				return sink->NotifyTapPlayStarting();
+			});
+		});
 	}
 
 	virtual void OnTapPlayComplete() override
 	{
-		WI_ASSERT(std::holds_alternative<ri_running>(_running_info) || std::holds_alternative<ri_max_speed>(_running_info));
-
 		if (_breakOnTapComplete)
 		{
 			_running_info = ri_paused{ };

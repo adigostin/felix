@@ -43,12 +43,6 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{CD782861-2511-4B52-BE2C-0EC6F9D4F0D6}")
 {
 };
 
-struct DECLSPEC_NOVTABLE DECLSPEC_UUID("69B65530-004E-4EA3-A321-2A1E8852E83D") ITapPlayNotifySink : IUnknown
-{
-	virtual HRESULT STDMETHODCALLTYPE NotifyTapPlayStarting() = 0;
-	virtual HRESULT STDMETHODCALLTYPE NotifyTapPlayComplete() = 0;
-};
-
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{56344845-3DDA-4BC0-9645-7EBA3FE94A93}") ISimulator : ISimulator_
 {
 	virtual HRESULT STDMETHODCALLTYPE ReadMemoryBus  (uint16_t address, uint16_t size, void* to) = 0;
@@ -75,10 +69,6 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{56344845-3DDA-4BC0-9645-7EBA3FE94A93}")
 	virtual HRESULT STDMETHODCALLTYPE SetShowCRTSnapshot(BOOL val) = 0;
 	virtual HRESULT STDMETHODCALLTYPE GetSpeed (uint32_t* percent) = 0;
 	virtual HRESULT STDMETHODCALLTYPE SetSpeed (uint32_t percent) = 0; // Only 100 and UINT32_MAX supported for now
-	virtual HRESULT STDMETHODCALLTYPE BeginPlayTapFile (LPCWSTR pFileName, BOOL breakOnComplete) = 0;
-	
-	// Can be called even if there's no .tap playing, in which case it has no effect and returns S_FALSE.
-	virtual HRESULT STDMETHODCALLTYPE CancelPlayTapFile() = 0;
 };
 
 HRESULT MakeSimulator (LPCWSTR romFilename, ISimulator** to);

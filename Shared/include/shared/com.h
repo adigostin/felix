@@ -173,6 +173,10 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE Advise (IUnknown* pUnkSink, DWORD* pdwCookie) override
 	{
+		// Early test that the sink actually implements ISink.
+		com_ptr<ISink> unused;
+		auto hr = pUnkSink->QueryInterface(IID_PPV_ARGS(&unused)); RETURN_IF_FAILED(hr);
+
 		bool pushed = _cps.try_push_back({ pUnkSink, _nextCookie }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 		pUnkSink->AddRef();
 		*pdwCookie = _nextCookie++;
@@ -368,10 +372,7 @@ public:
 template<typename ISink>
 inline HRESULT AdviseSink (IUnknown* source, IUnknown* sink, AdviseSinkToken* pToken)
 {
-	// Early test that the sink actually implements ISink.
-	com_ptr<ISink> unused;
-	auto hr = sink->QueryInterface(IID_PPV_ARGS(&unused)); RETURN_IF_FAILED(hr);
-
+	HRESULT hr;
 	com_ptr<IConnectionPointContainer> cpc;
 	hr = source->QueryInterface(&cpc); RETURN_IF_FAILED_EXPECTED(hr);
 	com_ptr<IConnectionPoint> cp;

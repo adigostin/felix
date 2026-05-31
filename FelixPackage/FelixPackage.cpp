@@ -10,11 +10,6 @@
 #define FORCE_EXPLICIT_DTE_NAMESPACE
 #include <dte.h>
 
-MIDL_INTERFACE("F761DCEE-D880-49B3-80CF-57D310DBF49B")
-IMockServiceProvider : IUnknown
-{
-};
-
 const wchar_t Z80AsmLanguageName[]  = L"Z80Asm";
 const wchar_t SingleDebugPortName[] = L"Single Z80 Port";
 const wchar_t SettingsCollection[] = L"FelixSettings";
@@ -56,8 +51,10 @@ class FelixPackageImpl : public IVsPackage, IVsSolutionEvents, IOleCommandTarget
 	wil::com_ptr_nothrow<IVsWindowFrame> _simulatorWindowFrame;
 	wil::ThreadFailureCache _threadFailureCache;
 	sentry_options_t *_sentryOptions = nullptr;
-	com_ptr<ITypeLib> _typeLib;
-	bool _comLibraryRegistered = false;
+	com_ptr<ITypeLib> _felixTypeLib;
+	com_ptr<ITypeLib> _simulatorTypeLib;
+	bool _felixTypeLibRegistered = false;
+	bool _simulatorTypeLibRegistered = false;
 	wil::unique_process_heap_string packageDir;
 
 public:
@@ -457,8 +454,7 @@ public:
 		hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_POSTINCLUDE, &postincludeFilename); RETURN_IF_FAILED(hr);
 		hr = shell->LoadPackageString(CLSID_FelixPackage, IDS_NEW_FOLDER_NAME, &newFolderNameFormat); RETURN_IF_FAILED(hr);
 
-		if (!serviceProvider.try_query<IMockServiceProvider>())
-			InitSentry();
+		InitSentry();
 
 		wil::com_ptr_nothrow<IVsSolution> solutionService;
 		hr = pSP->QueryService (SID_SVsSolution, IID_PPV_ARGS(&solutionService)); RETURN_IF_FAILED(hr);
@@ -484,19 +480,18 @@ public:
 			hr = srpProffer->ProfferService (Z80AsmLanguageGuid, this, &_profferLanguageServiceCookie); RETURN_IF_FAILED(hr);
 		}
 
-		if (!serviceProvider.try_query<IMockServiceProvider>())
-		{
-			hr = CreateZxSpectrumSimulator(); RETURN_IF_FAILED(hr);
-		}
+		hr = CreateZxSpectrumSimulator(); RETURN_IF_FAILED(hr);
 
-		if (!serviceProvider.try_query<IMockServiceProvider>())
-		{
-			wil::unique_process_heap_string fn;
-			hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, fn); RETURN_IF_FAILED(hr);
-			hr = LoadTypeLibEx(fn.get(), REGKIND_NONE, &_typeLib); RETURN_IF_FAILED(hr);
-			hr = RegisterTypeLibForUser(_typeLib, fn.get(), nullptr); RETURN_IF_FAILED(hr);
-			_comLibraryRegistered = true;
-		}
+		wil::unique_process_heap_string fn;
+		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, fn); RETURN_IF_FAILED(hr);
+		hr = wil::str_concat_nothrow(fn, L"\\1"); RETURN_IF_FAILED(hr);
+		hr = LoadTypeLibEx(fn.get(), REGKIND_NONE, &_felixTypeLib); RETURN_IF_FAILED(hr);
+		hr = RegisterTypeLibForUser(_felixTypeLib, fn.get(), nullptr); RETURN_IF_FAILED(hr);
+		_felixTypeLibRegistered = true;
+		fn.get()[wcslen(fn.get()) - 1] = '2';
+		hr = LoadTypeLibEx(fn.get(), REGKIND_NONE, &_simulatorTypeLib); RETURN_IF_FAILED(hr);
+		hr = RegisterTypeLibForUser(_simulatorTypeLib, fn.get(), nullptr); RETURN_IF_FAILED(hr);
+		_simulatorTypeLibRegistered = true;
 
 		return S_OK;
 	}
@@ -511,16 +506,21 @@ public:
 	{
 		HRESULT hr;
 
-		if (_comLibraryRegistered)
-		{
-			TLIBATTR* attr = nullptr;
-			if (SUCCEEDED(_typeLib->GetLibAttr(&attr)))
+		auto unregisterTL = [](bool& registered, com_ptr<ITypeLib> typeLib)
 			{
-				auto rel = wil::scope_exit([&]() { _typeLib->ReleaseTLibAttr(attr); });
-				if (SUCCEEDED(UnRegisterTypeLibForUser (attr->guid, attr->wMajorVerNum, attr->wMinorVerNum, attr->lcid, attr->syskind)))
-					_comLibraryRegistered = false;
-			}
-		}
+				if (registered)
+				{
+					TLIBATTR* attr = nullptr;
+					if (SUCCEEDED(typeLib->GetLibAttr(&attr)))
+					{
+						auto rel = wil::scope_exit([&]() { typeLib->ReleaseTLibAttr(attr); });
+						if (SUCCEEDED(UnRegisterTypeLibForUser (attr->guid, attr->wMajorVerNum, attr->wMinorVerNum, attr->lcid, attr->syskind)))
+							registered = false;
+					}
+				}
+			};
+		unregisterTL(_simulatorTypeLibRegistered, _simulatorTypeLib);
+		unregisterTL(_felixTypeLibRegistered, _felixTypeLib);
 
 		ReleaseZxSpectrumSimulator();
 

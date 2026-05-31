@@ -6,11 +6,22 @@ library SimulatorLib
 {
 	//importlib("stdole2.tlb");
 
-	[object, uuid(976F76E5-8EB1-422B-8A86-16E7AFCB1F9B), dual, nonextensible]
-	interface ISimulator_ : IDispatch
+	[object, uuid(69B65530-004E-4EA3-A321-2A1E8852E83D), oleautomation, nonextensible]
+	interface ITapPlayNotifySink : IUnknown
+	{
+		HRESULT NotifyTapPlayStarting();
+		HRESULT NotifyTapPlayComplete();
+	};
+
+	[object, uuid(976F76E5-8EB1-422B-8A86-16E7AFCB1F9B), oleautomation, nonextensible]
+	interface ISimulator_ : IUnknown
 	{
 		HRESULT Break();
 		HRESULT ReadMemoryBus8 (UINT16 address, UINT8* pData);
-	}
 
+		HRESULT BeginPlayTapFile (LPCWSTR pFileName, BOOL breakOnComplete);
+
+		// Can be called even if there's no .tap playing, in which case it has no effect and returns S_FALSE.
+		HRESULT CancelPlayTapFile();
+	}
 }

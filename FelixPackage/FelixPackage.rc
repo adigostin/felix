@@ -50,6 +50,7 @@ END
 //
 
 1            TYPELIB                 "FelixPackage.tlb"
+2            TYPELIB                 "Simulator.tlb"
 
 #endif    // Englezã (Statele Unite) resources
 /////////////////////////////////////////////////////////////////////////////
