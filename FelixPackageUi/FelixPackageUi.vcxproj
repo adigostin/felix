@@ -115,7 +115,7 @@
   <ItemGroup>
     <CustomBuild Include="PackageCommands.vsct">
       <FileType>Document</FileType>
-      <Command>"$(VsctPath)\vsct.exe" -D__CTC__ "%(Identity)" "$(IntDir)%(Filename).cto" -I"$(VSIntegrationInclude)"</Command>
+      <Command>"$(VsctPath)\vsct.exe" -D__CTC__ -D_CTC_GUIDS_ "%(Identity)" "$(IntDir)%(Filename).cto" -I"$(VSIntegrationInclude)"</Command>
       <Message>Compiling %(Identity)...</Message>
       <Outputs>$(IntDir)PackageCommands.cto</Outputs>
     </CustomBuild>

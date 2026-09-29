@@ -743,6 +743,8 @@ public:
 			{
 				if (prgCmds[i].cmdID == cmdidSimulator)
 					prgCmds[i].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
+				else if (prgCmds[i].cmdID == cmdidResetSimulator)
+					prgCmds[i].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
 				else
 					prgCmds[i].cmdf = 0;
 			}
@@ -755,20 +757,39 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE Exec (const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdexecopt, VARIANT *pvaIn, VARIANT *pvaOut) override
 	{
+		HRESULT hr;
+
 		if (*pguidCmdGroup == CLSID_FelixPackageCmdSet)
 		{
 			if (nCmdID == cmdidSimulator)
 			{
 				if (!_simulatorWindowFrame)
 				{
-					auto hr = CreateSimulatorToolWindow(&_simulatorWindowFrame); RETURN_IF_FAILED(hr);
+					hr = CreateSimulatorToolWindow(&_simulatorWindowFrame); RETURN_IF_FAILED(hr);
 				}
 
 				if (_simulatorWindowFrame)
 				{
-					auto hr = _simulatorWindowFrame->Show(); RETURN_IF_FAILED(hr);
+					hr = _simulatorWindowFrame->Show(); RETURN_IF_FAILED(hr);
 				}
 
+				return S_OK;
+			}
+
+			if (nCmdID == cmdidResetSimulator)
+			{
+				if (!_simulatorWindowFrame)
+				{
+					hr = CreateSimulatorToolWindow(&_simulatorWindowFrame); RETURN_IF_FAILED(hr);
+				}
+
+				hr = _simulatorWindowFrame->Show(); RETURN_IF_FAILED(hr);
+
+				hr = ConfirmStopDebugging(); RETURN_IF_FAILED(hr);
+				if (hr == S_FALSE)
+					return S_OK;
+
+				hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
 				return S_OK;
 			}
 

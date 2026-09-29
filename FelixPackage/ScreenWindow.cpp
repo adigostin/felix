@@ -10,7 +10,7 @@
 
 using unique_cotaskmem_bitmapinfo = wil::unique_any<BITMAPINFO*, decltype(&::CoTaskMemFree), ::CoTaskMemFree>;
 
-class ScreenWindowImpl : public IVsWindowPane, IVsDpiAware, IVsDebuggerEvents, IVsWindowFrameNotify4
+class ScreenWindowImpl : public IVsWindowPane, IVsDpiAware, IVsWindowFrameNotify4
 	, IVsWindowFrameNotify3, IOleCommandTarget, ISimulatorEventNotifySink, IScreenCompleteEventHandler
 	, IVsBroadcastMessageEvents, ITapPlayNotifySink, ISimulatorWindowAutomationObject
 {
@@ -21,10 +21,8 @@ class ScreenWindowImpl : public IVsWindowPane, IVsDpiAware, IVsDebuggerEvents, I
 	HWND _hwnd = nullptr;
 	VS_RGBA _windowColor;
 	VSCOOKIE _broadcastCookie = VSCOOKIE_NIL;
-	wil::unique_event_nothrow _design_mode_event;
 	com_ptr<IServiceProvider> _sp;
 	com_ptr<IVsSettingsManager> _sm;
-	DWORD _debugger_events_cookie = 0;
 	bool _advisingScreenCompleteEvents = false;
 	AdviseSinkToken _simulatorEventsToken;
 	AdviseSinkToken _tapPlayEventsToken;
@@ -80,7 +78,6 @@ public:
 		if (   TryQI<IUnknown>(static_cast<IVsWindowPane*>(this), riid, ppvObject)
 			|| TryQI<IVsWindowPane>(this, riid, ppvObject)
 			|| TryQI<IVsDpiAware>(this, riid, ppvObject)
-			|| TryQI<IVsDebuggerEvents>(this, riid, ppvObject)
 			|| TryQI<IVsWindowFrameNotify4>(this, riid, ppvObject)
 			|| TryQI<IVsWindowFrameNotify3>(this, riid, ppvObject)
 			|| TryQI<IOleCommandTarget>(this, riid, ppvObject)
@@ -465,11 +462,6 @@ public:
 
 		hr = AdviseSink<ISimulatorEventNotifySink>(simulator, static_cast<IVsWindowPane*>(this), &_simulatorEventsToken); RETURN_IF_FAILED(hr);
 
-		com_ptr<IVsDebugger> debugger;
-		hr = _sp->QueryService(SID_SVsShellDebugger, &debugger); RETURN_IF_FAILED(hr);
-		hr = debugger->AdviseDebuggerEvents(this, &_debugger_events_cookie); RETURN_IF_FAILED(hr);
-		auto unadvise_if_failed = wil::scope_exit([debugger, this]
-			{ debugger->UnadviseDebuggerEvents(_debugger_events_cookie); _debugger_events_cookie = 0; });
 /*
 		DBGMODE mode;
 		hr = debugger->GetMode(&mode); RETURN_IF_FAILED(hr);
@@ -497,7 +489,6 @@ public:
 
 
 		unadviseBroadcastIfFailed.release();
-		unadvise_if_failed.release();
 		destroyHwndIfFailed.release();
 		*hwnd = _hwnd;
 		return S_OK;
@@ -517,14 +508,6 @@ public:
 			hr = shell->UnadviseBroadcastMessages (_broadcastCookie);
 			WI_ASSERT(SUCCEEDED(hr));
 			_broadcastCookie = VSCOOKIE_NIL;
-		}
-
-		com_ptr<IVsDebugger> debugger;
-		hr = _sp->QueryService(SID_SVsShellDebugger, &debugger); LOG_IF_FAILED(hr);
-		if (SUCCEEDED(hr))
-		{
-			hr = debugger->UnadviseDebuggerEvents(_debugger_events_cookie); LOG_IF_FAILED(hr);
-			_debugger_events_cookie = 0;
 		}
 
 		_simulatorEventsToken.reset();
@@ -614,77 +597,6 @@ public:
 		return S_OK;
 	}
 	#pragma endregion
-
-	BOOL AtlWaitWithMessageLoop(_In_ HANDLE hEvent)
-	{
-		DWORD dwRet;
-		MSG msg;
-
-		while(1)
-		{
-			dwRet = MsgWaitForMultipleObjectsEx(1, &hEvent, INFINITE, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
-
-			if (dwRet == WAIT_OBJECT_0)
-				return TRUE;    // The event was signaled
-
-			if (dwRet != WAIT_OBJECT_0 + 1)
-				break;          // Something else happened
-
-			// There is one or more window message available. Dispatch them
-			while(PeekMessage(&msg,0,0,0,PM_NOREMOVE))
-			{
-				// check for unicode window so we call the appropriate functions
-				BOOL bUnicode = ::IsWindowUnicode(msg.hwnd);
-				BOOL bRet;
-
-				if (bUnicode)
-					bRet = ::GetMessageW(&msg, NULL, 0, 0);
-				else
-					bRet = ::GetMessageA(&msg, NULL, 0, 0);
-
-				if (bRet > 0)
-				{
-					::TranslateMessage(&msg);
-
-					if (bUnicode)
-						::DispatchMessageW(&msg);
-					else
-						::DispatchMessageA(&msg);
-				}
-
-				if (WaitForSingleObject(hEvent, 0) == WAIT_OBJECT_0)
-					return TRUE; // Event is now signaled.
-			}
-		}
-		return FALSE;
-	}
-
-	HRESULT ConfirmStopDebugging()
-	{
-		com_ptr<IVsDebugger> debugger;
-		auto hr = _sp->QueryService(SID_SVsShellDebugger, &debugger); RETURN_IF_FAILED(hr);
-
-		com_ptr<IVsDebugger2> debugger2;
-		hr = debugger->QueryInterface(debugger2.addressof()); RETURN_IF_FAILED(hr);
-
-		DBGMODE mode;
-		hr = debugger->GetMode(&mode); RETURN_IF_FAILED(hr);
-		if (mode == DBGMODE_Design)
-			return S_OK;
-
-		hr = _design_mode_event.create(); RETURN_IF_FAILED(hr);
-		auto destroy_event = wil::scope_exit([this] { _design_mode_event.reset(); });
-
-		hr = debugger2->ConfirmStopDebugging(nullptr); RETURN_IF_FAILED(hr);
-		if (hr == S_FALSE)
-			return S_FALSE;
-
-		// It's not a good thing to hijack the message loop, I know.
-		// I'll look into this some other time.
-		BOOL bres = AtlWaitWithMessageLoop(_design_mode_event.get()); WI_ASSERT(bres);
-		
-		return S_OK;
-	}
 
 	// TODO: split this function so that "maxSpeed" only exists when opening a .tap.
 	HRESULT OpenFileInternal (const wchar_t* filename, BOOL maxSpeed)
@@ -985,19 +897,6 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE get_Mode(VSDPIMODE* dwMode) override
 	{
 		*dwMode = VSDM_PerMonitor;
-		return S_OK;
-	}
-	#pragma endregion
-
-	#pragma region IVsDebuggerEvents
-	virtual HRESULT STDMETHODCALLTYPE OnModeChange (DBGMODE dbgmodeNew) override
-	{
-		if (dbgmodeNew == DBGMODE_Design)
-		{
-			if (_design_mode_event)
-				::SetEvent(_design_mode_event.get());
-		}
-
 		return S_OK;
 	}
 	#pragma endregion

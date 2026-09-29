@@ -37,5 +37,8 @@
 #define cmdidPropertyPageReset 0x10F
 #define cmdidSimulationMaxSpeed 0x110
 #define cmdidTapPlayStop 0x111
+#define cmdidSimulatorGroup 0x112
+#define cmdidSimulatorMenu 0x113
+#define cmdidSimulatorSubGroup 0x114
 
 #endif // __COMMANDIDS_H_
