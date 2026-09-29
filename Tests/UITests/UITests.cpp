@@ -130,7 +130,7 @@ namespace UITests
 				if (data->process_id != process_id || GetWindow(handle, GW_OWNER) || !IsWindowVisible(handle))
 					return TRUE;
 				data->window_handle = handle;
-				return FALSE;   
+				return FALSE;
 			};
 		EnumWindows(callback, (LPARAM)&data);
 		return data.window_handle;
@@ -442,11 +442,8 @@ namespace UITests
 
 		automation.reset();
 
-		// To easy debugging, delete only the contents of the test directory, not the test directory itself.
-		auto buffer = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s*.*%c", tempPath, L'\0');
-		SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = buffer.get(), .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
-		int ires = SHFileOperation(&file_op);
-		Microsoft::VisualStudio::CppUnitTestFramework::Assert::AreEqual(0, ires);
+		// To ease debugging, delete only the contents of the test directory, not the test directory itself.
+		ClearDirectoryContents(tempPath);
 
 		wil::SetResultLoggingCallback(nullptr);
 	}
@@ -799,5 +796,89 @@ namespace UITests
 	wil::com_ptr_failfast<ITestPropertyNotifySink> MakeTestPropertyNotifySink()
 	{
 		return new (std::nothrow) TestPropertyNotifySink();
+	}
+
+	void RemoveDirectoryTree(PCWSTR dir)
+	{
+		auto buffer = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s%c", dir, L'\0');
+		SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = buffer.get(), .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
+		int ires = SHFileOperation(&file_op);
+		Assert::AreEqual(0, ires);
+		Assert::IsFalse(file_op.fAnyOperationsAborted);
+	}
+
+	void TryRemoveDirectoryTree(PCWSTR directory)
+	{
+		auto buffer = str_printf(L"%s%c", directory, L'\0');
+		SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = buffer.get(), .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
+		SHFileOperation(&file_op);
+	}
+
+	void ClearDirectoryContents(PCWSTR directory)
+	{
+		auto buffer = str_printf(L"%s\\*.*%c", directory, L'\0');
+		SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = buffer.get(), .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
+		int ires = SHFileOperation(&file_op);
+		Assert::AreEqual(0, ires);
+		Assert::IsFalse(file_op.fAnyOperationsAborted);
+	}
+
+	void WaitDebugMode (VxDTE::Debugger* debugger, VxDTE::dbgDebugMode expectedMode, DWORD timeoutMillis)
+	{
+		HRESULT lastHr = S_OK;
+		VxDTE::dbgDebugMode currentMode = (VxDTE::dbgDebugMode)0;
+		bool reachedMode = WaitWithMessageLoop([&]
+			{
+				lastHr = debugger->get_CurrentMode(&currentMode);
+				Assert::IsTrue(SUCCEEDED(lastHr) || lastHr == RPC_E_CALL_REJECTED,
+					str_printf(L"Reading the debugger mode failed: 0x%08x", lastHr).get());
+				return SUCCEEDED(lastHr) && currentMode == expectedMode;
+			}, timeoutMillis);
+		Assert::IsTrue(reachedMode,
+			str_printf(L"Timed out waiting for debugger mode %u (last HRESULT 0x%08x, mode %u)",
+				(unsigned)expectedMode, lastHr, (unsigned)currentMode).get());
+	}
+
+	TD::TD(PCWSTR testClassPath, PCWSTR testName, PCWSTR projectTemplatePath)
+	{
+		PCWSTR projectFileName = L"proj.flx";
+
+		HRESULT hr;
+		size_t rootLength = wcslen(testClassPath);
+		const wchar_t* separator = rootLength && (testClassPath[rootLength - 1] == L'\\' || testClassPath[rootLength - 1] == L'/') ? L"" : L"\\";
+		testDir = str_concat(testClassPath, separator, testName);
+		Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
+
+		dte = GetDefaultVSInstance();
+		wil::com_ptr_failfast<IUnknown> solution;
+		hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
+		Assert::IsTrue(SUCCEEDED(hr));
+		sln = solution.query<VxDTE::_Solution>();
+		hr = sln->Create(wil::make_bstr_failfast(testDir.get()).get(), wil::make_bstr_failfast(L"test").get());
+		Assert::IsTrue(SUCCEEDED(hr));
+
+		projDir = str_concat(testDir, L"\\proj");
+		Assert::IsTrue(CreateDirectory(projDir.get(), nullptr));
+
+		hr = sln->AddFromTemplate (
+			wil::make_bstr_failfast(projectTemplatePath).get(),
+			wil::make_bstr_failfast(projDir.get()).get(),
+			wil::make_bstr_failfast(projectFileName).get(), VARIANT_FALSE, &proj);
+		Assert::IsTrue(SUCCEEDED(hr));
+
+		hr = sln->SaveAs(wil::make_bstr_failfast(L"test").get());
+		Assert::IsTrue(SUCCEEDED(hr));
+		projFilePath = str_concat(projDir, L"\\", projectFileName);
+
+		hr = sln->get_SolutionBuild(&slnBuild);
+		Assert::IsTrue(SUCCEEDED(hr));
+	}
+
+	TD::~TD()
+	{
+		if (sln)
+			sln->Close();
+		if (testDir)
+			TryRemoveDirectoryTree(testDir.get());
 	}
 }

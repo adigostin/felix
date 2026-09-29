@@ -21,7 +21,7 @@ namespace UITests
 
 		TEST_CLASS_CLEANUP(ProjectTestsCleanup)
 		{
-			RemoveDirectoryTree(classPath);
+			RemoveDirectoryTree(classPath.get());
 		}
 
 		struct TestData
@@ -60,7 +60,7 @@ namespace UITests
 			~TestData()
 			{
 				sln->Close();
-				RemoveDirectoryTree(testDir);
+				RemoveDirectoryTree(testDir.get());
 			}
 		};
 
@@ -409,14 +409,14 @@ namespace UITests
 			// And then file4.
 			auto file4ItemId = GetProperty_VSITEMID(td.hier, file3ItemId, VSHPROPID_NextSibling);
 			Assert::AreEqual(L"file4.asm", GetProperty_String(td.hier, file4ItemId, VSHPROPID_SaveName).get());
-		} 
+		}
 
 		TEST_METHOD(GetItemsPutItems_WithFolders)
 		{
 			HRESULT hr;
 			auto testDir = str_concat(classPath, L"GetItemsPutItems_WithFolders\\");
 			Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
-			auto cleanup = wil::scope_exit([&testDir] { RemoveDirectoryTree(testDir); });
+			auto cleanup = wil::scope_exit([&testDir] { RemoveDirectoryTree(testDir.get()); });
 
 			wil::com_ptr_failfast<IUnknown> solution;
 			hr = GetDefaultVSInstance()->get_Solution((VxDTE::Solution**)solution.addressof());

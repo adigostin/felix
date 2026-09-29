@@ -11,13 +11,6 @@ namespace UITests
 		CreateSolutionAndProject (VxDTE::DTE2* dte, PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName);
 	extern void BuildSolution (VxDTE::_Solution* sln, long* buildFailCount);
 
-	static void TryRemoveDirectoryTree(PCWSTR directory)
-	{
-		auto buffer = str_printf(L"%s%c", directory, L'\0');
-		SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = buffer.get(), .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
-		SHFileOperation(&file_op);
-	}
-
 	TEST_CLASS(MiscTests)
 	{
 		static inline wil::unique_process_heap_string classPath;
@@ -35,11 +28,7 @@ namespace UITests
 			if (PathFileExists(classPath.get()))
 			{
 				// Clear leftovers before running the class; Visual Studio can leave per-solution .vs metadata behind.
-				auto buffer = str_printf(L"%s\\*.*%c", classPath.get(), L'\0');
-				SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = buffer.get(), .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
-				int ires = SHFileOperation(&file_op);
-				Assert::AreEqual(0, ires);
-				Assert::IsFalse(file_op.fAnyOperationsAborted);
+				ClearDirectoryContents(classPath.get());
 			}
 			else
 				Assert::IsTrue(CreateDirectory(classPath.get(), nullptr));
@@ -251,7 +240,7 @@ namespace UITests
 			// Make a change in the active configuration and verify that the Pre/PostInclude files are generated.
 			auto genFilesPath = str_concat(projPath, L"\\GeneratedFiles");
 			Assert::IsTrue(PathFileExists(genFilesPath.get()));
-			RemoveDirectoryTree(genFilesPath);
+			RemoveDirectoryTree(genFilesPath.get());
 
 			com_ptr<IProjectConfigProperties> props;
 			hr = cfgs[0]->QueryInterface(IID_PPV_ARGS(&props));
@@ -265,7 +254,7 @@ namespace UITests
 			Assert::IsTrue(PathFileExists(genFilesPath.get()));
 
 			// Now make a change in the inactive configuration.
-			RemoveDirectoryTree(genFilesPath);
+			RemoveDirectoryTree(genFilesPath.get());
 
 			hr = cfgs[1]->QueryInterface(IID_PPV_ARGS(&props));
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -475,7 +464,7 @@ namespace UITests
 			HRESULT hr;
 			auto testPath = wil::str_concat_failfast<wil::unique_hglobal_string>(tempPath, L"GenPrePostInclude_LoadOldXml");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
-			auto delDir = wil::scope_exit([&testPath] { RemoveDirectoryTree(testPath); });
+			auto delDir = wil::scope_exit([&testPath] { RemoveDirectoryTree(testPath.get()); });
 
 			wil::com_ptr_failfast<IUnknown> solution;
 			hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());

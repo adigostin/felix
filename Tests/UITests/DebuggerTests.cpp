@@ -23,11 +23,72 @@ namespace UITests
 		CreateSolutionAndProject (VxDTE::DTE2* dte, PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName);
 	extern wil::unique_process_heap_string MakeVolumeGuidPath (const wchar_t* path);
 
+	struct DebuggerTD : TD
+	{
+		wil::com_ptr_failfast<VxDTE::Debugger> debugger;
+
+		DebuggerTD(PCWSTR testClassPath, PCWSTR testName, PCWSTR projectTemplatePath)
+			: TD(testClassPath, testName, projectTemplatePath)
+		{
+			auto hr = dte->get_Debugger(&debugger);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::com_ptr_failfast<VxDTE::Breakpoints> breakpoints;
+			hr = debugger->get_Breakpoints(&breakpoints);
+			Assert::AreEqual(S_OK, hr);
+
+			long breakpointCount;
+			hr = breakpoints->get_Count(&breakpointCount);
+			Assert::AreEqual(S_OK, hr);
+			while (breakpointCount > 0)
+			{
+				VARIANT index;
+				VariantInit(&index);
+				V_VT(&index) = VT_I4;
+				V_I4(&index) = breakpointCount;
+				wil::com_ptr_failfast<VxDTE::Breakpoint> breakpoint;
+				hr = breakpoints->Item(index, &breakpoint);
+				Assert::AreEqual(S_OK, hr);
+				hr = breakpoint->Delete();
+				Assert::AreEqual(S_OK, hr);
+				--breakpointCount;
+			}
+
+			VxDTE::dbgDebugMode mode;
+			hr = debugger->get_CurrentMode(&mode);
+			Assert::AreEqual(S_OK, hr);
+			if (mode != VxDTE::dbgDesignMode)
+			{
+				hr = debugger->Stop();
+				Assert::AreEqual(S_OK, hr);
+				HRESULT lastHr = S_OK;
+				VxDTE::dbgDebugMode currentMode = (VxDTE::dbgDebugMode)0;
+				bool reachedMode = WaitWithMessageLoop([&]
+					{
+						lastHr = debugger->get_CurrentMode(&currentMode);
+						Assert::IsTrue(SUCCEEDED(lastHr) || lastHr == RPC_E_CALL_REJECTED,
+							str_printf(L"Reading the debugger mode failed: 0x%08x", lastHr).get());
+						return SUCCEEDED(lastHr) && currentMode == VxDTE::dbgDesignMode;
+					}, 5000);
+				Assert::IsTrue(reachedMode,
+					str_printf(L"Timed out waiting for debugger mode %u (last HRESULT 0x%08x, mode %u)",
+						(unsigned)VxDTE::dbgDesignMode, lastHr, (unsigned)currentMode).get());
+			}
+		}
+
+		~DebuggerTD()
+		{
+			if (debugger)
+			{
+				VxDTE::dbgDebugMode mode;
+				if (SUCCEEDED(debugger->get_CurrentMode(&mode)) && mode != VxDTE::dbgDesignMode)
+					debugger->Stop();
+			}
+		}
+	};
 
 	TEST_CLASS(DebuggerTests)
 	{
-		static inline wil::com_ptr_failfast<VxDTE::DTE2> dte;
-		static inline wil::com_ptr_failfast<VxDTE::Debugger> debugger;
 		static inline wil::unique_process_heap_string TemplateProjectPath;
 		static inline wil::unique_process_heap_string testClassPath;
 
@@ -35,13 +96,11 @@ namespace UITests
 		{
 			HRESULT hr;
 
-			dte = GetDefaultVSInstance();
-
-			hr = dte->get_Debugger(&debugger);
-			Assert::AreEqual(S_OK, hr);
-
 			testClassPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"DebuggerTests\\");
-			Assert::IsTrue(CreateDirectory(testClassPath.get(), nullptr));
+			if (PathFileExists(testClassPath.get()))
+				ClearDirectoryContents(testClassPath.get());
+			else
+				Assert::IsTrue(CreateDirectory(testClassPath.get(), nullptr));
 
 			auto templateDir = wil::str_concat_failfast<wil::unique_process_heap_string>(testClassPath, L"TemplateProject\\");
 			TemplateProjectPath = wil::str_concat_failfast<wil::unique_process_heap_string>(templateDir, L"proj.flx");
@@ -52,90 +111,34 @@ namespace UITests
 
 		TEST_CLASS_CLEANUP(ClassCleanup)
 		{
-			debugger.reset();
-			dte.reset();
-		}
-
-		wil::unique_process_heap_string testDir;
-		wil::unique_process_heap_string projPath;
-		wil::com_ptr_failfast<VxDTE::_Solution> sln;
-		wil::com_ptr_failfast<VxDTE::Project> proj;
-
-		TEST_METHOD_INITIALIZE(MethodInit)
-		{
-			HRESULT hr;
-
-			testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(testClassPath, L"Test\\");
-			Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
-
-			wil::com_ptr_failfast<IUnknown> solution;
-			hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
-			Assert::AreEqual(S_OK, hr);
-			sln = solution.query<VxDTE::_Solution>();
-			hr = sln->Create(wil::make_bstr_failfast(testDir.get()).get(), wil::make_bstr_failfast(L"test").get());
-			Assert::AreEqual(S_OK, hr);
-
-			hr = sln->AddFromTemplate (
-				wil::make_bstr_failfast(TemplateProjectPath.get()).get(),
-				wil::make_bstr_failfast(testDir.get()).get(),
-				wil::make_bstr_failfast(L"test.flx").get(), VARIANT_FALSE, &proj);
-			Assert::AreEqual(S_OK, hr);
-			hr = sln->SaveAs(wil::make_bstr_failfast(L"test").get());
-			Assert::AreEqual(S_OK, hr);
-		}
-
-		TEST_METHOD_CLEANUP(MethodCleanup)
-		{
-			if (sln)
+			if (testClassPath)
 			{
-				sln->Close();
-				sln.reset();
-				proj.reset();
-			}
-
-			if (testDir)
-			{
-				RemoveDirectoryTree(testDir);
-				testDir.reset();
+				TryRemoveDirectoryTree(testClassPath.get());
+				testClassPath.reset();
 			}
 		}
 
-		void WaitDebugMode()
+		static void WaitIDEDebugMode(VxDTE::DTE2* dte)
 		{
-			HRESULT hr;
-
-			DWORD tickStart = GetTickCount();
-			while(true)
+			HRESULT lastHr = S_OK;
+			VxDTE::vsIDEMode currentMode = (VxDTE::vsIDEMode)0;
+			bool reachedMode = WaitWithMessageLoop([&]
 			{
-				VxDTE::vsIDEMode mode = (VxDTE::vsIDEMode)0;
-				hr = dte->get_Mode(&mode); // This sometimes returns RPC_E_CALL_REJECTED
-				if (mode == VxDTE::vsIDEMode::vsIDEModeDebug)
-					break;
-				Sleep(50);
-				Assert::IsTrue(IsDebuggerPresent() || GetTickCount() - tickStart < 5000);
-			}
+				lastHr = dte->get_Mode(&currentMode);
+				Assert::IsTrue(SUCCEEDED(lastHr) || lastHr == RPC_E_CALL_REJECTED,
+					str_printf(L"Reading the IDE mode failed: 0x%08x", lastHr).get());
+				return SUCCEEDED(lastHr) && currentMode == VxDTE::vsIDEMode::vsIDEModeDebug;
+			}, 5000);
+			Assert::IsTrue(reachedMode,
+				str_printf(L"Timed out waiting for vsIDEModeDebug (last HRESULT 0x%08x, mode %u)", lastHr, (unsigned)currentMode).get());
 		}
 
-		void WaitDebugBreakMode()
-		{
-			DWORD tickStart = GetTickCount();
-			while(true)
-			{
-				VxDTE::dbgDebugMode mode = (VxDTE::dbgDebugMode)0;
-				debugger->get_CurrentMode(&mode);
-				if (mode == VxDTE::dbgDebugMode::dbgBreakMode)
-					break;
-				Sleep(50);
-				Assert::IsTrue(IsDebuggerPresent() || GetTickCount() - tickStart < 5000);
-			}
-		}
-
-		wil::com_ptr_failfast<IProjectConfigAssemblerProperties> GetAsmProps()
+		static wil::com_ptr_failfast<IProjectConfigAssemblerProperties> GetAsmProps(TD& testData)
 		{
 			wil::com_ptr_failfast<IVsCfg> cfg;
 			ULONG actual;
 			VSCFGFLAGS flags;
-			auto hr = proj.query<IVsCfgProvider>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
+			auto hr = testData.proj.query<IVsCfgProvider>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
 			Assert::AreEqual(S_OK, hr);
 
 			wil::com_ptr_failfast<IProjectConfigAssemblerProperties> asmProps;
@@ -148,29 +151,45 @@ namespace UITests
 		TEST_METHOD(DebugBinaryWithBreakpoint)
 		{
 			HRESULT hr;
+			DebuggerTD td(testClassPath.get(), L"DebugBinaryWithBreakpoint", TemplateProjectPath.get());
 
 			wil::com_ptr_failfast<VxDTE::Breakpoints> breakpoints;
-			debugger->get_Breakpoints(&breakpoints);
+			hr = td.debugger->get_Breakpoints(&breakpoints);
+			Assert::AreEqual(S_OK, hr);
 
 			wil::com_ptr_failfast<VxDTE::Breakpoints> added;
 			hr = breakpoints->Add (nullptr, wil::make_bstr_failfast(L"file.asm").get(), 1, 1, nullptr,
 				VxDTE::dbgBreakpointConditionTypeWhenTrue, nullptr, nullptr, 0, nullptr, 0, VxDTE::dbgHitCountTypeNone, &added);
 			Assert::AreEqual(S_OK, hr);
+			Assert::IsNotNull(added.get());
+			auto deleteBreakpoint = wil::scope_exit([&added]
+			{
+				VARIANT index;
+				VariantInit(&index);
+				V_VT(&index) = VT_I4;
+				V_I4(&index) = 1;
+				wil::com_ptr_failfast<VxDTE::Breakpoint> breakpoint;
+				if (SUCCEEDED(added->Item(index, &breakpoint)))
+					breakpoint->Delete();
+			});
 
-			hr = dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.Start").get());
+			hr = td.dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.Start").get());
 			Assert::AreEqual(S_OK, hr);
 
-			WaitDebugMode();
-			WaitDebugBreakMode();
+			WaitIDEDebugMode(td.dte);
+			WaitDebugMode (td.debugger, VxDTE::dbgDebugMode::dbgBreakMode);
 
-			debugger->Stop();
+			hr = td.debugger->Stop();
+			Assert::AreEqual(S_OK, hr);
+			WaitDebugMode (td.debugger, VxDTE::dbgDebugMode::dbgDesignMode);
 		}
 
 		TEST_METHOD(DebugBinary_EntryPointIsNumber)
 		{
 			HRESULT hr;
+			DebuggerTD td(testClassPath.get(), L"DebugBinary_EntryPointIsNumber", TemplateProjectPath.get());
 
-			auto asmProps = GetAsmProps();
+			auto asmProps = GetAsmProps(td);
 
 			DWORD baseAddress;
 			hr = asmProps->get_BaseAddress(&baseAddress);
@@ -181,13 +200,15 @@ namespace UITests
 			hr = asmProps->put_EntryPointAddress(wil::make_bstr_failfast(buffer).get());
 			Assert::AreEqual(S_OK, hr);
 
-			hr = dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.StepInto").get());
+			hr = td.dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.StepInto").get());
 			Assert::AreEqual(S_OK, hr);
 
-			WaitDebugMode();
-			WaitDebugBreakMode();
+			WaitIDEDebugMode(td.dte);
+			WaitDebugMode (td.debugger, VxDTE::dbgDebugMode::dbgBreakMode);
 
-			debugger->Stop();
+			hr = td.debugger->Stop();
+			Assert::AreEqual(S_OK, hr);
+			WaitDebugMode (td.debugger, VxDTE::dbgDebugMode::dbgDesignMode);
 		}
 	};
 }

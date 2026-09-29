@@ -141,15 +141,25 @@ namespace UITests
 		}
 	}
 
-	template<typename string_type>
-	void RemoveDirectoryTree (const string_type& dir_str)
+	void RemoveDirectoryTree(PCWSTR directory);
+	void ClearDirectoryContents(PCWSTR directory);
+	void TryRemoveDirectoryTree(PCWSTR directory);
+	void WaitDebugMode (VxDTE::Debugger* debugger, VxDTE::dbgDebugMode expectedMode, DWORD timeoutMillis = 5000);
+
+	struct TD
 	{
-		const wchar_t* dir = wil::str_raw_ptr(dir_str);
-		auto buffer = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s%c", dir, L'\0');
-		SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = buffer.get(), .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
-		int ires = SHFileOperation(&file_op);
-		Microsoft::VisualStudio::CppUnitTestFramework::Assert::AreEqual(0, ires);
-	}
+		wil::com_ptr_failfast<VxDTE::DTE2> dte;
+		wil::unique_process_heap_string testDir;
+		wil::unique_process_heap_string slnFilePath;
+		wil::unique_process_heap_string projDir;
+		wil::unique_process_heap_string projFilePath;
+		wil::com_ptr_failfast<VxDTE::_Solution> sln;
+		wil::com_ptr_failfast<VxDTE::Project> proj;
+		wil::com_ptr_failfast<VxDTE::SolutionBuild> slnBuild;
+
+		TD(PCWSTR testClassPath, PCWSTR testName, PCWSTR projectTemplatePath);
+		~TD();
+	};
 }
 
 

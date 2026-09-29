@@ -35,7 +35,7 @@ namespace UITests
 			~TD()
 			{
 				sln->Close();
-				RemoveDirectoryTree(testDir);
+				RemoveDirectoryTree(testDir.get());
 			}
 		};
 

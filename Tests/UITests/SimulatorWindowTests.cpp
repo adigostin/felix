@@ -68,26 +68,6 @@ namespace UITests
 			return data;
 		}
 
-		void WaitDebugMode (VxDTE::dbgDebugMode mode, DWORD timeoutMilliseconds = 5000)
-		{
-			DWORD tickStart = GetTickCount();
-			while(true)
-			{
-				VxDTE::dbgDebugMode current;
-				auto hr = debugger->get_CurrentMode(&current);
-				if (SUCCEEDED(hr))
-				{
-					if (current == mode)
-						break;
-				}
-				else
-					Assert::AreEqual(RPC_E_CALL_REJECTED, hr);
-				if (GetTickCount() - tickStart >= timeoutMilliseconds)
-					Assert::Fail();
-				Sleep(20);
-			}
-		}
-
 		TEST_METHOD(SimulatorWindow_TapLoad)
 		{
 			HRESULT hr;
@@ -124,7 +104,7 @@ namespace UITests
 
 			hr = simWindow->OpenTapFile (wil::make_bstr_failfast(tapPath.get()).get(), FALSE);
 			Assert::AreEqual(S_OK, hr);
-			
+
 			Assert::AreEqual(S_OK, simulator->IsTapFileLoading());
 
 			Sleep(500);
@@ -204,7 +184,7 @@ namespace UITests
 
 			hr = simulator->BeginPlayTapFile(wil::make_bstr_failfast(tapPath.get()).get(), FALSE);
 			Assert::AreEqual(S_OK, hr);
-			
+
 			Assert::AreEqual(1ul, sink->startingCalled);
 			Assert::AreEqual(0ul, sink->completeCalled);
 
@@ -247,7 +227,7 @@ namespace UITests
 			Assert::AreEqual(S_OK, hr);
 			Assert::AreEqual<UINT>(VxDTE::dbgRunMode, debugMode);
 
-			WaitDebugMode(VxDTE::dbgBreakMode);
+			WaitDebugMode(debugger, VxDTE::dbgBreakMode);
 
 			Assert::AreEqual<UINT8>(0, ReadMemoryBus(32768));
 			Assert::AreEqual<UINT8>(0, ReadMemoryBus(32769));
@@ -255,7 +235,7 @@ namespace UITests
 			dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.Start").get());
 			// Will go to dbgRunMode and then quickly to dbgDesignMode.
 
-			WaitDebugMode(VxDTE::dbgDesignMode);
+			WaitDebugMode(debugger, VxDTE::dbgDesignMode);
 
 			simulator->Break();
 			Assert::AreEqual<UINT8>(85, ReadMemoryBus(32768));

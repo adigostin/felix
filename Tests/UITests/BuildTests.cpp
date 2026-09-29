@@ -10,59 +10,20 @@ namespace UITests
 
 	TEST_CLASS(BuildTests)
 	{
-		struct TD
+		static inline wil::unique_process_heap_string testClassPath;
+
+		TEST_CLASS_INITIALIZE(ClassInit)
 		{
-			wil::com_ptr_failfast<VxDTE::DTE2> dte;
-			wil::unique_process_heap_string testDir;
-			wil::unique_process_heap_string slnFilePath;
-			wil::unique_process_heap_string projDir;
-			wil::unique_process_heap_string projFilePath;
-			wil::com_ptr_failfast<VxDTE::_Solution> sln;
-			wil::com_ptr_failfast<VxDTE::Project> proj;
-			wil::com_ptr_failfast<VxDTE::SolutionBuild> slnBuild;
-
-			TD (const wchar_t* projectTemplatePath)
-			{
-				HRESULT hr;
-				dte = GetDefaultVSInstance();
-				testDir = str_concat(tempPath, L"BuildTests");
-				Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
-				
-				wil::com_ptr_failfast<IUnknown> solution;
-				hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
-				Assert::IsTrue(SUCCEEDED(hr));
-				sln = solution.query<VxDTE::_Solution>();
-				hr = sln->Create(wil::make_bstr_failfast(testDir.get()).get(), wil::make_bstr_failfast(L"test").get());
-				Assert::IsTrue(SUCCEEDED(hr));
-
-				projDir = str_concat(testDir, L"\\proj");
-				Assert::IsTrue(CreateDirectory(projDir.get(), nullptr));
-
-				hr = sln->AddFromTemplate (
-					wil::make_bstr_failfast(projectTemplatePath).get(),
-					wil::make_bstr_failfast(projDir.get()).get(),
-					wil::make_bstr_failfast(L"proj.flx").get(), VARIANT_FALSE, &proj);
-				Assert::IsTrue(SUCCEEDED(hr));
-				hr = sln->SaveAs(wil::make_bstr_failfast(L"test").get());
-				Assert::IsTrue(SUCCEEDED(hr));
-
-				hr = sln->get_SolutionBuild(&slnBuild);
-				Assert::IsTrue(SUCCEEDED(hr));
-
-				slnFilePath = str_concat(testDir, L"\\test.sln");
-				projFilePath = str_concat(projDir, L"\\proj.flx");
-			}
-
-			~TD()
-			{
-				sln->Close();
-				RemoveDirectoryTree(testDir);
-			}
-		};
+			testClassPath = str_concat(tempPath, L"BuildTest");
+			if (PathFileExists(testClassPath.get()))
+				ClearDirectoryContents(testClassPath.get());
+			else
+				Assert::IsTrue(CreateDirectory(testClassPath.get(), nullptr));
+		}
 
 		TEST_METHOD(BuildProject)
 		{
-			TD td (TemplatePath_TwoConfigsOneFile.get());
+			TD td(testClassPath.get(), L"BuildProject", TemplatePath_TwoConfigsOneFile.get());
 			auto hr = td.slnBuild->Build(VARIANT_TRUE);
 			Assert::IsTrue(SUCCEEDED(hr));
 			// LastBuildInfo returns the number of failed projects, despite the parameter name.
@@ -75,7 +36,7 @@ namespace UITests
 		TEST_METHOD(BuildProjectWithError)
 		{
 			HRESULT hr;
-			TD td (TemplatePath_TwoConfigsOneFile.get());
+			TD td(testClassPath.get(), L"BuildProjectWithError", TemplatePath_TwoConfigsOneFile.get());
 
 			long buildFailCount;
 			hr = td.slnBuild->Build(VARIANT_TRUE);
@@ -108,7 +69,7 @@ namespace UITests
 		TEST_METHOD(BuildOutDirNoBackslash)
 		{
 			HRESULT hr;
-			TD td (TemplatePath_TwoConfigsOneFile.get());
+			TD td(testClassPath.get(), L"BuildOutDirNoBackslash", TemplatePath_TwoConfigsOneFile.get());
 
 			wil::com_ptr_failfast<IVsCfg> cfg;
 			ULONG actual;
@@ -132,7 +93,7 @@ namespace UITests
 		TEST_METHOD(BuildOutDirOutsideProjectDir)
 		{
 			HRESULT hr;
-			TD td (TemplatePath_TwoConfigsOneFile.get());
+			TD td(testClassPath.get(), L"BuildOutDirOutsideProjectDir", TemplatePath_TwoConfigsOneFile.get());
 
 			wil::com_ptr_failfast<IVsCfg> cfg;
 			ULONG actual;
@@ -195,8 +156,8 @@ namespace UITests
 
 		TEST_METHOD(BuildWithFilesInFolders)
 		{
-			TD td (TemplatePath_TwoConfigsOneFile.get());
 			HRESULT hr;
+			TD td(testClassPath.get(), L"BuildWithFilesInFolders", TemplatePath_TwoConfigsOneFile.get());
 
 			wil::com_ptr_failfast<IVsCfg> cfg;
 			ULONG actual;
@@ -272,7 +233,7 @@ namespace UITests
 		TEST_METHOD(BuildFilesInFoldersAndSubfolders)
 		{
 			HRESULT hr;
-			TD td (TemplatePath_EmptyProject.get());
+			TD td(testClassPath.get(), L"BuildFilesInFoldersAndSubfolders", TemplatePath_EmptyProject.get());
 			auto hier = td.proj.query<IVsUIHierarchy>();
 
 			wil::unique_variant folder;
@@ -314,7 +275,7 @@ namespace UITests
 
 		TEST_METHOD(BuildFilesNotInProjectDir)
 		{
-			TD td (TemplatePath_EmptyProject.get());
+			TD td(testClassPath.get(), L"BuildFilesNotInProjectDir", TemplatePath_EmptyProject.get());
 			HRESULT hr;
 			auto hier = td.proj.query<IVsUIHierarchy>();
 
@@ -357,7 +318,7 @@ namespace UITests
 		TEST_METHOD(SjasmCommandLine_ExitCodeZero)
 		{
 			HRESULT hr;
-			TD td (TemplatePath_TwoConfigsOneFile.get());
+			TD td(testClassPath.get(), L"SjasmCommandLine_ExitCodeZero", TemplatePath_TwoConfigsOneFile.get());
 			hr = td.slnBuild->Build(VARIANT_TRUE);
 			Assert::AreEqual(S_OK, hr);
 			long buildFailCount;
@@ -369,7 +330,7 @@ namespace UITests
 		TEST_METHOD(SjasmCommandLine_ExitCodeNonzero)
 		{
 			HRESULT hr;
-			TD td (TemplatePath_TwoConfigsOneFile.get());
+			TD td(testClassPath.get(), L"SjasmCommandLine_ExitCodeNonzero", TemplatePath_TwoConfigsOneFile.get());
 			WriteFileCreateDirs (str_concat(td.projDir, L"\\file.asm"), "\tabcde");
 			hr = td.slnBuild->Build(VARIANT_TRUE);
 			Assert::AreEqual(S_OK, hr);
@@ -381,8 +342,8 @@ namespace UITests
 
 		TEST_METHOD(BuildOnlySynchronousSteps)
 		{
-			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
 			HRESULT hr;
+			TD td(testClassPath.get(), L"BuildOnlySynchronousSteps", TemplatePath_OneConfigOneCustomBuildTool.get());
 
 			VSITEMID itemid;
 			hr = td.proj.query<IVsHierarchy>()->ParseCanonicalName(L"file.asm", &itemid);
@@ -414,13 +375,14 @@ namespace UITests
 
 		TEST_METHOD(CustomBuildToolFilesInFolders)
 		{
+			TD td(testClassPath.get(), L"CustomBuildToolFilesInFolders", TemplatePath_OneConfigOneCustomBuildTool.get());
 			// TODO:
 		}
 
 		TEST_METHOD(BuildFailsOnEmptyProject)
 		{
-			TD td (TemplatePath_EmptyProject.get());
 			HRESULT hr;
+			TD td(testClassPath.get(), L"BuildFailsOnEmptyProject", TemplatePath_EmptyProject.get());
 
 			hr = td.slnBuild->BuildProject(wil::make_bstr_failfast(L"Debug").get(),
 				wil::make_bstr_failfast(L"proj\\proj.flx").get(), VARIANT_TRUE);
@@ -433,8 +395,8 @@ namespace UITests
 
 		TEST_METHOD(PrePostBuildEvents)
 		{
-			TD td (TemplatePath_EmptyProject.get());
 			HRESULT hr;
+			TD td(testClassPath.get(), L"PrePostBuildEvents", TemplatePath_EmptyProject.get());
 
 			wil::com_ptr_failfast<IVsCfg> cfg;
 			ULONG actual;
@@ -468,17 +430,17 @@ namespace UITests
 		{
 			auto hier = wil::com_query_failfast<IVsHierarchy>(proj);
 			VSITEMID itemId;
-			auto hr = hier->ParseCanonicalName(L"file.asm", &itemId); 
+			auto hr = hier->ParseCanonicalName(L"file.asm", &itemId);
 			Assert::AreEqual(S_OK, hr);
 			wil::unique_variant file;
 			hr = hier->GetProperty(itemId, VSHPROPID_BrowseObject, &file);
 			Assert::AreEqual(S_OK, hr);
 			auto fileProps = wil::com_query_failfast<IFileNodeProperties>(file.pdispVal);
-			
+
 			wil::com_ptr_failfast<ICustomBuildToolProperties> cbtProps;
-			hr = fileProps->get_CustomBuildToolProperties(&cbtProps); 
+			hr = fileProps->get_CustomBuildToolProperties(&cbtProps);
 			Assert::AreEqual(S_OK, hr);
-			
+
 			if (commandLine)
 			{
 				hr = cbtProps->put_CommandLine(wil::make_bstr_failfast(commandLine).get());
@@ -494,8 +456,8 @@ namespace UITests
 
 		TEST_METHOD(CustomBuildToolOnlyWhitespaceCommands)
 		{
+			TD td(testClassPath.get(), L"CustomBuildToolOnlyWhitespaceCommands", TemplatePath_OneConfigOneCustomBuildTool.get());
 			HRESULT hr;
-			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
 
 			SetCustomBuildToolParams(td.proj, L"file.asm", L"   \r\n   \t   ", nullptr);
 
@@ -525,7 +487,7 @@ namespace UITests
 		TEST_METHOD(CustomBuildToolSomeWhitespaceCommands)
 		{
 			HRESULT hr;
-			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
+			TD td(testClassPath.get(), L"CustomBuildToolSomeWhitespaceCommands", TemplatePath_OneConfigOneCustomBuildTool.get());
 
 			static const wchar_t cmdLine[] = L"  cmd /c type file.asm  \t\r\n   \t   ";
 			SetCustomBuildToolParams(td.proj, L"file.asm", cmdLine, nullptr);
@@ -544,7 +506,7 @@ namespace UITests
 		TEST_METHOD(CustomBuildToolWaitingUserInput)
 		{
 			HRESULT hr;
-			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
+			TD td(testClassPath.get(), L"CustomBuildToolWaitingUserInput", TemplatePath_OneConfigOneCustomBuildTool.get());
 
 			SetCustomBuildToolParams(td.proj, L"file.asm", L"cmd /c pause", nullptr);
 			hr = td.slnBuild->Build(VARIANT_FALSE);
@@ -619,7 +581,7 @@ namespace UITests
 		TEST_METHOD(CustomBuildToolOutputWithNoEOL)
 		{
 			HRESULT hr;
-			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
+			TD td(testClassPath.get(), L"CustomBuildToolOutputWithNoEOL", TemplatePath_OneConfigOneCustomBuildTool.get());
 
 			HeavyLoad hl;
 
@@ -641,7 +603,7 @@ namespace UITests
 		TEST_METHOD(CustomBuildToolOutputWithEOL)
 		{
 			HRESULT hr;
-			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
+			TD td(testClassPath.get(), L"CustomBuildToolOutputWithEOL", TemplatePath_OneConfigOneCustomBuildTool.get());
 
 			HeavyLoad hl;
 
@@ -656,11 +618,11 @@ namespace UITests
 			auto x = wcsstr(output.get(), cnt);
 			Assert::IsNotNull(x);
 		}
-		
+
 		TEST_METHOD(CancelAfterAsyncBuildProcessExitedWithExitCode0)
 		{
 			HRESULT hr;
-			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
+			TD td(testClassPath.get(), L"CancelAfterAsyncBuildProcessExitedWithExitCode0", TemplatePath_OneConfigOneCustomBuildTool.get());
 
 			SetCustomBuildToolParams(td.proj, L"file.asm", L"cmd /c exit 0", nullptr);
 
@@ -676,7 +638,7 @@ namespace UITests
 		TEST_METHOD(CancelAfterAsyncBuildProcessExitedWithExitCode1)
 		{
 			HRESULT hr;
-			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
+			TD td(testClassPath.get(), L"CancelAfterAsyncBuildProcessExitedWithExitCode1", TemplatePath_OneConfigOneCustomBuildTool.get());
 
 			SetCustomBuildToolParams(td.proj, L"file.asm", L"cmd /c exit 1", nullptr);
 
@@ -692,7 +654,7 @@ namespace UITests
 		TEST_METHOD(CancelAfterAsyncBuildProcessExitedWithExitCode0_NotOnLastCmd)
 		{
 			HRESULT hr;
-			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
+			TD td(testClassPath.get(), L"CancelAfterAsyncBuildProcessExitedWithExitCode0_NotOnLastCmd", TemplatePath_OneConfigOneCustomBuildTool.get());
 
 			auto tempFilename = str_concat(td.testDir, L"\\TST");
 			Assert::IsTrue(wil::unique_hfile(CreateFile(tempFilename.get(), GENERIC_WRITE, 0, 0, CREATE_NEW, 0, 0)).is_valid());
@@ -715,7 +677,7 @@ namespace UITests
 		TEST_METHOD(CancelAfterAsyncBuildProcessExitedWithExitCode1_NotOnLastCmd)
 		{
 			HRESULT hr;
-			TD td (TemplatePath_OneConfigOneCustomBuildTool.get());
+			TD td(testClassPath.get(), L"CancelAfterAsyncBuildProcessExitedWithExitCode1_NotOnLastCmd", TemplatePath_OneConfigOneCustomBuildTool.get());
 
 			auto tempFilename = str_concat(td.testDir, L"\\TST");
 			Assert::IsTrue(wil::unique_hfile(CreateFile(tempFilename.get(), GENERIC_WRITE, 0, 0, CREATE_NEW, 0, 0)).is_valid());
