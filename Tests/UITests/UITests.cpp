@@ -493,9 +493,9 @@ namespace UITests
 			wil::make_bstr_failfast(TemplatePath_TwoConfigsOneFile.get()).get(),
 			wil::make_bstr_failfast(projDir).get(),
 			wil::make_bstr_failfast(projName.get()).get(), VARIANT_FALSE, &proj);
-		Assert::IsTrue(SUCCEEDED(hr));
+		Assert::IsTrue(SUCCEEDED(hr), str_printf(L"Solution::AddFromTemplate failed: 0x%08x", hr).get());
 		hr = sln->SaveAs(wil::make_bstr_failfast(solutionName).get());
-		Assert::IsTrue(SUCCEEDED(hr));
+		Assert::IsTrue(SUCCEEDED(hr), str_printf(L"Solution::SaveAs failed: 0x%08x", hr).get());
 
 		return { std::move(sln), std::move(proj) };
 	}

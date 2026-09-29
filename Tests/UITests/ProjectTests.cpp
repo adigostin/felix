@@ -416,6 +416,7 @@ namespace UITests
 			HRESULT hr;
 			auto testDir = str_concat(classPath, L"GetItemsPutItems_WithFolders\\");
 			Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
+			auto cleanup = wil::scope_exit([&testDir] { RemoveDirectoryTree(testDir); });
 
 			wil::com_ptr_failfast<IUnknown> solution;
 			hr = GetDefaultVSInstance()->get_Solution((VxDTE::Solution**)solution.addressof());
@@ -507,7 +508,7 @@ namespace UITests
 		TEST_METHOD(RemoveItem_FirstOfTwo)
 		{
 			HRESULT hr;
-			TestData td (L"RemoveItemsFromRootNode", TemplatePath_EmptyProject.get());
+			TestData td (L"RemoveItem_FirstOfTwo", TemplatePath_EmptyProject.get());
 
 			auto path1 = wil::str_concat_failfast<wil::unique_process_heap_string>(td.testDir, L"file1.asm");
 			WriteFileCreateDirs(path1, "");

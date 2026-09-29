@@ -68,6 +68,12 @@ namespace UITests
 		return result;
 	}
 
+	template <typename... arguments>
+	wil::unique_process_heap_string str_printf (_Printf_format_string_ PCWSTR format, arguments&&... args)
+	{
+		return wil::str_printf_failfast<wil::unique_process_heap_string>(format, wistd::forward<arguments>(args)...);
+	}
+
 	// Returns true if the condition was met before the timeout expired.
 	template<typename condition_t> requires std::is_invocable_r_v<bool, condition_t>
 	bool WaitWithMessageLoop (const condition_t& condition, DWORD timeoutMilliseconds)

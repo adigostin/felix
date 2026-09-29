@@ -11,8 +11,16 @@ namespace UITests
 		CreateSolutionAndProject (VxDTE::DTE2* dte, PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName);
 	extern void BuildSolution (VxDTE::_Solution* sln, long* buildFailCount);
 
+	static void TryRemoveDirectoryTree(PCWSTR directory)
+	{
+		auto buffer = str_printf(L"%s%c", directory, L'\0');
+		SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = buffer.get(), .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
+		SHFileOperation(&file_op);
+	}
+
 	TEST_CLASS(MiscTests)
 	{
+		static inline wil::unique_process_heap_string classPath;
 		wil::com_ptr_failfast<VxDTE::DTE2> dte;
 		wil::unique_process_heap_string testPath;
 		wil::unique_process_heap_string slnFilePath;
@@ -21,10 +29,42 @@ namespace UITests
 		wil::com_ptr_failfast<VxDTE::_Solution> sln;
 		wil::com_ptr_failfast<VxDTE::Project> proj;
 
+		TEST_CLASS_INITIALIZE(MiscTestsInit)
+		{
+			classPath = str_concat(tempPath, L"MiscTest");
+			if (PathFileExists(classPath.get()))
+			{
+				// Clear leftovers before running the class; Visual Studio can leave per-solution .vs metadata behind.
+				auto buffer = str_printf(L"%s\\*.*%c", classPath.get(), L'\0');
+				SHFILEOPSTRUCT file_op = { .wFunc = FO_DELETE, .pFrom = buffer.get(), .fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT };
+				int ires = SHFileOperation(&file_op);
+				Assert::AreEqual(0, ires);
+				Assert::IsFalse(file_op.fAnyOperationsAborted);
+			}
+			else
+				Assert::IsTrue(CreateDirectory(classPath.get(), nullptr));
+		}
+
+		TEST_CLASS_CLEANUP(MiscTestsCleanup)
+		{
+			if (classPath)
+			{
+				// Best effort: Visual Studio may still hold files in .vs open after the last test.
+				TryRemoveDirectoryTree(classPath.get());
+				classPath.reset();
+			}
+		}
+
 		TEST_METHOD_INITIALIZE(MiscTestInit)
 		{
 			dte = GetDefaultVSInstance();
-			testPath = str_concat(tempPath, L"MiscTest");
+			// Give each test its own solution and .vs metadata directory to avoid cross-test interference.
+			GUID testId;
+			HRESULT hr = CoCreateGuid(&testId);
+			Assert::IsTrue(SUCCEEDED(hr));
+			wchar_t uniqueName[40] = {};
+			Assert::IsTrue(StringFromGUID2(testId, uniqueName, ARRAYSIZE(uniqueName)) > 0);
+			testPath = str_printf(L"%s\\%s", classPath.get(), uniqueName);
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
 			std::tie(sln, proj) = CreateSolutionAndProject(dte, testPath.get(), L"test", L"proj");
 			slnFilePath = str_concat(testPath, L"\\test.sln");
@@ -34,6 +74,7 @@ namespace UITests
 
 		TEST_METHOD_CLEANUP(MiscTestCleanup)
 		{
+			// Close the solution first, then only attempt removal because Visual Studio may retain .vs files briefly.
 			if (sln)
 			{
 				sln->Close();
@@ -44,7 +85,7 @@ namespace UITests
 
 			if (testPath)
 			{
-				RemoveDirectoryTree(testPath);
+				TryRemoveDirectoryTree(testPath.get());
 				testPath.reset();
 			}
 		}
@@ -137,15 +178,23 @@ namespace UITests
 			Assert::IsTrue(buildFailCount >= 1);
 
 			hr = dte->ExecuteCommand(wil::make_bstr_failfast(L"View.ErrorList").get());
+			Assert::IsTrue(SUCCEEDED(hr));
 			auto dte2 = wil::com_query_failfast<VxDTE::DTE2>(dte);
 			wil::com_ptr_failfast<VxDTE::ToolWindows> toolWindows;
 			hr = dte2->get_ToolWindows(&toolWindows);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsNotNull(toolWindows.get());
 			wil::com_ptr_failfast<VxDTE::ErrorList> errorList;
 			hr = toolWindows->get_ErrorList(&errorList);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsNotNull(errorList.get());
 			wil::com_ptr_failfast<VxDTE::ErrorItems> errorItems;
 			hr = errorList->get_ErrorItems(&errorItems);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsNotNull(errorItems.get());
 			long errorCount;
 			hr = errorItems->get_Count(&errorCount);
+			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::IsTrue(errorCount >= 1);
 
 			VARIANT v; v.vt = VT_I4; v.lVal = 1;
@@ -153,7 +202,8 @@ namespace UITests
 			hr = errorItems->Item(v, &errorItem);
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			errorItem->Navigate(); // This call succeeds, even though VS couldn't open the file.
+			hr = errorItem->Navigate(); // This call succeeds, even though VS couldn't open the file.
+			Assert::IsTrue(SUCCEEDED(hr));
 
 			com_ptr<VxDTE::Document> doc;
 			hr = dte->get_ActiveDocument(&doc);
