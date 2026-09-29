@@ -51,10 +51,6 @@ class FelixPackageImpl : public IVsPackage, IVsSolutionEvents, IOleCommandTarget
 	wil::com_ptr_nothrow<IVsWindowFrame> _simulatorWindowFrame;
 	wil::ThreadFailureCache _threadFailureCache;
 	sentry_options_t *_sentryOptions = nullptr;
-	com_ptr<ITypeLib> _felixTypeLib;
-	com_ptr<ITypeLib> _simulatorTypeLib;
-	bool _felixTypeLibRegistered = false;
-	bool _simulatorTypeLibRegistered = false;
 	wil::unique_process_heap_string packageDir;
 
 public:
@@ -485,13 +481,14 @@ public:
 		wil::unique_process_heap_string fn;
 		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, fn); RETURN_IF_FAILED(hr);
 		hr = wil::str_concat_nothrow(fn, L"\\1"); RETURN_IF_FAILED(hr);
-		hr = LoadTypeLibEx(fn.get(), REGKIND_NONE, &_felixTypeLib); RETURN_IF_FAILED(hr);
-		hr = RegisterTypeLibForUser(_felixTypeLib, fn.get(), nullptr); RETURN_IF_FAILED(hr);
-		_felixTypeLibRegistered = true;
+		// Type-library registration is per-user and shared by all VS instances; package unload must not remove it.
+		com_ptr<ITypeLib> felixTypeLib;
+		hr = LoadTypeLibEx(fn.get(), REGKIND_NONE, &felixTypeLib); RETURN_IF_FAILED(hr);
+		hr = RegisterTypeLibForUser(felixTypeLib, fn.get(), nullptr); RETURN_IF_FAILED(hr);
 		fn.get()[wcslen(fn.get()) - 1] = '2';
-		hr = LoadTypeLibEx(fn.get(), REGKIND_NONE, &_simulatorTypeLib); RETURN_IF_FAILED(hr);
-		hr = RegisterTypeLibForUser(_simulatorTypeLib, fn.get(), nullptr); RETURN_IF_FAILED(hr);
-		_simulatorTypeLibRegistered = true;
+		com_ptr<ITypeLib> simulatorTypeLib;
+		hr = LoadTypeLibEx(fn.get(), REGKIND_NONE, &simulatorTypeLib); RETURN_IF_FAILED(hr);
+		hr = RegisterTypeLibForUser(simulatorTypeLib, fn.get(), nullptr); RETURN_IF_FAILED(hr);
 
 		return S_OK;
 	}
@@ -505,22 +502,6 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE Close() override
 	{
 		HRESULT hr;
-
-		auto unregisterTL = [](bool& registered, com_ptr<ITypeLib> typeLib)
-			{
-				if (registered)
-				{
-					TLIBATTR* attr = nullptr;
-					if (SUCCEEDED(typeLib->GetLibAttr(&attr)))
-					{
-						auto rel = wil::scope_exit([&]() { typeLib->ReleaseTLibAttr(attr); });
-						if (SUCCEEDED(UnRegisterTypeLibForUser (attr->guid, attr->wMajorVerNum, attr->wMinorVerNum, attr->lcid, attr->syskind)))
-							registered = false;
-					}
-				}
-			};
-		unregisterTL(_simulatorTypeLibRegistered, _simulatorTypeLib);
-		unregisterTL(_felixTypeLibRegistered, _felixTypeLib);
 
 		ReleaseZxSpectrumSimulator();
 
