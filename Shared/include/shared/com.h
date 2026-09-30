@@ -26,7 +26,7 @@ ULONG ReleaseST (T* _this, ULONG& refCount)
 	WI_ASSERT(refCount);
 	if (refCount > 1)
 		return --refCount;
-	
+
 	// We want to set the refCount to 0 after the destructor runs and before the memory is freed.
 	// This helps catch accesses to the object after its refCount went to 0 (in the WI_ASSERT
 	// at the top of this function).
@@ -715,3 +715,5 @@ bool EqualsBSTR (string_type& other, BSTR one)
 		return false;
 	return !wcscmp(one, wil::str_raw_ptr(other));
 }
+
+using unique_safearray = wil::unique_any<SAFEARRAY*, decltype(SafeArrayDestroy), &SafeArrayDestroy>;

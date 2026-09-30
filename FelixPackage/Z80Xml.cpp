@@ -5,8 +5,6 @@
 
 #pragma comment (lib, "xmllite.lib")
 
-using unique_safearray = wil::unique_any<SAFEARRAY*, decltype(SafeArrayDestroy), &SafeArrayDestroy>;
-
 static const auto InvariantLCID = LocaleNameToLCID(LOCALE_NAME_INVARIANT, 0);
 
 static HRESULT GetNameFromEnumValue (ITypeInfo* ti, const TYPEATTR* typeAttr, LONG value, BSTR* nameOut)
@@ -115,7 +113,7 @@ static HRESULT SaveToXmlInternal (IDispatch* obj, PCWSTR elementName, DWORD flag
 	HRESULT hr;
 
 	EnsureElementCreated ensureElementCreated (elementName, writer, ensureOuterElementCreated);
-	
+
 	// If we are the outmost XML element, we must create it even if there's nothing to save to it.
 	// That's because XmlLite doesn't seem to support writing an empty document (WriteEndDocument() will fail).
 	if (!ensureOuterElementCreated)
@@ -131,7 +129,7 @@ static HRESULT SaveToXmlInternal (IDispatch* obj, PCWSTR elementName, DWORD flag
 	TYPEATTR* typeAttr;
 	hr = typeInfo->GetTypeAttr(&typeAttr); RETURN_IF_FAILED(hr);
 	auto releaseTypeAttr = wil::scope_exit([ti=typeInfo.get(), typeAttr] { ti->ReleaseTypeAttr(typeAttr); });
-	
+
 	wil::com_ptr_nothrow<IVsPerPropertyBrowsing> ppb;
 	obj->QueryInterface(&ppb);
 
@@ -328,7 +326,7 @@ static HRESULT SaveToXmlInternal (IDispatch* obj, PCWSTR elementName, DWORD flag
 				if (hr == E_NOTIMPL || childXmlElementName)
 				{
 					EnsureElementCreated ensureChildElemCreated (name.get(), writer, &ensureElementCreated);
-						
+
 					LPCWSTR elemName = childXmlElementName ? childXmlElementName.get() : name.get();
 					hr = SaveToXmlInternal (child.value.get(), elemName, flags, writer, &ensureChildElemCreated); RETURN_IF_FAILED(hr);
 
@@ -344,7 +342,7 @@ static HRESULT SaveToXmlInternal (IDispatch* obj, PCWSTR elementName, DWORD flag
 				hr = SaveToXmlInternal (child.value.get(), name.get(), flags, writer, &ensureElementCreated); RETURN_IF_FAILED(hr);
 			}
 		}
-	
+
 		for (auto& coll : childCollections)
 		{
 			wil::unique_bstr name;
@@ -505,7 +503,7 @@ static HRESULT LoadFromXmlInternal (IXmlReader* reader, PCWSTR elementName, IDis
 				RETURN_HR_IF(E_FAIL, fd->cParams != 1);
 				break;
 			}
-			
+
 			typeInfo->ReleaseFuncDesc(fd);
 			fd = nullptr;
 		}
