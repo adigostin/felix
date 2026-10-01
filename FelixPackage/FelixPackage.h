@@ -12,8 +12,6 @@
 #define FELIX_API __declspec(dllimport)
 #endif
 
-using unique_safearray = wil::unique_any<SAFEARRAY*, decltype(SafeArrayDestroy), &SafeArrayDestroy>;
-
 __interface IProjectConfigBuilderCallback : IUnknown
 {
 	HRESULT OnBuildComplete (bool success);
@@ -25,7 +23,7 @@ __interface IProjectConfigBuilder : IUnknown
 {
 	// The build runs synchronously if possible, in which case this function
 	// calls the callback and then returns S_OK.
-	// 
+	//
 	// If the build cannot run synchronously, this function returns S_FALSE and the build
 	// runs in the background. The message loop must be pumped for the build to run in the background.
 	// In this case the implementation calls the callback at a later time (provided the message
@@ -149,10 +147,10 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("32BEBBF2-86DF-4D79-88DF-1123548C4D8E") I
 	// Returns S_OK if the symbol file contains mapping between source code lines and instruction addresses;
 	// in this case GetSourceLocationFromAddress and GetAddressFromSourceLocation can be called to attempt
 	// mapping between lines and addresses.
-	// 
+	//
 	// Returns S_FALSE if the symbol file doesn't contain this mapping;
 	// in this case GetSourceLocationFromAddress and GetAddressFromSourceLocation return E_NOTIMPL.
-	// 
+	//
 	// TODO: implement this as an optional interface on the same object.
 	virtual HRESULT STDMETHODCALLTYPE HasSourceLocationInformation() = 0;
 
@@ -330,7 +328,7 @@ HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyNotifySink>* cp, DIS
 HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyNotifySink>* cp, std::initializer_list<DISPID> dispids);
 HRESULT ReadZxSpectrumSystemVar (IFelixSymbols* romSymbols, LPCWSTR name, UINT16* value);
 HRESULT WriteZxSpectrumSystemVar (IFelixSymbols* romSymbols, LPCWSTR name, UINT16 value);
-HRESULT ResetAndSimulateToEDITOR (IFelixSymbols* romSymbols);
+HRESULT SimulateToEDITOR (IFelixSymbols* romSymbols);
 HRESULT SimulateBasicCommand (IFelixSymbols* romSymbols, const char* pszCommand);
 
 // Runs the message loop until the callback succeeds (returns S_OK),
@@ -349,3 +347,4 @@ static HRESULT WaitWithMessageLoop(Condition condition, DWORD timeoutMillisecond
 
 // Returns S_OK when debugging stops, S_FALSE if the user cancels, or an error HRESULT on failure or timeout.
 HRESULT ConfirmStopDebugging();
+HRESULT PickSaveFile (LPCWSTR filter, wil::unique_process_heap_string& filename);

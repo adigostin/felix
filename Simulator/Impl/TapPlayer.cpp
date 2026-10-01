@@ -24,13 +24,13 @@ class TapPlayer : public ITapPlayerDevice
 	XAudio2VoiceCallback callback;
 
 public:
-	HRESULT InitInstance (Bus* io_bus, IXAudio2* xaudio2, ITapPlayerEventHandler* eh)
+	HRESULT InitInstance (Bus* io_bus, IXAudio2* xaudio2, ITapPlayerEventHandler* eh, SpectrumVariant variant)
 	{
 		HRESULT hr;
 		_io_bus = io_bus;
 		_eh = eh;
 		bool pushed = io_bus->read_responders.try_push_back({ this, &ProcessIoReadRequest }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-		
+
 		static const WAVEFORMATEX wfx = {
 			.wFormatTag = WAVE_FORMAT_PCM,
 			.nChannels = 1, // mono (not stereo, not 5+1 or something)
@@ -48,11 +48,12 @@ public:
 	}
 
 	#pragma region IDevice
-	virtual void Reset() override
+	virtual HRESULT Reset(SpectrumVariant variant) override
 	{
 		_time = 0;
 		_iolevel = false;
-		StopPlaying();
+		auto hr = StopPlaying(); RETURN_IF_FAILED(hr);
+		return S_OK;
 	}
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { return FALSE; }
@@ -76,7 +77,7 @@ public:
 			_time = requested_time;
 			return true;
 		}
-		
+
 		while(true)
 		{
 			if (_next_pulse_index == 0)
@@ -199,7 +200,7 @@ public:
 	}
 	#pragma endregion
 
-	static uint8_t ProcessIoReadRequest (IDevice* device, uint16_t address)
+	static uint8_t ProcessIoReadRequest (IDevice* device, WORD address)
 	{
 		if ((address & 0xFF) == 0xFE)
 		{
@@ -255,10 +256,10 @@ public:
 	}
 };
 
-HRESULT STDMETHODCALLTYPE MakeTapPlayer (Bus* io_bus, IXAudio2* xaudio2, ITapPlayerEventHandler* eh, wistd::unique_ptr<ITapPlayerDevice>& ppDevice)
+HRESULT STDMETHODCALLTYPE MakeTapPlayer (Bus* io_bus, IXAudio2* xaudio2, ITapPlayerEventHandler* eh, SpectrumVariant variant, wistd::unique_ptr<ITapPlayerDevice>& ppDevice)
 {
 	auto d = wil::make_unique_nothrow<TapPlayer>(); RETURN_IF_NULL_ALLOC(d);
-	auto hr = d->InitInstance(io_bus, xaudio2, eh); RETURN_IF_FAILED(hr);
+	auto hr = d->InitInstance(io_bus, xaudio2, eh, variant); RETURN_IF_FAILED(hr);
 	ppDevice = std::move(d);
 	return S_OK;
 }

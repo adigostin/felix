@@ -6,6 +6,17 @@ library SimulatorLib
 {
 	//importlib("stdole2.tlb");
 
+	typedef enum SpectrumVariant
+	{
+		SpectrumVariant16K = 0,
+		SpectrumVariant48K = 1,
+		SpectrumVariant128 = 2,
+		SpectrumVariantPlus2 = 3,
+		SpectrumVariantPlus2A = 4,
+		SpectrumVariantPlus3 = 5,
+		SpectrumVariantCount = 6,
+	} SpectrumVariant;
+
 	[object, uuid(69B65530-004E-4EA3-A321-2A1E8852E83D), oleautomation, nonextensible]
 	interface ITapPlayNotifySink : IUnknown
 	{
@@ -19,7 +30,11 @@ library SimulatorLib
 		HRESULT Break();
 		HRESULT GetPC (UINT16* pc);
 		HRESULT SetPC (UINT16 pc);
-		HRESULT ReadMemoryBus8 ([in]UINT16 address, [out, retval]UINT8* pData);
+		HRESULT Reset (UINT16 startAddress, SpectrumVariant variant);
+		HRESULT GetTime ([out] UINT64* time);
+		HRESULT GetVariant ([out] SpectrumVariant* variant);
+		HRESULT ReadMemoryBus8 (UINT16 address, [out, retval]UINT8* pData);
+		HRESULT SaveScreen (BOOL includeBorder, [out, retval] SAFEARRAY(BYTE)* bitmap);
 
 		HRESULT BeginPlayTapFile (LPCWSTR pFileName, BOOL breakOnComplete);
 

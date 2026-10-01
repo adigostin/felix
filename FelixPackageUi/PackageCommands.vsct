@@ -59,6 +59,10 @@
 				<Parent guid="guidFelixPackageCmdSet" id="cmdidSimulatorMenu" />
 			</Group>
 
+			<Group guid="guidFelixPackageCmdSet" id="cmdidSelectVariantGroup" priority="0x0000">
+				<Parent guid="guidFelixPackageCmdSet" id="cmdidSelectVariantMenu" />
+			</Group>
+
 			<Group guid="guidFelixPackageCmdSet" id="cmdidSaveFileGroup" priority="0x0001">
 				<Parent guid="guidFelixPackageCmdSet" id="cmdidSaveFileSubMenu" />
 			</Group>
@@ -82,10 +86,31 @@
 
 
 			<Button guid="guidFelixPackageCmdSet" id="cmdidSimulator" priority="0x0100" type="Button">
-        <Parent guid="guidSHLMainMenu" id="IDG_VS_WNDO_OTRWNDWS1" />
+				<Parent guid="guidSHLMainMenu" id="IDG_VS_WNDO_OTRWNDWS1" />
 				<Icon guid="guidImages" id="3" />
 				<Strings>
 					<ButtonText>Simulator Window</ButtonText>
+				</Strings>
+			</Button>
+
+			<Button guid="guidFelixPackageCmdSet" id="cmdidVariant48K" priority="0x0100" type="Button">
+				<Parent guid="guidFelixPackageCmdSet" id="cmdidSelectVariantGroup" />
+				<Strings>
+					<ButtonText>48K</ButtonText>
+				</Strings>
+			</Button>
+
+			<Button guid="guidFelixPackageCmdSet" id="cmdidVariant128K" priority="0x0101" type="Button">
+				<Parent guid="guidFelixPackageCmdSet" id="cmdidSelectVariantGroup" />
+				<Strings>
+					<ButtonText>128K</ButtonText>
+				</Strings>
+			</Button>
+
+			<Button guid="guidFelixPackageCmdSet" id="cmdidSaveScreen" priority="0x0101" type="Button">
+				<Parent guid="guidFelixPackageCmdSet" id="cmdidSimulatorSubGroup" />
+				<Strings>
+					<ButtonText>Save Screen</ButtonText>
 				</Strings>
 			</Button>
 
@@ -199,6 +224,14 @@ parts that the beam hasn't reached yet.
 				<CommandFlag>AlwaysCreate</CommandFlag>
 				<Strings>
 					<ButtonText>Simulator</ButtonText>
+				</Strings>
+			</Menu>
+
+			<Menu guid="guidFelixPackageCmdSet" id="cmdidSelectVariantMenu" priority="0x0100" type="Menu">
+				<Parent guid="guidFelixPackageCmdSet" id="cmdidSimulatorSubGroup" />
+				<CommandFlag>AlwaysCreate</CommandFlag>
+				<Strings>
+					<ButtonText>Select Variant</ButtonText>
 				</Strings>
 			</Menu>
 

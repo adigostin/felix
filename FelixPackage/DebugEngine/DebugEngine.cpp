@@ -254,9 +254,9 @@ public:
 
 			wil::com_ptr_nothrow<IZ80DebugPort> z80Port;
 			auto hr = _port->QueryInterface(&z80Port); RETURN_IF_FAILED(hr);
-			
+
 			hr = z80Port->SendProgramDestroyEventToSinks (_program.get(), 0); RETURN_IF_FAILED(hr);
-			
+
 			_simulatorEventsToken.reset();
 
 			WI_ASSERT(simulator->HasBreakpoints_HR() == S_FALSE);
@@ -294,7 +294,7 @@ public:
 		langId = wLangID;
 		return S_OK;
 	}
-	
+
 	virtual HRESULT __stdcall SetRegistryRoot(LPCOLESTR pszRegistryRoot) override
 	{
 		_registryRoot.reset (SysAllocString(pszRegistryRoot)); RETURN_IF_NULL_ALLOC(_registryRoot);
@@ -384,17 +384,19 @@ public:
 		WI_ASSERT(!_program);
 		WI_ASSERT(!_launchOptions);
 
+		SpectrumVariant platform = SpectrumVariant48K;
 		if (pszOptions)
 		{
 			auto stream = com_ptr(SHCreateMemStream((BYTE*)pszOptions, 2 * (UINT)wcslen(pszOptions))); RETURN_IF_NULL_ALLOC(stream);
 			hr = MakeLaunchOptions(&_launchOptions); RETURN_IF_FAILED(hr);
 			hr = LoadFromXml (_launchOptions.get(), nullptr, stream.get(), 1200); RETURN_IF_FAILED(hr);
+			hr = _launchOptions->get_Platform(&platform); RETURN_IF_FAILED(hr);
 		}
 		//_callback = pCallback;
 		//auto reset_callback_ptr = wil::scope_exit([this] { _callback = nullptr; });
 
 		hr = simulator->Break(); RETURN_IF_FAILED(hr);
-		hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
+		hr = simulator->Reset(0, platform); RETURN_IF_FAILED(hr);
 
 		com_ptr<IDebugProcess2> process;
 		hr = MakeDebugProcess (pPort, pszExe, this, pCallback, &process); RETURN_IF_FAILED(hr);
@@ -480,7 +482,7 @@ public:
 		auto fileExt = PathFindExtension(exePath.get());
 		if (!_wcsicmp(fileExt, L".bin") || !_wcsicmp(fileExt, L".tap"))
 		{
-			hr = ResetAndSimulateToEDITOR(_romSymbols); RETURN_IF_FAILED(hr);
+			hr = SimulateToEDITOR(_romSymbols); RETURN_IF_FAILED(hr);
 
 			auto terminateOnError = wil::scope_exit([this] { TerminateInternal(); });
 

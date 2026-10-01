@@ -12,11 +12,11 @@
 static constexpr UINT WM_MAIN_THREAD_WORK = WM_APP + 0;
 static constexpr UINT WM_SCREEN_COMPLETE  = WM_APP + 1;
 
-static ATOM wndClassAtom;
+static uint32_t wndClassRefCount;
 
-HRESULT STDMETHODCALLTYPE MakeHC91ROM (Bus* memory_bus, Bus* io_bus, const wchar_t* binaryFilename, wistd::unique_ptr<IMemoryDevice>* ppDevice);
-HRESULT STDMETHODCALLTYPE MakeHC91RAM (Bus* memory_bus, Bus* io_bus, wistd::unique_ptr<IMemoryDevice>* ppDevice);
-HRESULT STDMETHODCALLTYPE MakeBeeper (Bus* io_bus, IXAudio2* xaudio2, wistd::unique_ptr<IDevice>* ppDevice);
+HRESULT STDMETHODCALLTYPE MakeHC91ROM (Bus* memory_bus, Bus* io_bus, LPCWSTR const* romFilenames, size_t romFilenameCount, SpectrumVariant variant, wistd::unique_ptr<IMemoryDevice>* ppDevice);
+HRESULT STDMETHODCALLTYPE MakeHC91RAM (Bus* memory_bus, Bus* io_bus, SpectrumVariant variant, wistd::unique_ptr<IMemoryDevice>* ppDevice);
+HRESULT STDMETHODCALLTYPE MakeBeeper (Bus* io_bus, IXAudio2* xaudio2, SpectrumVariant variant, wistd::unique_ptr<IDevice>* ppDevice);
 
 using unique_cotaskmem_bitmapinfo = wil::unique_any<BITMAPINFO*, decltype(&::CoTaskMemFree), ::CoTaskMemFree>;
 
@@ -29,6 +29,7 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, ITap
 	static constexpr wchar_t WndClassName[] = L"Z80Program-{5F067572-7D58-40A1-A471-7FE701460B3B}";
 
 	HWND _hwnd = nullptr;
+	bool _wndClassReference = false;
 
 	LARGE_INTEGER qpFrequency;
 
@@ -65,8 +66,9 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, ITap
 
 	Bus memoryBus;
 	Bus ioBus;
+	SpectrumVariant _spectrumVariant;
 	irq_line_i irq;
-	wistd::unique_ptr<IZ80CPU> _cpu;	
+	wistd::unique_ptr<IZ80CPU> _cpu;
 	wistd::unique_ptr<IScreenDevice> _screen;
 	wistd::unique_ptr<IKeyboardDevice> _keyboard;
 	wistd::unique_ptr<IMemoryDevice> _romDevice;
@@ -85,10 +87,15 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, ITap
 	bool _breakOnTapComplete;
 
 public:
-	HRESULT InitInstance (LPCWSTR romFilename)
+	HRESULT InitInstance (LPCWSTR const* romFilenames, size_t romFilenameCount, SpectrumVariant initialVariant)
 	{
 		HRESULT hr;
-		
+		RETURN_HR_IF(E_INVALIDARG, initialVariant >= SpectrumVariantCount);
+		if (!romFilenames)
+			RETURN_HR_IF(E_INVALIDARG, romFilenameCount != 0);
+
+		_spectrumVariant = initialVariant;
+
 		hr = MakeConnectionPoint(this, &_eventHandlers); RETURN_IF_FAILED(hr);
 		hr = MakeConnectionPoint(this, &_tapPlayHandlers); RETURN_IF_FAILED(hr);
 
@@ -102,31 +109,39 @@ public:
 
 		hr = MakeZ80CPU(&memoryBus, &ioBus, &irq, &_cpu); RETURN_IF_FAILED(hr);
 
-		hr = MakeScreenDevice(&memoryBus, &ioBus, &irq, this, &_screen); RETURN_IF_FAILED(hr);
+		hr = MakeScreenDevice(&memoryBus, &ioBus, &irq, _spectrumVariant, this, &_screen); RETURN_IF_FAILED(hr);
 
-		hr = MakeKeyboardDevice(&ioBus, &_keyboard); RETURN_IF_FAILED(hr);
-		
-		hr = MakeBeeper(&ioBus, _xaudio2, &_beeper); RETURN_IF_FAILED(hr);
+		hr = MakeKeyboardDevice(&ioBus, _spectrumVariant, &_keyboard); RETURN_IF_FAILED(hr);
 
-		hr = MakeTapPlayer(&ioBus, _xaudio2, this, _tapPlayer); RETURN_IF_FAILED(hr);
+		hr = MakeBeeper(&ioBus, _xaudio2, _spectrumVariant, &_beeper); RETURN_IF_FAILED(hr);
 
-		hr = MakeHC91ROM (&memoryBus, &ioBus, romFilename, &_romDevice); RETURN_IF_FAILED(hr);
+		hr = MakeTapPlayer(&ioBus, _xaudio2, this, _spectrumVariant, _tapPlayer); RETURN_IF_FAILED(hr);
+
+		if (romFilenames)
+		{
+			hr = MakeHC91ROM (&memoryBus, &ioBus, romFilenames, romFilenameCount, _spectrumVariant, &_romDevice); RETURN_IF_FAILED(hr);
+		}
 ///		hr = _romDevice->AdviseBusAddressRangeChange(this); RETURN_IF_FAILED(hr);
 
-		hr = MakeHC91RAM (&memoryBus, &ioBus, &_ramDevice); RETURN_IF_FAILED(hr);
+		hr = MakeHC91RAM (&memoryBus, &ioBus, _spectrumVariant, &_ramDevice); RETURN_IF_FAILED(hr);
 
-		bool pushed = _active_devices_.try_push_back({ _screen.get(), _keyboard.get(), _romDevice.get(), _ramDevice.get(), _beeper.get(), _tapPlayer.get() }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		bool reserved = _active_devices_.try_reserve(20); RETURN_HR_IF(E_OUTOFMEMORY, !reserved);
+		_active_devices_.try_push_back({ _screen.get(), _keyboard.get(), _ramDevice.get(), _beeper.get(), _tapPlayer.get() });
+		if (_romDevice)
+			_active_devices_.try_push_back(_romDevice.get());
 
 		QueryPerformanceFrequency(&qpFrequency);
 
-		if (!wndClassAtom)
+		if (!wndClassRefCount)
 		{
 			WNDCLASS wc = { };
 			wc.lpfnWndProc = window_proc;
 			wc.hInstance = (HINSTANCE)&__ImageBase;
 			wc.lpszClassName = WndClassName;
-			wndClassAtom = RegisterClass(&wc); RETURN_LAST_ERROR_IF(!wndClassAtom);
+			auto atom = RegisterClass(&wc); RETURN_LAST_ERROR_IF(!atom);
 		}
+		++wndClassRefCount;
+		_wndClassReference = true;
 
 		_hwnd = CreateWindowExW (0, WndClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, (HINSTANCE)&__ImageBase, nullptr); RETURN_LAST_ERROR_IF_NULL(_hwnd);
 		SetWindowLongPtr (_hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
@@ -172,7 +187,17 @@ public:
 		{
 			BOOL bres = ::DestroyWindow(_hwnd); LOG_LAST_ERROR_IF(!bres);
 			_hwnd = nullptr;
-			bres = UnregisterClass (WndClassName, (HINSTANCE)&__ImageBase); LOG_LAST_ERROR_IF(!bres);
+		}
+
+		if (_wndClassReference)
+		{
+			WI_ASSERT(wndClassRefCount > 0);
+			if (--wndClassRefCount == 0)
+			{
+				if (!UnregisterClass(WndClassName, (HINSTANCE)&__ImageBase))
+					LOG_LAST_ERROR();
+			}
+			_wndClassReference = false;
 		}
 
 		// Destroy the devices using XAudio before destroying the mastering voice
@@ -320,7 +345,7 @@ public:
 				on_bp_hit(&bpsHit);
 				break;
 			}
-			
+
 			if (std::holds_alternative<ri_paused>(_running_info))
 				break;
 
@@ -336,7 +361,7 @@ public:
 
 		#pragma region Catch up with real time
 		// Before we attempt simulation, let's check if some devices are lagging far behind the real time.
-		// This happens while debugging the VSIX, or it may happen when this thread is starved. 
+		// This happens while debugging the VSIX, or it may happen when this thread is starved.
 		// If we have any such device, we "erase" the same length of time from all of the devices;
 		// we do this by rebasing the simulation startup time held in the _running_info variable.
 		{
@@ -668,21 +693,42 @@ public:
 		}
 	}
 
-	#pragma region ISimulator
-	virtual HRESULT STDMETHODCALLTYPE Reset (uint16_t startAddress) override
+	HRESULT ResetDevices(SpectrumVariant variant)
 	{
-		auto hr = RunOnSimulatorThread ([this, startAddress]
+		_ASSERT(::GetCurrentThreadId() == GetThreadId(_cpuThread.get()));
+		RETURN_HR_IF(E_INVALIDARG, variant != SpectrumVariant48K && variant != SpectrumVariant128);
+
+		HRESULT hr;
+		if (_romDevice)
+		{
+			hr = _romDevice->Reset(variant); RETURN_IF_FAILED(hr);
+		}
+		for (auto& d : _active_devices_)
+		{
+			if (d == _romDevice.get())
+				continue;
+			hr = d->Reset(variant); RETURN_IF_FAILED(hr);
+		}
+
+		_spectrumVariant = variant;
+		return S_OK;
+	}
+
+	#pragma region ISimulator
+	virtual HRESULT STDMETHODCALLTYPE Reset (uint16_t startAddress, SpectrumVariant variant) override
+	{
+		auto hr = RunOnSimulatorThread ([this, startAddress, variant]
 			{
+				auto hr = ResetDevices(variant); RETURN_IF_FAILED(hr);
+
 				if (auto* ri = std::get_if<ri_running>(&_running_info))
 				{
 					ri->start_time = 0;
 					QueryPerformanceCounter(&ri->start_time_perf_counter);
 				}
-				
+
 				_cpu->Reset();
 				_cpu->SetPC(startAddress);
-				for (auto& d : _active_devices_)
-					d->Reset();
 				return S_OK;
 			});
 		RETURN_IF_FAILED(hr);
@@ -708,6 +754,19 @@ public:
 		// Make sure that all notifications generated by the simulator thread,
 		// possibly as a result of resetting the devices, are dispatched before we return.
 		DrainWorkQueue();
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetVariant (SpectrumVariant* variant) override
+	{
+		*variant = _spectrumVariant;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetTime (UINT64* time) override
+	{
+		RETURN_HR_IF(E_POINTER, !time);
+		*time = _cpu->cpu_time;
 		return S_OK;
 	}
 
@@ -739,7 +798,7 @@ public:
 			RETURN_HR(E_FAIL);
 		}
 	}
-	
+
 	virtual HRESULT STDMETHODCALLTYPE ReadMemoryBus (uint16_t address, uint16_t size, void* to) override
 	{
 		RETURN_HR_IF(E_UNEXPECTED, _running);
@@ -755,7 +814,7 @@ public:
 			memoryBus.write (address + i, ((uint8_t*)from)[i]);
 		return S_OK;
 	}
-	
+
 	virtual HRESULT STDMETHODCALLTYPE Break() override
 	{
 		if (!_running)
@@ -892,7 +951,7 @@ public:
 				return S_OK;
 			});
 		RETURN_IF_FAILED(hr);
-		
+
 		hr = SendSimulateOneCompleteEvent(); LOG_IF_FAILED(hr);
 
 		_screenComplete = nullptr;
@@ -1000,13 +1059,9 @@ public:
 		// It's ok to catch by reference since the call to RunOnSimulatorThread is blocking (returns when the work is complete).
 		hr = RunOnSimulatorThread ([this, &header, buffer=buffer.get(), &screen, &beam]
 			{
-				HRESULT hr;
-
+				auto hr = ResetDevices(SpectrumVariant48K); RETURN_IF_FAILED(hr);
 				_cpu->Reset();
-				for (auto& d : _active_devices_)
-					d->Reset();
-
-				_ramDevice->WriteMemory(0x4000, 48 * 1024, buffer);
+				hr = _ramDevice->WriteMemory(0x4000, 48 * 1024, buffer); RETURN_IF_FAILED(hr);
 
 				z80_register_set regs;
 				regs.halted = false;
@@ -1021,12 +1076,14 @@ public:
 				regs.ix      = header.ix;
 				regs.iy      = header.iy;
 				regs.iff1    = header.ei;
+				regs.iff2    = header.iff2;
 				regs.r       = header.r;
 				regs.main.af = header.af;
 				regs.sp      = header.sp;
 				regs.im      = header.im;
 				regs.pc = memoryBus.read_uint16(regs.sp);
 				regs.sp += 2;
+				ioBus.write(0x40FE, header.border & 7);
 				_cpu->SetZ80Registers(&regs);
 
 				if (auto* ri = std::get_if<ri_running>(&_running_info))
@@ -1112,27 +1169,33 @@ public:
 			{
 				if (terminatorExpected)
 					return SetMalformedErrorInfo (L"Format version 1, compressed, no 00EDED00 terminator.");
+				if (outPtr != outEnd)
+					return SetMalformedErrorInfo(L"Decompressed data is shorter than its output buffer.");
 
 				return S_OK;
 			}
 
-			if ((inPtr + 4 <= inEnd) && !memcmp(inPtr, "\x00\xED\xED\x00", 4))
+			if (terminatorExpected && inEnd - inPtr >= 4 && !memcmp(inPtr, "\x00\xED\xED\x00", 4))
+			{
+				if (outPtr != outEnd)
+					return SetMalformedErrorInfo(L"Decompressed data is shorter than its output buffer.");
 				return S_OK;
-			
-			if ((inPtr + 4 <= inEnd) && (inPtr[0] == 0xED) && (inPtr[1] == 0xED))
+			}
+
+			if (inEnd - inPtr >= 4 && (inPtr[0] == 0xED) && (inPtr[1] == 0xED))
 			{
 				inPtr += 2;
 				uint8_t repeat = *inPtr++;
 				uint8_t value = *inPtr++;
 				if (outPtr + repeat > outEnd)
-					return SetMalformedErrorInfo (L"Longer than 48K.");
+					return SetMalformedErrorInfo (L"Decompressed data exceeds its output buffer.");
 				memset (outPtr, value, repeat);
 				outPtr += repeat;
 			}
 			else
 			{
 				if (outPtr + 1 > outEnd)
-					return SetMalformedErrorInfo (L"Longer than 48K.");
+					return SetMalformedErrorInfo (L"Decompressed data exceeds its output buffer.");
 				*outPtr++ = *inPtr++;
 			}
 		}
@@ -1177,12 +1240,12 @@ public:
 		uint8_t  : 8;  // 60 - 0xff if Multiface Rom paged.
 		uint8_t  : 8;  // 61 - 0xff if 0-8191 is ROM, 0 if RAM
 		uint8_t  : 8;  // 62 - 0xff if 8192-16383 is ROM, 0 if RAM
-		uint8_t  joystick_key_mapping[10];  // 63
-		uint8_t  keys[10];  // 73
+		uint8_t  joystick_key_mapping[10];  // 63-72
+		uint8_t  keys[10];  // 73-82
 		uint8_t  : 8;  // 83
 		uint8_t  : 8;  // 84
 		uint8_t  : 8;  // 85
-		uint8_t  : 8;  // 86
+		uint8_t  : 8;  // 86, only present when header length is 55
 	};
 	#pragma pack (pop)
 
@@ -1191,7 +1254,7 @@ public:
 	static inline const wchar_t* const HardwareModeNamesV3[] = {
 		L"48K", L"48K+IF1", L"SamRam", L"48K+M.G.T.", L"128K", L"128K+IF1", L"128K+M.G.T." };
 
-	HRESULT LoadZ80V23 (const z80_header_v23* header23, const uint8_t* inPtr, const uint8_t* inEnd, uint8_t* outPtr, uint8_t* outEnd)
+	HRESULT LoadZ80V23 (const z80_header_v23* header23, const uint8_t* inPtr, const uint8_t* inEnd, uint8_t* outPtr, SpectrumVariant* variant, uint8_t* pageMask)
 	{
 		const wchar_t* const* modeNames;
 		size_t modeNameCount;
@@ -1207,11 +1270,19 @@ public:
 			modeNames = HardwareModeNamesV3;
 			modeNameCount = std::size(HardwareModeNamesV3);
 		}
+		else
+			return SetMalformedErrorInfo(L"Unsupported extended header length.");
 
-		if (auto hw = header23->hardware_mode; hw != 0)
-			return SetErrorInfo (E_FAIL, L"This file specifies hardware mode %u (%s), "
-				"but the simulator currently supports only hardware mode 0 (%s).", 
-				hw, (hw < modeNameCount) ? modeNames[hw] : L"??", modeNames[0]);
+		uint8_t hardwareMode = header23->hardware_mode;
+		bool is128KMode = header23->len == 23
+			? hardwareMode == 3 || hardwareMode == 4
+			: hardwareMode == 4 || hardwareMode == 5 || hardwareMode == 6;
+		if (hardwareMode >= modeNameCount || (hardwareMode != 0 && !is128KMode))
+			return SetErrorInfo(E_FAIL, L"This file specifies unsupported hardware mode %u (%s).",
+				hardwareMode, hardwareMode < modeNameCount ? modeNames[hardwareMode] : L"??");
+
+		*variant = is128KMode ? SpectrumVariant128 : SpectrumVariant48K;
+		*pageMask = 0;
 
 		while (inPtr < inEnd)
 		{
@@ -1220,16 +1291,28 @@ public:
 			uint16_t lengthCompressedData = inPtr[0] | (inPtr[1] << 8);
 			uint8_t pageNumber = inPtr[2];
 			inPtr += 3;
-			
-			uint8_t* pagePtr;
-			if (pageNumber == 8)
-				pagePtr = outPtr; // Spectrum address 0x4000
+
+			uint8_t bank;
+			if (*variant == SpectrumVariant128)
+			{
+				if (pageNumber < 3 || pageNumber > 10)
+					return SetMalformedErrorInfo(L"Unknown RAM page number in 128K mode.");
+				bank = pageNumber - 3;
+			}
+			else if (pageNumber == 8)
+				bank = 0;
 			else if (pageNumber == 4)
-				pagePtr = &outPtr[0x4000]; // Spectrum address 0x8000
+				bank = 1;
 			else if (pageNumber == 5)
-				pagePtr = &outPtr[0x8000]; // Spectrum address 0xC000
+				bank = 2;
 			else
-				return SetErrorInfo(E_FAIL, L"Unknown page number (%u) in Spectrum 48K mode.", pageNumber);
+				return SetMalformedErrorInfo(L"Unknown RAM page number in 48K mode.");
+
+			uint8_t pageBit = 1u << bank;
+			if (*pageMask & pageBit)
+				return SetMalformedErrorInfo(L"Duplicate RAM page.");
+			*pageMask |= pageBit;
+			uint8_t* pagePtr = outPtr + bank * 0x4000;
 
 			if (lengthCompressedData == 0xFFFF)
 			{
@@ -1240,10 +1323,17 @@ public:
 			}
 			else
 			{
+				if (!lengthCompressedData)
+					return SetMalformedErrorInfo(L"RAM page block has zero length.");
+				if (inEnd - inPtr < lengthCompressedData)
+					return SetMalformedErrorInfo(L"RAM page block is truncated.");
 				auto hr = DecompressZ80 (inPtr, inPtr + lengthCompressedData, pagePtr, pagePtr + 0x4000, false); RETURN_IF_FAILED(hr);
 				inPtr += lengthCompressedData;
 			}
 		}
+		uint8_t expectedPageMask = *variant == SpectrumVariant128 ? 0xFF : 0x07;
+		if (*pageMask != expectedPageMask)
+			return SetMalformedErrorInfo(L"The snapshot does not contain all RAM pages.");
 
 		return S_OK;
 	}
@@ -1255,24 +1345,29 @@ public:
 
 		STATSTG stat;
 		hr = stream->Stat (&stat, STATFLAG_NONAME); RETURN_IF_FAILED_EXPECTED(hr);
+		if (stat.cbSize.HighPart || stat.cbSize.LowPart < sizeof(z80_header))
+			return SetMalformedErrorInfo(L"File is shorter than the base header.");
 
 		z80_header header;
 		ULONG read;
 		hr = stream->Read (&header, (ULONG)sizeof(header), &read); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_FAIL, read != sizeof(header));
 		uint32_t inSize = stat.cbSize.LowPart - sizeof(header);
-		auto inBuffer = wil::unique_hglobal_ptr<uint8_t>((uint8_t*)GlobalAlloc(GMEM_FIXED, inSize)); RETURN_IF_NULL_ALLOC_EXPECTED(inBuffer);
+		auto inBuffer = wil::make_unique_hlocal<uint8_t[]>(inSize); RETURN_IF_NULL_ALLOC_EXPECTED(inBuffer);
 		hr = stream->Read(inBuffer.get(), inSize, &read); RETURN_IF_FAILED_EXPECTED(hr); RETURN_HR_IF(E_FAIL, read != inSize);
 		const uint8_t* inPtr = inBuffer.get();
 		const uint8_t* inEnd = inPtr + inSize;
 
-		auto outBuffer = wil::unique_hglobal_ptr<uint8_t>((uint8_t*)GlobalAlloc(GMEM_FIXED, 48 * 1024)); RETURN_IF_NULL_ALLOC_EXPECTED(outBuffer);
+		auto outBuffer = wil::make_unique_hlocal<uint8_t[]>(128 * 1024); RETURN_IF_NULL_ALLOC_EXPECTED(outBuffer);
 		uint8_t* outPtr = outBuffer.get();
-		uint8_t* outEnd = outPtr + 48 * 1024;
 
+		SpectrumVariant snapshotVariant;
+		uint8_t pagingState;
 		uint16_t pc;
 		if (header.pc != 0)
 		{
-			hr = LoadZ80V1 (&header, inPtr, inEnd, outPtr, outEnd); RETURN_IF_FAILED_EXPECTED(hr);
+			snapshotVariant = SpectrumVariant48K;
+			pagingState = 0;
+			hr = LoadZ80V1 (&header, inPtr, inEnd, outPtr, outPtr + 48 * 1024); RETURN_IF_FAILED_EXPECTED(hr);
 			pc = header.pc;
 		}
 		else
@@ -1280,11 +1375,15 @@ public:
 			if (inEnd - inPtr < 2)
 				return SetMalformedErrorInfo(L"Header v2/3 too short.");
 			uint16_t header23_len = inPtr[0] | (inPtr[1] << 8);
+			if (header23_len != 23 && header23_len != 54 && header23_len != 55)
+				return SetMalformedErrorInfo(L"Unsupported extended header length.");
 			if (inEnd - inPtr < (2 + header23_len))
 				return SetMalformedErrorInfo(L"Header v2/3 too short.");
 			auto* header23 = (const z80_header_v23*)inPtr;
+			pagingState = header23->byte_35;
 			inPtr += (2 + header23_len);
-			hr = LoadZ80V23 (header23, inPtr, inEnd, outPtr, outEnd); RETURN_IF_FAILED_EXPECTED(hr);
+			uint8_t pageMask;
+			hr = LoadZ80V23 (header23, inPtr, inEnd, outPtr, &snapshotVariant, &pageMask); RETURN_IF_FAILED_EXPECTED(hr);
 			pc = header23->pc;
 		}
 
@@ -1292,15 +1391,32 @@ public:
 		POINT beam;
 
 		// It's ok to catch by reference since the call to RunOnSimulatorThread is blocking (returns when the work is complete).
-		hr = RunOnSimulatorThread ([this, pc, &header, buffer=outBuffer.get(), &screen, &beam]
+		hr = RunOnSimulatorThread ([&]
 			{
 				HRESULT hr;
 
-				_cpu->Reset();
 				for (auto& d : _active_devices_)
-					d->Reset();
+				{
+					hr = d->Reset(snapshotVariant); RETURN_IF_FAILED(hr);
+				}
 
-				_ramDevice->WriteMemory(0x4000, 48 * 1024, buffer);
+				_cpu->Reset();
+				_spectrumVariant = snapshotVariant;
+				if (snapshotVariant == SpectrumVariant128)
+				{
+					for (uint8_t bank = 0; bank < 8; bank++)
+					{
+						ioBus.write(0x7FFD, bank);
+						hr = _ramDevice->WriteMemory(0xC000, 0x4000, outBuffer.get() + bank * 0x4000); RETURN_IF_FAILED(hr);
+					}
+					ioBus.write(0x7FFD, pagingState);
+				}
+				else if (snapshotVariant == SpectrumVariant48K)
+				{
+					hr = _ramDevice->WriteMemory(0x4000, 48 * 1024, outBuffer.get()); RETURN_IF_FAILED(hr);
+				}
+				else
+					RETURN_HR(E_NOTIMPL);
 
 				z80_register_set regs;
 				regs.halted = false;
@@ -1316,12 +1432,14 @@ public:
 				regs.ix      = header.ix;
 				regs.iy      = header.iy;
 				regs.iff1    = header.ei;
-				regs.r       = header.r;
+				regs.iff2    = header.iff2;
+				regs.r       = (header.r & 0x7F) | (header.r0 << 7);
 				regs.main.a  = header.a;
 				regs.main.f.val = header.f;
 				regs.sp      = header.sp;
 				regs.im      = header.im;
 				regs.pc = pc;
+				ioBus.write(0x40FE, header.border & 7);
 				_cpu->SetZ80Registers(&regs);
 
 				if (auto* ri = std::get_if<ri_running>(&_running_info))
@@ -1536,7 +1654,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE RemoveBreakpoint (SIM_BP_COOKIE cookie) override
 	{
 		RETURN_HR_IF(E_INVALIDARG, cookie == 0);
-		
+
 		return RunOnSimulatorThread([this, cookie]
 			{
 				return _cpu->RemoveBreakpoint(cookie);
@@ -1636,7 +1754,7 @@ public:
 			else if (percent == 100 && std::holds_alternative<ri_max_speed>(_running_info))
 			{
 				// Setting normal speed while running at max speed.
-				auto hr = RunOnSimulatorThread([this] { 
+				auto hr = RunOnSimulatorThread([this] {
 					LARGE_INTEGER perf_counter;
 					QueryPerformanceCounter(&perf_counter);
 					_running_info = ri_running { .start_time = _cpu->cpu_time, .start_time_perf_counter = perf_counter };
@@ -1673,7 +1791,7 @@ public:
 		// and in case of error it would probably freeze the app.
 
 		// TODO: register for this callback when simulation starts running, unregister when simulation paused.
-		
+
 		if (auto* ri = std::get_if<ri_max_speed>(&_running_info))
 		{
 			// At max simulation speed, rendering the simulated screen to the HWND becomes a bottleneck.
@@ -1778,7 +1896,7 @@ public:
 	{
 		if (riid == __uuidof(ISimulatorEventNotifySink))
 			return copy_to(_eventHandlers, ppCP);
-		
+
 		if (riid == __uuidof(ITapPlayNotifySink))
 			return copy_to(_tapPlayHandlers, ppCP);
 
@@ -1787,6 +1905,42 @@ public:
 	#pragma endregion
 
 	#pragma region ISimulator_
+	virtual HRESULT STDMETHODCALLTYPE SaveScreen (BOOL includeBorder, SAFEARRAY** image) override
+	{
+		RETURN_HR_IF(E_POINTER, !image);
+		*image = nullptr;
+
+		unique_cotaskmem_bitmapinfo bitmap;
+		auto hr = RunOnSimulatorThread([this, &bitmap, includeBorder]
+			{
+				return _screen->CopyBuffer(_showCRTSnapshot, bitmap.addressof(), nullptr, includeBorder);
+			}); RETURN_IF_FAILED(hr);
+
+		BITMAPINFOHEADER header = bitmap.get()->bmiHeader;
+		header.biSize = sizeof(BITMAPINFOHEADER);
+		DWORD imageSize = header.biWidth * abs(header.biHeight) * (header.biBitCount / 8);
+		header.biSizeImage = imageSize;
+		DWORD pixelOffset = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
+		DWORD bmpSize = pixelOffset + imageSize;
+
+		unique_safearray result (SafeArrayCreateVector(VT_UI1, 0, bmpSize)); RETURN_IF_NULL_ALLOC(result);
+		void* data;
+		hr = SafeArrayAccessData(result.get(), &data); RETURN_IF_FAILED(hr);
+		auto unaccess = wil::scope_exit([&result] { SafeArrayUnaccessData(result.get()); });
+
+		BITMAPFILEHEADER fileHeader = { };
+		fileHeader.bfType = 0x4D42;
+		fileHeader.bfSize = bmpSize;
+		fileHeader.bfOffBits = pixelOffset;
+		memcpy(data, &fileHeader, sizeof(fileHeader));
+		memcpy((uint8_t*)data + sizeof(fileHeader), &header, sizeof(header));
+		memcpy((uint8_t*)data + pixelOffset, (const uint8_t*)bitmap.get() + sizeof(BITMAPINFOHEADER), imageSize);
+
+		unaccess.reset();
+		*image = result.release();
+		return S_OK;
+	}
+
 	virtual HRESULT STDMETHODCALLTYPE ReadMemoryBus8 (UINT16 address, UINT8* pData) override
 	{
 		RETURN_HR_IF(E_UNEXPECTED, _running);
@@ -1796,10 +1950,10 @@ public:
 	#pragma endregion
 };
 
-HRESULT MakeSimulator (LPCWSTR romFilename, ISimulator** sim)
+HRESULT MakeSimulator (LPCWSTR const* romFilenames, size_t romFilenameCount, SpectrumVariant initialVariant, ISimulator** sim)
 {
 	com_ptr<SimulatorImpl> s = new (std::nothrow) SimulatorImpl(); RETURN_IF_NULL_ALLOC(s);
-	auto hr = s->InitInstance(romFilename); RETURN_IF_FAILED(hr);
+	auto hr = s->InitInstance(romFilenames, romFilenameCount, initialVariant); RETURN_IF_FAILED(hr);
 	*sim = s.detach();
 	return S_OK;
 }

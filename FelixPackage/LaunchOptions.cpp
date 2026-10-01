@@ -5,11 +5,11 @@
 #include "Z80Xml.h"
 #include "dispids.h"
 
-class LaunchOptionsImpl
-	: public IFelixLaunchOptions
+class LaunchOptionsImpl : public IFelixLaunchOptions
 {
 	ULONG _refCount = 0;
 	wil::unique_process_heap_string _projectDir;
+	SpectrumVariant _platform = SpectrumVariant48K;
 	DWORD _baseAddress;
 	wil::unique_process_heap_string _entryPointAddress;
 
@@ -51,6 +51,18 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE put_ProjectDir (BSTR pbstr) override
 	{
 		_projectDir = wil::make_unique_string_nothrow<wil::unique_process_heap_string>(pbstr); RETURN_IF_NULL_ALLOC(_projectDir);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_Platform (enum SpectrumVariant *pPlatform) override
+	{
+		*pPlatform = _platform;
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE put_Platform (enum SpectrumVariant platform) override
+	{
+		_platform = platform;
 		return S_OK;
 	}
 

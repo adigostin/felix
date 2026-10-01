@@ -400,7 +400,7 @@ HRESULT GeneratePrePostIncludeFiles (IProjectNode* project)
 			op2->OutputTaskItemStringEx2(message.get(), (VSTASKPRIORITY)0, (VSTASKCATEGORY)0,
 				nullptr, 0, nullptr, 0, 0, projectName.bstrVal, nullptr, nullptr);
 	}
-	
+
 	hr = GeneratePrePostIncludeFilesInner (project, config);
 	if (FAILED(hr))
 	{
@@ -651,7 +651,7 @@ HRESULT MakeSjasmCommandLine (IProjectNode* project, IProjectConfig* config, IPr
 	{
 		hr = preIncludeFile->GetCanonicalName(project, &filename); RETURN_IF_FAILED(hr);
 		hr = Write(cmdLine, L" ", filename.get()); RETURN_IF_FAILED(hr);
-	}	
+	}
 	for (auto& asmFile : asmFiles)
 	{
 		hr = asmFile->GetCanonicalName(project, &filename); RETURN_IF_FAILED(hr);
@@ -718,7 +718,7 @@ HRESULT QueryEditProjectFile (IVsHierarchy* hier)
 		if (FAILED(hr) || (fEditVerdict != QER_EditOK))
 			return OLE_E_PROMPTSAVECANCELLED;
 	}
-	
+
 	return S_OK;
 }
 
@@ -772,7 +772,7 @@ HRESULT GetPathTo (IProjectNode* proj, IChildNode* node, wil::unique_process_hea
 		hr = parentAsChild->GetProperty(proj, VSHPROPID_SaveName, &parentName); RETURN_IF_FAILED(hr);
 		hr = wil::str_concat_nothrow(dir, parentName.bstrVal, L"\\"); RETURN_IF_FAILED(hr);
 	}
-		
+
 	return S_OK;
 }
 
@@ -963,7 +963,7 @@ HRESULT ClearItemIdsTree (IProjectNode* root, IChildNode* child)
 	enumNodeAndChildren = [root, &enumNodeAndChildren](IChildNode* node) -> HRESULT
 		{
 			HRESULT hr;
-			
+
 			VSITEMID oldItemID = node->GetItemId();
 			root->NotifyNodeRemovingFromHier(node);
 
@@ -1223,7 +1223,7 @@ HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectConfig
 	com_ptr<IStream> toStream;
 	hr = SHCreateStreamOnFileEx (toPath, STGM_CREATE | STGM_WRITE | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &toStream); RETURN_IF_FAILED(hr);
 	hr = toStream->Write(content.get(), contentLen, nullptr); RETURN_IF_FAILED(hr);
-	
+
 	return S_OK;
 }
 
@@ -1508,7 +1508,7 @@ HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyChangeSink>* cp, IDi
 HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyNotifySink>* cp, DISPID dispid)
 {
 	return cp->Notify([dispid](IPropertyNotifySink* sink)
-		{ 
+		{
 			auto hr = sink->OnChanged(dispid); RETURN_HR(hr);
 		});
 }
@@ -1605,5 +1605,50 @@ HRESULT ConfirmStopDebugging()
 		}, 5000); RETURN_IF_FAILED(hr);
 	RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_TIMEOUT), hr == S_FALSE);
 
+	return S_OK;
+}
+
+HRESULT PickSaveFile (LPCWSTR filter, wil::unique_process_heap_string& filename)
+{
+	HWND dialogOwner;
+	auto hr = uiShell->GetDialogOwnerHwnd(&dialogOwner); RETURN_IF_FAILED(hr);
+
+	wil::unique_bstr appName;
+	hr = uiShell->GetAppName(&appName); RETURN_IF_FAILED(hr);
+
+	wil::unique_bstr initialDirectory;
+	com_ptr<IVsSettingsManager> settingsManager;
+	com_ptr<IVsWritableSettingsStore> settingsStore;
+	if (SUCCEEDED(serviceProvider->QueryService(SID_SVsSettingsManager, &settingsManager))
+		&& SUCCEEDED(settingsManager->GetWritableSettingsStore(SettingsScope_UserSettings, &settingsStore)))
+	{
+		settingsStore->GetString(SettingsCollection, SettingLoadSavePath, &initialDirectory);
+	}
+
+	auto selectedFilename = wil::make_process_heap_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(selectedFilename);
+	selectedFilename.get()[0] = 0;
+
+	VSSAVEFILENAMEW saveFile = { };
+	saveFile.lStructSize = (DWORD)sizeof(saveFile);
+	saveFile.hwndOwner = dialogOwner;
+	saveFile.pwzDlgTitle = appName.get();
+	saveFile.pwzFileName = selectedFilename.get();
+	saveFile.nMaxFileName = MAX_PATH;
+	saveFile.pwzInitialDir = initialDirectory.get();
+	saveFile.pwzFilter = filter;
+	hr = uiShell->GetSaveFileNameViaDlg(&saveFile);
+	if (hr == OLE_E_PROMPTSAVECANCELLED)
+		return S_FALSE;
+	RETURN_IF_FAILED(hr);
+
+	if (settingsStore && SUCCEEDED(settingsStore->CreateCollection(SettingsCollection)))
+	{
+		if (auto dir = wil::make_hlocal_string_nothrow(saveFile.pwzFileName, saveFile.nFileOffset))
+		{
+			hr = settingsStore->SetString(SettingsCollection, SettingLoadSavePath, dir.get()); LOG_IF_FAILED(hr);
+		}
+	}
+
+	filename = std::move(selectedFilename);
 	return S_OK;
 }

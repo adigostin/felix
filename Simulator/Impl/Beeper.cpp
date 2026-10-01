@@ -21,7 +21,7 @@ class Beeper : public IDevice
 	XAudio2VoiceCallback callback;
 
 public:
-	HRESULT InitInstance (Bus* io_bus, IXAudio2* xaudio2)
+	HRESULT InitInstance (Bus* io_bus, IXAudio2* xaudio2, SpectrumVariant variant)
 	{
 		HRESULT hr;
 		bool pushed = io_bus->write_responders.try_push_back({ this, &process_io_write_request }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
@@ -51,7 +51,7 @@ public:
 	}
 
 	#pragma region IDevice
-	virtual void STDMETHODCALLTYPE Reset() override
+	virtual HRESULT STDMETHODCALLTYPE Reset(SpectrumVariant variant) override
 	{
 		_time = 0;
 		_level = 0;
@@ -60,6 +60,7 @@ public:
 		_previous_packet_last_sample_time = 0;
 		data[0] = audio_level_silence;
 		SendSamplesToXAudio (_source_voice, data, 1);
+		return S_OK;
 	}
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { return FALSE; }
@@ -145,7 +146,7 @@ public:
 		}
 	}
 
-	static void process_io_write_request (IDevice* d, uint16_t address, uint8_t value)
+	static void process_io_write_request (IDevice* d, WORD address, uint8_t value)
 	{
 		if ((address & 0xFF) == 0xFE)
 		{
@@ -160,10 +161,10 @@ public:
 	}
 };
 
-HRESULT STDMETHODCALLTYPE MakeBeeper (Bus* io_bus, IXAudio2* xaudio2, wistd::unique_ptr<IDevice>* ppDevice)
+HRESULT STDMETHODCALLTYPE MakeBeeper (Bus* io_bus, IXAudio2* xaudio2, SpectrumVariant variant, wistd::unique_ptr<IDevice>* ppDevice)
 {
 	auto d = wil::make_unique_nothrow<Beeper>(); RETURN_IF_NULL_ALLOC(d);
-	auto hr = d->InitInstance(io_bus, xaudio2); RETURN_IF_FAILED(hr);
+	auto hr = d->InitInstance(io_bus, xaudio2, variant); RETURN_IF_FAILED(hr);
 	*ppDevice = std::move(d);
 	return S_OK;
 }

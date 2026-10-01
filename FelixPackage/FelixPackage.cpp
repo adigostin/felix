@@ -14,6 +14,7 @@ const wchar_t Z80AsmLanguageName[]  = L"Z80Asm";
 const wchar_t SingleDebugPortName[] = L"Single Z80 Port";
 const wchar_t SettingsCollection[] = L"FelixSettings";
 const wchar_t SettingLoadSavePath[] = L"LoadSavePath";
+const wchar_t SettingSpectrumVariant[] = L"SpectrumVariant";
 const LCID InvariantLCID = LocaleNameToLCID(LOCALE_NAME_INVARIANT, 0);
 FELIX_API const wchar_t ProjectElementName[] = L"Z80Project";
 const wchar_t ConfigurationElementName[] = L"Configuration";
@@ -21,7 +22,14 @@ const wchar_t FileElementName[] = L"File";
 const wchar_t FolderElementName[] = L"Folder";
 wil::unique_process_heap_string uiTestDir;
 static const wchar_t AlwaysReportSettingsName[] = L"AlwaysReportErrors";
-static const wchar_t BinaryFilename[] = L"ROMs/Spectrum48K.rom";
+static const LPCWSTR romRelativePaths[SpectrumVariantCount] = {
+	nullptr,
+	L"ROMs\\Spectrum48K.rom",
+	L"ROMs\\Spectrum128K.rom",
+	nullptr,
+	nullptr,
+	nullptr,
+};
 
 // These must be kept in sync with the pkgdef line [$RootKey$\InstalledProducts\FelixPackage]
 //static const wchar_t InstalledProductRegPath[] = L"InstalledProducts\\FelixPackage";
@@ -60,7 +68,7 @@ public:
 		auto fnres = PathFindFileName(packageDir.get()); RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), fnres == packageDir.get());
 		*fnres = 0;
 
-		wchar_t dir[MAX_PATH]; 
+		wchar_t dir[MAX_PATH];
 		if (GetEnvironmentVariable(L"FelixTestUI", dir, _countof(dir)))
 		{
 			// This environment variable is set by some of our tests before launching the VS experimental instance.
@@ -144,10 +152,28 @@ public:
 	{
 		wil::com_ptr_nothrow<IProfferService> srpProffer;
 		auto hr = serviceProvider->QueryService (SID_SProfferService, &srpProffer); RETURN_IF_FAILED(hr);
-		
-		wil::unique_process_heap_string romFilename;
-		hr = wil::str_concat_nothrow(romFilename, packageDir.get(), BinaryFilename); RETURN_IF_FAILED(hr);
-		hr = MakeSimulator(romFilename.get(), &simulator); RETURN_IF_FAILED(hr);
+
+		wil::unique_process_heap_string romFilenameStorage[SpectrumVariantCount];
+		LPCWSTR romFilenames[SpectrumVariantCount] = {};
+		for (size_t i = 0; i < SpectrumVariantCount; i++)
+		{
+			if (!romRelativePaths[i])
+				continue;
+			hr = wil::str_concat_nothrow(romFilenameStorage[i], packageDir.get(), romRelativePaths[i]); RETURN_IF_FAILED(hr);
+			romFilenames[i] = romFilenameStorage[i].get();
+		}
+		SpectrumVariant variant = SpectrumVariant48K;
+		com_ptr<IVsSettingsManager> settingsManager;
+		com_ptr<IVsWritableSettingsStore> settingsStore;
+		if (SUCCEEDED(serviceProvider->QueryService(SID_SVsSettingsManager, &settingsManager))
+			&& SUCCEEDED(settingsManager->GetWritableSettingsStore(SettingsScope_UserSettings, &settingsStore)))
+		{
+			int variantValue;
+			if (SUCCEEDED(settingsStore->GetInt(SettingsCollection, SettingSpectrumVariant, &variantValue)))
+				variant = static_cast<SpectrumVariant>(variantValue);
+		}
+
+		hr = MakeSimulator(romFilenames, _countof(romFilenames), variant, &simulator); RETURN_IF_FAILED(hr);
 		simulator->Resume(false);
 
 		return S_OK;
@@ -288,7 +314,7 @@ public:
 	{
 		if (message == WM_INITDIALOG)
 		{
-			// Get the owner window and dialog box rectangles. 
+			// Get the owner window and dialog box rectangles.
 			HWND hwndOwner = GetParent(hwndDlg);
 			uiShell->CenterDialogOnWindow(hwndDlg, hwndOwner);
 
@@ -301,27 +327,27 @@ public:
 
 			/*
 			RECT rcOwner, rcDlg, rc;
-			GetWindowRect(hwndOwner, &rcOwner); 
-			GetWindowRect(hwndDlg, &rcDlg); 
-			CopyRect(&rc, &rcOwner); 
+			GetWindowRect(hwndOwner, &rcOwner);
+			GetWindowRect(hwndDlg, &rcDlg);
+			CopyRect(&rc, &rcOwner);
 
-			// Offset the owner and dialog box rectangles so that right and bottom 
-			// values represent the width and height, and then offset the owner again 
-			// to discard space taken up by the dialog box. 
+			// Offset the owner and dialog box rectangles so that right and bottom
+			// values represent the width and height, and then offset the owner again
+			// to discard space taken up by the dialog box.
 
-			OffsetRect(&rcDlg, -rcDlg.left, -rcDlg.top); 
-			OffsetRect(&rc, -rc.left, -rc.top); 
-			OffsetRect(&rc, -rcDlg.right, -rcDlg.bottom); 
+			OffsetRect(&rcDlg, -rcDlg.left, -rcDlg.top);
+			OffsetRect(&rc, -rc.left, -rc.top);
+			OffsetRect(&rc, -rcDlg.right, -rcDlg.bottom);
 
-			// The new position is the sum of half the remaining space and the owner's 
-			// original position. 
+			// The new position is the sum of half the remaining space and the owner's
+			// original position.
 
-			SetWindowPos(hwndDlg, 
-			HWND_TOP, 
-			rcOwner.left + (rc.right / 2), 
-			rcOwner.top + (rc.bottom / 2), 
-			0, 0,          // Ignores size arguments. 
-			SWP_NOSIZE); 
+			SetWindowPos(hwndDlg,
+			HWND_TOP,
+			rcOwner.left + (rc.right / 2),
+			rcOwner.top + (rc.bottom / 2),
+			0, 0,          // Ignores size arguments.
+			SWP_NOSIZE);
 			*/
 			return TRUE;
 		}
@@ -425,7 +451,7 @@ public:
 		//sentry_options_set_symbolize_stacktraces(_sentryOptions, 1);
 
 		wil::unique_bstr ver;
-		GetAppId (&ver); 
+		GetAppId (&ver);
 		char buffer[100];
 		int ires = WideCharToMultiByte(CP_UTF8, 0, ver.get(), -1, buffer, sizeof(buffer), 0, nullptr);
 		if (ires > 0)
@@ -715,6 +741,20 @@ public:
 	}
 	#pragma endregion
 
+	static inline const std::pair<DWORD, enum SpectrumVariant> CommandVariantMap[] = {
+		{ cmdidVariant16K, SpectrumVariant16K },
+		{ cmdidVariant48K, SpectrumVariant48K },
+		{ cmdidVariant128K, SpectrumVariant128 },
+	};
+
+	static const std::pair<DWORD, enum SpectrumVariant>* FindCommandVariant(DWORD commandId)
+	{
+		for (const auto& entry : CommandVariantMap)
+			if (entry.first == commandId)
+				return &entry;
+		return nullptr;
+	}
+
 	#pragma region IOleCommandTarget
 	virtual HRESULT STDMETHODCALLTYPE QueryStatus (const GUID *pguidCmdGroup, ULONG cCmds, OLECMD prgCmds[], OLECMDTEXT *pCmdText) override
 	{
@@ -722,7 +762,18 @@ public:
 		{
 			for (ULONG i = 0; i < cCmds; i++)
 			{
-				if (prgCmds[i].cmdID == cmdidSimulator)
+				if (const auto* var = FindCommandVariant(prgCmds[i].cmdID))
+				{
+					SpectrumVariant variant;
+					auto hr = simulator->GetVariant(&variant); RETURN_IF_FAILED(hr);
+					prgCmds[i].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED
+						| (variant == var->second ? OLECMDF_LATCHED : 0);
+				}
+				else if (prgCmds[i].cmdID == cmdidSimulator)
+					prgCmds[i].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
+				else if (prgCmds[i].cmdID == cmdidSelectVariantMenu)
+					prgCmds[i].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
+				else if (prgCmds[i].cmdID == cmdidSaveScreen)
 					prgCmds[i].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
 				else if (prgCmds[i].cmdID == cmdidResetSimulator)
 					prgCmds[i].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
@@ -742,6 +793,31 @@ public:
 
 		if (*pguidCmdGroup == CLSID_FelixPackageCmdSet)
 		{
+			if (const auto* var = FindCommandVariant(nCmdID))
+			{
+				SpectrumVariant currentVariant;
+				hr = simulator->GetVariant(&currentVariant); RETURN_IF_FAILED(hr);
+				if (currentVariant != var->second)
+				{
+					hr = ConfirmStopDebugging(); RETURN_IF_FAILED(hr);
+					if (hr == S_FALSE)
+						return S_OK;
+
+					hr = simulator->Reset(0, var->second); RETURN_IF_FAILED(hr);
+				}
+
+				com_ptr<IVsSettingsManager> settingsManager;
+				com_ptr<IVsWritableSettingsStore> settingsStore;
+				if (SUCCEEDED(serviceProvider->QueryService(SID_SVsSettingsManager, &settingsManager))
+					&& SUCCEEDED(settingsManager->GetWritableSettingsStore(SettingsScope_UserSettings, &settingsStore))
+					&& SUCCEEDED(settingsStore->CreateCollection(SettingsCollection)))
+				{
+					settingsStore->SetInt(SettingsCollection, SettingSpectrumVariant, static_cast<int>(var->second));
+				}
+
+				return S_OK;
+			}
+
 			if (nCmdID == cmdidSimulator)
 			{
 				if (!_simulatorWindowFrame)
@@ -754,6 +830,38 @@ public:
 					hr = _simulatorWindowFrame->Show(); RETURN_IF_FAILED(hr);
 				}
 
+				return S_OK;
+			}
+
+			if (nCmdID == cmdidSaveScreen)
+			{
+				wil::unique_process_heap_string filename;
+				hr = PickSaveFile(L"Bitmap files (*.bmp)\0*.bmp\0All Files (*.*)\0*.*\0", filename);
+				if (hr == S_FALSE)
+					return S_OK;
+				RETURN_IF_FAILED(hr);
+
+				unique_safearray image;
+				hr = simulator->SaveScreen(TRUE, image.addressof()); RETURN_IF_FAILED(hr);
+				RETURN_HR_IF(E_UNEXPECTED, !image || SafeArrayGetDim(image.get()) != 1);
+
+				LONG lowerBound;
+				LONG upperBound;
+				hr = SafeArrayGetLBound(image.get(), 1, &lowerBound); RETURN_IF_FAILED(hr);
+				hr = SafeArrayGetUBound(image.get(), 1, &upperBound); RETURN_IF_FAILED(hr);
+				RETURN_HR_IF(E_UNEXPECTED, upperBound < lowerBound);
+				ULONG imageSize = (ULONG)(upperBound - lowerBound + 1);
+
+				void* imageData;
+				hr = SafeArrayAccessData(image.get(), &imageData); RETURN_IF_FAILED(hr);
+				auto unaccess = wil::scope_exit([&] { SafeArrayUnaccessData(image.get()); });
+
+				auto file = wil::unique_hfile(CreateFile(filename.get(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr));
+				RETURN_LAST_ERROR_IF(file.get() == INVALID_HANDLE_VALUE);
+				DWORD bytesWritten;
+				BOOL written = WriteFile(file.get(), imageData, imageSize, &bytesWritten, nullptr);
+				RETURN_LAST_ERROR_IF(!written);
+				RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_WRITE_FAULT), bytesWritten != imageSize);
 				return S_OK;
 			}
 
@@ -770,7 +878,9 @@ public:
 				if (hr == S_FALSE)
 					return S_OK;
 
-				hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
+				SpectrumVariant variant;
+				hr = simulator->GetVariant(&variant); RETURN_IF_FAILED(hr);
+				hr = simulator->Reset(0, variant); RETURN_IF_FAILED(hr);
 				return S_OK;
 			}
 
@@ -926,15 +1036,12 @@ HRESULT WriteZxSpectrumSystemVar (IFelixSymbols* romSymbols, LPCWSTR name, UINT1
 	return S_OK;
 }
 
-HRESULT ResetAndSimulateToEDITOR (IFelixSymbols* romSymbols)
+HRESULT SimulateToEDITOR (IFelixSymbols* romSymbols)
 {
 	HRESULT hr;
 
 	UINT16 editorFunctionAddr;
 	hr = romSymbols->GetAddressFromSymbol(L"EDITOR", &editorFunctionAddr); RETURN_IF_FAILED(hr);
-
-	hr = simulator->Break(); RETURN_IF_FAILED(hr);
-	hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
 
 	SIM_BP_COOKIE editorBP = 0;
 	hr = simulator->AddBreakpoint (BreakpointType::Code, false, editorFunctionAddr, &editorBP); RETURN_IF_FAILED(hr);
@@ -970,11 +1077,11 @@ HRESULT ResetAndSimulateToEDITOR (IFelixSymbols* romSymbols)
 ; The memory.
 ;
 ; +---------+-----------+------------+--------------+-------------+--
-; | BASIC   |  Display  | Attributes | ZX Printer   |    System   | 
-; |  ROM    |   File    |    File    |   Buffer     |  Variables  | 
+; | BASIC   |  Display  | Attributes | ZX Printer   |    System   |
+; |  ROM    |   File    |    File    |   Buffer     |  Variables  |
 ; +---------+-----------+------------+--------------+-------------+--
 ; ^         ^           ^            ^              ^             ^
-; $0000   $4000       $5800        $5B00          $5C00         $5CB6 = CHANS 
+; $0000   $4000       $5800        $5B00          $5C00         $5CB6 = CHANS
 ;
 ;
 ;  --+----------+---+---------+-----------+---+------------+--+---+--
@@ -992,7 +1099,7 @@ HRESULT ResetAndSimulateToEDITOR (IFelixSymbols* romSymbols)
 ;  --+-------+--+------------+-------+-------+---------+-------+-+---+------+
 ;    ^                       ^       ^       ^                   ^   ^      ^
 ;  WORKSP                  STKBOT  STKEND   sp               RAMTOP UDG  P_RAMT
-;               
+;
 */
 
 // Simulate what the EDITOR function would do when typing a command.
@@ -1006,7 +1113,7 @@ HRESULT SimulateBasicCommand (IFelixSymbols* romSymbols, const char* pszCommand)
 	UINT16 editorAddr;
 	hr = romSymbols->GetAddressFromSymbol(L"EDITOR", &editorAddr); RETURN_IF_FAILED(hr);
 	RETURN_HR_IF(E_UNEXPECTED, pc != editorAddr);
-	
+
 	// The command line is from E-LINE to WORKSP.
 	UINT16 eline, worksp;
 	hr = ReadZxSpectrumSystemVar(romSymbols, L"E-LINE", &eline); RETURN_IF_FAILED(hr);

@@ -7,7 +7,7 @@ struct keyboard : IKeyboardDevice
 	Bus* io_bus;
 	uint8_t keys_down[8] = { };
 
-	HRESULT InitInstance (Bus* io_bus)
+	HRESULT InitInstance (Bus* io_bus, SpectrumVariant variant)
 	{
 		this->io_bus = io_bus;
 		bool pushed = io_bus->read_responders.try_push_back({ this, &process_read_request }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
@@ -21,10 +21,11 @@ struct keyboard : IKeyboardDevice
 		io_bus->read_responders.remove([this](auto& r) { return r.Device == this; });
 	}
 
-	virtual void STDMETHODCALLTYPE Reset() override
+	virtual HRESULT STDMETHODCALLTYPE Reset(SpectrumVariant variant) override
 	{
 		_time = 0;
 		memset (keys_down, 0, sizeof(keys_down));
+		return S_OK;
 	}
 
 	virtual bool SimulateDeviceTo (UINT64 requested_time) override
@@ -38,7 +39,7 @@ struct keyboard : IKeyboardDevice
 		return true;
 	}
 
-	static uint8_t process_read_request (IDevice* d, uint16_t address)
+	static uint8_t process_read_request (IDevice* d, WORD address)
 	{
 		if ((address & 0xFF) == 0xFE)
 		{
@@ -57,7 +58,7 @@ struct keyboard : IKeyboardDevice
 		return 0xFF;
 	}
 
-	static void ProcessWriteRequest (IDevice* d, uint16_t address, uint8_t value)
+	static void ProcessWriteRequest (IDevice* d, WORD address, uint8_t value)
 	{
 	}
 
@@ -336,10 +337,10 @@ struct keyboard : IKeyboardDevice
 	}
 };
 
-HRESULT STDMETHODCALLTYPE MakeKeyboardDevice (Bus* io_bus, wistd::unique_ptr<IKeyboardDevice>* ppDevice)
+HRESULT STDMETHODCALLTYPE MakeKeyboardDevice (Bus* io_bus, SpectrumVariant variant, wistd::unique_ptr<IKeyboardDevice>* ppDevice)
 {
 	auto d = wil::make_unique_nothrow<keyboard>(); RETURN_IF_NULL_ALLOC(d);
-	auto hr = d->InitInstance(io_bus); RETURN_IF_FAILED(hr);
+	auto hr = d->InitInstance(io_bus, variant); RETURN_IF_FAILED(hr);
 	*ppDevice = std::move(d);
 	return S_OK;
 }

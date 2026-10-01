@@ -2,6 +2,8 @@
 #include "pch.h"
 #include "shared/com.h"
 #include "UITests.h"
+#include "../../FelixPackage/guids.h"
+#include "../../FelixPackageUi/CommandIds.h"
 
 namespace UITests
 {
@@ -240,6 +242,26 @@ namespace UITests
 			simulator->Break();
 			Assert::AreEqual<UINT8>(85, ReadMemoryBus(32768));
 			Assert::AreEqual<UINT8>(170, ReadMemoryBus(32769));
+		}
+
+		TEST_METHOD(Simulator_ResetCommandPreservesVariant)
+		{
+			auto commandTarget = simWindow.query<IOleCommandTarget>();
+			const GUID commandSet = guidFelixPackageCmdSet;
+			const SpectrumVariant variants[] = { SpectrumVariant48K, SpectrumVariant128 };
+			for (SpectrumVariant expectedVariant : variants)
+			{
+				HRESULT hr = simulator->Reset(0, expectedVariant);
+				Assert::AreEqual(S_OK, hr);
+
+				hr = commandTarget->Exec(&commandSet, cmdidResetSimulator, 0, nullptr, nullptr);
+				Assert::AreEqual(S_OK, hr);
+
+				SpectrumVariant actualVariant;
+				hr = simulator->GetVariant(&actualVariant);
+				Assert::AreEqual(S_OK, hr);
+				Assert::AreEqual((int)expectedVariant, (int)actualVariant);
+			}
 		}
 	};
 }

@@ -48,7 +48,6 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{56344845-3DDA-4BC0-9645-7EBA3FE94A93}")
 	virtual HRESULT STDMETHODCALLTYPE ReadMemoryBus  (uint16_t address, uint16_t size, void* to) = 0;
 	virtual HRESULT STDMETHODCALLTYPE WriteMemoryBus (uint16_t address, uint16_t size, const void* from) = 0;
 	virtual HRESULT STDMETHODCALLTYPE Resume (BOOL checkBreakpointsAtCurrentPC) = 0;
-	virtual HRESULT STDMETHODCALLTYPE Reset (UINT16 startAddress) = 0;
 	virtual HRESULT STDMETHODCALLTYPE Running_HR() = 0;
 	virtual HRESULT STDMETHODCALLTYPE SimulateOne() = 0;
 	virtual HRESULT STDMETHODCALLTYPE AdviseScreenComplete (IScreenCompleteEventHandler* handler) = 0;
@@ -69,4 +68,4 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{56344845-3DDA-4BC0-9645-7EBA3FE94A93}")
 	virtual HRESULT STDMETHODCALLTYPE SetSpeed (uint32_t percent) = 0; // Only 100 and UINT32_MAX supported for now
 };
 
-HRESULT MakeSimulator (LPCWSTR romFilename, ISimulator** to);
+HRESULT MakeSimulator (LPCWSTR const* romFilenames, size_t romFilenameCount, SpectrumVariant initialVariant, ISimulator** to);

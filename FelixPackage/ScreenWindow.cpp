@@ -59,7 +59,7 @@ public:
 			wndClassAtom = RegisterClass(&wndClass);
 			RETURN_LAST_ERROR_IF(!wndClassAtom);
 		}
-		
+
 		hr = _weakRefToThis.InitInstance(static_cast<IVsWindowPane*>(this)); RETURN_IF_FAILED(hr);
 
 		return S_OK;
@@ -181,7 +181,7 @@ public:
 				InvalidateRect(hWnd, NULL, FALSE);
 				return 0;
 			}
-			
+
 			UINT modifiers = (GetKeyState(VK_SHIFT) >> 15) ? MK_SHIFT : 0;
 			simulator->ProcessKeyDown((UINT)wParam, modifiers);
 			return 0;
@@ -202,7 +202,7 @@ public:
 
 		return DefWindowProc (hWnd, msg, wParam, lParam);
 	}
-	
+
 	static Rational GetZoom (const BITMAPINFOHEADER* bi, LONG clientWidth, LONG clientHeight)
 	{
 		if (clientWidth >= bi->biWidth && clientHeight >= bi->biHeight)
@@ -212,7 +212,7 @@ public:
 		if (clientWidth > 0 && clientHeight > 0)
 			// zoom <= 1
 			return Rational{ .numerator = 1, .denominator = std::max ((bi->biWidth + clientWidth - 1) / clientWidth, (bi->biHeight + clientHeight - 1) / clientHeight) };
-		
+
 		return { 0, 1 };
 	}
 
@@ -264,7 +264,7 @@ public:
 
 		PAINTSTRUCT ps;
 		HDC hdc = BeginPaint(_hwnd, &ps);
-		
+
 		if (auto bitmapInfo = _bitmap.get())
 		{
 			int w = bitmapInfo->bmiHeader.biWidth;
@@ -275,7 +275,7 @@ public:
 			int yDest = (clientRect.bottom - hscaled) / 2;
 			int ires = StretchDIBits (hdc, xDest, yDest, wscaled, hscaled,
 				0, 0, w, h, bitmapInfo->bmiColors, bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
-		
+
 			if (simulator->Running_HR() == S_FALSE)
 			{
 				SetBkColor(ps.hdc, 0xFFFF00);
@@ -616,7 +616,9 @@ public:
 			com_ptr<IFelixSymbols> romSymbols;
 			hr = MakeZ80SymSymbols (rom_debug_info_path.get(), &romSymbols); RETURN_IF_FAILED(hr);
 
-			hr = ResetAndSimulateToEDITOR(romSymbols); RETURN_IF_FAILED(hr);
+			hr = simulator->Break(); RETURN_IF_FAILED(hr);
+			hr = simulator->Reset(0, SpectrumVariant48K); RETURN_IF_FAILED(hr);
+			hr = SimulateToEDITOR(romSymbols); RETURN_IF_FAILED(hr);
 
 			// LOAD ""
 			hr = SimulateBasicCommand (romSymbols, "\xEF\x22\x22\x0D\x80"); RETURN_IF_FAILED(hr);
@@ -707,7 +709,6 @@ public:
 	HRESULT SaveRAM()
 	{
 		HRESULT hr;
-
 		if (simulator->Running_HR() == S_OK)
 		{
 			wil::unique_bstr str;
@@ -718,48 +719,15 @@ public:
 				uiShell->ShowMessageBox (0, GUID_NULL, nullptr, str.get(), nullptr, 0, OLEMSGBUTTON_OK,
 					OLEMSGDEFBUTTON_FIRST, OLEMSGICON_INFO, FALSE, &result);
 			}
-			return S_OK;
+			return S_FALSE;
 		}
 
-		HWND dialogOwner;
-		hr = uiShell->GetDialogOwnerHwnd(&dialogOwner); RETURN_IF_FAILED(hr);
+		wil::unique_process_heap_string filename;
+		hr = PickSaveFile(L"Binary files (*.bin)\0*.bin\0All Files (*.*)\0*.*\0", filename); RETURN_IF_FAILED(hr);
+		if (hr == S_FALSE)
+			return S_FALSE;
 
-		wil::unique_bstr appName;
-		hr = uiShell->GetAppName(&appName); RETURN_IF_FAILED(hr);
-
-		wil::unique_bstr initial_directory;
-		com_ptr<IVsWritableSettingsStore> settings_store;
-		if (SUCCEEDED(_sm->GetWritableSettingsStore (SettingsScope_UserSettings, &settings_store)))
-			settings_store->GetString (SettingsCollection, SettingLoadSavePath, &initial_directory); // no need to check for errors
-
-		wchar_t filename[256];
-		filename[0] = 0;
-
-		VSSAVEFILENAMEW sf = { };
-		sf.lStructSize = (DWORD)sizeof(sf);
-		sf.hwndOwner = dialogOwner;
-		sf.pwzDlgTitle = appName.get();
-		sf.pwzFileName = filename;
-		sf.nMaxFileName = (DWORD)ARRAYSIZE(filename);
-		sf.pwzInitialDir = initial_directory.get();
-		sf.pwzFilter = L"Binary files (*.bin)\0*.bin\0All Files (*.*)\0*.*\0";
-		hr = uiShell->GetSaveFileNameViaDlg(&sf);
-		if (hr == OLE_E_PROMPTSAVECANCELLED)
-			return S_OK;
-		RETURN_IF_FAILED(hr);
-
-		if (settings_store)
-		{
-			if (SUCCEEDED(settings_store->CreateCollection(SettingsCollection)))
-			{
-				if (auto dir = wil::make_hlocal_string_nothrow(sf.pwzFileName, sf.nFileOffset))
-				{
-					hr = settings_store->SetString (SettingsCollection, SettingLoadSavePath, dir.get()); LOG_IF_FAILED(hr);
-				}
-			}
-		}
-
-		auto file = wil::unique_hfile(CreateFile(filename, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr)); RETURN_LAST_ERROR_IF(file.get() == INVALID_HANDLE_VALUE);
+		auto file = wil::unique_hfile(CreateFile(filename.get(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr)); RETURN_LAST_ERROR_IF(file.get() == INVALID_HANDLE_VALUE);
 
 		auto mem = wil::unique_hglobal_ptr<uint8_t>((uint8_t*)GlobalAlloc(GMEM_FIXED, 48 * 1024)); RETURN_IF_NULL_ALLOC(mem);
 		hr = simulator->ReadMemoryBus(0x4000, 0xC000, mem.get()); RETURN_IF_FAILED(hr);
@@ -830,7 +798,9 @@ public:
 				hr = ConfirmStopDebugging(); RETURN_IF_FAILED(hr);
 				if (hr == S_FALSE)
 					return S_OK;
-				hr = simulator->Reset(0); RETURN_IF_FAILED(hr);
+				SpectrumVariant variant;
+				hr = simulator->GetVariant(&variant); RETURN_IF_FAILED(hr);
+				hr = simulator->Reset(0, variant); RETURN_IF_FAILED(hr);
 				return S_OK;
 			}
 

@@ -33,7 +33,7 @@ library ATLProject1Lib
 
 		[id(dispidPreBuildProperties), propget, helpstring("The implementation allocates this object during creation; it is always non-NULL.")]
 		HRESULT PreBuildProperties ([out, retval] IProjectConfigPrePostBuildProperties** ppProps);
-		
+
 		[id(dispidPostBuildProperties), propget, helpstring("The implementation allocates this object during creation; it is always non-NULL.")]
 		HRESULT PostBuildProperties ([out, retval] IProjectConfigPrePostBuildProperties** ppProps);
 
@@ -201,6 +201,9 @@ library ATLProject1Lib
 	{
 		[id(dispidProjectDir), propget] HRESULT ProjectDir ([out, retval] BSTR* pbstr);
 		[id(dispidProjectDir), propput] HRESULT ProjectDir (BSTR bstr);
+
+		[propget] HRESULT Platform ([out, retval] enum SpectrumVariant* pPlatform);
+		[propput] HRESULT Platform (enum SpectrumVariant platform);
 
 		[propget] HRESULT BaseAddress ([out, retval] DWORD* pdwAddress);
 		[propput] HRESULT BaseAddress (DWORD dwAddress);

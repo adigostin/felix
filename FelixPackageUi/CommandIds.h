@@ -40,5 +40,11 @@
 #define cmdidSimulatorGroup 0x112
 #define cmdidSimulatorMenu 0x113
 #define cmdidSimulatorSubGroup 0x114
+#define cmdidSaveScreen 0x115
+#define cmdidSelectVariantMenu 0x116
+#define cmdidSelectVariantGroup 0x117
+#define cmdidVariant16K 0x118
+#define cmdidVariant48K 0x119
+#define cmdidVariant128K 0x11A
 
 #endif // __COMMANDIDS_H_

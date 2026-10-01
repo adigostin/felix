@@ -58,7 +58,7 @@ public:
 		HRESULT hr;
 		_threadId = GetCurrentThreadId();
 		_platformName = wil::make_process_heap_string_nothrow(L"ZX Spectrum 48K"); RETURN_IF_NULL_ALLOC(_platformName);
-		
+
 		hr = _weakRefToThis.InitInstance(static_cast<IProjectConfig*>(this)); RETURN_IF_FAILED(hr);
 
 		hr = GeneralPageProperties_CreateInstance(this, &_generalProps); RETURN_IF_FAILED(hr);
@@ -225,10 +225,15 @@ public:
 
 		RETURN_HR_IF(E_FAIL, projectDir.vt != VT_BSTR);
 		hr = opts->put_ProjectDir(projectDir.bstrVal); RETURN_IF_FAILED(hr);
-		
+
 		DWORD baseAddress;
 		hr = _assemblerProps->get_BaseAddress(&baseAddress); RETURN_IF_FAILED(hr);
 		opts->put_BaseAddress(baseAddress);
+
+		if (!wcscmp(_platformName.get(), L"ZX Spectrum 48K"))
+			opts->put_Platform(SpectrumVariant48K);
+		else
+			RETURN_HR(E_NOTIMPL);
 
 		wil::unique_bstr epAddressStr;
 		hr = _assemblerProps->get_EntryPointAddress(&epAddressStr); RETURN_IF_FAILED(hr);
@@ -240,7 +245,7 @@ public:
 		UINT UTF16CodePage = 1200;
 		hr = SaveToXml (opts.get(), L"Options", 0, stream.get(), UTF16CodePage); RETURN_IF_FAILED(hr);
 
-		return MakeBstrFromStreamOnHGlobal(stream, pOptionsString); 
+		return MakeBstrFromStreamOnHGlobal(stream, pOptionsString);
 	}
 
 	#pragma region IVsDebuggableProjectCfg
@@ -510,7 +515,7 @@ public:
 	virtual IProjectConfigAssemblerProperties* AsmProps() override { return _assemblerProps; }
 
 	virtual IProjectConfigProperties* AsProjectConfigProperties() override { return this; }
-	
+
 	virtual IVsProjectCfg* AsVsProjectConfig() override { return this; }
 	#pragma endregion
 
@@ -575,7 +580,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE put_PlatformName (BSTR value) override
 	{
 		// TODO: notifications
-		auto newName = wil::make_process_heap_string_nothrow(value); RETURN_IF_NULL_ALLOC(newName); 
+		auto newName = wil::make_process_heap_string_nothrow(value); RETURN_IF_NULL_ALLOC(newName);
 		_platformName = std::move(newName);
 		return S_OK;
 	}
@@ -634,7 +639,7 @@ public:
 		RETURN_HR(E_NOTIMPL);
 	}
 	#pragma endregion
-	
+
 	#pragma region IPropertyChangeSink
 	virtual HRESULT STDMETHODCALLTYPE OnPropertyChanging (IDispatch* pObject, DISPID dispID, PropertyChangeArgs args) override
 	{
@@ -806,7 +811,7 @@ struct GeneralPageProperties
 			NotifyPropertyChanged(_propNotifyCP, { dispidOutputName, dispidOutputFilename });
 			RETURN_HR(hr);
 		}
-		
+
 		return S_OK;
 	}
 
@@ -1494,7 +1499,7 @@ struct DebuggingPageProperties
 
 	virtual HRESULT STDMETHODCALLTYPE ResetPropertyValue (DISPID dispid) override { return E_NOTIMPL; }
 	#pragma endregion
-	
+
 	#pragma region IConnectionPointContainer
 	virtual HRESULT STDMETHODCALLTYPE EnumConnectionPoints (IEnumConnectionPoints **ppEnum) override
 	{
@@ -1536,7 +1541,7 @@ struct DebuggingPageProperties
 			NotifyPropertyChanged(_propNotifyCP, { dispidLaunchTarget });
 			RETURN_HR(hr);
 		}
-		
+
 		return S_OK;
 	}
 
@@ -1657,7 +1662,7 @@ struct PrePostBuildPageProperties
 
 			return E_NOTIMPL;
 		}
-		
+
 		return E_NOTIMPL;
 	}
 

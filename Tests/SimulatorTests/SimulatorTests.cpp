@@ -32,11 +32,12 @@ public:
 		_memory_bus->read_responders.remove([this](auto& d) { return d.Device == this; });
 	}
 
-	virtual void STDMETHODCALLTYPE Reset() override
+	virtual HRESULT STDMETHODCALLTYPE Reset(SpectrumVariant variant) override
 	{
 		_time = 0;
 		for (size_t i = 0; i < sizeof(_data); i++)
 			_data[i] = (uint8_t)rand();
+		return S_OK;
 	}
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { Assert::Fail(); return false; }
@@ -47,13 +48,13 @@ public:
 		return true;
 	}
 
-	static uint8_t process_mem_read_request (IDevice* d, uint16_t address)
+	static uint8_t process_mem_read_request (IDevice* d, WORD address)
 	{
 		auto* ram = static_cast<TestRAM*>(d);
 		return ram->_data[address];
 	}
 
-	static void process_mem_write_request (IDevice* d, uint16_t address, uint8_t value)
+	static void process_mem_write_request (IDevice* d, WORD address, uint8_t value)
 	{
 		auto* ram = static_cast<TestRAM*>(d);
 		ram->_data[address] = value;
@@ -80,10 +81,11 @@ public:
 		_io_bus->read_responders.remove([this](auto& d) { return d.Device == this; });
 	}
 
-	virtual void STDMETHODCALLTYPE Reset() override
+	virtual HRESULT STDMETHODCALLTYPE Reset(SpectrumVariant variant) override
 	{
 		_time = 0;
 		_data.clear();
+		return S_OK;
 	}
 
 	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime (UINT64* sync_time) override { Assert::Fail(); return false; }
@@ -94,7 +96,7 @@ public:
 		return true;
 	}
 
-	static uint8_t process_io_read_request (IDevice* d, uint16_t address)
+	static uint8_t process_io_read_request (IDevice* d, WORD address)
 	{
 		auto* iod = static_cast<TestIODevice*>(d);
 		auto it = iod->_data.find(address);
@@ -103,15 +105,16 @@ public:
 		return 0xFF;
 	}
 
-	static void process_io_write_request (IDevice* d, uint16_t address, uint8_t value)
+	static void process_io_write_request (IDevice* d, WORD address, uint8_t value)
 	{
 		auto* iod = static_cast<TestIODevice*>(d);
-		auto it = iod->_data.find(address);
+		uint16_t key = address;
+		auto it = iod->_data.find(key);
 		if (it != iod->_data.end())
 			it->second = value;
 		else
 		{
-			bool inserted = iod->_data.try_insert({ address, value }); THROW_HR_IF(E_OUTOFMEMORY, !inserted);
+			bool inserted = iod->_data.try_insert({ key, value }); THROW_HR_IF(E_OUTOFMEMORY, !inserted);
 		}
 	}
 };
@@ -152,7 +155,7 @@ namespace Z80SimulatorTests
 		TEST_METHOD_INITIALIZE(MethodInitialize)
 		{
 			cpu->Reset();
-			ram->Reset();
+			ram->Reset(SpectrumVariant48K);
 		}
 
 		TEST_METHOD(Test_NOP)
@@ -329,7 +332,7 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint64_t>(15, cpu->cpu_time);
 			Assert::AreEqual<uint8_t>(0xFD, memory.read(0x10));
 		}
-		
+
 		TEST_METHOD(res_1_ix_plus_disp)
 		{
 			memory.write(0, { 0xDD, 0xCB, 0x10, 0x8E }); // res 1, (ix + 10h)
@@ -383,7 +386,7 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint64_t>(24, cpu->cpu_time);
 			Assert::AreEqual<uint8_t>(1, regs->main.f.z);
 		}
-		
+
 		TEST_METHOD(bit_1_ix_plus_disp)
 		{
 			memory.write(0, { 0xDD, 0xCB, 0x10, 0x4E }); // bit 1, (ix+16)
@@ -551,7 +554,7 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint16_t>(0x1234, regs->main.bc);
 			Assert::AreEqual<uint64_t>(10, cpu->cpu_time);
 		}
-		
+
 		TEST_METHOD(pop_ix)
 		{
 			memory.write(0, { 0xDD, 0xE1 }); // pop ix
@@ -563,7 +566,7 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint16_t>(0x2345, regs->ix);
 			Assert::AreEqual<uint64_t>(14, cpu->cpu_time);
 		}
-		
+
 		TEST_METHOD(pop_af)
 		{
 			memory.write(0, 0xF1); // pop af
@@ -629,7 +632,7 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint16_t>(2, regs->pc);
 			Assert::AreEqual<uint64_t>(8, cpu->cpu_time);
 		}
-		
+
 		TEST_METHOD(rra)
 		{
 			memory.write(0, 0x1f); // rra
@@ -956,11 +959,11 @@ namespace Z80SimulatorTests
 							regs->main.f.val = 0;
 							regs->b() = Y;
 							SimulateOne();
-							if (regs->pc != 1) 
+							if (regs->pc != 1)
 								Assert::Fail();
-							if (regs->main.a != (uint8_t)res) 
+							if (regs->main.a != (uint8_t)res)
 								Assert::Fail();
-							if (regs->main.f.val != flags) 
+							if (regs->main.f.val != flags)
 								Assert::Fail();
 
 							memory.write (0, 0xB8); // cp b
@@ -969,16 +972,16 @@ namespace Z80SimulatorTests
 							regs->main.f.val = 0;
 							regs->b() = Y;
 							SimulateOne();
-							if (regs->pc != 1) 
+							if (regs->pc != 1)
 								Assert::Fail();
-							if (regs->main.a != X) 
+							if (regs->main.a != X)
 								Assert::Fail();
 							uint8_t flagsCP = flags & ~(z80_flag::r3 | z80_flag::r5)
 								| (Y & (z80_flag::r3 | z80_flag::r5));
-							if (regs->main.f.val != flagsCP) 
+							if (regs->main.f.val != flagsCP)
 								Assert::Fail();
 						}
-						
+
 						memory.write (0, 0x98); // sbc b
 						regs->pc = 0;
 						regs->main.a = X;
@@ -986,11 +989,11 @@ namespace Z80SimulatorTests
 						regs->main.f.c = C;
 						regs->b() = Y;
 						SimulateOne();
-						if (regs->pc != 1) 
+						if (regs->pc != 1)
 							Assert::Fail();
-						if (regs->main.a != (uint8_t)res) 
+						if (regs->main.a != (uint8_t)res)
 							Assert::Fail();
-						if (regs->main.f.val != flags) 
+						if (regs->main.f.val != flags)
 							Assert::Fail();
 					}
 				}
@@ -1031,10 +1034,10 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(R_REG_TEST_DD_CB_FD_CB)
 		{
-			memory.write(0, { 0xDD, 0xCB, 0x00, 0x4E }); // BIT 1, (IX + 0) 
+			memory.write(0, { 0xDD, 0xCB, 0x00, 0x4E }); // BIT 1, (IX + 0)
 			SimulateOne();
 			Assert::AreEqual<uint8_t>(2, cpu->GetRegsPtr()->r);
-			memory.write(0, { 0xFD, 0xCB, 0x00, 0x4E }); // BIT 1, (IX + 0) 
+			memory.write(0, { 0xFD, 0xCB, 0x00, 0x4E }); // BIT 1, (IX + 0)
 			cpu->SetPC(0);
 			SimulateOne();
 			Assert::AreEqual<uint8_t>(4, cpu->GetRegsPtr()->r);
@@ -1412,7 +1415,7 @@ namespace Z80SimulatorTests
 		#pragma region ADD A, Reg - Ported from https://github.com/Dotneteer/spectnetide.git
 		TEST_METHOD(ADD_A_B_WorksAsExpected)
 		{
-			memory.write (0, { 
+			memory.write (0, {
 				0x3E, 0x12, // LD A,12H
 				0x06, 0x24, // LD B,24H
 				0x80        // ADD A,B
@@ -1610,7 +1613,6 @@ namespace Z80SimulatorTests
 				0x3E, 0x12, // LD A,12H
 				0x87        // ADD A,A
 			});
-			SimulateOne();
 			SimulateOne();
 			SimulateOne();
 			Assert::AreEqual<uint8_t>(0x24, regs->main.a);
@@ -2504,7 +2506,7 @@ namespace Z80SimulatorTests
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(2 + 100, regs->pc);
 			Assert::AreEqual(12ui64, cpu->cpu_time);
-			
+
 			cpu->Reset();
 			regs->main.f.z = 1;
 			SimulateOne();
@@ -2781,7 +2783,7 @@ namespace Z80SimulatorTests
 					continue;
 
 				cpu->Reset();
-				iodevice->Reset();
+				iodevice->Reset(SpectrumVariant48K);
 				memory.write (0, { 0xED, (uint8_t)(0x41 | (reg << 3)) }); // OUT (C), reg
 				regs->r8(reg, hl_ix_iy::hl) = 0x55;
 				regs->main.bc = 0x1234;
@@ -2814,7 +2816,7 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint16_t>(0x01FE, regs->main.bc);
 			Assert::AreEqual<uint8_t>(0x55, memory.read(10));
 			Assert::AreEqual<uint8_t>(z80_flag::n | z80_flag::c, regs->main.f.val & ~(z80_flag::h | z80_flag::pv));
-			
+
 			io_bus.write(regs->main.bc, 0xAA); // data is 0xAA
 			regs->main.f.val = 0;
 			SimulateOne();
@@ -2824,7 +2826,7 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint8_t>(0xAA, memory.read(11));
 			Assert::AreEqual<uint8_t>(z80_flag::z | z80_flag::n, regs->main.f.val & ~(z80_flag::h | z80_flag::pv));
 		}
-		
+
 		TEST_METHOD(ind)
 		{
 			memory.write(0, { 0xED, 0xAA }); // IND
@@ -2850,7 +2852,7 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint8_t>(0xAA, memory.read(10));
 			Assert::AreEqual<uint8_t>(z80_flag::z | z80_flag::n, regs->main.f.val & ~(z80_flag::h | z80_flag::pv));
 		}
-		
+
 		TEST_METHOD(inir)
 		{
 			memory.write(0, { 0xED, 0xB2 }); // INIR
@@ -2876,13 +2878,13 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint8_t>(0xAA, memory.read(11));
 			Assert::AreEqual<uint8_t>(z80_flag::z | z80_flag::n | z80_flag::c, regs->main.f.val & ~(z80_flag::h | z80_flag::pv));
 		}
-		
+
 		TEST_METHOD(indr)
 		{
 			memory.write(0, { 0xED, 0xBA }); // INDR
 			regs->main.hl = 11;
 			regs->main.bc = 0x02FE;
-			
+
 			io_bus.write(regs->main.bc, 0x55); // data is 0x55
 			regs->main.f.val = 0xFF;
 			SimulateOne();
@@ -3015,7 +3017,7 @@ namespace Z80SimulatorTests
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(1, cpu->GetPC());
 			Assert::AreEqual<uint8_t>(1, regs->r);
-			
+
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(5, cpu->GetPC());
 			Assert::AreEqual<uint8_t>(3, regs->r);

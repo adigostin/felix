@@ -9,7 +9,7 @@ struct DECLSPEC_NOVTABLE IDevice
 	uint64_t _time = 0;
 
 	virtual ~IDevice() = default;
-	virtual void Reset() = 0;
+	virtual HRESULT Reset(SpectrumVariant variant) = 0;
 	virtual BOOL NeedSyncWithRealTime (UINT64* sync_time) = 0;
 
 	// Returns true if the device simulated something and advanced its time.
@@ -45,10 +45,10 @@ struct DECLSPEC_NOVTABLE ICPU
 	// If the caller wants this function to ignore breakpoints, is passes NULL for "bps". The caller
 	// might want to ignore breakpoints, for example, when execution is stopped and the user does
 	// a Step or Go command.
-	// 
+	//
 	// Returns:
 	//  - "true" if something was simulated and the CPU's time advanced its Time() by some cycles
-	//    (maybe because an instruction was executed, maybe because an interrupt kicked in and jumping to 
+	//    (maybe because an instruction was executed, maybe because an interrupt kicked in and jumping to
 	//    the interrupt routine took some cycles, or maybe because the CPU was HALTed and remained so)
 	//  - "false" - if nothing was executed and the CPU remained at the same Time()
 	//    (maybe waiting for other devices to catch up, maybe code breakpoint).
@@ -102,16 +102,28 @@ static constexpr UINT64 ticks_to_hundreds_of_nanoseconds (UINT64 ticks)
 // are present on both buses (memory and IO) and we'd get a conflict when overriding
 // once for the memory and once for the IO. We also want to stay away from dynamic_cast.
 
+// Handles reads from a bus, either IO or memory. These are CPU addresses, not physical addresses.
+// The difference is that the CPU sees the memory as a single 64KB address space, with banks
+// of the physical memory, which may be larger than 64K, mapped into and out of it.
 struct ReadResponder
 {
 	IDevice* Device;
-	uint8_t(*ProcessReadRequest)(IDevice* device, uint16_t address);
+	uint8_t(*ProcessReadRequest)(IDevice* device, WORD address);
 };
 
+// See comments for ReadResponder above.
 struct WriteResponder
 {
 	IDevice* Device;
-	void(*ProcessWriteRequest)(IDevice* device, uint16_t address, uint8_t value);
+	void(*ProcessWriteRequest)(IDevice* device, WORD address, uint8_t value);
+};
+
+// Handles reads from the memory directly, with addresses of the physical memory.
+// This is used for example by the screen device to read the screen data from RAM.
+struct PhysicalAddressReadResponde
+{
+	IDevice* Device;
+	uint8_t(*ProcessPhysicalAddressReadRequest)(IDevice* device, DWORD address);
 };
 
 struct DECLSPEC_NOVTABLE Bus
@@ -121,10 +133,12 @@ struct DECLSPEC_NOVTABLE Bus
 
 	// All devices that respond to write requests.
 	vector_nothrow<WriteResponder> write_responders;
-	
+
+	vector_nothrow<PhysicalAddressReadResponde> physical_read_responders;
+
 	// Reads something from a bus while ignoring any time difference between devices.
 	// Useful for debugging only. Simulation-related code should always use try_read_request.
-	uint8_t read (uint16_t address)
+	uint8_t read (WORD address)
 	{
 		uint8_t val = 0xFF;
 		for (auto& d : read_responders)
@@ -132,24 +146,32 @@ struct DECLSPEC_NOVTABLE Bus
 		return val;
 	}
 
+	uint8_t read_physical (DWORD address)
+	{
+		uint8_t val = 0xFF;
+		for (auto& d : physical_read_responders)
+			val &= d.ProcessPhysicalAddressReadRequest(d.Device, address);
+		return val;
+	}
+
 	// Comments from read() apply here too.
-	void write (uint16_t address, uint8_t value)
+	void write (WORD address, uint8_t value)
 	{
 		for (auto& d : write_responders)
 			d.ProcessWriteRequest(d.Device, address, value);
 	}
 
-	void write (uint16_t address, std::initializer_list<uint8_t> values)
+	void write (WORD address, std::initializer_list<uint8_t> values)
 	{
 		for (size_t i = 0; i < values.size(); i++)
 		{
 			uint8_t value = *(values.begin() + i);
 			for (auto& d : write_responders)
-				d.ProcessWriteRequest(d.Device, address + (uint16_t)i, value);
+				d.ProcessWriteRequest(d.Device, address + (WORD)i, value);
 		}
 	}
 
-	uint16_t read_uint16 (uint16_t address)
+	uint16_t read_uint16 (WORD address)
 	{
 		uint16_t val = 0xFFFF;
 		for (auto& d : read_responders)
@@ -161,7 +183,7 @@ struct DECLSPEC_NOVTABLE Bus
 		return val;
 	}
 
-	void write_uint16 (uint16_t address, uint16_t value)
+	void write_uint16 (WORD address, uint16_t value)
 	{
 		uint8_t l = (uint8_t)value;
 		uint8_t h = (uint8_t)(value >> 8);
@@ -176,7 +198,7 @@ struct DECLSPEC_NOVTABLE Bus
 	// The function checks to see if the devices that respond to read requests at the specified
 	// address have simulated themselves at least up to the requested time.
 	// If no, it returns false. If yes, it sets the 'value' variable and returns true.
-	bool try_read_request (uint16_t address, uint8_t& value, UINT64 requested_time)
+	bool try_read_request (WORD address, uint8_t& value, UINT64 requested_time)
 	{
 		uint8_t temp = 0xFF;
 		for (auto& d : read_responders)
@@ -187,7 +209,7 @@ struct DECLSPEC_NOVTABLE Bus
 				// up to the requested time. In the vast majority of cases our caller is
 				// the CPU and the read responder is a memory, so simulation is possible
 				// and is faster when done here.
-				// 
+				//
 				// We don't attempt here anything fancy such as simulating repeatedly
 				// in case the device is blocked on some other device that's also blocked.
 				// This kind of scenario is taken care of in the simulator class.
@@ -204,8 +226,27 @@ struct DECLSPEC_NOVTABLE Bus
 		return true;
 	}
 
+	bool try_physical_read_request (DWORD address, uint8_t& value, UINT64 requested_time)
+	{
+		uint8_t temp = 0xFF;
+		for (auto& d : physical_read_responders)
+		{
+			if (d.Device->_time < requested_time)
+			{
+				d.Device->SimulateDeviceTo(requested_time);
+				if (d.Device->_time < requested_time)
+					return false;
+			}
+
+			temp &= d.ProcessPhysicalAddressReadRequest(d.Device, address);
+		}
+
+		value = temp;
+		return true;
+	}
+
 	// Comment from try_read_request() applies here as well.
-	bool try_write_request (uint16_t address, uint8_t value, UINT64 requested_time)
+	bool try_write_request (WORD address, uint8_t value, UINT64 requested_time)
 	{
 		for (auto& d : write_responders)
 		{
@@ -227,7 +268,7 @@ struct DECLSPEC_NOVTABLE Bus
 		return true;
 	}
 
-	bool try_read_request (uint16_t address, uint16_t& value, UINT64 requested_time)
+	bool try_read_request (WORD address, uint16_t& value, UINT64 requested_time)
 	{
 		if (!this->try_read_request (address, *(uint8_t*)&value, requested_time))
 			return false;
@@ -236,7 +277,7 @@ struct DECLSPEC_NOVTABLE Bus
 		return true;
 	}
 
-	bool try_write_request (uint16_t address, uint16_t value, UINT64 requested_time)
+	bool try_write_request (WORD address, uint16_t value, UINT64 requested_time)
 	{
 		if (!this->try_write_request (address, *(uint8_t*)&value, requested_time))
 			return false;
@@ -297,19 +338,20 @@ struct IScreenDevice : IDevice//, IInterruptingDevice
 	// crt = TRUE    - creates a snapshot of the CRT screen.
 	// ppBuffer      - must be freed by the caller when no longer needed, using CoTaskMemFree.
 	// pBeamLocation - caller can pass NULL if it doesn't need this information.
-	virtual HRESULT CopyBuffer (BOOL crt, OUT BITMAPINFO** ppBuffer, OUT POINT* pBeamLocation) = 0;
+	// includeBorder - whether to include the border (if FALSE, generates a bitmap with just the 256x192 pixel area)
+	virtual HRESULT CopyBuffer (BOOL crt, OUT BITMAPINFO** ppBuffer, OUT POINT* pBeamLocation, BOOL includeBorder = TRUE) = 0;
 
 	// Generates the entire CRT screen from video memory.
 	virtual HRESULT GenerateScreen() = 0;
 };
-HRESULT STDMETHODCALLTYPE MakeScreenDevice (Bus* memory, Bus* io, irq_line_i* irq, IScreenDeviceCompleteEventHandler* eh, wistd::unique_ptr<IScreenDevice>* ppDevice);
+HRESULT STDMETHODCALLTYPE MakeScreenDevice (Bus* memory, Bus* io, irq_line_i* irq, SpectrumVariant variant, IScreenDeviceCompleteEventHandler* eh, wistd::unique_ptr<IScreenDevice>* ppDevice);
 
 struct IKeyboardDevice : IDevice
 {
 	virtual HRESULT STDMETHODCALLTYPE ProcessKeyDown (uint32_t vkey, uint32_t modifiers) = 0;
 	virtual HRESULT STDMETHODCALLTYPE ProcessKeyUp (uint32_t vkey, uint32_t modifiers) = 0;
 };
-HRESULT STDMETHODCALLTYPE MakeKeyboardDevice (Bus* io_bus, wistd::unique_ptr<IKeyboardDevice>* ppDevice);
+HRESULT STDMETHODCALLTYPE MakeKeyboardDevice (Bus* io_bus, SpectrumVariant variant, wistd::unique_ptr<IKeyboardDevice>* ppDevice);
 
 struct ITapPlayerEventHandler
 {
@@ -326,7 +368,7 @@ struct DECLSPEC_NOVTABLE ITapPlayerDevice : IDevice
 	virtual HRESULT STDMETHODCALLTYPE StopPlaying() = 0;
 	virtual HRESULT STDMETHODCALLTYPE IsPlaying() = 0;
 };
-HRESULT STDMETHODCALLTYPE MakeTapPlayer (Bus* io_bus, IXAudio2* xaudio2, ITapPlayerEventHandler* eh, wistd::unique_ptr<ITapPlayerDevice>& ppDevice);
+HRESULT STDMETHODCALLTYPE MakeTapPlayer (Bus* io_bus, IXAudio2* xaudio2, ITapPlayerEventHandler* eh, SpectrumVariant variant, wistd::unique_ptr<ITapPlayerDevice>& ppDevice);
 
 static constexpr uint32_t osc_freq = 3'500'000;
 static constexpr uint32_t sample_freq = 35000;

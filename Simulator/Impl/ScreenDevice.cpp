@@ -16,6 +16,7 @@ static constexpr uint32_t border_size_left_ticks = 24;
 static constexpr uint32_t border_size_right_ticks = 24;
 static constexpr uint32_t vsync_row_count = 16;
 static constexpr uint32_t hsync_col_count = 48; // in clock cycles
+// TODO: Select variant-specific timing here and in real-time/audio conversion; 128K uses 228 T-states per line and 311 lines per frame.
 static constexpr uint32_t ticks_per_row = hsync_col_count + border_size_left_ticks + 128 + border_size_right_ticks;
 static constexpr uint32_t rows_per_frame = vsync_row_count + border_size_top + 192 + border_size_bottom;
 static constexpr uint32_t irq_offset_from_frame_start = hsync_col_count + border_size_left_ticks;
@@ -32,24 +33,28 @@ class ScreenDeviceImpl : public IScreenDevice, public IInterruptingDevice
 	Bus* memory;
 	Bus* io;
 	irq_line_i* irq;
+	SpectrumVariant _variant;
+	uint8_t screen_bank = 5;
+	bool locked = false;
 	std::optional<UINT64> _pending_irq_time;
 	uint8_t _border;
 	wil::unique_process_heap_ptr<BITMAPINFO> _screenData;
 	IScreenDeviceCompleteEventHandler* _screenCompleteHandler;
 
 public:
-	HRESULT InitInstance (Bus* memory, Bus* io, irq_line_i* irq, IScreenDeviceCompleteEventHandler* screenCompleteHandler)
+	HRESULT InitInstance (Bus* memory, Bus* io, irq_line_i* irq, SpectrumVariant variant, IScreenDeviceCompleteEventHandler* screenCompleteEventHandler)
 	{
 		this->memory = memory;
 		this->io = io;
 		this->irq = irq;
-		_screenCompleteHandler = screenCompleteHandler;
+		_variant = variant;
+		_screenCompleteHandler = screenCompleteEventHandler;
 
 		bool pushed = io->write_responders.try_push_back({ this, &process_io_write_request }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 		pushed = irq->interrupting_devices.try_push_back(this); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 
 		_screenData.reset((BITMAPINFO*)HeapAlloc(GetProcessHeap(), 0, ScreenBufferSize)); RETURN_IF_NULL_ALLOC(_screenData);
-		InitBitmapInfoHeader(_screenData.get());
+		InitBitmapInfoHeader(_screenData.get(), TRUE);
 
 		return S_OK;
 	}
@@ -60,11 +65,11 @@ public:
 		io->write_responders.remove([this](auto& w) { return w.Device == this; });
 	}
 
-	static void InitBitmapInfoHeader (BITMAPINFO* bi)
+	static void InitBitmapInfoHeader (BITMAPINFO* bi, BOOL includeBorder)
 	{
 		bi->bmiHeader.biSize = sizeof(BITMAPINFO);
-		bi->bmiHeader.biWidth = screen_width;
-		bi->bmiHeader.biHeight = screen_height;
+		bi->bmiHeader.biWidth = includeBorder ? screen_width : 256;
+		bi->bmiHeader.biHeight = includeBorder ? screen_height : 192;
 		bi->bmiHeader.biPlanes = 1;
 		bi->bmiHeader.biBitCount = 32;
 		bi->bmiHeader.biCompression = BI_RGB;
@@ -77,25 +82,40 @@ public:
 
 	virtual IDevice* as_device() override { return this; }
 
-	static void process_io_write_request (IDevice* d, uint16_t address, uint8_t value)
+	static void process_io_write_request (IDevice* d, WORD address, uint8_t value)
 	{
-		if ((address & 0xFF) == 0xFE)
-		{
-			auto* s = static_cast<ScreenDeviceImpl*>(d);
+		auto* s = static_cast<ScreenDeviceImpl*>(d);
+		if ((address & 1) == 0)
 			s->_border = value & 7;
+		if (s->_variant == SpectrumVariant128 && (address & 0x8002) == 0 && !s->locked)
+		{
+			s->screen_bank = (value & 8) ? 7 : 5;
+			if (value & 0x20)
+				s->locked = true;
 		}
 	}
 
-	virtual void STDMETHODCALLTYPE Reset() override
+	virtual HRESULT STDMETHODCALLTYPE Reset(SpectrumVariant variant) override
 	{
+		_variant = variant;
 		_time = 0;
 		_pending_irq_time.reset();
+		screen_bank = 5;
+		locked = false;
+		return S_OK;
 	}
-	
-	static constexpr uint32_t low_brightness_colors[] = 
+
+	DWORD physical_memory_address (uint16_t address) const
+	{
+		if (_variant == SpectrumVariant128)
+			return screen_bank * 0x4000 + (address & 0x3FFF);
+		return address;
+	}
+
+	static constexpr uint32_t low_brightness_colors[] =
 		{ 0xFF000000, 0xFF0000C0, 0xFFC00000, 0xFFC000C0, 0xFF00C000, 0xFF00C0C0, 0xFFC0C000, 0xFFC0C0C0 };
 
-	static constexpr uint32_t high_brightness_colors[] = 
+	static constexpr uint32_t high_brightness_colors[] =
 		{ 0xFF000000, 0xFF0000FF, 0xFFFF0000, 0xFFFF00FF, 0xFF00FF00, 0xFF00FFFF, 0xFFFFFF00, 0xFFFFFFFF };
 
 	static uint32_t spectrum_color_to_argb (uint8_t spc, bool brightness)
@@ -112,7 +132,7 @@ public:
 	{
 		// We're going to draw the image with StretchDIBits(), which expects the bitmap to be flipped vertically.
 		// We're flipping it now, because flipping while drawing with StretchDIBits() seems to be _much_ slower.
-		return (uint32_t*)bi->bmiColors + (screen_height - 1 - row) * screen_width + col;
+		return (uint32_t*)bi->bmiColors + (bi->bmiHeader.biHeight - 1 - row) * bi->bmiHeader.biWidth + col;
 	}
 
 	virtual bool SimulateDeviceTo (UINT64 requested_time) override
@@ -235,13 +255,13 @@ public:
 						//WI_ASSERT (src_pixel_data < 0x5800);
 						uint16_t src_pixel_attr = 0x5800 | ((y >> 3) << 5) | x;
 						//WI_ASSERT (src_pixel_attr < 0x5B00);
-						
+
 						uint8_t data;
-						if (!memory->try_read_request(src_pixel_data, data, _time))
+						if (!memory->try_physical_read_request(physical_memory_address(src_pixel_data), data, _time))
 							return false;
 
 						// We assume the attribute is in the same memory area as the pixel, so read it directly.
-						uint8_t attr = memory->read(src_pixel_attr);
+						uint8_t attr = memory->read_physical(physical_memory_address(src_pixel_attr));
 
 						uint32_t* dest_pixel = get_dest_pixel (_screenData.get(), row - vsync_row_count, (col - hsync_col_count) * 2);
 
@@ -347,21 +367,34 @@ public:
 	}
 */
 	#pragma region IScreenDevice
-	virtual HRESULT CopyBuffer (BOOL crt, OUT BITMAPINFO** ppBuffer, OUT POINT* pBeamLocation) override
+	virtual HRESULT CopyBuffer (BOOL crt, OUT BITMAPINFO** ppBuffer, OUT POINT* pBeamLocation, BOOL includeBorder = TRUE) override
 	{
-		BITMAPINFO* bi = (BITMAPINFO*)CoTaskMemAlloc(ScreenBufferSize); RETURN_IF_NULL_ALLOC(bi);
-		
+		constexpr uint32_t cropped_width = 256;
+		constexpr uint32_t cropped_height = 192;
+		uint32_t width = includeBorder ? screen_width : cropped_width;
+		uint32_t height = includeBorder ? screen_height : cropped_height;
+		SIZE_T bufferSize = sizeof(BITMAPINFOHEADER) + width * height * 4;
+		BITMAPINFO* bi = (BITMAPINFO*)CoTaskMemAlloc(bufferSize); RETURN_IF_NULL_ALLOC(bi);
+		InitBitmapInfoHeader(bi, includeBorder);
+
 		if (crt)
 		{
-			memcpy(bi, _screenData.get(), ScreenBufferSize);
+			if (includeBorder)
+				memcpy(bi, _screenData.get(), ScreenBufferSize);
+			else
+			{
+				const uint32_t* sourcePixels = (const uint32_t*)_screenData->bmiColors;
+				uint32_t* destinationPixels = (uint32_t*)bi->bmiColors;
+				for (uint32_t row = 0; row < cropped_height; row++)
+				{
+					const uint32_t* sourceRow = sourcePixels + (row + border_size_bottom) * screen_width + border_size_left_px;
+					uint32_t* destinationRow = destinationPixels + row * cropped_width;
+					memcpy(destinationRow, sourceRow, cropped_width * sizeof(uint32_t));
+				}
+			}
 		}
 		else
-		{
-			InitBitmapInfoHeader(bi);
-			GenerateInternal(bi);
-		}
-
-		*ppBuffer = bi;
+			GenerateInternal(bi, includeBorder);
 
 		if (pBeamLocation)
 		{
@@ -369,27 +402,35 @@ public:
 			pBeamLocation->y = (LONG)(frame_time / ticks_per_row) - (LONG)vsync_row_count;
 			pBeamLocation->x = ((LONG)(frame_time % ticks_per_row) - (LONG)hsync_col_count) * 2; // column in clock cycles (one unit equals two pixels)
 		}
+
+		*ppBuffer = bi;
 		return S_OK;
 	}
 
-	void GenerateInternal (BITMAPINFO* bi)
+	void GenerateInternal (BITMAPINFO* bi, BOOL includeBorder)
 	{
-		uint32_t border_argb = spectrum_color_to_argb (_border, false);
+		uint32_t pixel_row_offset = includeBorder ? border_size_top : 0;
+		uint32_t pixel_col_offset = includeBorder ? border_size_left_px : 0;
 
-		for (uint32_t row = 0; row < border_size_top; row++)
-			__stosd((unsigned long*)get_dest_pixel(bi, row, 0), border_argb, screen_width);
-
-		for (uint32_t row = border_size_top + 192; row < screen_height; row++)
-			__stosd((unsigned long*)get_dest_pixel(bi, row, 0), border_argb, screen_width);
-
-		for (uint32_t y = border_size_top; y <= border_size_top + 192; y++)
+		if (includeBorder)
 		{
-			uint32_t* p = get_dest_pixel(bi, y, 0);
-			for (uint32_t x = 0; x < border_size_left_px; x++)
-				*p++ = border_argb;
-			p = get_dest_pixel(bi, y, border_size_left_px + 256);
-			for (uint32_t x = 0; x < border_size_right_px; x++)
-				*p++ = border_argb;
+			uint32_t border_argb = spectrum_color_to_argb (_border, false);
+
+			for (uint32_t row = 0; row < border_size_top; row++)
+				__stosd((unsigned long*)get_dest_pixel(bi, row, 0), border_argb, screen_width);
+
+			for (uint32_t row = border_size_top + 192; row < screen_height; row++)
+				__stosd((unsigned long*)get_dest_pixel(bi, row, 0), border_argb, screen_width);
+
+			for (uint32_t y = border_size_top; y <= border_size_top + 192; y++)
+			{
+				uint32_t* p = get_dest_pixel(bi, y, 0);
+				for (uint32_t x = 0; x < border_size_left_px; x++)
+					*p++ = border_argb;
+				p = get_dest_pixel(bi, y, border_size_left_px + 256);
+				for (uint32_t x = 0; x < border_size_right_px; x++)
+					*p++ = border_argb;
+			}
 		}
 
 		// pixels
@@ -401,9 +442,9 @@ public:
 				WI_ASSERT (src_pixel_data < 0x5800);
 				uint16_t src_pixel_attr = 0x5800 | ((y >> 3) << 5) | x;
 				WI_ASSERT (src_pixel_attr < 0x5B00);
-				uint8_t data = memory->read(src_pixel_data);
-				uint8_t attr = memory->read(src_pixel_attr);
-				uint32_t* dest_pixel = get_dest_pixel (bi, y + border_size_top, x * 8 + border_size_left_px);
+				uint8_t data = memory->read_physical(physical_memory_address(src_pixel_data));
+				uint8_t attr = memory->read_physical(physical_memory_address(src_pixel_attr));
+				uint32_t* dest_pixel = get_dest_pixel (bi, y + pixel_row_offset, x * 8 + pixel_col_offset);
 				bool brightness = attr & 0x40;
 				auto ink_color   = spectrum_color_to_argb (attr & 7, brightness);
 				auto paper_color = spectrum_color_to_argb ((attr >> 3) & 7, brightness);
@@ -415,16 +456,16 @@ public:
 
 	virtual HRESULT GenerateScreen() override
 	{
-		GenerateInternal(_screenData.get());
+		GenerateInternal(_screenData.get(), TRUE);
 		return S_OK;
 	}
 	#pragma endregion
 };
 
-HRESULT STDMETHODCALLTYPE MakeScreenDevice (Bus* memory, Bus* io, irq_line_i* irq, IScreenDeviceCompleteEventHandler* eh, wistd::unique_ptr<IScreenDevice>* ppDevice)
+HRESULT STDMETHODCALLTYPE MakeScreenDevice (Bus* memory, Bus* io, irq_line_i* irq, SpectrumVariant variant, IScreenDeviceCompleteEventHandler* eh, wistd::unique_ptr<IScreenDevice>* ppDevice)
 {
 	auto d = wil::make_unique_nothrow<ScreenDeviceImpl>(); RETURN_IF_NULL_ALLOC(d);
-	auto hr = d->InitInstance(memory, io, irq, eh); RETURN_IF_FAILED(hr);
+	auto hr = d->InitInstance(memory, io, irq, variant, eh); RETURN_IF_FAILED(hr);
 	*ppDevice = std::move(d);
 	return S_OK;
 }
