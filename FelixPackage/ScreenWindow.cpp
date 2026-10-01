@@ -42,6 +42,11 @@ class ScreenWindowImpl : public IVsWindowPane, IVsDpiAware, IVsWindowFrameNotify
 
 	LARGE_INTEGER _performance_counter_frequency;
 	std::deque<render_perf_info> perf_info_queue;
+
+	LARGE_INTEGER _tstatePerfCounterLast;
+	UINT64 _tstateCounterLast = 0;
+	UINT64 _tstatesPerSecond = 0;
+
 	unique_cotaskmem_bitmapinfo _bitmap;
 	POINT beamLocation;
 
@@ -53,6 +58,8 @@ public:
 		HRESULT hr;
 
 		QueryPerformanceFrequency(&_performance_counter_frequency);
+
+		QueryPerformanceCounter(&_tstatePerfCounterLast);
 
 		if (!wndClassAtom)
 		{
@@ -255,8 +262,8 @@ public:
 		RECT frameDurationAndFpsRect;
 		if (_debugFlagFpsAndDuration)
 		{
-			frameDurationAndFpsRect.left = clientRect.right - 100;
-			frameDurationAndFpsRect.top = clientRect.bottom - 2 * _debugFontLineHeight - 2 * 5;
+			frameDurationAndFpsRect.left = clientRect.right - 220;
+			frameDurationAndFpsRect.top = clientRect.bottom - 3 * _debugFontLineHeight - 2 * 5;
 			frameDurationAndFpsRect.right = clientRect.right;
 			frameDurationAndFpsRect.bottom = clientRect.bottom;
 			InvalidateRect (_hwnd, &frameDurationAndFpsRect, FALSE);
@@ -336,12 +343,24 @@ public:
 			perf_info_queue.push_back(perfInfo);
 			if (perf_info_queue.size() > 100)
 				perf_info_queue.pop_front();
+
+			if (timeNow.QuadPart - _tstatePerfCounterLast.QuadPart >= _performance_counter_frequency.QuadPart)
+			{
+				UINT64 tstateNow;
+				simulator->GetTime(&tstateNow);
+				_tstatesPerSecond = (UINT64)((tstateNow - _tstateCounterLast)
+					* _performance_counter_frequency.QuadPart
+					/ (timeNow.QuadPart - _tstatePerfCounterLast.QuadPart));
+				_tstateCounterLast = tstateNow;
+				_tstatePerfCounterLast = timeNow;
+			}
 			#pragma endregion
 
 			#pragma region Draw performance data.
-			wchar_t ss[50];
 			unsigned dur = (unsigned)round(average_render_duration() * 100);
-			int sslen = swprintf_s(ss, L"%4u FPS\r\n%3u.%02u ms", (unsigned)round(fps()), dur / 100, dur % 100);
+			wil::unique_process_heap_string ss;
+			wil::str_printf_nothrow(ss, L"%5u FPS\r\n%3u.%02u ms\r\n%5u.%1u T",
+				(unsigned)round(fps()), dur / 100, dur % 100, _tstatesPerSecond / 1000000, _tstatesPerSecond % 1000000 / 100000);
 			SetBkColor(ps.hdc, 0xFFFF00);
 			auto oldFont = SelectObject (ps.hdc, _debugFont.get());
 			RECT ssrect;
@@ -349,7 +368,7 @@ public:
 			ssrect.top = frameDurationAndFpsRect.top + 5;
 			ssrect.right = clientRect.right;
 			ssrect.bottom = clientRect.bottom;
-			DrawTextW (ps.hdc, ss, sslen, &ssrect, DT_RIGHT | DT_NOCLIP);
+			DrawTextW (ps.hdc, ss.get(), -1, &ssrect, DT_RIGHT | DT_NOCLIP);
 			SelectObject (ps.hdc, oldFont);
 			ssrect = { 0, 0, 100, 100 };
 			HBRUSH hb = CreateSolidBrush ((rand() % 256) << 16 | 0x8080);
