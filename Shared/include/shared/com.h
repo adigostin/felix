@@ -716,4 +716,11 @@ bool EqualsBSTR (string_type& other, BSTR one)
 	return !wcscmp(one, wil::str_raw_ptr(other));
 }
 
-using unique_safearray = wil::unique_any<SAFEARRAY*, decltype(SafeArrayDestroy), &SafeArrayDestroy>;
+struct unique_safearray : wil::unique_any<SAFEARRAY*, decltype(SafeArrayDestroy), &SafeArrayDestroy>
+{
+	using base = wil::unique_any<SAFEARRAY*, decltype(SafeArrayDestroy), &SafeArrayDestroy>;
+	using base::base;
+
+	operator SAFEARRAY*() const { return get(); }
+};
+

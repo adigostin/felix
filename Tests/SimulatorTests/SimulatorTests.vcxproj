@@ -106,9 +106,12 @@
     <ClCompile Include="SimulatorTests.cpp" />
     <ClCompile Include="COMTests.cpp" />
     <ClCompile Include="SimulatorAPITests.cpp" />
+    <ClCompile Include="Utilities.cpp" />
+    <ClCompile Include="ULA48KTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
+    <ClInclude Include="Utilities.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Simulator\Simulator.vcxproj">

@@ -1,6 +1,7 @@
 
 #include <CppUnitTest.h>
 #include "Simulator.h"
+#include "Utilities.h"
 #include "shared/com.h"
 #include "shared/vector_nothrow.h"
 
@@ -36,8 +37,8 @@ namespace Z80SimulatorTests
 			Assert::IsTrue(file.is_valid());
 
 			DWORD bytesWritten = 0;
-			Assert::IsTrue(WriteFile(file.get(), contents.data(), static_cast<DWORD>(contents.size()), &bytesWritten, nullptr) != FALSE);
-			Assert::AreEqual<DWORD>(static_cast<DWORD>(contents.size()), bytesWritten);
+			Assert::IsTrue(WriteFile(file.get(), contents.data(), contents.size(), &bytesWritten, nullptr) != FALSE);
+			Assert::AreEqual<DWORD>(contents.size(), bytesWritten);
 		}
 
 		LPCWSTR Path() const { return _filename; }
@@ -57,14 +58,6 @@ namespace Z80SimulatorTests
 			bytes.try_push_back(value);
 	}
 
-	static uint8_t ReadMemory(ISimulator* simulator, uint16_t address)
-	{
-		uint8_t value = 0;
-		HRESULT hr = simulator->ReadMemoryBus8(address, &value);
-		Assert::AreEqual(S_OK, hr);
-		return value;
-	}
-
 	class TestProgram
 	{
 	public:
@@ -76,16 +69,6 @@ namespace Z80SimulatorTests
 			Assert::IsTrue(bytes.try_insert(bytes.end(), instruction));
 			++instructionCount;
 		}
-
-		void LdBC(uint16_t value)
-		{
-			Emit({ 0x01, static_cast<uint8_t>(value), static_cast<uint8_t>(value >> 8) });
-		}
-
-		void LdA(uint8_t value) { Emit({ 0x3E, value }); }
-		void OutC() { Emit({ 0xED, 0x79 }); }
-		void StoreA(uint16_t address) { Emit({ 0x32, static_cast<uint8_t>(address), static_cast<uint8_t>(address >> 8) }); }
-		void LoadA(uint16_t address) { Emit({ 0x3A, static_cast<uint8_t>(address), static_cast<uint8_t>(address >> 8) }); }
 	};
 
 	static void RunProgram(ISimulator* simulator, uint16_t address, const TestProgram& program, SpectrumVariant variant)
@@ -119,11 +102,11 @@ namespace Z80SimulatorTests
 	static void AppendZ80V23Header(vector_nothrow<uint8_t>& snapshot, uint16_t headerLength, uint8_t hardwareMode)
 	{
 		Assert::IsTrue(snapshot.try_resize(30));
-     memset(snapshot.data(), 0, 30);
+		memset(snapshot.data(), 0, 30);
 		AppendWord(snapshot, headerLength);
 		vector_nothrow<uint8_t> extendedHeader;
 		Assert::IsTrue(extendedHeader.try_resize(headerLength));
-       memset(extendedHeader.data(), 0, headerLength);
+		memset(extendedHeader.data(), 0, headerLength);
 		extendedHeader[0] = 0x34;
 		extendedHeader[1] = 0x12;
 		extendedHeader[2] = hardwareMode;
@@ -136,7 +119,7 @@ namespace Z80SimulatorTests
 		vector_nothrow<uint8_t> compressed;
 		while (decompressedSize)
 		{
-            uint8_t count = static_cast<uint8_t>(decompressedSize > 255 ? 255 : decompressedSize);
+			uint8_t count = static_cast<uint8_t>(decompressedSize > 255 ? 255 : decompressedSize);
 			Assert::IsTrue(compressed.try_insert(compressed.end(), { 0xED, 0xED, count, value }));
 			decompressedSize -= count;
 		}
@@ -147,136 +130,9 @@ namespace Z80SimulatorTests
 			Assert::IsTrue(snapshot.try_push_back(byte));
 	}
 
-	static uint32_t ReadBitmapPixel(SAFEARRAY* image, LONG expectedWidth, LONG expectedHeight, LONG x, LONG y)
-	{
-		void* data;
-		HRESULT hr = SafeArrayAccessData(image, &data);
-		Assert::AreEqual(S_OK, hr);
-		auto unaccess = wil::scope_exit([image] { SafeArrayUnaccessData(image); });
-
-		BITMAPFILEHEADER fileHeader;
-		memcpy(&fileHeader, data, sizeof(fileHeader));
-		Assert::AreEqual<WORD>(0x4D42, fileHeader.bfType);
-		BITMAPINFOHEADER header;
-		memcpy(&header, static_cast<const uint8_t*>(data) + sizeof(fileHeader), sizeof(header));
-		Assert::AreEqual<LONG>(expectedWidth, header.biWidth);
-		Assert::AreEqual<LONG>(expectedHeight, header.biHeight < 0 ? -header.biHeight : header.biHeight);
-		LONG bitmapY = header.biHeight > 0 ? header.biHeight - 1 - y : y;
-		uint32_t pixel;
-		memcpy(&pixel, static_cast<const uint8_t*>(data) + fileHeader.bfOffBits + (bitmapY * header.biWidth + x) * sizeof(pixel), sizeof(pixel));
-		return pixel;
-	}
-
 	TEST_CLASS(SimulatorAPITests)
 	{
 	public:
-		TEST_METHOD(SaveScreen)
-		{
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
-
-			hr = simulator->Reset(32768, SpectrumVariant48K); // Load the test program at the start of RAM
-			Assert::AreEqual(S_OK, hr);
-			hr = simulator->SetSpeed(UINT32_MAX);
-			Assert::AreEqual(S_OK, hr);
-
-			UINT64 time;
-			hr = simulator->GetTime(&time);
-			Assert::AreEqual(S_OK, hr);
-			Assert::AreEqual<UINT64>(0, time);
-
-			// Make border blue and pixels red.
-			static const uint8_t program[] = {
-				0x3E, 0x01,             // LD A, 0x01
-				0xD3, 0xFE,             // OUT (0xFE), A
-				0x21, 0x00, 0x40,       // LD HL, 0x4000
-				0x11, 0x01, 0x40,       // LD DE, 0x4001
-				0x01, 0xFF, 0x17,       // LD BC, 0x17FF
-				0xAF,                   // XOR A
-				0x77,                   // LD (HL), A
-				0xED, 0xB0,             // LDIR
-				0x21, 0x00, 0x58,       // LD HL, 0x5800
-				0x11, 0x01, 0x58,       // LD DE, 0x5801
-				0x01, 0xFF, 0x02,       // LD BC, 0x02FF
-				0x3E, 0x10,             // LD A, 0x10
-				0x77,                   // LD (HL), A
-				0xED, 0xB0,             // LDIR
-				0x18, 0xFE,             // JR $-2
-			};
-			hr = simulator->WriteMemoryBus(32768, static_cast<uint16_t>(sizeof(program)), program);
-			Assert::AreEqual(S_OK, hr);
-
-			hr = simulator->Resume(FALSE);
-			Assert::AreEqual(S_OK, hr);
-			auto stopSimulation = wil::scope_exit([&simulator] { simulator->Break(); });
-
-			// Wait for the simulator to render the entire screen. At 3.5MHz and 50fps that's about 70K T-Cycles.
-			DWORD start = GetTickCount();
-			for (;;)
-			{
-				hr = simulator->GetTime(&time);
-				Assert::AreEqual(S_OK, hr);
-				if (time >= 70000)
-					break;
-				if (GetTickCount() - start >= 5000)
-					Assert::Fail(L"Simulator did not reach 70000 t-states.");
-				Sleep(1);
-			}
-
-			hr = simulator->Break();
-			Assert::IsTrue(SUCCEEDED(hr));
-			stopSimulation.release();
-
-			unique_safearray image;
-			hr = simulator->SaveScreen(TRUE, &image);
-			Assert::AreEqual(S_OK, hr);
-
-			LONG lowerBound;
-			LONG upperBound;
-			hr = SafeArrayGetLBound(image.get(), 1, &lowerBound);
-			Assert::AreEqual(S_OK, hr);
-			hr = SafeArrayGetUBound(image.get(), 1, &upperBound);
-			Assert::AreEqual(S_OK, hr);
-
-			void* data;
-			hr = SafeArrayAccessData(image.get(), &data);
-			Assert::AreEqual(S_OK, hr);
-			auto unaccess = wil::scope_exit([&image] { SafeArrayUnaccessData(image.get()); });
-
-			const auto* bmp = static_cast<const uint8_t*>(data);
-			BITMAPFILEHEADER fileHeader;
-			memcpy(&fileHeader, bmp, sizeof(fileHeader));
-			Assert::AreEqual<WORD>(0x4D42, fileHeader.bfType);
-			BITMAPINFOHEADER header;
-			memcpy(&header, bmp + sizeof(fileHeader), sizeof(header));
-			Assert::AreEqual<LONG>(352, header.biWidth); // Screen width including border
-			LONG imageHeight = header.biHeight > 0 ? header.biHeight : -header.biHeight;
-			Assert::AreEqual<LONG>(296, imageHeight); // Screen height including border
-			Assert::AreEqual<WORD>(32, header.biBitCount);
-			Assert::IsTrue(fileHeader.bfOffBits + header.biSizeImage <= static_cast<DWORD>(upperBound - lowerBound + 1));
-
-			bool borderIsBlue = true;
-			bool screenIsRed = true;
-			for (LONG y = 0; y < imageHeight; y++)
-			{
-				LONG bitmapY = header.biHeight > 0 ? imageHeight - 1 - y : y;
-				for (LONG x = 0; x < header.biWidth; x++)
-				{
-					uint32_t pixel;
-					memcpy(&pixel, bmp + fileHeader.bfOffBits + (bitmapY * header.biWidth + x) * sizeof(pixel), sizeof(pixel));
-					bool isScreenPixel = x >= 48 && x < 304 && y >= 48 && y < 240; // 256 x 192 active pixels
-					if (isScreenPixel)
-						screenIsRed &= pixel == 0xFFC00000; // Opaque red
-					else
-						borderIsBlue &= pixel == 0xFF0000C0; // Opaque blue
-				}
-			}
-
-			Assert::IsTrue(borderIsBlue);
-			Assert::IsTrue(screenIsRed);
-		}
-
 		TEST_METHOD(LoadZ80V1Uncompressed)
 		{
 			vector_nothrow<uint8_t> snapshot;
@@ -301,9 +157,9 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<UINT16>(0x8123, pc);
 			Assert::AreEqual(S_OK, simulator->GetVariant(&variant));
 			Assert::IsTrue(variant == SpectrumVariant48K);
-			Assert::AreEqual<uint8_t>(0x14, ReadMemory(simulator.get(), 0x4000));
-			Assert::AreEqual<uint8_t>(0x25, ReadMemory(simulator.get(), 0x8000));
-			Assert::AreEqual<uint8_t>(0x36, ReadMemory(simulator.get(), 0xFFFF));
+			Assert::AreEqual<uint8_t>(0x14, ReadMemory(simulator, 0x4000));
+			Assert::AreEqual<uint8_t>(0x25, ReadMemory(simulator, 0x8000));
+			Assert::AreEqual<uint8_t>(0x36, ReadMemory(simulator, 0xFFFF));
 		}
 
 		TEST_METHOD(LoadZ80V1Compressed)
@@ -332,9 +188,9 @@ namespace Z80SimulatorTests
 			UINT16 pc;
 			Assert::AreEqual(S_OK, simulator->GetPC(&pc));
 			Assert::AreEqual<UINT16>(0x9234, pc);
-			Assert::AreEqual<uint8_t>(0x42, ReadMemory(simulator.get(), 0x4000));
-			Assert::AreEqual<uint8_t>(0x42, ReadMemory(simulator.get(), 0x8000));
-			Assert::AreEqual<uint8_t>(0x42, ReadMemory(simulator.get(), 0xFFFF));
+			Assert::AreEqual<uint8_t>(0x42, ReadMemory(simulator, 0x4000));
+			Assert::AreEqual<uint8_t>(0x42, ReadMemory(simulator, 0x8000));
+			Assert::AreEqual<uint8_t>(0x42, ReadMemory(simulator, 0xFFFF));
 		}
 
 		TEST_METHOD(LoadZ80V2_48K)
@@ -367,9 +223,9 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<UINT16>(0xA245, pc);
 			Assert::AreEqual(S_OK, simulator->GetVariant(&variant));
 			Assert::IsTrue(variant == SpectrumVariant48K);
-			Assert::AreEqual<uint8_t>(0x18, ReadMemory(simulator.get(), 0x4000));
-			Assert::AreEqual<uint8_t>(0x24, ReadMemory(simulator.get(), 0x8000));
-			Assert::AreEqual<uint8_t>(0x35, ReadMemory(simulator.get(), 0xC000));
+			Assert::AreEqual<uint8_t>(0x18, ReadMemory(simulator, 0x4000));
+			Assert::AreEqual<uint8_t>(0x24, ReadMemory(simulator, 0x8000));
+			Assert::AreEqual<uint8_t>(0x35, ReadMemory(simulator, 0xC000));
 		}
 
 		TEST_METHOD(LoadZ80V3_128K)
@@ -402,9 +258,9 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<UINT16>(0xB367, pc);
 			Assert::AreEqual(S_OK, simulator->GetVariant(&variant));
 			Assert::IsTrue(variant == SpectrumVariant128);
-			Assert::AreEqual<uint8_t>(0x28, ReadMemory(simulator.get(), 0x4000));
-			Assert::AreEqual<uint8_t>(0x25, ReadMemory(simulator.get(), 0x8000));
-			Assert::AreEqual<uint8_t>(0x26, ReadMemory(simulator.get(), 0xC000));
+			Assert::AreEqual<uint8_t>(0x28, ReadMemory(simulator, 0x4000));
+			Assert::AreEqual<uint8_t>(0x25, ReadMemory(simulator, 0x8000));
+			Assert::AreEqual<uint8_t>(0x26, ReadMemory(simulator, 0xC000));
 		}
 
 		TEST_METHOD(PagingSelectsAllEightRamBanksAndFixedBankAliases)
@@ -414,28 +270,29 @@ namespace Z80SimulatorTests
 			Create128KSimulator(romFile, simulator);
 
 			TestProgram program;
+			static constexpr uint8_t bankValues[] = { 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7 };
 			for (uint8_t bank = 0; bank < 8; bank++)
 			{
-				program.LdBC(0x7FFD);
-				program.LdA(bank);
-				program.OutC();
-				program.LdA(static_cast<uint8_t>(0xA0 + bank));
-				program.StoreA(0xC000);
+				program.Emit({ 0x01, 0xFD, 0x7F });        // LD BC,7FFDh
+				program.Emit({ 0x3E, bank });              // LD A,bank
+				program.Emit({ 0xED, 0x79 });              // OUT (C),A
+				program.Emit({ 0x3E, bankValues[bank] });  // LD A,A0h+bank
+				program.Emit({ 0x32, 0x00, 0xC0 });        // LD (C000h),A
 			}
 			for (uint8_t bank = 0; bank < 8; bank++)
 			{
-				program.LdBC(0x7FFD);
-				program.LdA(bank);
-				program.OutC();
-				program.LoadA(0xC000);
-				program.StoreA(static_cast<uint16_t>(0x9000 + bank));
+				program.Emit({ 0x01, 0xFD, 0x7F });  // LD BC,7FFDh
+				program.Emit({ 0x3E, bank });        // LD A,bank
+				program.Emit({ 0xED, 0x79 });        // OUT (C),A
+				program.Emit({ 0x3A, 0x00, 0xC0 });  // LD A,(C000h)
+				program.Emit({ 0x32, bank, 0x90 });  // LD (9000h+bank),A
 			}
-			RunProgram(simulator.get(), 0xA000, program, SpectrumVariant128);
+			RunProgram(simulator, 0xA000, program, SpectrumVariant128);
 
 			for (uint8_t bank = 0; bank < 8; bank++)
-				Assert::AreEqual<uint8_t>(static_cast<uint8_t>(0xA0 + bank), ReadMemory(simulator.get(), static_cast<uint16_t>(0x9000 + bank)));
-			Assert::AreEqual<uint8_t>(0xA5, ReadMemory(simulator.get(), 0x4000)); // Fixed slot aliases bank 5
-			Assert::AreEqual<uint8_t>(0xA2, ReadMemory(simulator.get(), 0x8000)); // Fixed slot aliases bank 2
+				Assert::AreEqual<uint8_t>(static_cast<uint8_t>(0xA0 + bank), ReadMemory(simulator, static_cast<uint16_t>(0x9000 + bank)));
+			Assert::AreEqual<uint8_t>(0xA5, ReadMemory(simulator, 0x4000)); // Fixed slot aliases bank 5
+			Assert::AreEqual<uint8_t>(0xA2, ReadMemory(simulator, 0x8000)); // Fixed slot aliases bank 2
 		}
 
 		TEST_METHOD(PagingPortPartialDecodeAndRomSelection)
@@ -445,43 +302,43 @@ namespace Z80SimulatorTests
 			Create128KSimulator(romFile, simulator);
 
 			TestProgram program;
-			program.LdBC(0x7FFD);
-			program.LdA(1);
-			program.OutC();
-			program.LdA(0x51);
-			program.StoreA(0xC000);
+			program.Emit({ 0x01, 0xFD, 0x7F });  // LD BC,7FFDh
+			program.Emit({ 0x3E, 0x01 });        // LD A,1
+			program.Emit({ 0xED, 0x79 });        // OUT (C),A
+			program.Emit({ 0x3E, 0x51 });        // LD A,51h
+			program.Emit({ 0x32, 0x00, 0xC0 });  // LD (C000h),A
 
-			program.LdBC(0x1234); // Bits 15 and 1 are clear; other address bits vary.
-			program.LdA(6);
-			program.OutC();
-			program.LdA(0x66);
-			program.StoreA(0xC000);
+			program.Emit({ 0x01, 0x34, 0x12 });  // LD BC,1234h: bits 15 and 1 are clear; other address bits vary.
+			program.Emit({ 0x3E, 0x06 });        // LD A,6
+			program.Emit({ 0xED, 0x79 });        // OUT (C),A
+			program.Emit({ 0x3E, 0x66 });        // LD A,66h
+			program.Emit({ 0x32, 0x00, 0xC0 });  // LD (C000h),A
 
-			program.LdBC(0x9234); // A15 set: this address must not page memory.
-			program.LdA(1);
-			program.OutC();
-			program.LdA(0xEE);
-			program.StoreA(0xC000);
-			program.LdBC(0x1236); // A1 set: this address must not page memory.
-			program.LdA(1);
-			program.OutC();
-			program.LdA(0xEF);
-			program.StoreA(0xC000);
+			program.Emit({ 0x01, 0x34, 0x92 });  // LD BC,9234h: A15 set, so this address must not page memory.
+			program.Emit({ 0x3E, 0x01 });        // LD A,1
+			program.Emit({ 0xED, 0x79 });        // OUT (C),A
+			program.Emit({ 0x3E, 0xEE });        // LD A,EEh
+			program.Emit({ 0x32, 0x00, 0xC0 });  // LD (C000h),A
+			program.Emit({ 0x01, 0x36, 0x12 });  // LD BC,1236h: A1 set, so this address must not page memory.
+			program.Emit({ 0x3E, 0x01 });        // LD A,1
+			program.Emit({ 0xED, 0x79 });        // OUT (C),A
+			program.Emit({ 0x3E, 0xEF });        // LD A,EFh
+			program.Emit({ 0x32, 0x00, 0xC0 });  // LD (C000h),A
 
-			program.LdBC(0x7FFD);
-			program.LdA(1);
-			program.OutC();
-			program.LoadA(0xC000);
-			program.StoreA(0x9000);
+			program.Emit({ 0x01, 0xFD, 0x7F });  // LD BC,7FFDh
+			program.Emit({ 0x3E, 0x01 });        // LD A,1
+			program.Emit({ 0xED, 0x79 });        // OUT (C),A
+			program.Emit({ 0x3A, 0x00, 0xC0 });  // LD A,(C000h)
+			program.Emit({ 0x32, 0x00, 0x90 });  // LD (9000h),A
 
-			program.LdBC(0x1234);
-			program.LdA(0x16); // Keep bank 6 selected while choosing ROM 1.
-			program.OutC();
-			RunProgram(simulator.get(), 0xA000, program, SpectrumVariant128);
+			program.Emit({ 0x01, 0x34, 0x12 });  // LD BC,1234h
+			program.Emit({ 0x3E, 0x16 });        // LD A,16h: keep bank 6 selected while choosing ROM 1.
+			program.Emit({ 0xED, 0x79 });        // OUT (C),A
+			RunProgram(simulator, 0xA000, program, SpectrumVariant128);
 
-			Assert::AreEqual<uint8_t>(0xEF, ReadMemory(simulator.get(), 0xC000));
-			Assert::AreEqual<uint8_t>(0x51, ReadMemory(simulator.get(), 0x9000));
-			Assert::AreEqual<uint8_t>(0x42, ReadMemory(simulator.get(), 0x0000));
+			Assert::AreEqual<uint8_t>(0xEF, ReadMemory(simulator, 0xC000));
+			Assert::AreEqual<uint8_t>(0x51, ReadMemory(simulator, 0x9000));
+			Assert::AreEqual<uint8_t>(0x42, ReadMemory(simulator, 0x0000));
 		}
 
 		TEST_METHOD(PagingScreenBankIsIndependentOfCpuRamBank)
@@ -491,27 +348,25 @@ namespace Z80SimulatorTests
 			Create128KSimulator(romFile, simulator);
 
 			TestProgram program;
-			program.LdBC(0x7FFD);
-			program.LdA(7);
-			program.OutC();
-			program.LdA(0x80);
-			program.StoreA(0xC000);
-			program.LdA(0x02);
-			program.StoreA(0xD800);
+			program.Emit({ 0x01, 0xFD, 0x7F });  // LD BC,7FFDh
+			program.Emit({ 0x3E, 0x07 });        // LD A,7
+			program.Emit({ 0xED, 0x79 });        // OUT (C),A
+			program.Emit({ 0x3E, 0x80 });        // LD A,80h
+			program.Emit({ 0x32, 0x00, 0xC0 });  // LD (C000h),A
+			program.Emit({ 0x3E, 0x02 });        // LD A,2
+			program.Emit({ 0x32, 0x00, 0xD8 });  // LD (D800h),A
 
-			program.LdA(3);
-			program.OutC();
-			program.LdA(0x33);
-			program.StoreA(0xC000);
-			program.LdA(0x0B); // CPU bank 3, display bank 7.
-			program.OutC();
-			RunProgram(simulator.get(), 0xA000, program, SpectrumVariant128);
+			program.Emit({ 0x3E, 0x03 });        // LD A,3
+			program.Emit({ 0xED, 0x79 });        // OUT (C),A
+			program.Emit({ 0x3E, 0x33 });        // LD A,33h
+			program.Emit({ 0x32, 0x00, 0xC0 });  // LD (C000h),A
+			program.Emit({ 0x3E, 0x0B });        // LD A,0Bh: CPU bank 3, display bank 7.
+			program.Emit({ 0xED, 0x79 });        // OUT (C),A
+			RunProgram(simulator, 0xA000, program, SpectrumVariant128);
 
-			Assert::AreEqual<uint8_t>(0x33, ReadMemory(simulator.get(), 0xC000));
-			unique_safearray image;
-			HRESULT hr = simulator->SaveScreen(FALSE, &image);
-			Assert::AreEqual(S_OK, hr);
-			Assert::AreEqual<uint32_t>(0xFFC00000, ReadBitmapPixel(image.get(), 256, 192, 0, 0));
+			Assert::AreEqual<uint8_t>(0x33, ReadMemory(simulator, 0xC000));
+			auto image = CaptureScreen(simulator, FALSE);
+			Assert::AreEqual<uint32_t>(0xFFC00000, image.GetPixel(0, 0));
 		}
 
 		TEST_METHOD(PagingLockPreventsFurtherRamRomAndScreenChanges)
@@ -521,60 +376,36 @@ namespace Z80SimulatorTests
 			Create128KSimulator(romFile, simulator);
 
 			TestProgram program;
-			program.LdBC(0x7FFD);
-			program.LdA(5);
-			program.OutC();
-			program.LdA(0);
-			program.StoreA(0xC000);
-			program.StoreA(0xD800);
-			program.LdA(0x55);
-			program.StoreA(0xC000);
+			program.Emit({ 0x01, 0xFD, 0x7F });  // LD BC,7FFDh
+			program.Emit({ 0x3E, 0x05 });        // LD A,5
+			program.Emit({ 0xED, 0x79 });        // OUT (C),A
+			program.Emit({ 0x3E, 0x00 });        // LD A,0
+			program.Emit({ 0x32, 0x00, 0xC0 });  // LD (C000h),A
+			program.Emit({ 0x32, 0x00, 0xD8 });  // LD (D800h),A
+			program.Emit({ 0x3E, 0x55 });        // LD A,55h
+			program.Emit({ 0x32, 0x00, 0xC0 });  // LD (C000h),A
 
-			program.LdA(7);
-			program.OutC();
-			program.LdA(0x80);
-			program.StoreA(0xC000);
-			program.LdA(0x02);
-			program.StoreA(0xD800);
+			program.Emit({ 0x3E, 0x07 });        // LD A,7
+			program.Emit({ 0xED, 0x79 });        // OUT (C),A
+			program.Emit({ 0x3E, 0x80 });        // LD A,80h
+			program.Emit({ 0x32, 0x00, 0xC0 });  // LD (C000h),A
+			program.Emit({ 0x3E, 0x02 });        // LD A,2
+			program.Emit({ 0x32, 0x00, 0xD8 });  // LD (D800h),A
 
-			program.LdA(0x3D); // Select bank 5, display bank 7 and ROM 1, then lock paging.
-			program.OutC();
-			program.LdA(0xA5);
-			program.StoreA(0xC000);
-			program.LdA(0x02); // Attempt to change RAM, ROM and display selection after locking.
-			program.OutC();
-			program.LdA(0xEE);
-			program.StoreA(0xC000);
-			RunProgram(simulator.get(), 0xA000, program, SpectrumVariant128);
+			program.Emit({ 0x3E, 0x3D });        // LD A,3Dh: select bank 5, display bank 7 and ROM 1, then lock paging.
+			program.Emit({ 0xED, 0x79 });        // OUT (C),A
+			program.Emit({ 0x3E, 0xA5 });        // LD A,A5h
+			program.Emit({ 0x32, 0x00, 0xC0 });  // LD (C000h),A
+			program.Emit({ 0x3E, 0x02 });        // LD A,2: attempt to change RAM, ROM and display selection after locking.
+			program.Emit({ 0xED, 0x79 });        // OUT (C),A
+			program.Emit({ 0x3E, 0xEE });        // LD A,EEh
+			program.Emit({ 0x32, 0x00, 0xC0 });  // LD (C000h),A
+			RunProgram(simulator, 0xA000, program, SpectrumVariant128);
 
-			Assert::AreEqual<uint8_t>(0xEE, ReadMemory(simulator.get(), 0x4000));
-			Assert::AreEqual<uint8_t>(0x42, ReadMemory(simulator.get(), 0x0000));
-			unique_safearray image;
-			HRESULT hr = simulator->SaveScreen(FALSE, &image);
-			Assert::AreEqual(S_OK, hr);
-			Assert::AreEqual<uint32_t>(0xFFC00000, ReadBitmapPixel(image.get(), 256, 192, 0, 0));
-		}
-
-		TEST_METHOD(SaveScreenWithoutBorderReturnsDestroyableUnlockedArray)
-		{
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
-			hr = simulator->Reset(0x8000, SpectrumVariant48K);
-			Assert::AreEqual(S_OK, hr);
-
-			uint8_t pixelByte = 0x80;
-			uint8_t attribute = 0x02;
-			Assert::AreEqual(S_OK, simulator->WriteMemoryBus(0x4000, 1, &pixelByte));
-			Assert::AreEqual(S_OK, simulator->WriteMemoryBus(0x5800, 1, &attribute));
-
-			unique_safearray image;
-			hr = simulator->SaveScreen(FALSE, &image);
-			Assert::AreEqual(S_OK, hr);
-			Assert::AreEqual<uint32_t>(0xFFC00000, ReadBitmapPixel(image.get(), 256, 192, 0, 0));
-			Assert::AreEqual<USHORT>(0, image.get()->cLocks);
-			SAFEARRAY* ownedByTest = image.release();
-			Assert::AreEqual(S_OK, SafeArrayDestroy(ownedByTest));
+			Assert::AreEqual<uint8_t>(0xEE, ReadMemory(simulator, 0x4000));
+			Assert::AreEqual<uint8_t>(0x42, ReadMemory(simulator, 0x0000));
+			auto image = CaptureScreen(simulator, FALSE);
+			Assert::AreEqual<uint32_t>(0xFFC00000, image.GetPixel(0, 0));
 		}
 
 		TEST_METHOD(LoadCompressedZ80V2_48K)
@@ -591,9 +422,9 @@ namespace Z80SimulatorTests
 			Assert::AreEqual(S_OK, hr);
 			file.Write(snapshot);
 			Assert::AreEqual(S_OK, simulator->LoadFile(file.Path()));
-			Assert::AreEqual<uint8_t>(0x18, ReadMemory(simulator.get(), 0x4000));
-			Assert::AreEqual<uint8_t>(0x24, ReadMemory(simulator.get(), 0x8000));
-			Assert::AreEqual<uint8_t>(0x35, ReadMemory(simulator.get(), 0xC000));
+			Assert::AreEqual<uint8_t>(0x18, ReadMemory(simulator, 0x4000));
+			Assert::AreEqual<uint8_t>(0x24, ReadMemory(simulator, 0x8000));
+			Assert::AreEqual<uint8_t>(0x35, ReadMemory(simulator, 0xC000));
 		}
 
 		TEST_METHOD(LoadCompressedZ80V3_128K)
@@ -609,9 +440,9 @@ namespace Z80SimulatorTests
 			Assert::AreEqual(S_OK, hr);
 			file.Write(snapshot);
 			Assert::AreEqual(S_OK, simulator->LoadFile(file.Path()));
-			Assert::AreEqual<uint8_t>(0x35, ReadMemory(simulator.get(), 0x4000));
-			Assert::AreEqual<uint8_t>(0x32, ReadMemory(simulator.get(), 0x8000));
-			Assert::AreEqual<uint8_t>(0x30, ReadMemory(simulator.get(), 0xC000));
+			Assert::AreEqual<uint8_t>(0x35, ReadMemory(simulator, 0x4000));
+			Assert::AreEqual<uint8_t>(0x32, ReadMemory(simulator, 0x8000));
+			Assert::AreEqual<uint8_t>(0x30, ReadMemory(simulator, 0xC000));
 		}
 
 		TEST_METHOD(LoadZ80RejectsCompressedPageWithShortOutput)
@@ -685,9 +516,9 @@ namespace Z80SimulatorTests
 			hr = simulator->GetVariant(&variant);
 			Assert::AreEqual(S_OK, hr);
 			Assert::AreEqual((int)SpectrumVariant48K, (int)variant);
-			Assert::AreEqual<uint8_t>(0, ReadMemory(simulator.get(), 0x4000));
-			Assert::AreEqual<uint8_t>(0, ReadMemory(simulator.get(), 0x8000));
-			Assert::AreEqual<uint8_t>(0, ReadMemory(simulator.get(), 0xFFFF));
+			Assert::AreEqual<uint8_t>(0, ReadMemory(simulator, 0x4000));
+			Assert::AreEqual<uint8_t>(0, ReadMemory(simulator, 0x8000));
+			Assert::AreEqual<uint8_t>(0, ReadMemory(simulator, 0xFFFF));
 		}
 
 	};
