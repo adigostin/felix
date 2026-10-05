@@ -16,6 +16,10 @@ struct DECLSPEC_NOVTABLE IDevice
 	// The exact same information can be retrieved by comparing the device's time before
 	// and after this call; this purpose of the return value is performance optimization.
 	virtual bool SimulateDeviceTo (UINT64 requested_time) = 0;
+
+	virtual uint8_t STDMETHODCALLTYPE irq_priority() { _ASSERT(false); return { }; }
+	virtual bool STDMETHODCALLTYPE irq_pending (uint64_t& irq_time, uint8_t& irq_address) const { _ASSERT(false); return { }; }
+	virtual void STDMETHODCALLTYPE acknowledge_irq() { _ASSERT(false); }
 };
 
 struct BreakpointsHit
@@ -71,14 +75,6 @@ struct DECLSPEC_NOVTABLE IMemoryDevice : IDevice
 	virtual HRESULT GetBounds (DWORD* from, DWORD* to) = 0;
 	virtual HRESULT ReadMemory (uint32_t busAddress, uint32_t size, void* dest) = 0;
 	virtual HRESULT WriteMemory (uint32_t internalAddress, uint32_t size, const void* bytes) = 0;
-};
-
-struct IInterruptingDevice
-{
-	virtual IDevice* as_device() = 0;
-	virtual uint8_t STDMETHODCALLTYPE irq_priority() = 0;
-	virtual bool irq_pending (uint64_t& irq_time, uint8_t& irq_address) const = 0;
-	virtual void acknowledge_irq() = 0;
 };
 
 static constexpr UINT64 milliseconds_to_ticks (DWORD milliseconds)
@@ -294,7 +290,7 @@ struct DECLSPEC_NOVTABLE Bus
 
 struct __declspec(novtable) irq_line_i
 {
-	vector_nothrow<IInterruptingDevice*> interrupting_devices;
+	vector_nothrow<IDevice*> interrupting_devices;
 
 	// Returns true if all devices have caught up with the CPU. Returns false otherwise (some device lags behind).
 	//
@@ -305,7 +301,7 @@ struct __declspec(novtable) irq_line_i
 	{
 		for (auto d : interrupting_devices)
 		{
-			if (d->as_device()->_time < cpu_time)
+			if (d->_time < cpu_time)
 				return false;
 
 			UINT64 irq_time;
@@ -330,7 +326,7 @@ struct IScreenDeviceCompleteEventHandler
 	virtual void OnScreenDeviceComplete() = 0;
 };
 
-struct IScreenDevice : IDevice//, IInterruptingDevice
+struct IScreenDevice : IDevice
 {
 	//virtual zx_spectrum_ula_regs regs() const = 0;
 
@@ -343,6 +339,8 @@ struct IScreenDevice : IDevice//, IInterruptingDevice
 
 	// Generates the entire CRT screen from video memory.
 	virtual HRESULT GenerateScreen() = 0;
+
+	virtual HRESULT STDMETHODCALLTYPE GetPosition (DWORD* row, DWORD* col, DWORD* frameNumber) = 0;
 };
 HRESULT STDMETHODCALLTYPE MakeScreenDevice (Bus* memory, Bus* io, irq_line_i* irq, SpectrumVariant variant, IScreenDeviceCompleteEventHandler* eh, wistd::unique_ptr<IScreenDevice>* ppDevice);
 

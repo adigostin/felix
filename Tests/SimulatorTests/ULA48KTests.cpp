@@ -1,5 +1,6 @@
 #include <CppUnitTest.h>
 #include "Simulator.h"
+#include "Impl/SimulatorInternal.h"
 #include "Utilities.h"
 #include "shared/com.h"
 
@@ -228,6 +229,36 @@ namespace Z80SimulatorTests
 			auto afterRightPixel = CaptureScreen(simulator, FALSE);
 			Assert::AreEqual(0xFFC00000ul, afterRightPixel.GetPixel(16, 32));
 			Assert::AreEqual(0xFFC00000ul, afterRightPixel.GetPixel(200, 32));
+		}
+
+		TEST_METHOD(PositionAdvancesAcrossExactFrameBoundaries)
+		{
+			struct TestIrqLine : irq_line_i { };
+
+			constexpr UINT64 frameTicks = 224 * 312;
+			Bus memory;
+			Bus io;
+			TestIrqLine irq;
+			wistd::unique_ptr<IScreenDevice> screen;
+			Assert::AreEqual(S_OK, MakeScreenDevice(&memory, &io, &irq, SpectrumVariant48K, nullptr, &screen));
+			Assert::AreEqual(S_OK, screen->Reset(SpectrumVariant48K));
+
+			DWORD row;
+			DWORD col;
+			DWORD frameNumber;
+			Assert::AreEqual(S_OK, screen->GetPosition(&row, &col, &frameNumber));
+			Assert::AreEqual<DWORD>(0, row);
+			Assert::AreEqual<DWORD>(0, col);
+			Assert::AreEqual<DWORD>(0, frameNumber);
+
+			for (DWORD frame = 1; frame <= 16; ++frame)
+			{
+				Assert::IsTrue(screen->SimulateDeviceTo(frame * frameTicks));
+				Assert::AreEqual(S_OK, screen->GetPosition(&row, &col, &frameNumber));
+				Assert::AreEqual<DWORD>(0, row);
+				Assert::AreEqual<DWORD>(0, col);
+				Assert::AreEqual<DWORD>(frame, frameNumber);
+			}
 		}
 	};
 }

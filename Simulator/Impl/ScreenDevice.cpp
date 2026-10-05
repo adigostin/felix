@@ -28,7 +28,7 @@ static constexpr UINT64 max_time_offset = milliseconds_to_ticks(1000);
 
 static constexpr UINT32 ScreenBufferSize = sizeof(BITMAPINFOHEADER) + screen_width * screen_height * 4;
 
-class ScreenDeviceImpl : public IScreenDevice, public IInterruptingDevice
+class ScreenDeviceImpl : public IScreenDevice
 {
 	Bus* memory;
 	Bus* io;
@@ -38,6 +38,9 @@ class ScreenDeviceImpl : public IScreenDevice, public IInterruptingDevice
 	bool locked = false;
 	std::optional<UINT64> _pending_irq_time;
 	uint8_t _border;
+	uint32_t frameNumber = 0;
+	uint32_t row = 0;
+	uint32_t col = 0;
 	wil::unique_process_heap_ptr<BITMAPINFO> _screenData;
 	IScreenDeviceCompleteEventHandler* _screenCompleteHandler;
 
@@ -61,7 +64,7 @@ public:
 
 	~ScreenDeviceImpl()
 	{
-		irq->interrupting_devices.remove(static_cast<IInterruptingDevice*>(this));
+		irq->interrupting_devices.remove(static_cast<IDevice*>(this));
 		io->write_responders.remove([this](auto& w) { return w.Device == this; });
 	}
 
@@ -79,8 +82,6 @@ public:
 		bi->bmiHeader.biClrUsed = 0;
 		bi->bmiHeader.biClrImportant = 0;
 	}
-
-	virtual IDevice* as_device() override { return this; }
 
 	static void process_io_write_request (IDevice* d, WORD address, uint8_t value)
 	{
@@ -102,6 +103,9 @@ public:
 		_pending_irq_time.reset();
 		screen_bank = 5;
 		locked = false;
+		frameNumber = 0;
+		row = 0;
+		col = 0;
 		return S_OK;
 	}
 
@@ -120,7 +124,7 @@ public:
 
 	static uint32_t spectrum_color_to_argb (uint8_t spc, bool brightness)
 	{
-		WI_ASSERT(spc < 8);
+		_ASSERT(spc < 8);
 
 		if (!brightness)
 			return low_brightness_colors[spc];
@@ -137,17 +141,9 @@ public:
 
 	virtual bool SimulateDeviceTo (UINT64 requested_time) override
 	{
-		WI_ASSERT (_time < requested_time);
+		_ASSERT (_time < requested_time);
 
 		uint64_t initial_time = _time;
-
-		// When the _time variable wraps to 0 (every ~20 minutes), we'll have a tiny glitch in one frame.
-		// It's tiny because 2^32 is nearly perfectly divisible by ticks_per_row * rows_per_frame.
-		uint32_t frame_time = (uint32_t)(_time % (ticks_per_row * rows_per_frame));
-		uint32_t row = frame_time / ticks_per_row;
-		uint32_t col = frame_time % ticks_per_row; // column in clock cycles (one unit equals two pixels)
-
-		uint64_t frame_number = _time / (ticks_per_row * rows_per_frame);
 
 		// TODO: optimize this to work as a state machine with "row" as state.
 		while (true)
@@ -158,12 +154,13 @@ public:
 				// Jump to where the ULA generates the interrupt (more or less)
 				if ((row == 0) && (col < irq_offset_from_frame_start))
 				{
-					UINT64 requested_offset = requested_time - _time;
-					WI_ASSERT(requested_offset < max_time_offset);
-					uint32_t offset_to_irq = irq_offset_from_frame_start - col;
+					auto requested_offset = requested_time - _time;
+					_ASSERT(requested_offset < max_time_offset);
+					auto offset_to_irq = irq_offset_from_frame_start - col;
 					if (requested_offset < offset_to_irq)
 					{
 						_time = requested_time;
+						col += requested_offset;
 						return true;
 					}
 
@@ -174,12 +171,19 @@ public:
 				}
 
 				// jump to the end of line, then jump over all V-Sync rows
-				UINT64 requested_offset = requested_time - _time;
-				WI_ASSERT(requested_offset < max_time_offset);
+				auto requested_offset = requested_time - _time;
+				_ASSERT(requested_offset < max_time_offset);
 				uint32_t offset_to_border_row_0 = (ticks_per_row - col) + (ticks_per_row * (vsync_row_count - row - 1));
 				if (requested_offset <= offset_to_border_row_0)
 				{
 					_time = requested_time;
+					auto ticks_into_vsync = col + requested_offset;
+					while (ticks_into_vsync >= ticks_per_row)
+					{
+						ticks_into_vsync -= ticks_per_row;
+						row++;
+					}
+					col = (uint32_t)ticks_into_vsync;
 					return true;
 				}
 
@@ -192,12 +196,13 @@ public:
 			{
 				// H-Sync on any visible row
 				// jump to the border area
-				UINT64 requested_offset = requested_time - _time;
-				WI_ASSERT(requested_offset < max_time_offset);
-				uint32_t offset_to_border_col_0 = hsync_col_count - col;
+				auto requested_offset = requested_time - _time;
+				_ASSERT(requested_offset < max_time_offset);
+				auto offset_to_border_col_0 = hsync_col_count - col;
 				if (requested_offset <= offset_to_border_col_0)
 				{
 					_time = requested_time;
+					col += requested_offset;
 					return true;
 				}
 
@@ -205,16 +210,16 @@ public:
 				col = hsync_col_count;
 			}
 
-			while (col < hsync_col_count + border_size_left_ticks)
+			if (col < hsync_col_count + border_size_left_ticks)
 			{
 				// left border from top of screen to bottom of screen
-				WI_ASSERT (requested_time - _time < max_time_offset);
+				_ASSERT (requested_time - _time < max_time_offset);
 				uint32_t argb = spectrum_color_to_argb (_border, false);
 				uint32_t* dest_pixel = get_dest_pixel (_screenData.get(), row - vsync_row_count, (col - hsync_col_count) * 2);
-				dest_pixel[0] = argb;
-				dest_pixel[1] = argb;
-				col++;
-				_time++;
+				auto ticks = std::min((uint32_t)(requested_time - _time), hsync_col_count + border_size_left_ticks - col);
+				__stosd((PDWORD)dest_pixel, argb, ticks * 2);
+				col += ticks;
+				_time += ticks;
 				if (_time == requested_time)
 					return true;
 			}
@@ -226,35 +231,32 @@ public:
 				if ((row < vsync_row_count + border_size_top) || (row >= vsync_row_count + border_size_top + 192))
 				{
 					// border above or below
-					while (col < hsync_col_count + border_size_left_ticks + 128)
-					{
-						WI_ASSERT (requested_time - _time < max_time_offset);
-						uint32_t argb = spectrum_color_to_argb (_border, false);
-						uint32_t* dest_pixel = get_dest_pixel (_screenData.get(), row - vsync_row_count, (col - hsync_col_count) * 2);
-						dest_pixel[0] = argb;
-						dest_pixel[1] = argb;
-						col++;
-						_time++;
-						if (_time == requested_time)
-							return true;
-					}
+					_ASSERT (requested_time - _time < max_time_offset);
+					uint32_t argb = spectrum_color_to_argb (_border, false);
+					uint32_t* dest_pixel = get_dest_pixel (_screenData.get(), row - vsync_row_count, (col - hsync_col_count) * 2);
+					uint32_t ticks = std::min((uint32_t)(requested_time - _time), hsync_col_count + border_size_left_ticks + 128 - col);
+					__stosd((PDWORD)dest_pixel, argb, ticks * 2);
+					col += ticks;
+					_time += ticks;
+					if (_time == requested_time)
+						return true;
 				}
 				else
 				{
 					// pixels
 					while (col < hsync_col_count + border_size_left_ticks + 128)
 					{
-						WI_ASSERT (requested_time - _time < max_time_offset);
+						_ASSERT (requested_time - _time < max_time_offset);
 
 						// src pixel x and y
 						uint32_t x = (col - (hsync_col_count + border_size_left_ticks)) / 4;
-						//WI_ASSERT (x < 32);
+						//_ASSERT (x < 32);
 						uint32_t y = row - (vsync_row_count + border_size_top);
-						//WI_ASSERT (y < 192);
+						//_ASSERT (y < 192);
 						uint16_t src_pixel_data = 0x4000 | ((y & 7) << 8) | ((y & 0x38) << 2) | ((y & 0xC0) << 5) | x;
-						//WI_ASSERT (src_pixel_data < 0x5800);
+						//_ASSERT (src_pixel_data < 0x5800);
 						uint16_t src_pixel_attr = 0x5800 | ((y >> 3) << 5) | x;
-						//WI_ASSERT (src_pixel_attr < 0x5B00);
+						//_ASSERT (src_pixel_attr < 0x5B00);
 
 						uint8_t data;
 						if (!memory->try_physical_read_request(physical_memory_address(src_pixel_data), data, _time))
@@ -268,12 +270,12 @@ public:
 						bool brightness = attr & 0x40;
 						auto ink_color   = spectrum_color_to_argb (attr & 7, brightness);
 						auto paper_color = spectrum_color_to_argb ((attr >> 3) & 7, brightness);
-						if ((attr & 0x80) && (frame_number & 16))
+						if ((attr & 0x80) && (frameNumber & 16))
 							std::swap(ink_color, paper_color);
 						for (uint8_t i = 0x80; i; i >>= 1)
 							*dest_pixel++ = (data & i) ? ink_color : paper_color;
-						UINT64 requested_offset = requested_time - _time;
-						WI_ASSERT (requested_offset < max_time_offset);
+						auto requested_offset = requested_time - _time;
+						_ASSERT (requested_offset < max_time_offset);
 						col += 4;
 						_time += 4;
 						if (requested_offset <= 4)
@@ -282,31 +284,44 @@ public:
 				}
 			}
 
-			while (col < hsync_col_count + border_size_left_ticks + 128 + border_size_right_ticks)
+			if (col >= hsync_col_count + border_size_left_ticks + 128)
 			{
-				// right border from top of screen to bottom of screen
+				// right border from top to bottom of screen
 				uint32_t argb = spectrum_color_to_argb (_border, false);
 				uint32_t* dest_pixel = get_dest_pixel (_screenData.get(), row - vsync_row_count, (col - hsync_col_count) * 2);
-				dest_pixel[0] = argb;
-				dest_pixel[1] = argb;
+				uint32_t ticks = std::min((uint32_t)(requested_time - _time), ticks_per_row - col);
+				__stosd((PDWORD)dest_pixel, argb, ticks * 2);
 
-				if ((col == ticks_per_row - 1) && (row == rows_per_frame - 1))
-					_screenCompleteHandler->OnScreenDeviceComplete();
+				if ((col + ticks == ticks_per_row) && (row == rows_per_frame - 1))
+				{
+					_time += ticks - 1;
+					col += ticks - 1;
+					if (_screenCompleteHandler)
+						_screenCompleteHandler->OnScreenDeviceComplete();
+					_time++;
+					col++;
+				}
+				else
+				{
+					_time += ticks;
+					col += ticks;
+				}
+				if (col == ticks_per_row)
+				{
+					col = 0;
+					row++;
+					if (row == rows_per_frame)
+					{
+						row = 0;
+						frameNumber++;
+					}
+				}
 
-				col++;
-				_time++;
 				if (_time == requested_time)
 					return true;
 			}
 
-			WI_ASSERT(col == ticks_per_row);
-			col = 0;
-			row++;
-			if (row == rows_per_frame)
-			{
-				row = 0;
-				frame_number++;
-			}
+			_ASSERT(col == 0);
 		}
 	}
 
@@ -335,7 +350,7 @@ public:
 
 	virtual void acknowledge_irq() override
 	{
-		WI_ASSERT(_pending_irq_time);
+		_ASSERT(_pending_irq_time);
 		_pending_irq_time.reset();
 	}
 	/*
@@ -439,9 +454,9 @@ public:
 			for (uint32_t x = 0; x < 32; x++)
 			{
 				uint16_t src_pixel_data = 0x4000 | ((y & 7) << 8) | ((y & 0x38) << 2) | ((y & 0xC0) << 5) | x;
-				WI_ASSERT (src_pixel_data < 0x5800);
+				_ASSERT (src_pixel_data < 0x5800);
 				uint16_t src_pixel_attr = 0x5800 | ((y >> 3) << 5) | x;
-				WI_ASSERT (src_pixel_attr < 0x5B00);
+				_ASSERT (src_pixel_attr < 0x5B00);
 				uint8_t data = memory->read_physical(physical_memory_address(src_pixel_data));
 				uint8_t attr = memory->read_physical(physical_memory_address(src_pixel_attr));
 				uint32_t* dest_pixel = get_dest_pixel (bi, y + pixel_row_offset, x * 8 + pixel_col_offset);
@@ -457,6 +472,15 @@ public:
 	virtual HRESULT GenerateScreen() override
 	{
 		GenerateInternal(_screenData.get(), TRUE);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetPosition(DWORD* row, DWORD* col, DWORD* frameNumber) override
+	{
+		RETURN_HR_IF(E_POINTER, !row || !col || !frameNumber);
+		*frameNumber = this->frameNumber;
+		*row = this->row;
+		*col = this->col;
 		return S_OK;
 	}
 	#pragma endregion
