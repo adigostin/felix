@@ -14,9 +14,12 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{A8DC31F4-2BFD-4BCF-BBA0-7DA0DE6C9F71}")
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("F578EBE3-7596-4FC7-A976-56C9B0AAD856") IScreenCompleteEventHandler : IUnknown
 {
-	// If the implementation returns a SUCCEEDED error code, it takes ownership of "bi" and must release it with CoTaskMemFree when no longer needed.
+	// If the implementation returns a SUCCEEDED error code, it takes ownership of "bi" and
+	// must release it with CoTaskMemFree when no longer needed.
 	// If the implementation returns a FAILED error code, the caller retains ownership of "bi".
-	virtual HRESULT STDMETHODCALLTYPE OnScreenComplete (BITMAPINFO* bi, POINT beamLocation) = 0;
+	// time        - Simulated clock time in Z80 T-states at the end of this frame.
+	// perfCounter - QPC timestamp at the end of this frame.
+	virtual HRESULT STDMETHODCALLTYPE OnScreenComplete (BITMAPINFO* bi, POINT beamLocation, UINT64 time = 0, LONGLONG perfCounter = 0) = 0;
 };
 
 enum class BreakpointType { Code, Data };

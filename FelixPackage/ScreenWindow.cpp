@@ -40,15 +40,16 @@ class ScreenWindowImpl : public IVsWindowPane, IVsDpiAware, IVsWindowFrameNotify
 		float duration;
 	};
 
-	LARGE_INTEGER _performance_counter_frequency;
+	LARGE_INTEGER _qpcFrequency;
 	std::deque<render_perf_info> perf_info_queue;
 
-	LARGE_INTEGER _tstatePerfCounterLast;
-	UINT64 _tstateCounterLast = 0;
-	UINT64 _tstatesPerSecond = 0;
-
-	unique_cotaskmem_bitmapinfo _bitmap;
-	POINT beamLocation;
+	unique_cotaskmem_bitmapinfo _screenSampleBitmap;
+	UINT64   _screenSampleTime = 0;
+	LONGLONG _screenSamplePerfCounter = 0;
+	UINT64   _screenSampleTimePrev = 0;
+	LONGLONG _screenSamplePerfCounterPrev = 0;
+	UINT64   _tstatesPerSecond = 0;
+	POINT    _beamLocation;
 
 	uint64_t _tapPlayStartTime = 0; // 0 - nothing playing
 
@@ -57,9 +58,7 @@ public:
 	{
 		HRESULT hr;
 
-		QueryPerformanceFrequency(&_performance_counter_frequency);
-
-		QueryPerformanceCounter(&_tstatePerfCounterLast);
+		QueryPerformanceFrequency(&_qpcFrequency);
 
 		if (!wndClassAtom)
 		{
@@ -153,8 +152,8 @@ public:
 	{
 		if (msg == WM_SIZE)
 		{
-			if (_bitmap)
-				_zoom = GetZoom (&_bitmap.get()->bmiHeader, LOWORD(lParam), HIWORD(lParam));
+			if (_screenSampleBitmap)
+				_zoom = GetZoom (&_screenSampleBitmap.get()->bmiHeader, LOWORD(lParam), HIWORD(lParam));
 			return 0;
 		}
 
@@ -230,12 +229,12 @@ public:
 
 		auto b = wil::unique_hbrush(CreateSolidBrush(_windowColor & 0xFFFFFF));
 
-		if (!_bitmap)
+		if (!_screenSampleBitmap)
 			FillRect(hdc, &clientRect, b.get());
 		else
 		{
-			LONG w = _bitmap.get()->bmiHeader.biWidth * _zoom.numerator / _zoom.denominator;
-			LONG h = _bitmap.get()->bmiHeader.biHeight * _zoom.numerator / _zoom.denominator;
+			LONG w = _screenSampleBitmap.get()->bmiHeader.biWidth * _zoom.numerator / _zoom.denominator;
+			LONG h = _screenSampleBitmap.get()->bmiHeader.biHeight * _zoom.numerator / _zoom.denominator;
 			LONG xDest = (clientRect.right - w) / 2;
 			LONG yDest = (clientRect.bottom - h) / 2;
 			RECT rc = { 0, 0, clientRect.right, yDest };
@@ -272,7 +271,7 @@ public:
 		PAINTSTRUCT ps;
 		HDC hdc = BeginPaint(_hwnd, &ps);
 
-		if (auto bitmapInfo = _bitmap.get())
+		if (auto bitmapInfo = _screenSampleBitmap.get())
 		{
 			int w = bitmapInfo->bmiHeader.biWidth;
 			int h = bitmapInfo->bmiHeader.biHeight;
@@ -293,12 +292,12 @@ public:
 				// horz line that shows the Y value
 
 				wchar_t buffer[16];
-				int cc = swprintf_s (buffer, L"Y=%d", beamLocation.y);
+				int cc = swprintf_s (buffer, L"Y=%d", _beamLocation.y);
 				RECT rc = { };
 				DrawTextW (ps.hdc, buffer, cc, &rc, DT_CALCRECT);
 				LONG margin = rc.bottom / 4;
 
-				POINT from = { margin + rc.right + margin, yDest + beamLocation.y * _zoom.numerator / _zoom.denominator };
+				POINT from = { margin + rc.right + margin, yDest + _beamLocation.y * _zoom.numerator / _zoom.denominator };
 				POINT to   = { clientRect.right, from.y };
 				::MoveToEx (ps.hdc, from.x, from.y, nullptr);
 				::LineTo (ps.hdc, to.x, to.y);
@@ -311,11 +310,11 @@ public:
 				// ----------------------------------------------------------------
 				// vert line that shows the X value
 
-				cc = swprintf_s (buffer, L"X=%d", beamLocation.x);
+				cc = swprintf_s (buffer, L"X=%d", _beamLocation.x);
 				rc = { };
 				DrawTextW (ps.hdc, buffer, cc, &rc, DT_CALCRECT);
 
-				from = { xDest + beamLocation.x * _zoom.numerator / _zoom.denominator, margin + rc.bottom + margin };
+				from = { xDest + _beamLocation.x * _zoom.numerator / _zoom.denominator, margin + rc.bottom + margin };
 				to   = { from.x, clientRect.bottom };
 				::MoveToEx (ps.hdc, from.x, from.y, nullptr);
 				::LineTo (ps.hdc, to.x, to.y);
@@ -338,29 +337,36 @@ public:
 
 			render_perf_info perfInfo;
 			perfInfo.start_time = start_time;
-			perfInfo.duration = (float)(timeNow.QuadPart - start_time.QuadPart) / (float)_performance_counter_frequency.QuadPart * 1000.0f;
+			perfInfo.duration = (float)(timeNow.QuadPart - start_time.QuadPart) / (float)_qpcFrequency.QuadPart * 1000.0f;
 
 			perf_info_queue.push_back(perfInfo);
 			if (perf_info_queue.size() > 100)
 				perf_info_queue.pop_front();
 
-			if (timeNow.QuadPart - _tstatePerfCounterLast.QuadPart >= _performance_counter_frequency.QuadPart)
+			if (simulator->Running_HR() != S_OK || !_screenSamplePerfCounter
+				|| (_screenSamplePerfCounter - _screenSamplePerfCounterPrev >= 2 * _qpcFrequency.QuadPart)
+				|| (_screenSampleTime < _screenSampleTimePrev))
 			{
-				UINT64 tstateNow;
-				simulator->GetTime(&tstateNow);
-				_tstatesPerSecond = (UINT64)((tstateNow - _tstateCounterLast)
-					* _performance_counter_frequency.QuadPart
-					/ (timeNow.QuadPart - _tstatePerfCounterLast.QuadPart));
-				_tstateCounterLast = tstateNow;
-				_tstatePerfCounterLast = timeNow;
+				_tstatesPerSecond = 0;
+				_screenSampleTimePrev = _screenSampleTime;
+				_screenSamplePerfCounterPrev = _screenSamplePerfCounter;
+			}
+			else if (_screenSamplePerfCounter - _screenSamplePerfCounterPrev >= _qpcFrequency.QuadPart)
+			{
+				_tstatesPerSecond = (_screenSampleTime - _screenSampleTimePrev)
+					* _qpcFrequency.QuadPart
+					/ (_screenSamplePerfCounter - _screenSamplePerfCounterPrev);
+				_screenSampleTimePrev = _screenSampleTime;
+				_screenSamplePerfCounterPrev = _screenSamplePerfCounter;
 			}
 			#pragma endregion
 
 			#pragma region Draw performance data.
 			unsigned dur = (unsigned)round(average_render_duration() * 100);
+			UINT64 rate = (_tstatesPerSecond + 5000) / 10000;
 			wil::unique_process_heap_string ss;
-			wil::str_printf_nothrow(ss, L"%5u FPS\r\n%3u.%02u ms\r\n%5u.%1u T",
-				(unsigned)round(fps()), dur / 100, dur % 100, _tstatesPerSecond / 1000000, _tstatesPerSecond % 1000000 / 100000);
+			wil::str_printf_nothrow(ss, L"%6u FPS\r\n%4u.%02u ms\r\n%5u.%02u T",
+				(unsigned)round(fps()), dur / 100, dur % 100, (unsigned)(rate / 100), (unsigned)(rate % 100));
 			SetBkColor(ps.hdc, 0xFFFF00);
 			auto oldFont = SelectObject (ps.hdc, _debugFont.get());
 			RECT ssrect;
@@ -390,7 +396,7 @@ public:
 		LARGE_INTEGER start_time = perf_info_queue.front().start_time;
 		LARGE_INTEGER end_time = perf_info_queue.back().start_time;
 
-		float seconds = (float)(end_time.QuadPart - start_time.QuadPart) / (float)_performance_counter_frequency.QuadPart;
+		float seconds = (float)(end_time.QuadPart - start_time.QuadPart) / (float)_qpcFrequency.QuadPart;
 
 		float fps = ((float)perf_info_queue.size() - 1) / seconds;
 
@@ -600,17 +606,19 @@ public:
 	#pragma endregion
 
 	#pragma region IScreenCompleteEventHandler
-	virtual HRESULT STDMETHODCALLTYPE OnScreenComplete (BITMAPINFO* bi, POINT beamLocation) override
+	virtual HRESULT STDMETHODCALLTYPE OnScreenComplete (BITMAPINFO* bi, POINT beamLocation, UINT64 time, LONGLONG perfCounter) override
 	{
-		if (!_bitmap)
+		_screenSampleTime = time;
+		_screenSamplePerfCounter = perfCounter;
+		if (!_screenSampleBitmap)
 		{
 			RECT cr;
 			::GetClientRect(_hwnd, &cr);
 			_zoom = GetZoom (&bi->bmiHeader, cr.right, cr.bottom);
 		}
 
-		_bitmap = unique_cotaskmem_bitmapinfo(bi);
-		this->beamLocation = beamLocation;
+		_screenSampleBitmap = unique_cotaskmem_bitmapinfo(bi);
+		_beamLocation = beamLocation;
 		BOOL erase = simulator->Running_HR() == S_FALSE;
 		InvalidateRect(_hwnd, 0, erase);
 		return S_OK;

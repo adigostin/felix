@@ -33,17 +33,38 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, ITap
 
 	LARGE_INTEGER qpFrequency;
 
+	// Passed from simulator thread to GUI thread via WM_SCREEN_COMPLETE.
+	// This structure is written by the simulator thread, then reset by the GUI thread.
+	struct ScreenCompleteInfo
+	{
+		unique_cotaskmem_bitmapinfo bitmap;
+		UINT64 time;
+		LONGLONG perfCounter;
+	};
+
 	struct ri_paused { };
 
 	struct ri_running
 	{
 		UINT64 start_time;                     // tick count of the simulated clock when simulation is reset or resumed from pause.
 		LARGE_INTEGER start_time_perf_counter; // value of the Windows perf counter when simulation is reset or resumed from pause.
+
+		// Temporary owner of a screen bitmap completed in running mode, held by the simulator
+		// thread from the time it is generated until it is time to pass it to the GUI thread.
+		//
+		// When time comes to pass it to the GUI thread for rendering, we must first free up
+		// this variable, and only then resume simulator execution. That's because the simulator
+		// executes fast and it might generate another screen before the GUI has a chance
+		// to consume the bitmap.
+		unique_cotaskmem_bitmapinfo pendingScreenBitmap; // meant to be accessed on the simulation thread only
+
+		ScreenCompleteInfo sci;
 	};
 
 	struct ri_max_speed
 	{
 		LARGE_INTEGER last_screen_complete_perf_counter;
+		ScreenCompleteInfo sci;
 	};
 
 	std::variant<ri_paused, ri_running, ri_max_speed> _running_info; // this is used only by the simulator thread
@@ -77,9 +98,6 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, ITap
 	wistd::unique_ptr<ITapPlayerDevice> _tapPlayer;
 	vector_nothrow<IDevice*> _active_devices_;
 	bool _showCRTSnapshot = false;
-
-	// Passed via WM_SCREEN_COMPLETE from simulator thread to GUI thread while simulation is running.
-	unique_cotaskmem_bitmapinfo _screenComplete;
 
 	wil::com_ptr_nothrow<IXAudio2> _xaudio2;
 	IXAudio2MasteringVoice* _mastering_voice = nullptr;
@@ -149,7 +167,10 @@ public:
 		_run_on_simulator_thread_request.reset(CreateEventW (nullptr, false, false, nullptr)); RETURN_LAST_ERROR_IF_NULL(_run_on_simulator_thread_request);
 		_runOnSimulatorThreadComplete.reset(CreateEventW (nullptr, false, false, nullptr)); RETURN_LAST_ERROR_IF_NULL(_runOnSimulatorThreadComplete);
 
-		_waitableTimer.reset(CreateWaitableTimerExW (nullptr, nullptr, 0, SYNCHRONIZE | TIMER_MODIFY_STATE)); RETURN_LAST_ERROR_IF_NULL(_waitableTimer);
+		_waitableTimer.reset(CreateWaitableTimerExW (nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, SYNCHRONIZE | TIMER_MODIFY_STATE));
+		if (!_waitableTimer && GetLastError() == ERROR_INVALID_PARAMETER)
+			_waitableTimer.reset(CreateWaitableTimerExW (nullptr, nullptr, 0, SYNCHRONIZE | TIMER_MODIFY_STATE));
+		RETURN_LAST_ERROR_IF_NULL(_waitableTimer);
 
 		_cpu_thread_exit_request.reset (CreateEvent(nullptr, FALSE, FALSE, nullptr)); RETURN_LAST_ERROR_IF_NULL(_cpu_thread_exit_request);
 		_cpuThread.reset (CreateThread(nullptr, 100'000, simulation_thread_proc_static, this, 0, nullptr)); RETURN_LAST_ERROR_IF_NULL(_cpuThread);
@@ -248,15 +269,18 @@ public:
 			WI_ASSERT(p);
 
 			auto lock = p->_mainThreadQueueLock.lock_exclusive();
-			if (p->_screenComplete)
+			ScreenCompleteInfo sci;
+			if (auto* ri = std::get_if<ri_running>(&p->_running_info))
+				sci = std::move(ri->sci);
+			else if (auto* ri = std::get_if<ri_max_speed>(&p->_running_info))
+				sci = std::move(ri->sci);
+			lock.reset();
+
+			if (sci.bitmap && p->_screenCompleteHandler)
 			{
-				auto screen = std::move(p->_screenComplete);
-				if (p->_screenCompleteHandler)
-				{
-					auto hr = p->_screenCompleteHandler->OnScreenComplete(screen.get(), { -1, -1 });
-					if (SUCCEEDED(hr))
-						screen.release();
-				}
+				auto hr = p->_screenCompleteHandler->OnScreenComplete(sci.bitmap.get(), { -1, -1 }, sci.time, sci.perfCounter);
+				if (SUCCEEDED(hr))
+					sci.bitmap.release();
 			}
 		}
 
@@ -357,14 +381,13 @@ public:
 	void simulation_thread_proc_running (bool& exit_request)
 	{
 		auto& ri = std::get<ri_running>(_running_info);
-		UINT64 rt = real_time();
 
-		#pragma region Catch up with real time
 		// Before we attempt simulation, let's check if some devices are lagging far behind the real time.
 		// This happens while debugging the VSIX, or it may happen when this thread is starved.
 		// If we have any such device, we "erase" the same length of time from all of the devices;
 		// we do this by rebasing the simulation startup time held in the _running_info variable.
 		{
+			UINT64 rt = real_time();
 			auto slowestTime = _cpu->cpu_time;
 			INT64 slowest_offset_from_rt = (INT64)_cpu->cpu_time - (INT64)rt;
 			for (auto& d : _active_devices_)
@@ -386,11 +409,17 @@ public:
 				ri.start_time_perf_counter.QuadPart += perf_counter_offset;
 			}
 		}
-		#pragma endregion
 
 		// Let's find out how far we can simulate, and try to simulate to that point in time.
 		UINT64 time_to_sync_to;
 		IDevice* device_to_sync_on = FindDeviceToSyncOn (time_to_sync_to);
+
+		if (ri.pendingScreenBitmap)
+		{
+			// We were interrupted while waiting for real time to catch up and remained in ri_running.
+			_ASSERT(device_to_sync_on == _screen.get());
+		}
+
 		SimulateToTime(time_to_sync_to);
 		if (std::holds_alternative<ri_paused>(_running_info))
 			return;
@@ -402,6 +431,7 @@ public:
 		if (_cpu->cpu_time >= time_to_sync_to)
 		{
 			// Now let's see how long we need to wait for the real time to catch up.
+			auto rt = real_time();
 			if (time_to_sync_to > rt)
 			{
 				uint64_t hundredsOfNanoseconds = ticks_to_hundreds_of_nanoseconds(time_to_sync_to - rt);
@@ -420,13 +450,28 @@ public:
 			[[fallthrough]];
 		case WAIT_OBJECT_0 + 2: // _waitableTimer
 			// ... real time has caught up with the simulated time.
+
+			// At the moment the only device that requires pacing is the screen
+			// (see FindDeviceToSyncOn) and the code below handles the screen only.
+			_ASSERT(device_to_sync_on == _screen.get());
+
 			// Let's unblock the device that was waiting.
-			WI_ASSERT(device_to_sync_on);
 			if (device_to_sync_on->_time < time_to_sync_to + 1)
 			{
 				uint64_t timeBefore = device_to_sync_on->_time;
 				device_to_sync_on->SimulateDeviceTo(time_to_sync_to + 1);
-				WI_ASSERT(device_to_sync_on->_time > timeBefore);
+				_ASSERT(device_to_sync_on->_time > timeBefore);
+			}
+
+			if (ri.pendingScreenBitmap)
+			{
+				auto lock = _mainThreadQueueLock.lock_exclusive();
+				LARGE_INTEGER now;
+				QueryPerformanceCounter(&now);
+				ri.sci.bitmap = std::move(ri.pendingScreenBitmap);
+				ri.sci.time = _screen->_time;
+				ri.sci.perfCounter = now.QuadPart;
+				PostMessageW (_hwnd, WM_SCREEN_COMPLETE, 0, 0);
 			}
 			break;
 
@@ -440,16 +485,13 @@ public:
 			break;
 
 		default:
-			WI_ASSERT(false); // TODO: handle error conditions
+			_ASSERT(false); // TODO: handle error conditions
 		}
 	}
 
 	void simulation_thread_proc_max_speed (bool& exit_request)
 	{
-		// Let's find out how far we can simulate, and try to simulate to that point in time.
-		UINT64 time_to_sync_to;
-		IDevice* device_to_sync_on = FindDeviceToSyncOn (time_to_sync_to);
-		SimulateToTime(time_to_sync_to);
+		SimulateToTime(_cpu->cpu_time + milliseconds_to_ticks(20));
 		if (std::holds_alternative<ri_paused>(_running_info))
 			return;
 
@@ -458,14 +500,6 @@ public:
 		switch (waitResult)
 		{
 		case WAIT_TIMEOUT:
-			// Let's unblock the device that was waiting.
-			WI_ASSERT(device_to_sync_on);
-			if (device_to_sync_on->_time < time_to_sync_to + 1)
-			{
-				uint64_t timeBefore = device_to_sync_on->_time;
-				device_to_sync_on->SimulateDeviceTo(time_to_sync_to + 1);
-				WI_ASSERT(device_to_sync_on->_time > timeBefore);
-			}
 			break;
 
 		case WAIT_OBJECT_0: // _run_on_simulator_thread_request
@@ -606,7 +640,6 @@ public:
 						{ return sink->NotifySimulatorEvent(bpEvent, __uuidof(ISimulatorBreakpointEvent)); });
 				}
 
-				_screenComplete = nullptr;
 				if (_screenCompleteHandler && screen)
 				{
 					auto hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
@@ -733,8 +766,6 @@ public:
 			});
 		RETURN_IF_FAILED(hr);
 
-		_screenComplete = nullptr;
-
 		if (!_running)
 		{
 			if (_screenCompleteHandler)
@@ -840,7 +871,6 @@ public:
 			_eventHandlers->Notify([&event] (ISimulatorEventNotifySink* sink)
 				{ return sink->NotifySimulatorEvent(event, __uuidof(event)); });
 
-		_screenComplete = nullptr;
 		if (_screenCompleteHandler)
 		{
 			unique_cotaskmem_bitmapinfo screen;
@@ -954,7 +984,6 @@ public:
 
 		hr = SendSimulateOneCompleteEvent(); LOG_IF_FAILED(hr);
 
-		_screenComplete = nullptr;
 		if (_screenCompleteHandler)
 		{
 			unique_cotaskmem_bitmapinfo screen;
@@ -1010,6 +1039,36 @@ public:
 		return S_OK;
 	}
 	*/
+
+	HRESULT LoadSnapshotStep2 (_Out_ BITMAPINFO** screen, _Out_ POINT* beam)
+	{
+		HRESULT hr;
+
+		*screen = nullptr;
+
+		// To keep things simple, we don't generate the screen if the simulator is running (normal or max speed).
+		// It will be generated in at most one frame time, or it will be generated if the simulator is paused until then.
+
+		if (auto* ri = std::get_if<ri_running>(&_running_info))
+		{
+			ri->pendingScreenBitmap.reset();
+			ri->start_time = 0;
+			QueryPerformanceCounter(&ri->start_time_perf_counter);
+			return S_OK;
+		}
+
+		if (std::holds_alternative<ri_max_speed>(_running_info))
+			return S_OK;
+
+		if (std::holds_alternative<ri_paused>(_running_info))
+		{
+			hr = _screen->CopyBuffer(FALSE, screen, beam); RETURN_IF_FAILED(hr);
+			return S_OK;
+		}
+
+		RETURN_HR(E_NOTIMPL);
+	}
+
 	HRESULT LoadSnapshot (const wchar_t* pFileName)
 	{
 		#pragma pack (push, 1)
@@ -1086,21 +1145,7 @@ public:
 				ioBus.write(0x40FE, header.border & 7);
 				_cpu->SetZ80Registers(&regs);
 
-				if (auto* ri = std::get_if<ri_running>(&_running_info))
-				{
-					ri->start_time = 0;
-					QueryPerformanceCounter(&ri->start_time_perf_counter);
-				}
-				else if (std::holds_alternative<ri_max_speed>(_running_info))
-				{
-				}
-				else if (std::holds_alternative<ri_paused>(_running_info))
-				{
-					hr = _screen->GenerateScreen(); RETURN_IF_FAILED_EXPECTED(hr);
-					hr = _screen->CopyBuffer(TRUE, &screen, &beam); RETURN_IF_FAILED_EXPECTED(hr);
-				}
-				else
-					WI_ASSERT(false);
+				hr = LoadSnapshotStep2(screen.addressof(), &beam); RETURN_IF_FAILED(hr);
 
 				return S_OK;
 			});
@@ -1110,7 +1155,6 @@ public:
 		//if (!_running)
 		//	SendSimulateOneCompleteEvent();
 
-		_screenComplete = nullptr;
 		if (screen && _screenCompleteHandler)
 		{
 			hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
@@ -1442,21 +1486,7 @@ public:
 				ioBus.write(0x40FE, header.border & 7);
 				_cpu->SetZ80Registers(&regs);
 
-				if (auto* ri = std::get_if<ri_running>(&_running_info))
-				{
-					ri->start_time = 0;
-					QueryPerformanceCounter(&ri->start_time_perf_counter);
-				}
-				else if (std::holds_alternative<ri_max_speed>(_running_info))
-				{
-				}
-				else if (std::holds_alternative<ri_paused>(_running_info))
-				{
-					hr = _screen->GenerateScreen(); RETURN_IF_FAILED_EXPECTED(hr);
-					hr = _screen->CopyBuffer(TRUE, &screen, &beam); RETURN_IF_FAILED_EXPECTED(hr);
-				}
-				else
-					WI_ASSERT(false);
+				hr = LoadSnapshotStep2(&screen, &beam); RETURN_IF_FAILED(hr);
 
 				return S_OK;
 			});
@@ -1466,7 +1496,6 @@ public:
 		//if (!_running)
 		//	SendSimulateOneCompleteEvent();
 
-		_screenComplete = nullptr;
 		if (screen && _screenCompleteHandler)
 		{
 			hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
@@ -1795,10 +1824,10 @@ public:
 		if (auto* ri = std::get_if<ri_max_speed>(&_running_info))
 		{
 			// At max simulation speed, rendering the simulated screen to the HWND becomes a bottleneck.
-			// Let's limit it to around 50 fps.
+			// Let's limit it to around 60 fps.
 			LARGE_INTEGER now;
 			QueryPerformanceCounter(&now);
-			if (now.QuadPart - ri->last_screen_complete_perf_counter.QuadPart < (qpFrequency.QuadPart / 50))
+			if (now.QuadPart - ri->last_screen_complete_perf_counter.QuadPart < (qpFrequency.QuadPart / 60))
 				return;
 
 			ri->last_screen_complete_perf_counter = now;
@@ -1815,16 +1844,27 @@ public:
 		if (SUCCEEDED(hr))
 		{
 			auto lock = _mainThreadQueueLock.lock_exclusive();
-			bool messagePosted = _screenComplete.is_valid();
-			_screenComplete = std::move(screen);
-			if (!messagePosted)
+
+			if (auto* ri = std::get_if<ri_running>(&_running_info))
 			{
-				BOOL posted = PostMessageW (_hwnd, WM_SCREEN_COMPLETE, 0, 0);
-				if (!posted)
-				{
-					// Ignoring this error condition for now, don't know how to handle it.
-				}
+				ri->pendingScreenBitmap = std::move(screen);
 			}
+			else if (auto* ri = std::get_if<ri_max_speed>(&_running_info))
+			{
+				LARGE_INTEGER now;
+				QueryPerformanceCounter(&now);
+				ri->sci.bitmap = std::move(screen);
+				ri->sci.time = _screen->_time;
+				ri->sci.perfCounter = now.QuadPart;
+				PostMessageW (_hwnd, WM_SCREEN_COMPLETE, 0, 0);
+			}
+			else if (auto* ri = std::get_if<ri_paused>(&_running_info))
+			{
+				// If we're paused, we don't need to do anything here. Every operation in paused mode
+				// (for example SimulateOne, or WriteMemory) is supposed to generate the screen itself.
+			}
+			else
+				_ASSERT(false);
 		}
 	}
 	#pragma endregion
@@ -1865,8 +1905,7 @@ public:
 						return sink->NotifyTapPlayComplete();
 					});
 
-					_screenComplete = nullptr;
-					if (_screenCompleteHandler && screen)
+					if (_screenCompleteHandler)
 					{
 						auto hr = _screenCompleteHandler->OnScreenComplete(screen.get(), beam);
 						if (SUCCEEDED(hr))
