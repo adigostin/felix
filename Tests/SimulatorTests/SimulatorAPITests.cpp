@@ -71,6 +71,33 @@ namespace Z80SimulatorTests
 		}
 	};
 
+	class TestScreenCompleteHandler : public IScreenCompleteEventHandler
+	{
+		ULONG _refCount = 0;
+
+	public:
+		UINT32 callCount = 0;
+
+		virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
+		{
+			if (TryQI<IUnknown>(this, riid, ppvObject) || TryQI<IScreenCompleteEventHandler>(this, riid, ppvObject))
+				return S_OK;
+
+			*ppvObject = nullptr;
+			return E_NOINTERFACE;
+		}
+
+		virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
+		virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
+
+		virtual HRESULT STDMETHODCALLTYPE OnScreenComplete(BITMAPINFO* bi, POINT, UINT64, LONGLONG) override
+		{
+			CoTaskMemFree(bi);
+			++callCount;
+			return S_OK;
+		}
+	};
+
 	static void RunProgram(ISimulator* simulator, uint16_t address, const TestProgram& program, SpectrumVariant variant)
 	{
 		Assert::IsTrue(program.bytes.size() <= UINT16_MAX);
@@ -519,6 +546,67 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint8_t>(0, ReadMemory(simulator, 0x4000));
 			Assert::AreEqual<uint8_t>(0, ReadMemory(simulator, 0x8000));
 			Assert::AreEqual<uint8_t>(0, ReadMemory(simulator, 0xFFFF));
+		}
+
+		TEST_METHOD(ResetWhilePausedNotifiesScreenComplete)
+		{
+			HRESULT hr;
+			wil::com_ptr_failfast<ISimulator> simulator;
+			MakeSimulator (nullptr, 0, SpectrumVariant48K, &simulator);
+
+			auto screenHandler = wil::com_ptr_failfast(new TestScreenCompleteHandler());
+			hr = simulator->AdviseScreenComplete(screenHandler);
+			Assert::AreEqual(S_OK, hr);
+			auto unadvise = wil::scope_exit([&] { simulator->UnadviseScreenComplete(screenHandler); });
+
+			static constexpr UINT16 startAddress = 0x1234;
+			hr = simulator->Reset(startAddress, SpectrumVariant48K);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<UINT32>(1, screenHandler->callCount);
+			Assert::AreEqual(S_FALSE, simulator->Running_HR());
+
+			UINT16 pc = 0;
+			Assert::AreEqual(S_OK, simulator->GetPC(&pc));
+			Assert::AreEqual(startAddress, pc);
+			UINT64 time = UINT64_MAX;
+			Assert::AreEqual(S_OK, simulator->GetTime(&time));
+			Assert::AreEqual<UINT64>(0, time);
+		}
+
+		static void VerifyResetWhileRunning(ISimulator* simulator, uint32_t speed)
+		{
+			HRESULT hr = simulator->SetSpeed(speed);
+			Assert::AreEqual(S_OK, hr);
+			hr = simulator->Resume(FALSE);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(S_OK, simulator->Running_HR());
+
+			hr = simulator->Reset(0x1234, SpectrumVariant128);
+			Assert::AreEqual(S_OK, hr);
+
+			hr = simulator->Break();
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(S_FALSE, simulator->Running_HR());
+
+			SpectrumVariant variant;
+			Assert::AreEqual(S_OK, simulator->GetVariant(&variant));
+			Assert::AreEqual((int)SpectrumVariant128, (int)variant);
+		}
+
+		TEST_METHOD(ResetWhileRunning)
+		{
+			com_ptr<ISimulator> simulator;
+			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
+			Assert::AreEqual(S_OK, hr);
+			VerifyResetWhileRunning(simulator.get(), 100);
+		}
+
+		TEST_METHOD(ResetWhileRunningAtMaxSpeed)
+		{
+			com_ptr<ISimulator> simulator;
+			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
+			Assert::AreEqual(S_OK, hr);
+			VerifyResetWhileRunning(simulator.get(), UINT32_MAX);
 		}
 
 	};
