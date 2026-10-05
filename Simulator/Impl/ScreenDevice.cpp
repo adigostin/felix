@@ -40,7 +40,9 @@ class ScreenDeviceImpl : public IScreenDevice
 	uint8_t _border;
 	uint32_t frameNumber = 0;
 	uint32_t row = 0;
-	uint32_t col = 0;
+	uint32_t col = 0; // column in clock cycles (one unit equals two pixels)
+	uint16_t src_pixel_data_ptr = 0;
+	uint16_t src_pixel_attr_ptr = 0;
 	wil::unique_process_heap_ptr<BITMAPINFO> _screenData;
 	IScreenDeviceCompleteEventHandler* _screenCompleteHandler;
 
@@ -106,6 +108,8 @@ public:
 		frameNumber = 0;
 		row = 0;
 		col = 0;
+		src_pixel_data_ptr = 0;
+		src_pixel_attr_ptr = 0;
 		return S_OK;
 	}
 
@@ -244,26 +248,23 @@ public:
 				else
 				{
 					// pixels
+					if (col == hsync_col_count + border_size_left_ticks)
+					{
+						uint32_t y = row - (vsync_row_count + border_size_top);
+						src_pixel_data_ptr = 0x4000 | ((y & 7) << 8) | ((y & 0x38) << 2) | ((y & 0xC0) << 5);
+						src_pixel_attr_ptr = 0x5800 | ((y >> 3) << 5);
+					}
+
 					while (col < hsync_col_count + border_size_left_ticks + 128)
 					{
 						_ASSERT (requested_time - _time < max_time_offset);
 
-						// src pixel x and y
-						uint32_t x = (col - (hsync_col_count + border_size_left_ticks)) / 4;
-						//_ASSERT (x < 32);
-						uint32_t y = row - (vsync_row_count + border_size_top);
-						//_ASSERT (y < 192);
-						uint16_t src_pixel_data = 0x4000 | ((y & 7) << 8) | ((y & 0x38) << 2) | ((y & 0xC0) << 5) | x;
-						//_ASSERT (src_pixel_data < 0x5800);
-						uint16_t src_pixel_attr = 0x5800 | ((y >> 3) << 5) | x;
-						//_ASSERT (src_pixel_attr < 0x5B00);
-
 						uint8_t data;
-						if (!memory->try_physical_read_request(physical_memory_address(src_pixel_data), data, _time))
+						if (!memory->try_physical_read_request(physical_memory_address(src_pixel_data_ptr), data, _time))
 							return false;
 
 						// We assume the attribute is in the same memory area as the pixel, so read it directly.
-						uint8_t attr = memory->read_physical(physical_memory_address(src_pixel_attr));
+						uint8_t attr = memory->read_physical(physical_memory_address(src_pixel_attr_ptr));
 
 						uint32_t* dest_pixel = get_dest_pixel (_screenData.get(), row - vsync_row_count, (col - hsync_col_count) * 2);
 
@@ -274,6 +275,8 @@ public:
 							std::swap(ink_color, paper_color);
 						for (uint8_t i = 0x80; i; i >>= 1)
 							*dest_pixel++ = (data & i) ? ink_color : paper_color;
+						src_pixel_data_ptr++;
+						src_pixel_attr_ptr++;
 						auto requested_offset = requested_time - _time;
 						_ASSERT (requested_offset < max_time_offset);
 						col += 4;
