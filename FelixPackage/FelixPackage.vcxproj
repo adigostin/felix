@@ -121,7 +121,6 @@
       <ModuleDefinitionFile>.\FelixPackage.def</ModuleDefinitionFile>
       <SubSystem>Windows</SubSystem>
       <AdditionalLibraryDirectories>$(SolutionDir)third_party;$(VCInstallDir)Auxiliary\VS\UnitTest\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
       <ImportLibrary />
     </Link>
   </ItemDefinitionGroup>

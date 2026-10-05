@@ -289,7 +289,7 @@ public:
 
 	static DWORD CALLBACK simulation_thread_proc_static (void* arg)
 	{
-		return static_cast<SimulatorImpl*>(arg)->simulation_thread_proc();
+		return static_cast<SimulatorImpl*>(arg)->SimulationThreadProc();
 	}
 
 	UINT64 real_time() const
@@ -307,7 +307,7 @@ public:
 		return tick_count;
 	}
 
-	bool simulate_devices_to (UINT64 time)
+	bool SimulateDevicesToTime (UINT64 time)
 	{
 		bool res = false;
 		while(true)
@@ -362,7 +362,7 @@ public:
 			}
 
 			// Whatever the outcome of the above simulation, we must first bring the devices close to the CPU time.
-			simulate_devices_to(_cpu->cpu_time);
+			SimulateDevicesToTime(_cpu->cpu_time);
 
 			if (bpsHit.size)
 			{
@@ -378,7 +378,7 @@ public:
 		}
 	}
 
-	void simulation_thread_proc_running (bool& exit_request)
+	void SimulationThreadProcRunning (bool& exit_request)
 	{
 		auto& ri = std::get<ri_running>(_running_info);
 
@@ -489,7 +489,7 @@ public:
 		}
 	}
 
-	void simulation_thread_proc_max_speed (bool& exit_request)
+	void SimulationThreadProcMaxSpeed (bool& exit_request)
 	{
 		SimulateToTime(_cpu->cpu_time + milliseconds_to_ticks(20));
 		if (std::holds_alternative<ri_paused>(_running_info))
@@ -516,7 +516,7 @@ public:
 		}
 	}
 
-	void simulation_thread_proc_paused (bool& exit_request)
+	void SimulationThreadProcPaused (bool& exit_request)
 	{
 		HANDLE waitHandles[2] = { _run_on_simulator_thread_request.get(), _cpu_thread_exit_request.get() };
 		DWORD waitResult = WaitForMultipleObjects (_countof(waitHandles), waitHandles, FALSE, INFINITE);
@@ -536,7 +536,7 @@ public:
 		}
 	}
 
-	DWORD simulation_thread_proc()
+	DWORD SimulationThreadProc()
 	{
 		bool exit_request = false;
 		while(!exit_request)
@@ -546,15 +546,15 @@ public:
 
 			if (std::holds_alternative<ri_running>(_running_info))
 			{
-				simulation_thread_proc_running(exit_request);
+				SimulationThreadProcRunning(exit_request);
 			}
 			else if (std::holds_alternative<ri_max_speed>(_running_info))
 			{
-				simulation_thread_proc_max_speed (exit_request);
+				SimulationThreadProcMaxSpeed(exit_request);
 			}
 			else if (std::holds_alternative<ri_paused>(_running_info))
 			{
-				simulation_thread_proc_paused(exit_request);
+				SimulationThreadProcPaused(exit_request);
 			}
 			else
 				WI_ASSERT(false);
@@ -966,7 +966,7 @@ public:
 				{
 					bool advanced = _cpu->SimulateOne(nullptr);
 					WI_ASSERT(advanced);
-					simulate_devices_to(_cpu->cpu_time);
+					SimulateDevicesToTime(_cpu->cpu_time);
 				}
 				else
 				{
@@ -974,7 +974,7 @@ public:
 					{
 						bool advanced = _cpu->SimulateOne(nullptr);
 						WI_ASSERT(advanced);
-						simulate_devices_to(_cpu->cpu_time);
+						SimulateDevicesToTime(_cpu->cpu_time);
 					} while (_cpu->Halted());
 				}
 
