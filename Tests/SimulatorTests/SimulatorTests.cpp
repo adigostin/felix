@@ -7,7 +7,7 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-struct dummy_irq_line : irq_line_i
+struct DummyIrqLine : IrqLine
 {
 };
 
@@ -155,7 +155,7 @@ namespace Z80SimulatorTests
 	{
 		Bus memory;
 		Bus io_bus;
-		dummy_irq_line irq_line;
+		DummyIrqLine irq_line;
 		wistd::unique_ptr<IZ80CPU> cpu;
 		wistd::unique_ptr<TestRAM> ram;
 		wistd::unique_ptr<IDevice> iodevice;

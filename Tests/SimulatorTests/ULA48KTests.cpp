@@ -233,7 +233,7 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(PositionAdvancesAcrossExactFrameBoundaries)
 		{
-			struct TestIrqLine : irq_line_i { };
+			struct TestIrqLine : IrqLine { };
 
 			constexpr UINT64 frameTicks = 224 * 312;
 			Bus memory;

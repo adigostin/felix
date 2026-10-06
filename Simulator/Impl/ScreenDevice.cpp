@@ -32,7 +32,7 @@ class ScreenDeviceImpl : public IScreenDevice
 {
 	Bus* memory;
 	Bus* io;
-	irq_line_i* irq;
+	IrqLine* irq;
 	SpectrumVariant _variant;
 	uint8_t screen_bank = 5;
 	bool locked = false;
@@ -47,7 +47,7 @@ class ScreenDeviceImpl : public IScreenDevice
 	IScreenDeviceCompleteEventHandler* _screenCompleteHandler;
 
 public:
-	HRESULT InitInstance (Bus* memory, Bus* io, irq_line_i* irq, SpectrumVariant variant, IScreenDeviceCompleteEventHandler* screenCompleteEventHandler)
+	HRESULT InitInstance (Bus* memory, Bus* io, IrqLine* irq, SpectrumVariant variant, IScreenDeviceCompleteEventHandler* screenCompleteEventHandler)
 	{
 		this->memory = memory;
 		this->io = io;
@@ -489,7 +489,7 @@ public:
 	#pragma endregion
 };
 
-HRESULT STDMETHODCALLTYPE MakeScreenDevice (Bus* memory, Bus* io, irq_line_i* irq, SpectrumVariant variant, IScreenDeviceCompleteEventHandler* eh, wistd::unique_ptr<IScreenDevice>* ppDevice)
+HRESULT STDMETHODCALLTYPE MakeScreenDevice (Bus* memory, Bus* io, IrqLine* irq, SpectrumVariant variant, IScreenDeviceCompleteEventHandler* eh, wistd::unique_ptr<IScreenDevice>* ppDevice)
 {
 	auto d = wil::make_unique_nothrow<ScreenDeviceImpl>(); RETURN_IF_NULL_ALLOC(d);
 	auto hr = d->InitInstance(memory, io, irq, variant, eh); RETURN_IF_FAILED(hr);

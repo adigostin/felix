@@ -288,7 +288,7 @@ struct DECLSPEC_NOVTABLE Bus
 	}
 };
 
-struct __declspec(novtable) irq_line_i
+struct __declspec(novtable) IrqLine
 {
 	vector_nothrow<IDevice*> interrupting_devices;
 
@@ -342,7 +342,7 @@ struct IScreenDevice : IDevice
 
 	virtual HRESULT STDMETHODCALLTYPE GetPosition (DWORD* row, DWORD* col, DWORD* frameNumber) = 0;
 };
-HRESULT STDMETHODCALLTYPE MakeScreenDevice (Bus* memory, Bus* io, irq_line_i* irq, SpectrumVariant variant, IScreenDeviceCompleteEventHandler* eh, wistd::unique_ptr<IScreenDevice>* ppDevice);
+HRESULT STDMETHODCALLTYPE MakeScreenDevice (Bus* memory, Bus* io, IrqLine* irq, SpectrumVariant variant, IScreenDeviceCompleteEventHandler* eh, wistd::unique_ptr<IScreenDevice>* ppDevice);
 
 struct IKeyboardDevice : IDevice
 {

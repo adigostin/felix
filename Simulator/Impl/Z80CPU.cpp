@@ -149,16 +149,16 @@ class cpu : public IZ80CPU
 	using ed_handler_t = bool(cpu::*)(uint8_t opcode);
 	using cb_handler_t = bool(cpu::*)(hl_ix_iy xy, uint16_t memhlxy_addr, uint8_t opcode);
 
-	Bus*       memory;
-	Bus*       io;
-	irq_line_i*  irq;
+	Bus*      memory;
+	Bus*      io;
+	IrqLine*  irq;
 
 	z80_register_set regs = { };
 
 	// The "EI" instruction sets this to 2.
 	// After SimulateOne() executes any instruction, it checks this value and:
 	//  - if 2, it decrements it to 1;
-    //  - if 1, it decrements it to 0 and sets IFF1 and IFF2;
+	//  - if 1, it decrements it to 0 and sets IFF1 and IFF2;
 	//  - if 0, it leaves it unchanged.
 	uint8_t _ei_countdown = 0;
 
@@ -170,7 +170,7 @@ class cpu : public IZ80CPU
 	unordered_map_nothrow<uint16_t, vector_nothrow<SIM_BP_COOKIE>> code_bps;
 
 public:
-	HRESULT InitInstance (Bus* memory, Bus* io, irq_line_i* irq)
+	HRESULT InitInstance (Bus* memory, Bus* io, IrqLine* irq)
 	{
 		this->memory = memory;
 		this->io = io;
@@ -1711,7 +1711,7 @@ public:
 	}
 };
 
-HRESULT STDMETHODCALLTYPE MakeZ80CPU (Bus* memory, Bus* io, irq_line_i* irq, wistd::unique_ptr<IZ80CPU>* ppCPU)
+HRESULT STDMETHODCALLTYPE MakeZ80CPU (Bus* memory, Bus* io, IrqLine* irq, wistd::unique_ptr<IZ80CPU>* ppCPU)
 {
 	auto d = wil::make_unique_nothrow<cpu>(); RETURN_IF_NULL_ALLOC(d);
 	auto hr = d->InitInstance(memory, io, irq); RETURN_IF_FAILED(hr);

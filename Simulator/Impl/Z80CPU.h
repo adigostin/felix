@@ -13,4 +13,4 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{97DCFDDE-9DCD-4FDB-A373-15FFB9EDF488}")
 	#endif
 };
 
-HRESULT STDMETHODCALLTYPE MakeZ80CPU (Bus* memory, Bus* io, irq_line_i* irq, wistd::unique_ptr<IZ80CPU>* ppCPU);
+HRESULT STDMETHODCALLTYPE MakeZ80CPU (Bus* memory, Bus* io, IrqLine* irq, wistd::unique_ptr<IZ80CPU>* ppCPU);

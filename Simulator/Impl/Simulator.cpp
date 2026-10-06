@@ -88,7 +88,7 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, ITap
 	Bus memoryBus;
 	Bus ioBus;
 	SpectrumVariant _spectrumVariant;
-	irq_line_i irq;
+	IrqLine irq;
 	wistd::unique_ptr<IZ80CPU> _cpu;
 	wistd::unique_ptr<IScreenDevice> _screen;
 	wistd::unique_ptr<IKeyboardDevice> _keyboard;
