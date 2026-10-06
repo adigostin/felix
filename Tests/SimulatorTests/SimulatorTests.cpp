@@ -3461,5 +3461,73 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::c, regs->main.f.val);
 			Assert::AreEqual<uint64_t>(12, cpu->cpu_time);
 		}
+
+		TEST_METHOD(Test_LD_SP_HL_IX_IYIncludeTiming)
+		{
+			cpu->Reset();
+			memory.write(0, 0xF9); // LD SP,HL
+			regs->main.hl = 0x1234;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(1, regs->pc);
+			Assert::AreEqual<uint16_t>(0x1234, regs->sp);
+			Assert::AreEqual<uint64_t>(6, cpu->cpu_time);
+
+			const uint8_t prefixes[] = { 0xDD, 0xFD };
+			for (uint8_t prefix : prefixes)
+			{
+				cpu->Reset();
+				memory.write(0, { prefix, 0xF9 }); // LD SP,IX/IY
+				if (prefix == 0xDD)
+					regs->ix = 0x1234;
+				else
+					regs->iy = 0x1234;
+				SimulateOne();
+				Assert::AreEqual<uint16_t>(2, regs->pc);
+				Assert::AreEqual<uint16_t>(0x1234, regs->sp);
+				Assert::AreEqual<uint64_t>(10, cpu->cpu_time);
+			}
+		}
+
+		TEST_METHOD(Test_HL_IX_IY_MemoryTransfers)
+		{
+			cpu->Reset();
+			memory.write(0, { 0x22, 0x00, 0x20 }); // LD (2000h),HL
+			regs->main.hl = 0xBEEF;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(3, regs->pc);
+			Assert::AreEqual<uint64_t>(16, cpu->cpu_time);
+			Assert::AreEqual<uint16_t>(0xBEEF, memory.read_uint16(0x2000));
+
+			cpu->Reset();
+			memory.write(0, { 0x2A, 0x00, 0x20 }); // LD HL,(2000h)
+			memory.write_uint16(0x2000, 0x1234);
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(3, regs->pc);
+			Assert::AreEqual<uint64_t>(16, cpu->cpu_time);
+			Assert::AreEqual<uint16_t>(0x1234, regs->main.hl);
+
+			const uint8_t prefixes[] = { 0xDD, 0xFD };
+			for (uint8_t prefix : prefixes)
+			{
+				cpu->Reset();
+				memory.write(0, { prefix, 0x22, 0x00, 0x20 }); // LD (2000h),IX/IY
+				if (prefix == 0xDD)
+					regs->ix = 0xBEEF;
+				else
+					regs->iy = 0xBEEF;
+				SimulateOne();
+				Assert::AreEqual<uint16_t>(4, regs->pc);
+				Assert::AreEqual<uint64_t>(20, cpu->cpu_time);
+				Assert::AreEqual<uint16_t>(0xBEEF, memory.read_uint16(0x2000));
+
+				cpu->Reset();
+				memory.write(0, { prefix, 0x2A, 0x00, 0x20 }); // LD IX/IY,(2000h)
+				memory.write_uint16(0x2000, 0x1234);
+				SimulateOne();
+				Assert::AreEqual<uint16_t>(4, regs->pc);
+				Assert::AreEqual<uint64_t>(20, cpu->cpu_time);
+				Assert::AreEqual<uint16_t>(0x1234, prefix == 0xDD ? regs->ix : regs->iy);
+			}
+		}
 	};
 }
