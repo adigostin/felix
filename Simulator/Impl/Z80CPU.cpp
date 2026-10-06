@@ -1254,11 +1254,23 @@ public:
 		return true;
 	}
 
+	void SetBlockIOFlags(uint8_t value, uint16_t sum)
+	{
+		uint8_t b = regs.b();
+		regs.main.f.val = (b & (z80_flag::s | z80_flag::r5 | z80_flag::r3))
+			| (b ? 0 : z80_flag::z)
+			| ((value & 0x80) ? z80_flag::n : 0)
+			| ((sum & 0x100) ? (z80_flag::h | z80_flag::c) : 0)
+			| (s_z_pv_flags.flags[((sum & 7) ^ b)] & z80_flag::pv);
+	}
+
 	// INI/IND/INIR/INDR
 	bool sim_eda2 (uint8_t opcode)
 	{
 		uint8_t value;
-		if (!io->try_read_request (regs.main.bc, value, cpu_time))
+		uint8_t c = regs.c();
+		uint16_t io_address = regs.main.bc - 0x100;
+		if (!io->try_read_request (io_address, value, cpu_time))
 			return false;
 		if (!memory->try_write_request (regs.main.hl, value, cpu_time))
 			return false;
@@ -1266,10 +1278,8 @@ public:
 		uint16_t increment = (opcode & 8) ? -1 : 1;
 		regs.main.hl += increment;
 		regs.b()--;
-		regs.main.f.val = regs.b() & (z80_flag::s | z80_flag::r5 | z80_flag::r3) // S, R5, R3
-			| (regs.b() ? 0 : z80_flag::z) // Z
-			| z80_flag::n // N
-			| (regs.main.f.val & 1); // C
+		uint8_t adjusted_c = (uint8_t)(c + increment);
+		SetBlockIOFlags(value, value + adjusted_c);
 		cpu_time += 8;
 		bool repeat = opcode & 0x10;
 		if (repeat && regs.b())
@@ -1286,16 +1296,13 @@ public:
 		uint8_t value;
 		if (!memory->try_read_request (regs.main.hl, value, cpu_time))
 			return false;
-		if (!io->try_write_request (regs.main.bc - 256, value, cpu_time))
+		if (!io->try_write_request (regs.main.bc, value, cpu_time))
 			return false;
 
 		uint16_t increment = (opcode & 8) ? -1 : 1;
 		regs.main.hl += increment;
 		regs.b()--;
-		regs.main.f.val = regs.b() & (z80_flag::s | z80_flag::r5 | z80_flag::r3) // S, R5, R3
-			| (regs.b() ? 0 : z80_flag::z) // Z
-			| z80_flag::n // N
-			| (regs.main.f.val & 1); // C
+		SetBlockIOFlags(value, value + (regs.main.hl & 0xFF));
 		cpu_time += 8;
 		bool repeat = opcode & 0x10;
 		if (repeat && regs.b())
