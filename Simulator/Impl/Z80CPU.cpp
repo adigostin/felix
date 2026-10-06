@@ -714,7 +714,9 @@ public:
 		uint8_t cc = (opcode >> 3) & 7;
 		if (condition_met(cc))
 		{
-			uint16_t addr = memory->read_uint16(regs.sp);
+			uint16_t addr;
+			if (!memory->try_read_request(regs.sp, addr, cpu_time))
+				return false;
 			regs.sp += 2;
 			regs.pc = addr;
 			cpu_time += 7;
@@ -765,8 +767,8 @@ public:
 		uint16_t addr = decode_u16();
 		if (condition_met(cc))
 		{
-			// Let's not go too far with the simulation and do a simple write of the return address.
-			memory->write_uint16 (regs.sp - 2, regs.pc);
+			if (!memory->try_write_request(regs.sp - 2, regs.pc, cpu_time))
+				return false;
 			regs.sp -= 2;
 			regs.pc = addr;
 			cpu_time += 13;
@@ -804,8 +806,8 @@ public:
 	bool sim_c7 (hl_ix_iy xy, uint8_t opcode)
 	{
 		uint16_t addr = opcode & 0x38;
-		// Let's not go too far with the simulation and do a simple write of the return address.
-		memory->write_uint16 (regs.sp - 2, regs.pc);
+		if (!memory->try_write_request(regs.sp - 2, regs.pc, cpu_time))
+			return false;
 		regs.sp -= 2;
 		regs.pc = addr;
 		cpu_time += 7;
@@ -815,17 +817,18 @@ public:
 	// ret
 	bool sim_c9 (hl_ix_iy xy, uint8_t opcode)
 	{
-		if (regs.sp == _start_of_stack)
-		{
-			// The Z80 code does a RET while already at what we believe to be the starting (highest) address of the stack.
-			// In this case it's very likely we have a wrong assumption about the starting address of the stack.
-			// So let's adjust it.
-			// This scenario happens when we simulate the code at 0x1030 from the Spectrum 48K ROM.
-			_start_of_stack += 2;
-		}
+		// If the Z80 code does a RET while already at what we believe to be the starting (highest) address
+		// of the stack, it's very likely we have a wrong assumption about the starting address of the stack.
+		// So let's adjust it.
+		// This scenario happens when we simulate the code at 0x1030 from the Spectrum 48K ROM.
+		bool at_start_of_stack = regs.sp == _start_of_stack
+			|| regs.sp == _start_of_stack - 1;
 
-		// Let's not go too far with the simulation and do a simple read of the return address.
-		uint16_t addr = memory->read_uint16(regs.sp);
+		uint16_t addr;
+		if (!memory->try_read_request(regs.sp, addr, cpu_time))
+			return false;
+		if (at_start_of_stack)
+			_start_of_stack += 2;
 		regs.sp += 2;
 		regs.pc = addr;
 		cpu_time += 6;
@@ -836,8 +839,8 @@ public:
 	bool sim_cd (hl_ix_iy xy, uint8_t opcode)
 	{
 		uint16_t addr = decode_u16();
-		// Let's not go too far with the simulation and do a simple write of the return address.
-		memory->write_uint16 (regs.sp - 2, regs.pc);
+		if (!memory->try_write_request(regs.sp - 2, regs.pc, cpu_time))
+			return false;
 		regs.sp -= 2;
 		regs.pc = addr;
 		cpu_time += 13;

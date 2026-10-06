@@ -3615,5 +3615,38 @@ namespace Z80SimulatorTests
 				}
 			}
 		}
+
+		TEST_METHOD(CALL_RST_RET_WaitForStackBusRequests)
+		{
+			auto verify = [&](std::initializer_list<uint8_t> instruction, uint16_t expected_pc, uint16_t expected_sp, uint16_t expected_stack, uint64_t expected_time)
+			{
+				cpu->Reset();
+				ram->Reset(SpectrumVariant48K);
+				regs->sp = 0x1000;
+				memory.write(0, instruction);
+				memory.write_uint16(0x1000, 0x1234);
+				memory.write_uint16(0x0FFE, 0xABCD);
+				ram->stalled = true;
+				bool advanced = cpu->SimulateOne(nullptr);
+				ram->stalled = false;
+				Assert::IsFalse(advanced);
+				Assert::AreEqual<uint16_t>(0, regs->pc);
+				Assert::AreEqual<uint16_t>(0x1000, regs->sp);
+				Assert::AreEqual<uint64_t>(0, cpu->cpu_time);
+				Assert::AreEqual<uint16_t>(0xABCD, memory.read_uint16(0x0FFE));
+
+				SimulateOne();
+				Assert::AreEqual<uint16_t>(expected_pc, regs->pc);
+				Assert::AreEqual<uint16_t>(expected_sp, regs->sp);
+				Assert::AreEqual<uint16_t>(expected_stack, memory.read_uint16(0x0FFE));
+				Assert::AreEqual<uint64_t>(expected_time, cpu->cpu_time);
+			};
+
+			verify({ 0xC0 }, 0x1234, 0x1002, 0xABCD, 11); // RET NZ
+			verify({ 0xC9 }, 0x1234, 0x1002, 0xABCD, 10); // RET
+			verify({ 0xC4, 0x34, 0x12 }, 0x1234, 0x0FFE, 3, 17); // CALL NZ,1234h
+			verify({ 0xCD, 0x34, 0x12 }, 0x1234, 0x0FFE, 3, 17); // CALL 1234h
+			verify({ 0xC7 }, 0, 0x0FFE, 1, 11); // RST 00h
+		}
 	};
 }
