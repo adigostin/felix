@@ -26,6 +26,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "shared", "shared", "{9141C06A-BBA8-483D-BB85-18D7658C24D9}"
 	ProjectSection(SolutionItems) = preProject
 		Shared\include\shared\com.h = Shared\include\shared\com.h
+		.github\copilot-instructions.md = .github\copilot-instructions.md
 		Shared\include\shared\inplace_function.h = Shared\include\shared\inplace_function.h
 		Shared\include\shared\OtherGuids.h = Shared\include\shared\OtherGuids.h
 		Shared\include\shared\string_builder.h = Shared\include\shared\string_builder.h

@@ -1,5 +1,4 @@
-
-#include "pch.h"
+﻿#include "pch.h"
 #include "Z80CPU.h"
 #include "shared/unordered_map_nothrow.h"
 #include "shared/com.h"
@@ -9,9 +8,9 @@
 // From http://z80.info/z80info.htm:
 // d) About the R register:
 // This is not really an undocumented feature, although I have never seen any thorough description
-// of it anywhere. The R register is a counter that is updated every instruction, where DD, FD, ED 
-// and CB are to be regarded as separate instructions. So shifted instruction will increase R by two. 
-// There's an interesting exception: doubly-shifted opcodes, the DDCB and FDCB ones, increase R by 
+// of it anywhere. The R register is a counter that is updated every instruction, where DD, FD, ED
+// and CB are to be regarded as separate instructions. So shifted instruction will increase R by two.
+// There's an interesting exception: doubly-shifted opcodes, the DDCB and FDCB ones, increase R by
 // two too. LDI increases R by two, LDIR increases it by 2 times BC, as does LDDR etcetera.
 // The sequence LD R,A/LD A,R increases A by two, except for the highest bit: this bit of the R
 // register is never changed.
@@ -198,7 +197,7 @@ public:
 	{
 		if (xy == hl_ix_iy::hl)
 			return regs.main.hl;
-	
+
 		int8_t disp = (int8_t)decode_u8();
 		uint16_t addr = (xy == hl_ix_iy::ix) ? regs.ix : regs.iy;
 		uint16_t dispu16 = (uint16_t)(int16_t)disp;
@@ -309,7 +308,6 @@ public:
 	// nop
 	bool sim_00 (hl_ix_iy xy, uint8_t opcode)
 	{
-		cpu_time += 4;
 		return true;
 	}
 
@@ -321,7 +319,7 @@ public:
 		regs.bc_de_hl_sp (xy, i) = val;
 		if (i == 3)
 			_start_of_stack = val;
-		cpu_time += 10;
+		cpu_time += 6;
 		return true;
 	}
 
@@ -332,7 +330,7 @@ public:
 		uint16_t addr = i ? regs.main.de : regs.main.bc;
 		if (!memory->try_write_request(addr, regs.main.a, cpu_time))
 			return false;
-		cpu_time += 7;
+		cpu_time += 3;
 		return true;
 	}
 
@@ -341,10 +339,10 @@ public:
 	{
 		uint8_t i = (opcode >> 4) & 3;
 		regs.bc_de_hl_sp(xy, i)++;
-		cpu_time += ((xy == hl_ix_iy::hl) ? 6 : 10);
+		cpu_time += 2;
 		return true;
 	}
-	
+
 	// inc r
 	bool sim_04 (hl_ix_iy xy, uint8_t opcode)
 	{
@@ -356,7 +354,6 @@ public:
 			before = regs.r8(i, xy);
 			after = before + 1;
 			regs.r8(i, xy) = after;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 4 : 8);
 		}
 		else
 		{
@@ -365,7 +362,7 @@ public:
 				return false;
 			after = before + 1;
 			memory->write (addr, after);
-			cpu_time += ((xy == hl_ix_iy::hl) ? 11 : 23);
+			cpu_time += ((xy == hl_ix_iy::hl) ? 7 : 15);
 		}
 
 		regs.main.f.val = (after & 0xA8) // S, X5, X3
@@ -373,7 +370,7 @@ public:
 			| (((before & 0x10) != (after & 0x10)) ? z80_flag::h : 0) // H
 			| ((before == 0x7f) ? z80_flag::pv : 0) // P/V
 			| (regs.main.f.val & 1); // C
-		
+
 		return true;
 	}
 
@@ -388,7 +385,6 @@ public:
 			before = regs.r8(i, xy);
 			after = before - 1;
 			regs.r8(i, xy) = after;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 4 : 8);
 		}
 		else
 		{
@@ -397,7 +393,7 @@ public:
 				return false;
 			after = before - 1;
 			memory->write (addr, after);
-			cpu_time += ((xy == hl_ix_iy::hl) ? 11 : 23);
+			cpu_time += ((xy == hl_ix_iy::hl) ? 7 : 15);
 		}
 
 		regs.main.f.val = (after & 0xA8) // S, X5, X3
@@ -417,7 +413,7 @@ public:
 		{
 			uint8_t val = decode_u8();
 			regs.r8(i, xy) = val;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 7 : 11);
+			cpu_time += 3;
 		}
 		else
 		{
@@ -425,7 +421,7 @@ public:
 			uint8_t val = decode_u8();
 			if (!memory->try_write_request(addr, val, cpu_time))
 				return false;
-			cpu_time += (xy == hl_ix_iy::hl) ? 10 : 19;
+			cpu_time += (xy == hl_ix_iy::hl) ? 6 : 11;
 		}
 
 		return true;
@@ -438,7 +434,6 @@ public:
 		regs.main.f.h = 0;
 		regs.main.f.n = 0;
 		regs.main.f.c = regs.main.a & 1;
-		cpu_time += 4;
 		return true;
 	}
 
@@ -446,7 +441,6 @@ public:
 	bool sim_08 (hl_ix_iy xy, uint8_t opcode)
 	{
 		std::swap(regs.main.af, regs.alt.af);
-		cpu_time += 4;
 		return true;
 	}
 
@@ -458,7 +452,7 @@ public:
 		uint16_t other = regs.bc_de_hl_sp(xy, i);
 		uint16_t after = before + other;
 		regs.hl(xy) = after;
-		cpu_time += ((xy != hl_ix_iy::hl) ? 15 : 11);
+		cpu_time += 7;
 		regs.main.f.val = (regs.main.f.val & (z80_flag::s | z80_flag::z | z80_flag::pv)) // S, Z, P/V
 			| ((after >> 8) & (z80_flag::r3 | z80_flag::r5)) // R3, R5
 			| ((((before & 0x0FFF) + (other & 0x0FFF)) >> 8) & z80_flag::h) // H
@@ -476,7 +470,7 @@ public:
 		if (!memory->try_read_request(addr, value, cpu_time))
 			return false;
 		regs.main.a = value;
-		cpu_time += 7;
+		cpu_time += 3;
 		return true;
 	}
 
@@ -485,7 +479,7 @@ public:
 	{
 		uint8_t i = (opcode >> 4) & 3;
 		regs.bc_de_hl_sp(xy, i)--;
-		cpu_time += ((xy == hl_ix_iy::hl) ? 6 : 10);
+		cpu_time += 2;
 		return true;
 	}
 
@@ -496,7 +490,6 @@ public:
 		regs.main.f.h = 0;
 		regs.main.f.n = 0;
 		regs.main.f.c = (regs.main.a & 0x80) ? 1 : 0;
-		cpu_time += 4;
 		return true;
 	}
 
@@ -508,10 +501,10 @@ public:
 		if (regs.b())
 		{
 			regs.pc = regs.pc + (uint16_t)(int16_t)e;
-			cpu_time += 13;
+			cpu_time += 9;
 		}
 		else
-			cpu_time += 8;
+			cpu_time += 4;
 		return true;
 	}
 
@@ -523,7 +516,6 @@ public:
 		regs.main.f.h = 0;
 		regs.main.f.n = 0;
 		regs.main.f.c = (before & 0x80) ? 1 : 0;
-		cpu_time += 4;
 		return true;
 	}
 
@@ -532,7 +524,7 @@ public:
 	{
 		uint8_t e = decode_u8();
 		regs.pc = regs.pc + (uint16_t)(int16_t)(int8_t)e;
-		cpu_time += 12;
+		cpu_time += 8;
 		return true;
 	}
 
@@ -544,7 +536,6 @@ public:
 		regs.main.f.h = 0;
 		regs.main.f.n = 0;
 		regs.main.f.c = before & 1;
-		cpu_time += 4;
 		return true;
 	}
 
@@ -565,10 +556,10 @@ public:
 		if (jump)
 		{
 			regs.pc = regs.pc + (uint16_t)(int16_t)(int8_t)e;
-			cpu_time += 12;
+			cpu_time += 8;
 		}
 		else
-			cpu_time += 7;
+			cpu_time += 3;
 		return true;
 	}
 
@@ -578,7 +569,7 @@ public:
 		uint16_t addr = decode_u16();
 		if (!memory->try_write_request (addr, regs.hl(xy), cpu_time))
 			return false;
-		cpu_time += 16;
+		cpu_time += 12;
 		return true;
 	}
 
@@ -598,7 +589,7 @@ public:
 		if (!memory->try_read_request (addr, val, cpu_time))
 			return false;
 		regs.hl(xy) = val;
-		cpu_time += 16;
+		cpu_time += 12;
 		return true;
 	}
 
@@ -610,7 +601,6 @@ public:
 		regs.main.f.n = 1;
 		regs.main.f.val = regs.main.f.val & ~(z80_flag::r3 | z80_flag::r5)
 			| (regs.main.a & (z80_flag::r3 | z80_flag::r5));
-		cpu_time += 4;
 		return true;
 	}
 
@@ -620,7 +610,7 @@ public:
 		uint16_t addr = decode_u16();
 		if (!memory->try_write_request (addr, regs.main.a, cpu_time))
 			return false;
-		cpu_time += 13;
+		cpu_time += 9;
 		return true;
 	}
 
@@ -632,7 +622,6 @@ public:
 		regs.main.f.c = 1;
 		regs.main.f.val = regs.main.f.val & ~(z80_flag::r3 | z80_flag::r5)
 			| (regs.main.a & (z80_flag::r3 | z80_flag::r5));
-		cpu_time += 4;
 		return true;
 	}
 
@@ -644,7 +633,7 @@ public:
 		if (!memory->try_read_request(addr, val, cpu_time))
 			return false;
 		regs.main.a = val;
-		cpu_time += 13;
+		cpu_time += 9;
 		return true;
 	}
 
@@ -656,7 +645,6 @@ public:
 		regs.main.f.c = !regs.main.f.c;
 		regs.main.f.val = regs.main.f.val & ~(z80_flag::r3 | z80_flag::r5)
 			| (regs.main.a & (z80_flag::r3 | z80_flag::r5));
-		cpu_time += 4;
 		return true;
 	}
 
@@ -672,7 +660,7 @@ public:
 			uint16_t dest_addr = decode_mem_hl(xy);
 			if (!memory->try_write_request(dest_addr, value, cpu_time))
 				return false;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 7 : 19);
+			cpu_time += ((xy == hl_ix_iy::hl) ? 3 : 11);
 		}
 		else if (src == 6)
 		{
@@ -682,12 +670,11 @@ public:
 			if (!memory->try_read_request(src_addr, value, cpu_time))
 				return false;
 			regs.r8(dst, hl_ix_iy::hl) = value; // dest reg is here the regular h/l; the DD/FD prefix applies only to the source
-			cpu_time += ((xy == hl_ix_iy::hl) ? 7 : 19);
+			cpu_time += ((xy == hl_ix_iy::hl) ? 3 : 11);
 		}
 		else
 		{
 			regs.r8(dst, xy) = regs.r8(src, xy); // prefix applies to both source and dest
-			cpu_time += ((xy == hl_ix_iy::hl) ? 4 : 8);
 		}
 		return true;
 	}
@@ -696,7 +683,6 @@ public:
 	bool sim_76 (hl_ix_iy xy, uint8_t opcode)
 	{
 		regs.halted = true;
-		cpu_time += 4;
 		return true;
 	}
 
@@ -709,14 +695,13 @@ public:
 		if (i != 6)
 		{
 			other = regs.r8(i, xy);
-			cpu_time += ((xy == hl_ix_iy::hl) ? 4 : 8);
 		}
 		else
 		{
 			uint16_t addr = decode_mem_hl(xy);
 			if (!memory->try_read_request(addr, other, cpu_time))
 				return false;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 7 : 19);
+			cpu_time += ((xy == hl_ix_iy::hl) ? 3 : 11);
 		}
 
 		do_reg_a_operation (operation, other);
@@ -732,10 +717,10 @@ public:
 			uint16_t addr = memory->read_uint16(regs.sp);
 			regs.sp += 2;
 			regs.pc = addr;
-			cpu_time += 11;
+			cpu_time += 7;
 		}
 		else
-			cpu_time += 5;
+			cpu_time += 1;
 		return true;
 	}
 
@@ -749,7 +734,7 @@ public:
 			return false;
 		regs.bc_de_hl_af(xy, i) = value;
 		regs.sp += 2;
-		cpu_time += ((xy == hl_ix_iy::hl) ? 10 : 14);
+		cpu_time += 6;
 		return true;
 	}
 
@@ -760,7 +745,7 @@ public:
 		uint16_t addr = decode_u16();
 		if (condition_met(cc))
 			regs.pc = addr;
-		cpu_time += 10;
+		cpu_time += 6;
 		return true;
 	}
 
@@ -769,7 +754,7 @@ public:
 	{
 		uint16_t val = decode_u16();
 		regs.pc = val;
-		cpu_time += 10;
+		cpu_time += 6;
 		return true;
 	}
 
@@ -784,10 +769,10 @@ public:
 			memory->write_uint16 (regs.sp - 2, regs.pc);
 			regs.sp -= 2;
 			regs.pc = addr;
-			cpu_time += 17;
+			cpu_time += 13;
 		}
 		else
-			cpu_time += 10;
+			cpu_time += 6;
 
 		return true;
 	}
@@ -801,7 +786,7 @@ public:
 		if (!memory->try_write_request(regs.sp - 2, value, cpu_time))
 			return false;
 		regs.sp -= 2;
-		cpu_time += ((xy == hl_ix_iy::hl) ? 11 : 15);
+		cpu_time += 7;
 		return true;
 	}
 
@@ -811,7 +796,7 @@ public:
 		uint8_t other = decode_u8();
 		uint8_t operation = (opcode >> 3) & 7;
 		do_reg_a_operation (operation, other);
-		cpu_time += 7;
+		cpu_time += 3;
 		return true;
 	}
 
@@ -823,7 +808,7 @@ public:
 		memory->write_uint16 (regs.sp - 2, regs.pc);
 		regs.sp -= 2;
 		regs.pc = addr;
-		cpu_time += 11;
+		cpu_time += 7;
 		return true;
 	}
 
@@ -843,7 +828,7 @@ public:
 		uint16_t addr = memory->read_uint16(regs.sp);
 		regs.sp += 2;
 		regs.pc = addr;
-		cpu_time += 10;
+		cpu_time += 6;
 		return true;
 	}
 
@@ -855,7 +840,7 @@ public:
 		memory->write_uint16 (regs.sp - 2, regs.pc);
 		regs.sp -= 2;
 		regs.pc = addr;
-		cpu_time += 17;
+		cpu_time += 13;
 		return true;
 	}
 
@@ -865,7 +850,7 @@ public:
 		uint8_t val = decode_u8();
 		if (!io->try_write_request(val | (regs.main.a << 8), regs.main.a, cpu_time))
 			return false;
-		cpu_time += 11;
+		cpu_time += 7;
 		return true;
 	}
 
@@ -875,7 +860,6 @@ public:
 		std::swap<uint16_t>(regs.main.bc, regs.alt.bc);
 		std::swap<uint16_t>(regs.main.de, regs.alt.de);
 		std::swap<uint16_t>(regs.main.hl, regs.alt.hl);
-		cpu_time += 4;
 		return true;
 	}
 
@@ -885,7 +869,7 @@ public:
 		uint8_t val = decode_u8();
 		if (!io->try_read_request (val | (regs.main.a << 8), regs.main.a, cpu_time))
 			return false;
-		cpu_time += 11;
+		cpu_time += 7;
 		return true;
 	}
 
@@ -898,7 +882,7 @@ public:
 		uint16_t& reg = regs.hl(xy);
 		memory->write_uint16(regs.sp, reg);
 		reg = other;
-		cpu_time += (xy == hl_ix_iy::hl) ? 19 : 23;
+		cpu_time += 15;
 		return true;
 	}
 
@@ -906,7 +890,6 @@ public:
 	bool sim_e9 (hl_ix_iy xy, uint8_t opcode)
 	{
 		regs.pc = regs.hl(xy);
-		cpu_time += ((xy == hl_ix_iy::hl) ? 4 : 8);
 		return true;
 	}
 
@@ -917,7 +900,6 @@ public:
 		uint16_t temp = regs.main.hl;
 		regs.main.hl = regs.main.de;
 		regs.main.de = temp;
-		cpu_time += 4;
 		return true;
 	}
 
@@ -926,7 +908,6 @@ public:
 	{
 		regs.iff1 = 0;
 		_ei_countdown = 0;
-		cpu_time += 4;
 		return true;
 	}
 
@@ -934,7 +915,6 @@ public:
 	bool sim_fb (hl_ix_iy xy, uint8_t opcode)
 	{
 		_ei_countdown = 2;
-		cpu_time += 4;
 		return true;
 	}
 
@@ -942,7 +922,7 @@ public:
 	bool sim_f9 (hl_ix_iy xy, uint8_t opcode)
 	{
 		regs.sp = regs.hl(xy);
-		cpu_time += 6;
+		cpu_time += 2;
 		_start_of_stack = regs.sp;
 		return true;
 	}
@@ -996,7 +976,7 @@ public:
 		uint8_t i = (opcode >> 3) & 7;
 		regs.r8(i, hl_ix_iy::hl) = value;
 		regs.main.f.val = s_z_pv_flags.flags[value];
-		cpu_time += 12;
+		cpu_time += 4;
 		return true;
 	}
 
@@ -1007,7 +987,7 @@ public:
 		uint8_t value = regs.r8(i, hl_ix_iy::hl);
 		if (!io->try_write_request(regs.main.bc, value, cpu_time))
 			return false;
-		cpu_time += 12;
+		cpu_time += 4;
 		return true;
 	}
 
@@ -1022,7 +1002,6 @@ public:
 			| ((before == 0x80) ? z80_flag::pv : 0) // P/V
 			| z80_flag::n // N
 			| (before ? z80_flag::c : 0); // C
-		cpu_time += 8;
 		return true;
 	}
 
@@ -1030,7 +1009,6 @@ public:
 	bool sim_ed45 (uint8_t opcode)
 	{
 		regs.iff1 = regs.iff2;
-		cpu_time += 4;
 		return sim_c9(hl_ix_iy::hl, 0xc9);
 	}
 
@@ -1038,7 +1016,6 @@ public:
 	bool sim_ed46 (uint8_t opcode)
 	{
 		regs.im = 0;
-		cpu_time += 8;
 		return true;
 	}
 
@@ -1046,7 +1023,7 @@ public:
 	bool sim_ed47 (uint8_t opcode)
 	{
 		regs.i = regs.main.a;
-		cpu_time += 9;
+		cpu_time += 1;
 		return true;
 	}
 
@@ -1054,7 +1031,7 @@ public:
 	bool sim_ed4f (uint8_t opcode)
 	{
 		regs.r = regs.main.a;
-		cpu_time += 9;
+		cpu_time += 1;
 		return true;
 	}
 
@@ -1062,7 +1039,6 @@ public:
 	bool sim_ed56 (uint8_t opcode)
 	{
 		regs.im = 1;
-		cpu_time += 8;
 		return true;
 	}
 
@@ -1076,7 +1052,7 @@ public:
 			| (regs.iff2 ? 4 : 0) // P/V
 			| (regs.main.f.val & 1); // C
 		// TODO: If an interrupt occurs during execution of this instruction, the parity flag contains a 0.
-		cpu_time += 9;
+		cpu_time += 1;
 		return true;
 	}
 
@@ -1084,7 +1060,6 @@ public:
 	bool sim_ed5e (uint8_t opcode)
 	{
 		regs.im = 2;
-		cpu_time += 8;
 		return true;
 	}
 
@@ -1095,7 +1070,7 @@ public:
 		uint16_t before = regs.main.hl;
 		uint16_t other = regs.bc_de_hl_sp(hl_ix_iy::hl, i);
 		regs.main.hl -= (other + regs.main.f.c);
-		cpu_time += 15;
+		cpu_time += 7;
 		regs.main.f.val = ((regs.main.hl >> 8) & 0x80) // S
 			| (regs.main.hl ? 0 : z80_flag::z) // Z
 			| (regs.main.hl & 0x28) // R3, R5
@@ -1113,7 +1088,7 @@ public:
 		uint16_t before = regs.main.hl;
 		uint16_t other = regs.bc_de_hl_sp(hl_ix_iy::hl, i);
 		regs.main.hl += (other + regs.main.f.c);
-		cpu_time += 15;
+		cpu_time += 7;
 		regs.main.f.val = ((regs.main.hl >> 8) & 0x80) // S
 			| (regs.main.hl ? 0 : z80_flag::z) // Z
 			| ((regs.main.hl >> 8) & (z80_flag::r5 | z80_flag::r3)) // R3, R5
@@ -1130,9 +1105,9 @@ public:
 		uint8_t i = (opcode >> 4) & 3;
 		uint16_t addr = decode_u16();
 		uint16_t val = regs.bc_de_hl_sp(hl_ix_iy::hl, i);
-		if (!memory->try_write_request(addr, val, cpu_time))
+			if (!memory->try_write_request(addr, val, cpu_time))
 			return false;
-		cpu_time += 20;
+		cpu_time += 12;
 		return true;
 	}
 
@@ -1147,16 +1122,15 @@ public:
 		regs.bc_de_hl_sp(hl_ix_iy::hl, i) = value;
 		if (i == 3)
 			_start_of_stack = value;
-		cpu_time += 20;
+		cpu_time += 12;
 		return true;
 	}
 
 	// reti
 	bool sim_ed4d (uint8_t ocode)
 	{
-		// As far as I can tell, this instruction is different from the RET instruction only
+		// As far as I can tell, this instruction differs from the RET instruction only
 		// in hardware signaling. Code below does a simple RET.
-		cpu_time += 4;
 		return sim_c9(hl_ix_iy::hl, 0xc9);
 	}
 
@@ -1182,7 +1156,7 @@ public:
 			return false;
 		regs.main.a = new_a;
 		regs.main.f.val = (regs.main.f.val & z80_flag::c) | s_z_pv_flags.flags[regs.main.a];
-		cpu_time += 18;
+		cpu_time += 10;
 		return true;
 	}
 
@@ -1199,7 +1173,7 @@ public:
 		regs.main.hl += increment;
 		regs.main.de += increment;
 		regs.main.bc--;
-		cpu_time += 16;
+		cpu_time += 8;
 		regs.main.f.val = (regs.main.f.val & (z80_flag::s | z80_flag::z | z80_flag::c))
 			| (((data + regs.main.a) & 2) ? z80_flag::r5 : 0)
 			| (((data + regs.main.a) & 8) ? z80_flag::r3 : 0)
@@ -1238,12 +1212,12 @@ public:
 		bool repeat = opcode & 0x10;
 		if (repeat && regs.main.bc && diff)
 		{
-			cpu_time += 21;
+			cpu_time += 13;
 			regs.pc -= 2;
 		}
 		else
 		{
-			cpu_time += 16;
+			cpu_time += 8;
 		}
 
 		return true;
@@ -1265,7 +1239,7 @@ public:
 			| (regs.b() ? 0 : z80_flag::z) // Z
 			| z80_flag::n // N
 			| (regs.main.f.val & 1); // C
-		cpu_time += 16;
+		cpu_time += 8;
 		bool repeat = opcode & 0x10;
 		if (repeat && regs.b())
 		{
@@ -1291,7 +1265,7 @@ public:
 			| (regs.b() ? 0 : z80_flag::z) // Z
 			| z80_flag::n // N
 			| (regs.main.f.val & 1); // C
-		cpu_time += 16;
+		cpu_time += 8;
 		bool repeat = opcode & 0x10;
 		if (repeat && regs.b())
 		{
@@ -1395,7 +1369,8 @@ public:
 			before = regs.r8(i, hl_ix_iy::hl);
 			do_cb_rotate_shift_operation(before, after, c, opcode);
 			regs.r8(i, hl_ix_iy::hl) = after;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 8 : 23);
+			if (xy != hl_ix_iy::hl)
+				cpu_time += 11;
 		}
 		else
 		{
@@ -1404,7 +1379,7 @@ public:
 			do_cb_rotate_shift_operation(before, after, c, opcode);
 			if (!memory->try_write_request(memhlxy_addr, after, cpu_time))
 				return false;
-			cpu_time += ((xy == hl_ix_iy::hl) ? 15 : 23);
+			cpu_time += ((xy == hl_ix_iy::hl) ? 7 : 11);
 		}
 
 		regs.main.f.val = s_z_pv_flags.flags[after] | c;
@@ -1423,20 +1398,19 @@ public:
 			if (reg != 6)
 			{
 				value = regs.r8(reg, hl_ix_iy::hl);
-				cpu_time += 8;
 			}
 			else
 			{
 				if (!memory->try_read_request(memhlxy_addr, value, cpu_time))
 					return false;
-				cpu_time += 12;
+				cpu_time += 4;
 			}
 		}
 		else
 		{
 			if (!memory->try_read_request(memhlxy_addr, value, cpu_time))
 				return false;
-			cpu_time += 20;
+			cpu_time += 8;
 		}
 
 		regs.main.f.val = s_z_pv_flags.flags[value & mask] | z80_flag::h | (regs.main.f.val & 1);
@@ -1457,7 +1431,8 @@ public:
 				regs.r8(reg, hl_ix_iy::hl) |= (1 << bit);
 			else
 				regs.r8(reg, hl_ix_iy::hl) &= ~(1 << bit);
-			cpu_time += 8;
+			if (xy != hl_ix_iy::hl)
+				cpu_time += 11;
 		}
 		else
 		{
@@ -1470,8 +1445,8 @@ public:
 				value &= ~(1 << bit);
 			if (!memory->try_write_request(memhlxy_addr, value, cpu_time))
 				return false;
-		
-			cpu_time += ((xy == hl_ix_iy::hl) ? 15 : 23);
+
+			cpu_time += ((xy == hl_ix_iy::hl) ? 7 : 11);
 		}
 
 		return true;
@@ -1519,7 +1494,7 @@ public:
 
 		if (regs.halted)
 		{
-			cpu_time += 4;
+			cpu_time += 8;
 			regs.r = (regs.r & 0x80) | ((regs.r + 1) & 0x7f);
 			return true;
 		}
@@ -1536,52 +1511,40 @@ public:
 			}
 		}
 
-		uint8_t opcode;
+		uint16_t oldpc = regs.pc;
+		uint8_t oldr = regs.r;
+		uint64_t oldtime = cpu_time;
+
+		//uint8_t opcode;
 		//bool b = memory->try_read_request (regs.pc, opcode, cpu_time);
 		//if (!b)
 		//	return false;
 		// At the moment the CPU is the only one changing the memory state (we have no DMA chip, for example).
 		// This allows us to simply read the memory, without checking how far in time we simulated it.
 		// This single optimization improves simulation speed (in Release) by ~15%.
-		opcode = memory->read(regs.pc);
-
-		uint16_t oldpc = regs.pc;
-		uint8_t oldr = regs.r;
-		regs.pc++;
+		uint8_t opcode = decode_u8();
+		cpu_time += 4;
 		regs.r = (regs.r & 0x80) | ((regs.r + 1) & 0x7f);
 
 		hl_ix_iy xy = hl_ix_iy::hl;
-		if (opcode == 0xDD)
+		while (opcode == 0xDD || opcode == 0xFD)
 		{
+			xy = opcode == 0xDD ? hl_ix_iy::ix : hl_ix_iy::iy;
+			cpu_time += 4;
 			opcode = memory->read(regs.pc);
-			if (opcode == 0xDD || opcode == 0xFD || opcode == 0xED)
-				return true;
 			regs.pc++;
 			regs.r = (regs.r & 0x80) | ((regs.r + 1) & 0x7f);
-			xy = hl_ix_iy::ix;
-		}
-		else if (opcode == 0xFD)
-		{
-			opcode = memory->read(regs.pc);
-			if (opcode == 0xDD || opcode == 0xFD || opcode == 0xED)
-				return true;
-			regs.pc++;
-			regs.r = (regs.r & 0x80) | ((regs.r + 1) & 0x7f);
-			xy = hl_ix_iy::iy;
 		}
 
 		bool executed;
 		if (opcode == 0xed)
 		{
 			opcode = decode_u8();
-			if (xy == hl_ix_iy::hl)
-				regs.r = (regs.r & 0x80) | ((regs.r + 1) & 0x7f);
+			cpu_time += 4;
+			regs.r = (regs.r & 0x80) | ((regs.r + 1) & 0x7f);
 			auto handler = dispatch_ed[opcode];
 			if (!handler)
-			{
-				cpu_time += 8;
 				return true;
-			}
 
 			executed = (this->*handler)(opcode);
 		}
@@ -1589,6 +1552,7 @@ public:
 		{
 			uint16_t memhlxy_addr = decode_mem_hl(xy);
 			opcode = decode_u8();
+			cpu_time += 4;
 			if (xy == hl_ix_iy::hl)
 				regs.r = (regs.r & 0x80) | ((regs.r + 1) & 0x7f);
 			cb_handler_t handler;
@@ -1611,6 +1575,7 @@ public:
 		{
 			regs.pc = oldpc;
 			regs.r = oldr;
+			cpu_time = oldtime;
 			return false;
 		}
 
@@ -1642,15 +1607,15 @@ public:
 	{
 		regs = *pRegs;
 	}
-	
+
 	#ifdef SIM_TESTS
 	virtual z80_register_set* GetRegsPtr() override { return &regs; }
 	#endif
 
 	virtual UINT16 GetStackStartAddress() const override { return _start_of_stack; }
-	
+
 	virtual BOOL STDMETHODCALLTYPE Halted() override { return regs.halted; }
-	
+
 	virtual UINT16 GetPC() const override { return regs.pc; }
 
 	virtual HRESULT SetPC (UINT16 pc) override

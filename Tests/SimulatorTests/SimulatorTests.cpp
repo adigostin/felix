@@ -11,19 +11,51 @@ struct dummy_irq_line : irq_line_i
 {
 };
 
-
-class TestRAM : public IDevice
+class TestInterruptDevice : public IDevice
 {
-	Bus* _memory_bus;
-	uint8_t _data[0x10000]; // this one last
+	bool _pending = false;
+	uint8_t _address;
 
 public:
-	HRESULT InitInstance (Bus* memory_bus)
+	TestInterruptDevice(uint8_t address) : _address(address) { }
+
+	virtual HRESULT STDMETHODCALLTYPE Reset(SpectrumVariant variant) override
 	{
-		_memory_bus = memory_bus;
-		bool pushed = _memory_bus->read_responders.try_push_back({ this, &process_mem_read_request }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-		pushed = _memory_bus->write_responders.try_push_back({ this, &process_mem_write_request }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		_time = 0;
+		_pending = false;
 		return S_OK;
+	}
+
+	virtual BOOL STDMETHODCALLTYPE NeedSyncWithRealTime(UINT64* sync_time) override { return FALSE; }
+
+	virtual bool SimulateDeviceTo(UINT64 requested_time) override
+	{
+		_time = requested_time;
+		return true;
+	}
+
+	virtual bool STDMETHODCALLTYPE irq_pending(uint64_t& irq_time, uint8_t& irq_address) const override
+	{
+		irq_time = 0;
+		irq_address = _address;
+		return _pending;
+	}
+
+	virtual void STDMETHODCALLTYPE acknowledge_irq() override { _pending = false; }
+
+	void RequestInterrupt() { _pending = true; }
+};
+
+struct TestRAM : IDevice
+{
+	Bus* _memory_bus;
+	bool stalled = false;
+	uint8_t _data[0x10000]; // this one last
+
+	explicit TestRAM(Bus* memory_bus) : _memory_bus(memory_bus)
+	{
+		_memory_bus->read_responders.try_push_back({ this, &process_mem_read_request });
+		_memory_bus->write_responders.try_push_back({ this, &process_mem_write_request });
 	}
 
 	~TestRAM()
@@ -35,6 +67,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE Reset(SpectrumVariant variant) override
 	{
 		_time = 0;
+		stalled = false;
 		for (size_t i = 0; i < sizeof(_data); i++)
 			_data[i] = (uint8_t)rand();
 		return S_OK;
@@ -44,7 +77,8 @@ public:
 
 	virtual bool SimulateDeviceTo (UINT64 requested_time) override
 	{
-		_time = requested_time;
+		if (!stalled)
+			_time = requested_time;
 		return true;
 	}
 
@@ -67,12 +101,10 @@ class TestIODevice : public IDevice
 	unordered_map_nothrow<uint16_t, uint8_t> _data;
 
 public:
-	HRESULT InitInstance (Bus* io_bus)
+	explicit TestIODevice(Bus* io_bus) : _io_bus(io_bus)
 	{
-		_io_bus = io_bus;
-		bool pushed = _io_bus->read_responders.try_push_back({ this, &process_io_read_request }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-		pushed = _io_bus->write_responders.try_push_back({ this, &process_io_write_request }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-		return S_OK;
+		_io_bus->read_responders.try_push_back({ this, &process_io_read_request });
+		_io_bus->write_responders.try_push_back({ this, &process_io_write_request });
 	}
 
 	~TestIODevice()
@@ -113,9 +145,7 @@ public:
 		if (it != iod->_data.end())
 			it->second = value;
 		else
-		{
-			bool inserted = iod->_data.try_insert({ key, value }); THROW_HR_IF(E_OUTOFMEMORY, !inserted);
-		}
+			(void)iod->_data.try_insert({ key, value });
 	}
 };
 
@@ -127,7 +157,7 @@ namespace Z80SimulatorTests
 		Bus io_bus;
 		dummy_irq_line irq_line;
 		wistd::unique_ptr<IZ80CPU> cpu;
-		wistd::unique_ptr<IDevice> ram;
+		wistd::unique_ptr<TestRAM> ram;
 		wistd::unique_ptr<IDevice> iodevice;
 		z80_register_set* regs;
 
@@ -136,14 +166,8 @@ namespace Z80SimulatorTests
 		{
 			auto hr = MakeZ80CPU (&memory, &io_bus, &irq_line, &cpu); THROW_IF_FAILED(hr);
 			regs = cpu->GetRegsPtr();
-
-			auto r = wil::make_unique_nothrow<TestRAM>(); THROW_IF_NULL_ALLOC(r);
-			hr = r->InitInstance(&memory); THROW_IF_FAILED(hr);
-			ram = std::move(r);
-
-			auto iod = wil::make_unique_nothrow<TestIODevice>(); THROW_IF_NULL_ALLOC(iod);
-			hr = iod->InitInstance(&io_bus); THROW_IF_FAILED(hr);
-			iodevice = std::move(iod);
+			ram.reset(new TestRAM(&memory));
+			iodevice.reset(new TestIODevice(&io_bus));
 		}
 
 		void SimulateOne()
@@ -846,6 +870,14 @@ namespace Z80SimulatorTests
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(0x8000, regs->main.hl);
 			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::h | z80_flag::n | z80_flag::c, regs->main.f.val);
+
+			regs->pc = 0;
+			regs->main.hl = 0x3000;
+			regs->main.de = 0;
+			regs->main.f.val = 0;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(0x3000, regs->main.hl);
+			Assert::AreEqual<uint8_t>(z80_flag::r5 | z80_flag::n, regs->main.f.val);
 		}
 
 		TEST_METHOD(rrc_c)
@@ -3013,44 +3045,360 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(DD_DD)
 		{
-			memory.write(0, { 0xDD, 0xDD, 0x21, 0x55, 0x55  }); // NOP* ; LD IX, 5555h
-			SimulateOne();
-			Assert::AreEqual<uint16_t>(1, cpu->GetPC());
-			Assert::AreEqual<uint8_t>(1, regs->r);
-
+			memory.write(0, { 0xDD, 0xDD, 0x21, 0x55, 0x55  }); // LD IX,5555h with a repeated prefix
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(5, cpu->GetPC());
-			Assert::AreEqual<uint8_t>(3, regs->r);
 			Assert::AreEqual<uint16_t>(0x5555, regs->ix);
+			Assert::AreEqual<uint8_t>(3, regs->r);
+			Assert::AreEqual<uint64_t>(18, cpu->cpu_time);
 		}
 
 		TEST_METHOD(DD_FD)
 		{
-			memory.write(0, { 0xDD, 0xFD, 0xE5  }); // NOP* ; PUSH IY
-			SimulateOne();
-			Assert::AreEqual<uint16_t>(1, cpu->GetPC());
-			Assert::AreEqual<uint8_t>(1, regs->r);
-
+			memory.write(0, { 0xDD, 0xFD, 0xE5  }); // PUSH IY with a preceding DD prefix
 			regs->iy = 0x1234;
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(3, cpu->GetPC());
 			Assert::AreEqual<uint8_t>(3, regs->r);
 			Assert::AreEqual<uint16_t>(0xFFFE, regs->sp);
 			Assert::AreEqual<uint16_t>(0x1234, memory.read_uint16(0xFFFE));
+			Assert::AreEqual<uint64_t>(19, cpu->cpu_time);
 		}
 
 		TEST_METHOD(DD_ED)
 		{
-			memory.write(0, { 0xDD, 0xED, 0x4A  }); // NOP* ; ADC HL, BC
-			SimulateOne();
-			Assert::AreEqual<uint16_t>(1, cpu->GetPC());
-
+			memory.write(0, { 0xDD, 0xED, 0x4A  }); // ADC HL,BC with an ignored DD prefix
 			regs->main.bc = 0x1234;
 			regs->main.f.c = 1;
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(3, cpu->GetPC());
 			Assert::AreEqual<uint8_t>(3, regs->r);
 			Assert::AreEqual<uint16_t>(0x1235, regs->main.hl);
+			Assert::AreEqual<uint64_t>(19, cpu->cpu_time);
+		}
+
+		TEST_METHOD(DaaAdvancesTime)
+		{
+			memory.write(0, 0x27); // DAA
+			SimulateOne();
+			Assert::AreEqual<uint64_t>(4, cpu->cpu_time);
+		}
+
+		TEST_METHOD(IgnoredIndexPrefixIncludesTiming)
+		{
+			memory.write(0, { 0xDD, 0x00 }); // DD NOP
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint64_t>(8, cpu->cpu_time);
+
+			cpu->Reset();
+			memory.write(0, { 0xDD, 0x78 }); // DD prefix; LD A,B
+			regs->b() = 0x5A;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x5A, regs->main.a);
+			Assert::AreEqual<uint64_t>(8, cpu->cpu_time);
+
+			cpu->Reset();
+			memory.write(0, { 0xDD, 0x11, 0x34, 0x12 }); // DD prefix; LD DE,1234h
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(4, regs->pc);
+			Assert::AreEqual<uint16_t>(0x1234, regs->main.de);
+			Assert::AreEqual<uint64_t>(14, cpu->cpu_time);
+		}
+
+		TEST_METHOD(RepeatedIndexPrefixesFormOneInstruction)
+		{
+			memory.write(0, { 0xDD, 0xFD, 0x21, 0x34, 0x12 }); // LD IY,1234h; last index prefix wins
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(5, regs->pc);
+			Assert::AreEqual<uint16_t>(0x1234, regs->iy);
+			Assert::AreEqual<uint8_t>(3, regs->r);
+			Assert::AreEqual<uint64_t>(18, cpu->cpu_time);
+		}
+
+		TEST_METHOD(IndexPrefixBeforeEdFormsOneInstruction)
+		{
+			memory.write(0, { 0xDD, 0xED, 0x4A }); // DD is ignored; ADC HL,BC
+			regs->main.bc = 1;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(3, regs->pc);
+			Assert::AreEqual<uint16_t>(1, regs->main.hl);
+			Assert::AreEqual<uint8_t>(3, regs->r);
+			Assert::AreEqual<uint64_t>(19, cpu->cpu_time);
+		}
+
+		TEST_METHOD(DIClearsBothInterruptFlipFlops)
+		{
+			memory.write(0, 0xF3); // DI
+			regs->iff1 = true;
+			regs->iff2 = true;
+			SimulateOne();
+			Assert::IsFalse(regs->iff1);
+			Assert::IsFalse(regs->iff2);
+		}
+
+		TEST_METHOD(EiSetsBothInterruptFlipFlopsAfterDelay)
+		{
+			memory.write(0, { 0xFB, 0x00 }); // EI; NOP
+			SimulateOne();
+			Assert::IsFalse(regs->iff1);
+			SimulateOne();
+			Assert::IsTrue(regs->iff1);
+			Assert::IsTrue(regs->iff2);
+		}
+
+		TEST_METHOD(ResetClearsPendingEiDelay)
+		{
+			memory.write(0, 0xFB); // EI
+			SimulateOne();
+			cpu->Reset();
+			memory.write(0, 0x00); // NOP
+			SimulateOne();
+			Assert::IsFalse(regs->iff1);
+		}
+
+		TEST_METHOD(MaskableInterruptClearsBothInterruptFlipFlops)
+		{
+			TestInterruptDevice device(0xFF);
+			device.RequestInterrupt();
+			irq_line.interrupting_devices.try_push_back(&device);
+			regs->im = 1;
+			regs->iff1 = true;
+			regs->iff2 = true;
+			regs->sp = 0x1000;
+			SimulateOne();
+			irq_line.interrupting_devices.remove([&device](auto d) { return d == &device; });
+			Assert::IsFalse(regs->iff1);
+			Assert::IsFalse(regs->iff2);
+		}
+
+		TEST_METHOD(Im0ExecutesTheOpcodeSuppliedByTheDevice)
+		{
+			TestInterruptDevice device(0xCF); // RST 08h
+			device.RequestInterrupt();
+			irq_line.interrupting_devices.try_push_back(&device);
+			regs->im = 0;
+			regs->iff1 = true;
+			regs->sp = 0x1000;
+			SimulateOne();
+			irq_line.interrupting_devices.remove([&device](auto d) { return d == &device; });
+			Assert::AreEqual<uint16_t>(8, regs->pc);
+			Assert::AreEqual<uint16_t>(0x0FFE, regs->sp);
+			Assert::AreEqual<uint64_t>(13, cpu->cpu_time);
+		}
+
+		TEST_METHOD(RetiRestoresIff1FromIff2)
+		{
+			memory.write(0, { 0xED, 0x4D }); // RETI
+			memory.write_uint16(0x1000, 0x1234);
+			regs->sp = 0x1000;
+			regs->iff1 = false;
+			regs->iff2 = true;
+			SimulateOne();
+			Assert::IsTrue(regs->iff1);
+			Assert::AreEqual<uint16_t>(0x1234, regs->pc);
+		}
+
+		TEST_METHOD(DDCBRotateUpdatesMemoryAndEncodedRegister)
+		{
+			memory.write(0, { 0xDD, 0xCB, 0x10, 0x00 }); // RLC (IX+10h),B
+			regs->ix = 0x2000;
+			regs->b() = 0;
+			memory.write(0x2010, 0x80);
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(1, memory.read(0x2010));
+			Assert::AreEqual<uint8_t>(1, regs->b());
+		}
+
+		TEST_METHOD(DDCBSetUpdatesMemoryAndEncodedRegister)
+		{
+			memory.write(0, { 0xFD, 0xCB, 0x01, 0xFF }); // SET 7,(IY+1),A
+			regs->iy = 0x3000;
+			regs->main.a = 0;
+			memory.write(0x3001, 0);
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x80, memory.read(0x3001));
+			Assert::AreEqual<uint8_t>(0x80, regs->main.a);
+		}
+
+		TEST_METHOD(BitIndexedFlagsTakeXyFromEffectiveAddress)
+		{
+			memory.write(0, { 0xDD, 0xCB, 0x00, 0x46 }); // BIT 0,(IX+0)
+			regs->ix = 0x2800;
+			memory.write(0x2800, 0);
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(z80_flag::r5 | z80_flag::r3 | z80_flag::h | z80_flag::z | z80_flag::pv, regs->main.f.val);
+		}
+
+		TEST_METHOD(BitHlUsesInternalXyFlags)
+		{
+			memory.write(0, { 0x09, 0xCB, 0x46 }); // ADD HL,BC; BIT 0,(HL)
+			regs->main.hl = 0x2800;
+			regs->main.bc = 0;
+			memory.write(0x2800, 0);
+			SimulateOne();
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(z80_flag::r5 | z80_flag::r3 | z80_flag::h | z80_flag::z | z80_flag::pv, regs->main.f.val);
+		}
+
+		TEST_METHOD(RlcaUpdatesUndocumentedXyFlags)
+		{
+			memory.write(0, 0x07); // RLCA
+			regs->main.a = 0x14;
+			regs->main.f.val = 0;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x28, regs->main.a);
+			Assert::AreEqual<uint8_t>(z80_flag::r3, regs->main.f.val);
+		}
+
+		TEST_METHOD(UndocumentedNEGAliasIsExecuted)
+		{
+			memory.write(0, { 0xED, 0x4C }); // undocumented NEG alias
+			regs->main.a = 1;
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0xFF, regs->main.a);
+			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::r5 | z80_flag::r3 | z80_flag::h | z80_flag::n | z80_flag::c, regs->main.f.val);
+		}
+
+		TEST_METHOD(UndocumentedRETNAliasRestoresIff1)
+		{
+			memory.write(0, { 0xED, 0x55 }); // undocumented RETN alias
+			memory.write_uint16(0x1000, 0x1234);
+			regs->sp = 0x1000;
+			regs->iff1 = false;
+			regs->iff2 = true;
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(0x1234, regs->pc);
+			Assert::AreEqual<uint16_t>(0x1002, regs->sp);
+			Assert::IsTrue(regs->iff1);
+		}
+
+		TEST_METHOD(ED70ReadsIoAndSetsFlagsWithoutARegisterDestination)
+		{
+			memory.write(0, { 0xED, 0x70 }); // IN (C)
+			regs->main.bc = 0x1234;
+			regs->main.f.c = 1;
+			io_bus.write(0x1234, 0xA9);
+			SimulateOne();
+			Assert::AreEqual<uint64_t>(12, cpu->cpu_time);
+			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::r5 | z80_flag::r3 | z80_flag::pv | z80_flag::c, regs->main.f.val);
+		}
+
+		TEST_METHOD(INIUsesPostdecrementPortAddress)
+		{
+			memory.write(0, { 0xED, 0xA2 }); // INI
+			regs->main.bc = 0x02FE;
+			regs->main.hl = 0x1000;
+			io_bus.write(0x02FE, 0x11);
+			io_bus.write(0x01FE, 0x22);
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x22, memory.read(0x1000));
+		}
+
+		TEST_METHOD(OUTIUsesPredecrementPortAddress)
+		{
+			memory.write(0, { 0xED, 0xA3 }); // OUTI
+			regs->main.bc = 0x02FE;
+			regs->main.hl = 0x1000;
+			memory.write(0x1000, 0x5A);
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(0x5A, io_bus.read(0x02FE));
+		}
+
+		TEST_METHOD(INIComputesHalfcarryCarryAndParity)
+		{
+			memory.write(0, { 0xED, 0xA2 }); // INI
+			regs->main.bc = 0x02FE;
+			regs->main.hl = 0x0001;
+			io_bus.write(0x02FE, 0x80);
+			io_bus.write(0x01FE, 0x80);
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(z80_flag::c | z80_flag::h | z80_flag::pv | z80_flag::n, regs->main.f.val);
+		}
+
+		TEST_METHOD(OUTIComputesHalfcarryAndCarry)
+		{
+			memory.write(0, { 0xED, 0xA3 }); // OUTI
+			regs->main.bc = 0x02FE;
+			regs->main.hl = 0x0001;
+			memory.write(0x0001, 0xFE);
+			SimulateOne();
+			Assert::AreEqual<uint8_t>(z80_flag::c | z80_flag::h | z80_flag::n, regs->main.f.val);
+		}
+
+		TEST_METHOD(ReadBusFailureLeavesCpuStateUnchanged)
+		{
+			ram->stalled = true;
+			memory.write(0, { 0xDD, 0x0A }); // DD prefix; LD A,(BC)
+			regs->main.a = 0xA5;
+			regs->main.f.val = 0x5A;
+			regs->main.bc = 0x2000;
+			cpu->cpu_time = 1;
+			z80_register_set before;
+			std::memcpy(&before, regs, sizeof(before));
+			uint64_t timeBefore = cpu->cpu_time;
+
+			bool executed = cpu->SimulateOne(nullptr);
+			ram->stalled = false;
+
+			Assert::IsFalse(executed);
+			Assert::IsTrue(std::memcmp(&before, regs, sizeof(before)) == 0);
+			Assert::AreEqual<uint64_t>(timeBefore, cpu->cpu_time);
+		}
+
+		TEST_METHOD(WriteBusFailureLeavesCpuStateUnchanged)
+		{
+			ram->stalled = true;
+			memory.write(0, { 0xDD, 0x02 }); // DD prefix; LD (BC),A
+			memory.write(0x2000, 0x3C);
+			regs->main.a = 0xA5;
+			regs->main.f.val = 0x5A;
+			regs->main.bc = 0x2000;
+			cpu->cpu_time = 1;
+			z80_register_set before;
+			std::memcpy(&before, regs, sizeof(before));
+			uint64_t timeBefore = cpu->cpu_time;
+
+			bool executed = cpu->SimulateOne(nullptr);
+			ram->stalled = false;
+
+			Assert::IsFalse(executed);
+			Assert::IsTrue(std::memcmp(&before, regs, sizeof(before)) == 0);
+			Assert::AreEqual<uint64_t>(timeBefore, cpu->cpu_time);
+			Assert::AreEqual<uint8_t>(0x3C, memory.read(0x2000));
+		}
+
+		TEST_METHOD(UndefinedEDOpcodeUsesEightCycles)
+		{
+			memory.write(0, { 0xED, 0x00 }); // Undefined ED opcode
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint64_t>(8, cpu->cpu_time);
+		}
+
+		TEST_METHOD(EDPrefixCyclesPrecedeIoRequest)
+		{
+			memory.write(0, { 0xED, 0x40 }); // IN B,(C)
+			regs->main.bc = 0x1234;
+
+			bool executed = cpu->SimulateOne(nullptr);
+
+			Assert::IsTrue(executed);
+			Assert::IsTrue(iodevice->_time >= 8 && iodevice->_time <= 12);
+			Assert::AreEqual<uint64_t>(12, cpu->cpu_time);
+		}
+
+		TEST_METHOD(CBPrefixCyclesPrecedeMemoryRequest)
+		{
+			memory.write(0, { 0xCB, 0x46 }); // BIT 0,(HL)
+			regs->main.hl = 0x2000;
+			memory.write(0x2000, 1);
+
+			bool executed = cpu->SimulateOne(nullptr);
+
+			Assert::IsTrue(executed);
+			Assert::IsTrue(ram->_time >= 8 && ram->_time <= 12);
+			Assert::AreEqual<uint64_t>(12, cpu->cpu_time);
 		}
 	};
 }
