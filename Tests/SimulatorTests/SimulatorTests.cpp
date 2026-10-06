@@ -3169,6 +3169,7 @@ namespace Z80SimulatorTests
 			memory.write(0, 0x00); // NOP
 			SimulateOne();
 			Assert::IsFalse(regs->iff1);
+			Assert::IsFalse(regs->iff2);
 		}
 
 		TEST_METHOD(MaskableInterruptClearsBothInterruptFlipFlops)

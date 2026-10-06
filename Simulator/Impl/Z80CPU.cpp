@@ -156,9 +156,9 @@ class cpu : public IZ80CPU
 	z80_register_set regs = { };
 
 	// The "EI" instruction sets this to 2.
-	// After simulate_one() executes any instruction, it checks this value and:
+	// After SimulateOne() executes any instruction, it checks this value and:
 	//  - if 2, it decrements it to 1;
-	//  - if 1, it decrements it to 0 and sets IFF in the registers;
+    //  - if 1, it decrements it to 0 and sets IFF1 and IFF2;
 	//  - if 0, it leaves it unchanged.
 	uint8_t _ei_countdown = 0;
 
@@ -907,6 +907,7 @@ public:
 	bool sim_f3 (hl_ix_iy xy, uint8_t opcode)
 	{
 		regs.iff1 = 0;
+		regs.iff2 = 0;
 		_ei_countdown = 0;
 		return true;
 	}
@@ -1493,6 +1494,7 @@ public:
 					regs.sp -= 2;
 					regs.pc = 0x38;
 					regs.iff1 = false;
+					regs.iff2 = false;
 					cpu_time += 13;
 					return true;
 				}
@@ -1506,6 +1508,7 @@ public:
 					regs.sp -= 2;
 					regs.pc = addr;
 					regs.iff1 = false;
+					regs.iff2 = false;
 					cpu_time += 19;
 					return true;
 				}
@@ -1603,7 +1606,10 @@ public:
 		{
 			_ei_countdown--;
 			if (_ei_countdown == 0)
+			{
 				regs.iff1 = 1;
+				regs.iff2 = 1;
+			}
 		}
 
 		return true;
@@ -1614,6 +1620,7 @@ public:
 	virtual void Reset() override
 	{
 		memset (&regs, 0, sizeof(regs));
+		_ei_countdown = 0;
 		_start_of_stack = 0;
 		cpu_time = 0;
 	}
