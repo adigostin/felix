@@ -3077,11 +3077,25 @@ namespace Z80SimulatorTests
 			Assert::AreEqual<uint64_t>(19, cpu->cpu_time);
 		}
 
-		TEST_METHOD(DaaAdvancesTime)
+		TEST_METHOD(DAAAdvancesTime)
 		{
 			memory.write(0, 0x27); // DAA
 			SimulateOne();
 			Assert::AreEqual<uint64_t>(4, cpu->cpu_time);
+		}
+
+		TEST_METHOD(DAAWithIgnoredIndexPrefixIncludesTiming)
+		{
+			memory.write(0, { 0xDD, 0x27 }); // DD prefix; DAA
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint64_t>(8, cpu->cpu_time);
+
+			cpu->Reset();
+			memory.write(0, { 0xFD, 0x27 }); // FD prefix; DAA
+			SimulateOne();
+			Assert::AreEqual<uint16_t>(2, regs->pc);
+			Assert::AreEqual<uint64_t>(8, cpu->cpu_time);
 		}
 
 		TEST_METHOD(IgnoredIndexPrefixIncludesTiming)
