@@ -1,0 +1,71 @@
+Prüfbericht: Simulator/Impl/Z80CPU.cpp
+
+Prüfziel
+--------
+Statische Prüfung des implementierten Z80-Befehlssatzes gegen:
+- Zilog, Z80 CPU User Manual, UM008011-0816 (PDF vom Benutzer bereitgestellt)
+- Sean Young, The Undocumented Z80 Documented, Version 0.91, 18. September 2005 (PDF vom Benutzer bereitgestellt)
+
+Die Befundstellen nennen Zeilen in Simulator/Impl/Z80CPU.cpp zum Zeitpunkt der Prüfung. Undokumentiertes Verhalten kann je nach Z80-Revision variieren; insbesondere Flag-Latch-/BIT-Details sollten bei gewünschtem Modell anhand des konkreten Zielchips validiert werden. Diese Prüfung ist statisch und ersetzt keinen vollständigen Opcode-/Zustandsraumtest.
+
+Zusammenfassung
+---------------
+Es bestehen konkrete Abweichungen bei IFF/Interrupt-Verhalten sowie indexierten CB-Befehlen. Die meisten offiziellen Grundoperationen sind vorhanden; die Implementierung ist aber noch keine vollständige bzw. durchgängig taktgenaue Z80-Emulation.
+
+Befunde
+-------
+
+1. IM 0 wird wie IM 1 behandelt [hoch, sofern IM 0 unterstützt werden soll]
+   Stelle: Interruptbehandlung, etwa Zeilen 1493-1501.
+   Für beide Modi wird stets die Rücksprungadresse gestapelt und PC auf 0038h gesetzt. Im IM 0 wird stattdessen der vom Gerät gelieferte Bus-Opcode ausgeführt (häufig ein RST, aber nicht zwingend); 0038h ist das Verhalten von IM 1. `irq_address` wird für IM 0 ignoriert.
+   Referenz: Zilog-Handbuch, Interrupt Mode 0/1; Undocumented Z80 Documented, Abschnitt 5.2.
+
+2. Nicht unterstützte NMI-Semantik [Abgrenzung]
+    Stelle: SimulateOne(), etwa Zeilen 1480-1515.
+    `irq_line_i` stellt nur maskierbare Interruptanfragen bereit. Der gezeigte Code implementiert keine separate NMI-Annahme mit Sprung nach 0066h sowie IFF1/IFF2-Sicherung. Wenn vollständige Z80-Interruptunterstützung Ziel ist, fehlt damit die NMI-Funktion.
+    Referenz: Zilog-Handbuch, Non-Maskable Interrupt; Undocumented Z80 Documented, Abschnitt 5.1.
+
+Undokumentiertes bzw. modellabhängiges Verhalten
+-----------------------------------------------
+
+3. RETI restauriert IFF1 nicht aus IFF2 [hoch]
+   Stelle: sim_ed4d(), etwa Zeilen 1153-1160.
+   RETI wird als einfacher RET implementiert. Im Gegensatz zu sim_ed45() (RETN) kopiert es IFF2 nicht nach IFF1. Das Undocumented-Dokument beschreibt diese Wirkung für RETI und RETN; das Zilog-Handbuch verlangt die Rückkopie ausdrücklich für RETN. RETI muss außerdem sein Hardware-/Daisy-chain-Signal nicht emulieren, um die Registerwirkung korrekt abzubilden.
+   Referenzen: Zilog-Handbuch, RETN; Undocumented Z80 Documented, Abschnitte 3.4 und 5.3.
+
+4. DDCB/FDCB Rotate/Shift/RES/SET sind für Registercodes falsch ausgeführt [hoch]
+   Stellen: sim_cb00() und sim_cb80(), etwa Zeilen 1385-1410 und 1445-1477.
+   Bei DDCB/FDCB ist der Befehl immer eine Read-modify-write-Operation auf (IX/IY+d). Wenn die unteren Opcodebits zusätzlich B/C/D/E/H/L/A auswählen, wird das Ergebnis außerdem in dieses normale 8-Bit-Register kopiert. Der Code behandelt bei Registercode ungleich 6 den Registerwert direkt und liest/schreibt den adressierten Speicher nicht. Damit wird weder die Speicherwirkung noch das Registerkopieren korrekt nachgebildet. BIT ist davon nicht betroffen, weil sim_cb40() immer den Speicher liest und keinen Wert speichert.
+   Referenz: Undocumented Z80 Documented, Abschnitte 3.5-3.6, S. 13-14.
+
+5. BIT (IX+d)/(IY+d): R5/R3 werden nicht aus der effektiven Adresse übernommen [undokumentiertes Verhalten]
+    Stelle: sim_cb40(), etwa Zeile 1441.
+    Für indexierte BIT-Befehle beschreibt das Undocumented-Dokument R5/R3 als Bits 5/3 des High-Bytes der effektiven Adresse IX/IY+d. Der Code berechnet Flags aus `value & mask`; dadurch stammen die Bits aus dem maskierten Speicherwert. Die BIT-Ergebnisflags S/Z/PV/H/N/C sind ansonsten weitgehend nach dem beschriebenen Muster gebildet.
+    Referenz: Undocumented Z80 Documented, Abschnitt 4.1, S. 15.
+
+6. BIT (HL): R5/R3 folgen nicht dem beschriebenen internen Flag-Latch [undokumentiertes, modellabhängiges Verhalten]
+    Stelle: sim_cb40(), etwa Zeilen 1420-1442.
+    Der Code übernimmt R5/R3 wie für Register-BIT aus dem maskierten Speicherwert. Das Dokument beschreibt für BIT (HL) einen internen Zustand/Latch, dessen Wert nicht allgemein dem getesteten Byte entspricht und unter anderem von vorherigen Operationen abhängen kann. Die Implementierung bildet diesen Effekt nicht ab. Die Quelle bezeichnet die Beschreibung selbst als teilweise experimentell; Befund daher als modell-/chipabhängig behandeln.
+    Referenz: Undocumented Z80 Documented, Abschnitt 4.1, S. 15.
+
+7. RLCA/RRCA/RLA/RRA aktualisieren R5/R3 nicht aus dem neuen A [undokumentiertes Flagverhalten]
+    Stellen: sim_07(), sim_0f(), sim_17(), sim_1f(), etwa Zeilen 433-441, 491-499, 517-525 und 538-547.
+    Die dokumentierten Flags S, Z, P/V bleiben bei diesen Akkumulatorrotationen erhalten; H/N werden gelöscht und Carry neu gesetzt. Auf NMOS-Z80 werden die undokumentierten Flags R5/R3 aus dem neuen Akkumulator gebildet. Der Code ändert nur H, N und C und belässt R5/R3 auf ihren alten Werten. Diese konkrete Rotationseigenschaft wird in den bereitgestellten Dokumenten nicht ausführlich behandelt; sie ist als zusätzlicher NMOS-Kompatibilitätshinweis zu verstehen.
+
+8. Power-on-Zustand wird nicht als Hardware-Power-on-Zustand modelliert [Abgrenzung]
+    Stelle: Reset(), etwa Zeilen 1628-1633.
+    Reset() setzt alle Register auf 0. The Undocumented Z80 Documented, Abschnitt 2.4, weist auf chipabhängige/undefinierte Power-on-Werte hin und nennt AF/SP=FFFFh als beobachtetes Verhalten bestimmter Geräte. Das ist kein eindeutiger allgemeiner Sollwert für einen Software-Reset; daher ist dies nur dann ein Fehler, wenn Reset() ausdrücklich einen realen Einschaltzustand darstellen soll.
+
+Hinweise zu bereits passenden Teilen
+-----------------------------------
+- SLL (undokumentiertes CB-Opcodefeld) ist in do_cb_rotate_shift_operation() vorhanden.
+- LDI/LDD/LDIR/LDDR und CPI/CPD/CPIR/CPDR bilden die im Zusatzdokument beschriebenen R5/R3-Bildungen und Wiederholbedingungen im Wesentlichen ab.
+- ED63/ED6B sind über die regulären ED-Handler implementiert.
+- Registerpräfixe IXH/IXL und IYH/IYL werden in den allgemeinen Registerzugriffen grundsätzlich unterstützt; Sonderformen mit (IX/IY+d) benötigen eigene Regeln.
+- Die ED-Reg-I/O-Befehle verwenden BC als vollständige Portadresse. Für unmittelbares IN A,(n)/OUT (n),A wird A als High-Byte ergänzt. INI/IND verwenden BC mit dekrementiertem B; OUTI/OUTD verwenden BC vor dem Dekrement von B.
+
+Empfohlene Reihenfolge der Korrekturen
+-------------------------------------
+1. RETI/RETN und die Unterscheidung IM 0/1.
+2. DDCB/FDCB Read-modify-write plus BIT-Flagbits.
+3. Erst danach modellabhängige Latch-Details und gegebenenfalls feinere Buszyklus-Simulation.

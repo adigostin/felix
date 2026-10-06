@@ -178,14 +178,14 @@ public:
 		return S_OK;
 	}
 
-	uint8_t decode_u8()
+	__forceinline uint8_t FetchU8()
 	{
 		uint8_t val = memory->read(regs.pc);
 		regs.pc++;
 		return val;
 	}
 
-	uint16_t decode_u16()
+	__forceinline uint16_t FetchU16()
 	{
 		uint16_t val = memory->read_uint16(regs.pc);
 		regs.pc += 2;
@@ -193,12 +193,12 @@ public:
 	}
 
 	// Calculates the address of (hl), or (ix+d), or (iy+d)
-	uint16_t decode_mem_hl (hl_ix_iy xy)
+	__forceinline uint16_t FetchMemHLIXIY (hl_ix_iy xy)
 	{
 		if (xy == hl_ix_iy::hl)
 			return regs.main.hl;
 
-		int8_t disp = (int8_t)decode_u8();
+		int8_t disp = (int8_t)FetchU8();
 		uint16_t addr = (xy == hl_ix_iy::ix) ? regs.ix : regs.iy;
 		uint16_t dispu16 = (uint16_t)(int16_t)disp;
 		addr = addr + dispu16;
@@ -314,7 +314,7 @@ public:
 	// ld bc/de/hl/sp, nn
 	bool sim_01 (hl_ix_iy xy, uint8_t opcode)
 	{
-		uint16_t val = decode_u16();
+		uint16_t val = FetchU16();
 		uint8_t i = (opcode & 0x30) >> 4;
 		regs.bc_de_hl_sp (xy, i) = val;
 		if (i == 3)
@@ -357,7 +357,7 @@ public:
 		}
 		else
 		{
-			uint16_t addr = decode_mem_hl(xy);
+			uint16_t addr = FetchMemHLIXIY(xy);
 			if (!memory->try_read_request(addr, before, cpu_time))
 				return false;
 			after = before + 1;
@@ -388,7 +388,7 @@ public:
 		}
 		else
 		{
-			uint16_t addr = decode_mem_hl(xy);
+			uint16_t addr = FetchMemHLIXIY(xy);
 			if (!memory->try_read_request(addr, before, cpu_time))
 				return false;
 			after = before - 1;
@@ -411,14 +411,14 @@ public:
 		uint8_t i = (opcode >> 3) & 7;
 		if (i != 6)
 		{
-			uint8_t val = decode_u8();
+			uint8_t val = FetchU8();
 			regs.r8(i, xy) = val;
 			cpu_time += 3;
 		}
 		else
 		{
-			uint16_t addr = decode_mem_hl(xy);
-			uint8_t val = decode_u8();
+			uint16_t addr = FetchMemHLIXIY(xy);
+			uint8_t val = FetchU8();
 			if (!memory->try_write_request(addr, val, cpu_time))
 				return false;
 			cpu_time += (xy == hl_ix_iy::hl) ? 6 : 11;
@@ -496,7 +496,7 @@ public:
 	// djnz e
 	bool sim_10 (hl_ix_iy xy, uint8_t opcode)
 	{
-		int8_t e = (int8_t)decode_u8();
+		int8_t e = (int8_t)FetchU8();
 		regs.b()--;
 		if (regs.b())
 		{
@@ -522,7 +522,7 @@ public:
 	// jr e
 	bool sim_18 (hl_ix_iy xy, uint8_t opcode)
 	{
-		uint8_t e = decode_u8();
+		uint8_t e = FetchU8();
 		regs.pc = regs.pc + (uint16_t)(int16_t)(int8_t)e;
 		cpu_time += 8;
 		return true;
@@ -543,7 +543,7 @@ public:
 	bool sim_20 (hl_ix_iy xy, uint8_t opcode)
 	{
 		uint8_t c = (opcode >> 3) & 3;
-		uint8_t e = decode_u8();
+		uint8_t e = FetchU8();
 		bool jump;
 		switch(c)
 		{
@@ -566,7 +566,7 @@ public:
 	// ld (nn), hl
 	bool sim_22 (hl_ix_iy xy, uint8_t opcode)
 	{
-		uint16_t addr = decode_u16();
+		uint16_t addr = FetchU16();
 		if (!memory->try_write_request (addr, regs.hl(xy), cpu_time))
 			return false;
 		cpu_time += 12;
@@ -584,7 +584,7 @@ public:
 	// ld hl, (nn)
 	bool sim_2a (hl_ix_iy xy, uint8_t opcode)
 	{
-		uint16_t addr = decode_u16();
+		uint16_t addr = FetchU16();
 		uint16_t val;
 		if (!memory->try_read_request (addr, val, cpu_time))
 			return false;
@@ -607,7 +607,7 @@ public:
 	// ld (nn), a
 	bool sim_32 (hl_ix_iy xy, uint8_t opcode)
 	{
-		uint16_t addr = decode_u16();
+		uint16_t addr = FetchU16();
 		if (!memory->try_write_request (addr, regs.main.a, cpu_time))
 			return false;
 		cpu_time += 9;
@@ -628,7 +628,7 @@ public:
 	// la a, (nn)
 	bool sim_3a (hl_ix_iy xy, uint8_t opcode)
 	{
-		uint16_t addr = decode_u16();
+		uint16_t addr = FetchU16();
 		uint8_t val;
 		if (!memory->try_read_request(addr, val, cpu_time))
 			return false;
@@ -657,7 +657,7 @@ public:
 		{
 			// ld (hl)/(ix+d)/(iy+d), r8
 			uint8_t value = regs.r8(src, hl_ix_iy::hl); // source reg is here the regular h/l; the DD/FD prefix applies only to the destination
-			uint16_t dest_addr = decode_mem_hl(xy);
+			uint16_t dest_addr = FetchMemHLIXIY(xy);
 			if (!memory->try_write_request(dest_addr, value, cpu_time))
 				return false;
 			cpu_time += ((xy == hl_ix_iy::hl) ? 3 : 11);
@@ -665,7 +665,7 @@ public:
 		else if (src == 6)
 		{
 			// ld r8, (hl)/(ix+d)/(iy+d)
-			uint16_t src_addr = decode_mem_hl(xy);
+			uint16_t src_addr = FetchMemHLIXIY(xy);
 			uint8_t value;
 			if (!memory->try_read_request(src_addr, value, cpu_time))
 				return false;
@@ -698,7 +698,7 @@ public:
 		}
 		else
 		{
-			uint16_t addr = decode_mem_hl(xy);
+			uint16_t addr = FetchMemHLIXIY(xy);
 			if (!memory->try_read_request(addr, other, cpu_time))
 				return false;
 			cpu_time += ((xy == hl_ix_iy::hl) ? 3 : 11);
@@ -744,7 +744,7 @@ public:
 	bool sim_c2 (hl_ix_iy xy, uint8_t opcode)
 	{
 		uint8_t cc = (opcode >> 3) & 7;
-		uint16_t addr = decode_u16();
+		uint16_t addr = FetchU16();
 		if (condition_met(cc))
 			regs.pc = addr;
 		cpu_time += 6;
@@ -754,7 +754,7 @@ public:
 	// jp nn
 	bool sim_c3 (hl_ix_iy xy, uint8_t opcode)
 	{
-		uint16_t val = decode_u16();
+		uint16_t val = FetchU16();
 		regs.pc = val;
 		cpu_time += 6;
 		return true;
@@ -764,7 +764,7 @@ public:
 	bool sim_c4 (hl_ix_iy xy, uint8_t opcode)
 	{
 		uint8_t cc = (opcode >> 3) & 7;
-		uint16_t addr = decode_u16();
+		uint16_t addr = FetchU16();
 		if (condition_met(cc))
 		{
 			if (!memory->try_write_request(regs.sp - 2, regs.pc, cpu_time))
@@ -795,7 +795,7 @@ public:
 	// add/adc/sub/sbc/and/xor/or/cp imm8
 	bool sim_c6 (hl_ix_iy xy, uint8_t opcode)
 	{
-		uint8_t other = decode_u8();
+		uint8_t other = FetchU8();
 		uint8_t operation = (opcode >> 3) & 7;
 		do_reg_a_operation (operation, other);
 		cpu_time += 3;
@@ -838,7 +838,7 @@ public:
 	// call nn
 	bool sim_cd (hl_ix_iy xy, uint8_t opcode)
 	{
-		uint16_t addr = decode_u16();
+		uint16_t addr = FetchU16();
 		if (!memory->try_write_request(regs.sp - 2, regs.pc, cpu_time))
 			return false;
 		regs.sp -= 2;
@@ -850,7 +850,7 @@ public:
 	// out (n), a
 	bool sim_d3 (hl_ix_iy xy, uint8_t opcode)
 	{
-		uint8_t val = decode_u8();
+		uint8_t val = FetchU8();
 		if (!io->try_write_request(val | (regs.main.a << 8), regs.main.a, cpu_time))
 			return false;
 		cpu_time += 7;
@@ -869,7 +869,7 @@ public:
 	// in a, (n)
 	bool sim_db (hl_ix_iy xy, uint8_t opcode)
 	{
-		uint8_t val = decode_u8();
+		uint8_t val = FetchU8();
 		if (!io->try_read_request (val | (regs.main.a << 8), regs.main.a, cpu_time))
 			return false;
 		cpu_time += 7;
@@ -1134,7 +1134,7 @@ public:
 	bool sim_ed43 (uint8_t opcode)
 	{
 		uint8_t i = (opcode >> 4) & 3;
-		uint16_t addr = decode_u16();
+		uint16_t addr = FetchU16();
 		uint16_t val = regs.bc_de_hl_sp(hl_ix_iy::hl, i);
 			if (!memory->try_write_request(addr, val, cpu_time))
 			return false;
@@ -1146,7 +1146,7 @@ public:
 	bool sim_ed4B (uint8_t opcode)
 	{
 		uint8_t i = (opcode >> 4) & 3;
-		uint16_t addr = decode_u16();
+		uint16_t addr = FetchU16();
 		uint16_t value;
 		if (!memory->try_read_request(addr, value, cpu_time))
 			return false;
@@ -1562,7 +1562,7 @@ public:
 		// At the moment the CPU is the only one changing the memory state (we have no DMA chip, for example).
 		// This allows us to simply read the memory, without checking how far in time we simulated it.
 		// This single optimization improves simulation speed (in Release) by ~15%.
-		uint8_t opcode = decode_u8();
+		uint8_t opcode = FetchU8();
 		cpu_time += 4;
 		regs.r = (regs.r & 0x80) | ((regs.r + 1) & 0x7f);
 
@@ -1579,7 +1579,7 @@ public:
 		bool executed;
 		if (opcode == 0xed)
 		{
-			opcode = decode_u8();
+			opcode = FetchU8();
 			cpu_time += 4;
 			regs.r = (regs.r & 0x80) | ((regs.r + 1) & 0x7f);
 			auto handler = dispatch_ed[opcode];
@@ -1590,8 +1590,8 @@ public:
 		}
 		else if (opcode == 0xcb)
 		{
-			uint16_t memhlxy_addr = decode_mem_hl(xy);
-			opcode = decode_u8();
+			uint16_t memhlxy_addr = FetchMemHLIXIY(xy);
+			opcode = FetchU8();
 			cpu_time += 4;
 			if (xy == hl_ix_iy::hl)
 				regs.r = (regs.r & 0x80) | ((regs.r + 1) & 0x7f);
