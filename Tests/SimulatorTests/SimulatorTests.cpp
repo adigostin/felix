@@ -15,9 +15,10 @@ class TestInterruptDevice : public IDevice
 {
 	bool _pending = false;
 	uint8_t _address;
+	uint64_t _irqTime;
 
 public:
-	TestInterruptDevice(uint8_t address) : _address(address) { }
+	TestInterruptDevice(uint8_t address, uint64_t irqTime = 0) : _address(address), _irqTime(irqTime) { }
 
 	virtual HRESULT STDMETHODCALLTYPE Reset(SpectrumVariant variant) override
 	{
@@ -36,7 +37,7 @@ public:
 
 	virtual bool STDMETHODCALLTYPE irq_pending(uint64_t& irq_time, uint8_t& irq_address) const override
 	{
-		irq_time = 0;
+		irq_time = _irqTime;
 		irq_address = _address;
 		return _pending;
 	}
@@ -1077,8 +1078,6 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(ld_a_i)
 		{
-			// PDF says: "If an interrupt occurs during execution of this instruction, the Parity flag contains a 0."
-			// We're not testing this at the moment.
 			memory.write (0, { 0xED, 0x57 });
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(2, regs->pc);
@@ -1104,12 +1103,29 @@ namespace Z80SimulatorTests
 			regs->pc = 0;
 			SimulateOne();
 			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
+
+			cpu->Reset();
+			TestInterruptDevice device(0xFF, 1);
+			device.RequestInterrupt();
+			irq_line.interrupting_devices.try_push_back(&device);
+			memory.write(0, { 0xED, 0x57 });
+			regs->im = 1;
+			regs->iff1 = true;
+			regs->iff2 = true;
+			regs->sp = 0x1000;
+			SimulateOne();
+			bool parity_after_ld = regs->main.f.pv;
+			SimulateOne();
+			uint16_t pc_after_interrupt = regs->pc;
+			bool parity_after_interrupt = regs->main.f.pv;
+			irq_line.interrupting_devices.remove([&device](auto d) { return d == &device; });
+			Assert::IsFalse(parity_after_ld);
+			Assert::AreEqual<uint16_t>(0x38, pc_after_interrupt);
+			Assert::IsFalse(parity_after_interrupt);
 		}
 
 		TEST_METHOD(ld_a_r)
 		{
-			// PDF says: "If an interrupt occurs during execution of this instruction, the Parity flag contains a 0."
-			// We're not testing this at the moment.
 			memory.write (0, { 0xED, 0x5F });
 			SimulateOne();
 			Assert::AreEqual<uint16_t>(2, regs->pc);
@@ -1136,6 +1152,25 @@ namespace Z80SimulatorTests
 			regs->pc = 0;
 			SimulateOne();
 			Assert::AreEqual<uint8_t>(1, regs->main.f.s);
+
+			cpu->Reset();
+			TestInterruptDevice device(0xFF, 1);
+			device.RequestInterrupt();
+			irq_line.interrupting_devices.try_push_back(&device);
+			memory.write(0, { 0xED, 0x5F });
+			regs->im = 1;
+			regs->iff1 = true;
+			regs->iff2 = true;
+			regs->sp = 0x1000;
+			SimulateOne();
+			bool parity_after_ld = regs->main.f.pv;
+			SimulateOne();
+			uint16_t pc_after_interrupt = regs->pc;
+			bool parity_after_interrupt = regs->main.f.pv;
+			irq_line.interrupting_devices.remove([&device](auto d) { return d == &device; });
+			Assert::IsFalse(parity_after_ld);
+			Assert::AreEqual<uint16_t>(0x38, pc_after_interrupt);
+			Assert::IsFalse(parity_after_interrupt);
 		}
 
 		TEST_METHOD(ldi)

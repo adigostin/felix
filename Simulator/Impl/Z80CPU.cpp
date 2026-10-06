@@ -1067,12 +1067,19 @@ public:
 	// ld a, r (ED 5F)
 	bool sim_ed57 (uint8_t opcode)
 	{
+		bool interrupted_during = false;
+		if (regs.iff1 && regs.iff2)
+		{
+			uint8_t irq_address;
+			if (!irq->TryPeekIrqAtTimePoint(interrupted_during, irq_address, cpu_time + 1))
+				return false;
+		}
+
 		regs.main.a = (opcode == 0x57) ? regs.i : regs.r;
 		regs.main.f.val = (regs.main.a & 0xA8) // S, X5, X3
 			| (regs.main.a ? 0 : 0x40) // Z
-			| (regs.iff2 ? 4 : 0) // P/V
+			| ((regs.iff2 && !interrupted_during) ? 4 : 0) // P/V
 			| (regs.main.f.val & 1); // C
-		// TODO: If an interrupt occurs during execution of this instruction, the parity flag contains a 0.
 		cpu_time += 1;
 		return true;
 	}
@@ -1480,7 +1487,7 @@ public:
 		{
 			bool interrupted;
 			uint8_t irq_address;
-			if (!irq->try_poll_irq_at_time_point(interrupted, irq_address, cpu_time))
+			if (!irq->TryPollIrqAtTimePoint(interrupted, irq_address, cpu_time))
 				return false;
 
 			if (interrupted)

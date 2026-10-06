@@ -297,7 +297,7 @@ struct __declspec(novtable) IrqLine
 	// When returning true, "interrupted" is set to true if a device requested an interrupt
 	// (in which case the functin also sets "irq_address"), and to false if not.
 	//
-	bool try_poll_irq_at_time_point (bool& interrupted, uint8_t& irq_address, UINT64 cpu_time)
+	bool TryPollIrqAtTimePoint (bool& interrupted, uint8_t& irq_address, UINT64 cpu_time)
 	{
 		for (auto d : interrupting_devices)
 		{
@@ -315,6 +315,29 @@ struct __declspec(novtable) IrqLine
 		}
 
 		// All interrupting devices have caught up with the CPU and none has a pending interrupt at that time point.
+		interrupted = false;
+		return true;
+	}
+
+	bool TryPeekIrqAtTimePoint (bool& interrupted, uint8_t& irq_address, UINT64 cpu_time)
+	{
+		for (auto d : interrupting_devices)
+		{
+			if (d->_time < cpu_time)
+			{
+				d->SimulateDeviceTo(cpu_time);
+				if (d->_time < cpu_time)
+					return false;
+			}
+
+			UINT64 irq_time;
+			if (d->irq_pending(irq_time, irq_address) && irq_time <= cpu_time)
+			{
+				interrupted = true;
+				return true;
+			}
+		}
+
 		interrupted = false;
 		return true;
 	}
