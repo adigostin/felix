@@ -3267,34 +3267,46 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(UndocumentedNEGAliasIsExecuted)
 		{
-			memory.write(0, { 0xED, 0x4C }); // undocumented NEG alias
-			regs->main.a = 1;
-			SimulateOne();
-			Assert::AreEqual<uint8_t>(0xFF, regs->main.a);
-			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::r5 | z80_flag::r3 | z80_flag::h | z80_flag::n | z80_flag::c, regs->main.f.val);
+			const uint8_t aliases[] = { 0x4C, 0x54, 0x5C, 0x64, 0x6C, 0x74, 0x7C };
+			for (uint8_t opcode : aliases)
+			{
+				cpu->Reset();
+				memory.write(0, { 0xED, opcode });
+				regs->main.a = 1;
+				SimulateOne();
+				Assert::AreEqual<uint8_t>(0xFF, regs->main.a);
+				Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::r5 | z80_flag::r3 | z80_flag::h | z80_flag::n | z80_flag::c, regs->main.f.val);
+			}
 		}
 
 		TEST_METHOD(UndocumentedRETNAliasRestoresIff1)
 		{
-			memory.write(0, { 0xED, 0x55 }); // undocumented RETN alias
-			memory.write_uint16(0x1000, 0x1234);
-			regs->sp = 0x1000;
-			regs->iff1 = false;
-			regs->iff2 = true;
-			SimulateOne();
-			Assert::AreEqual<uint16_t>(0x1234, regs->pc);
-			Assert::AreEqual<uint16_t>(0x1002, regs->sp);
-			Assert::IsTrue(regs->iff1);
+			const uint8_t aliases[] = { 0x55, 0x5D, 0x65, 0x6D, 0x75, 0x7D };
+			for (uint8_t opcode : aliases)
+			{
+				cpu->Reset();
+				memory.write(0, { 0xED, opcode });
+				memory.write_uint16(0x1000, 0x1234);
+				regs->sp = 0x1000;
+				regs->iff1 = false;
+				regs->iff2 = true;
+				SimulateOne();
+				Assert::AreEqual<uint16_t>(0x1234, regs->pc);
+				Assert::AreEqual<uint16_t>(0x1002, regs->sp);
+				Assert::IsTrue(regs->iff1);
+			}
 		}
 
 		TEST_METHOD(ED70ReadsIoAndSetsFlagsWithoutARegisterDestination)
 		{
 			memory.write(0, { 0xED, 0x70 }); // IN (C)
 			regs->main.bc = 0x1234;
+			regs->main.a = 0x5A;
 			regs->main.f.c = 1;
 			io_bus.write(0x1234, 0xA9);
 			SimulateOne();
 			Assert::AreEqual<uint64_t>(12, cpu->cpu_time);
+			Assert::AreEqual<uint8_t>(0x5A, regs->main.a);
 			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::r5 | z80_flag::r3 | z80_flag::pv | z80_flag::c, regs->main.f.val);
 		}
 
@@ -3412,6 +3424,41 @@ namespace Z80SimulatorTests
 
 			Assert::IsTrue(executed);
 			Assert::IsTrue(ram->_time >= 8 && ram->_time <= 12);
+			Assert::AreEqual<uint64_t>(12, cpu->cpu_time);
+		}
+
+		TEST_METHOD(UndocumentedInterruptModeAliasesAreExecuted)
+		{
+			struct mode_alias
+			{
+				uint8_t opcode;
+				uint8_t mode;
+			};
+			const mode_alias aliases[] = {
+				{ 0x4E, 0 }, { 0x66, 0 }, { 0x6E, 0 },
+				{ 0x76, 1 },
+				{ 0x7E, 2 }
+			};
+			for (const auto& alias : aliases)
+			{
+				cpu->Reset();
+				memory.write(0, { 0xED, alias.opcode });
+				SimulateOne();
+				Assert::AreEqual<uint8_t>(alias.mode, regs->im);
+			}
+		}
+
+		TEST_METHOD(ED71WritesZeroToIoPort)
+		{
+			memory.write(0, { 0xED, 0x71 }); // OUT (C),0
+			regs->main.bc = 0x1234;
+			regs->main.f.val = z80_flag::s | z80_flag::c;
+			io_bus.write(0x1234, 0xA5);
+
+			SimulateOne();
+
+			Assert::AreEqual<uint8_t>(0, io_bus.read(0x1234));
+			Assert::AreEqual<uint8_t>(z80_flag::s | z80_flag::c, regs->main.f.val);
 			Assert::AreEqual<uint64_t>(12, cpu->cpu_time);
 		}
 	};
