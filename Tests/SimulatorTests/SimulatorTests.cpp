@@ -3529,5 +3529,55 @@ namespace Z80SimulatorTests
 				Assert::AreEqual<uint16_t>(0x1234, prefix == 0xDD ? regs->ix : regs->iy);
 			}
 		}
+
+		TEST_METHOD(IgnoredIndexPrefixesAddFourCyclesForAllListedOpcodes)
+		{
+			const uint8_t opcodes[] = {
+				0x02, 0x12, 0x0A, 0x1A,
+				0x07, 0x08, 0x0F, 0x17, 0x1F, 0x2F, 0x37, 0x3F, 0xD9, 0xEB, 0xF3, 0xFB,
+				0x10, 0x18, 0x20, 0x28, 0x30, 0x38,
+				0x32, 0x3A, 0x76,
+				0xC0, 0xC8, 0xD0, 0xD8, 0xE0, 0xE8, 0xF0, 0xF8,
+				0xC2, 0xCA, 0xD2, 0xDA, 0xE2, 0xEA, 0xF2, 0xFA, 0xC3,
+				0xC4, 0xCC, 0xD4, 0xDC, 0xE4, 0xEC, 0xF4, 0xFC, 0xCD,
+				0xC6, 0xCE, 0xD6, 0xDE, 0xE6, 0xEE, 0xF6, 0xFE,
+				0xC7, 0xCF, 0xD7, 0xDF, 0xE7, 0xEF, 0xF7, 0xFF,
+				0xD3, 0xDB
+			};
+			const uint8_t prefixes[] = { 0xDD, 0xFD };
+			const uint8_t flag_values[] = { 0, 0xFF };
+			const uint8_t b_values[] = { 1, 2 };
+
+			auto run = [&](uint8_t prefix, uint8_t opcode, uint8_t flags, uint8_t b)
+			{
+				cpu->Reset();
+				regs->main.a = 0x55;
+				regs->main.bc = 0x2000;
+				regs->b() = b;
+				regs->main.de = 0x2100;
+				regs->main.hl = 0x2200;
+				regs->main.f.val = flags;
+				regs->sp = 0x8000;
+				if (prefix)
+					memory.write(0, { prefix, opcode, 0, 0 });
+				else
+					memory.write(0, { opcode, 0, 0 });
+				SimulateOne();
+				return cpu->cpu_time;
+			};
+
+			for (uint8_t opcode : opcodes)
+			{
+				for (uint8_t flags : flag_values)
+				{
+					for (uint8_t b : b_values)
+					{
+						uint64_t unprefixed_time = run(0, opcode, flags, b);
+						for (uint8_t prefix : prefixes)
+							Assert::AreEqual<uint64_t>(unprefixed_time + 4, run(prefix, opcode, flags, b));
+					}
+				}
+			}
+		}
 	};
 }
