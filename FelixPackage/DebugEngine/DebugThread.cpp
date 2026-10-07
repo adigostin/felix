@@ -49,7 +49,7 @@ public:
 			|| riid == IID_IDebugThread157
 			|| riid == IID_IExternalConnection)
 			return E_NOINTERFACE;
-		
+
 		for (auto& i : HardcodedRundownIFsOfInterest)
 			if (*i == riid)
 				return E_NOINTERFACE;
@@ -117,13 +117,13 @@ public:
 	{
 		if (dwFields & TPF_STATE)
 		{
-			ptp->dwThreadState = THREADSTATE_RUNNING;
+			ptp->dwThreadState = simulator->Running_HR() == S_OK ? THREADSTATE_RUNNING : THREADSTATE_STOPPED;
 			ptp->dwFields |= TPF_STATE;
 			dwFields &= ~TPF_STATE;
 		}
 
 		//LOG_HR_IF(E_NOTIMPL, (bool)dwFields);
-		
+
 		return S_OK;
 	}
 
