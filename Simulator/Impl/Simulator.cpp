@@ -17,6 +17,7 @@ static uint32_t wndClassRefCount;
 HRESULT STDMETHODCALLTYPE MakeHC91ROM (Bus* memory_bus, Bus* io_bus, LPCWSTR const* romFilenames, size_t romFilenameCount, SpectrumVariant variant, wistd::unique_ptr<IMemoryDevice>* ppDevice);
 HRESULT STDMETHODCALLTYPE MakeHC91RAM (Bus* memory_bus, Bus* io_bus, SpectrumVariant variant, wistd::unique_ptr<IMemoryDevice>* ppDevice);
 HRESULT STDMETHODCALLTYPE MakeBeeper (Bus* io_bus, IXAudio2* xaudio2, SpectrumVariant variant, wistd::unique_ptr<IDevice>* ppDevice);
+HRESULT STDMETHODCALLTYPE MakeAYChip (Bus* io_bus, IXAudio2* xaudio2, SpectrumVariant variant, wistd::unique_ptr<IDevice>& ppDevice);
 
 using unique_cotaskmem_bitmapinfo = wil::unique_any<BITMAPINFO*, decltype(&::CoTaskMemFree), ::CoTaskMemFree>;
 
@@ -76,7 +77,7 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, ITap
 	com_ptr<ConnectionPointImpl<ITapPlayNotifySink>> _tapPlayHandlers;
 
 	using RunOnSimulatorThreadFunction = HRESULT(*)(void*);
-	stdext::inplace_function<HRESULT(), 64> _runOnSimulatorThreadFunction;
+	stdext::inplace_function<HRESULT(), 128> _runOnSimulatorThreadFunction;
 	HRESULT            _runOnSimulatorThreadResult;
 	wil::unique_handle _run_on_simulator_thread_request;
 	wil::unique_handle _runOnSimulatorThreadComplete;
@@ -95,6 +96,7 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, ITap
 	wistd::unique_ptr<IMemoryDevice> _romDevice;
 	wistd::unique_ptr<IMemoryDevice> _ramDevice;
 	wistd::unique_ptr<IDevice> _beeper;
+	wistd::unique_ptr<IDevice> _ayChip;
 	wistd::unique_ptr<ITapPlayerDevice> _tapPlayer;
 	vector_nothrow<IDevice*> _active_devices_;
 	bool _showCRTSnapshot = false;
@@ -133,6 +135,8 @@ public:
 
 		hr = MakeBeeper(&ioBus, _xaudio2, _spectrumVariant, &_beeper); RETURN_IF_FAILED(hr);
 
+		hr = MakeAYChip(&ioBus, _xaudio2, _spectrumVariant, _ayChip); RETURN_IF_FAILED(hr);
+
 		hr = MakeTapPlayer(&ioBus, _xaudio2, this, _spectrumVariant, _tapPlayer); RETURN_IF_FAILED(hr);
 
 		if (romFilenames)
@@ -144,7 +148,7 @@ public:
 		hr = MakeHC91RAM (&memoryBus, &ioBus, _spectrumVariant, &_ramDevice); RETURN_IF_FAILED(hr);
 
 		bool reserved = _active_devices_.try_reserve(20); RETURN_HR_IF(E_OUTOFMEMORY, !reserved);
-		_active_devices_.try_push_back({ _screen.get(), _keyboard.get(), _ramDevice.get(), _beeper.get(), _tapPlayer.get() });
+		_active_devices_.try_push_back({ _screen.get(), _keyboard.get(), _ramDevice.get(), _beeper.get(), _ayChip.get(), _tapPlayer.get() });
 		if (_romDevice)
 			_active_devices_.try_push_back(_romDevice.get());
 
@@ -223,6 +227,7 @@ public:
 
 		// Destroy the devices using XAudio before destroying the mastering voice
 		_beeper.reset();
+		_ayChip.reset();
 		_tapPlayer.reset();
 		if (_mastering_voice)
 		{
@@ -801,7 +806,7 @@ public:
 		return S_OK;
 	}
 
-	HRESULT RunOnSimulatorThread (stdext::inplace_function<HRESULT(), 64> fun)
+	HRESULT RunOnSimulatorThread (stdext::inplace_function<HRESULT(), 128> fun)
 	{
 		_runOnSimulatorThreadFunction = std::move(fun);
 
@@ -1407,6 +1412,7 @@ public:
 		SpectrumVariant snapshotVariant;
 		uint8_t pagingState;
 		uint16_t pc;
+		const z80_header_v23* header23 = nullptr;
 		if (header.pc != 0)
 		{
 			snapshotVariant = SpectrumVariant48K;
@@ -1423,7 +1429,7 @@ public:
 				return SetMalformedErrorInfo(L"Unsupported extended header length.");
 			if (inEnd - inPtr < (2 + header23_len))
 				return SetMalformedErrorInfo(L"Header v2/3 too short.");
-			auto* header23 = (const z80_header_v23*)inPtr;
+			header23 = (const z80_header_v23*)inPtr;
 			pagingState = header23->byte_35;
 			inPtr += (2 + header23_len);
 			uint8_t pageMask;
@@ -1435,7 +1441,7 @@ public:
 		POINT beam;
 
 		// It's ok to catch by reference since the call to RunOnSimulatorThread is blocking (returns when the work is complete).
-		hr = RunOnSimulatorThread ([&]
+		hr = RunOnSimulatorThread([&, header23]
 			{
 				HRESULT hr;
 
@@ -1454,6 +1460,15 @@ public:
 						hr = _ramDevice->WriteMemory(0xC000, 0x4000, outBuffer.get() + bank * 0x4000); RETURN_IF_FAILED(hr);
 					}
 					ioBus.write(0x7FFD, pagingState);
+					if (header23 && header23->ay_in_use)
+					{
+						for (uint8_t reg = 0; reg < _countof(header23->sound_chip); reg++)
+						{
+							ioBus.write(0xFFFD, reg);
+							ioBus.write(0xBFFD, header23->sound_chip[reg]);
+						}
+						ioBus.write(0xFFFD, header23->out_fffd);
+					}
 				}
 				else if (snapshotVariant == SpectrumVariant48K)
 				{

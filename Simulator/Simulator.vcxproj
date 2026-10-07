@@ -101,6 +101,7 @@
     <ClInclude Include="Simulator.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Impl\AYChip.cpp" />
     <ClCompile Include="Impl\Beeper.cpp" />
     <ClCompile Include="Impl\HC_RAM.cpp" />
     <ClCompile Include="Impl\HC_ROM.cpp" />
