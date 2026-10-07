@@ -135,14 +135,10 @@ public:
 		if (Fields & PIF_FLAGS)
 		{
 			pProcessInfo->Flags = 0;
-			//if (_engineAttached)
-			{
-				pProcessInfo->Flags |= PIFLAG_DEBUGGER_ATTACHED;
-				//if (_running)
-				pProcessInfo->Flags |= PIFLAG_PROCESS_RUNNING;
-				//else
-				//	pProcessInfo->Flags |= PIFLAG_PROCESS_STOPPED;
-			}
+			pProcessInfo->Flags |= PIFLAG_DEBUGGER_ATTACHED;
+			pProcessInfo->Flags |= simulator->Running_HR() == S_OK
+				? PIFLAG_PROCESS_RUNNING
+				: PIFLAG_PROCESS_STOPPED;
 			pProcessInfo->Fields |= PIF_FLAGS;
 		}
 

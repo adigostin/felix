@@ -28,15 +28,15 @@ struct Z80CodeContext : public IDebugCodeContext2, IFelixCodeContext
 			RETURN_HR(E_NOINTERFACE);
 		return S_OK;
 	}
-	
+
 	#pragma region IFelixCodeContext
 	virtual bool PhysicalMemorySpace() const override { return _physicalMemorySpace; }
 
 	virtual UINT64 Address() const override { return _addr; }
 	#pragma endregion
-	
+
 	#pragma region IUnknown
-	virtual HRESULT __stdcall QueryInterface(REFIID riid, void** ppvObject) override
+	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
 	{
 		RETURN_HR_IF(E_POINTER, !ppvObject);
 		*ppvObject = NULL;
@@ -66,7 +66,7 @@ struct Z80CodeContext : public IDebugCodeContext2, IFelixCodeContext
 	#pragma endregion
 
 	#pragma region IDebugMemoryContext2
-	virtual HRESULT __stdcall GetName(BSTR* pbstrName) override
+	virtual HRESULT STDMETHODCALLTYPE GetName(BSTR* pbstrName) override
 	{
 		RETURN_HR(E_NOTIMPL);
 	}
@@ -78,12 +78,12 @@ struct Z80CodeContext : public IDebugCodeContext2, IFelixCodeContext
 			sb << fixed_width_hex((uint16_t)_addr) << 'h';
 		else
 			sb << _addr;
-		
+
 		*bstr = SysAllocStringLen (sb.data(), sb.size()); RETURN_IF_NULL_ALLOC(*bstr);
 		return S_OK;
 	}
 
-	virtual HRESULT __stdcall GetInfo(CONTEXT_INFO_FIELDS dwFields, CONTEXT_INFO* pInfo) override
+	virtual HRESULT STDMETHODCALLTYPE GetInfo(CONTEXT_INFO_FIELDS dwFields, CONTEXT_INFO* pInfo) override
 	{
 		pInfo->dwFields = 0;
 
@@ -127,7 +127,7 @@ struct Z80CodeContext : public IDebugCodeContext2, IFelixCodeContext
 		return S_OK;
 	}
 
-	virtual HRESULT __stdcall Add(UINT64 dwCount, IDebugMemoryContext2** ppMemCxt) override
+	virtual HRESULT STDMETHODCALLTYPE Add(UINT64 dwCount, IDebugMemoryContext2** ppMemCxt) override
 	{
 		UINT64 newAddr;
 		if (!_physicalMemorySpace)
@@ -141,7 +141,7 @@ struct Z80CodeContext : public IDebugCodeContext2, IFelixCodeContext
 		return S_OK;
 	}
 
-	virtual HRESULT __stdcall Subtract(UINT64 dwCount, IDebugMemoryContext2** ppMemCxt) override
+	virtual HRESULT STDMETHODCALLTYPE Subtract(UINT64 dwCount, IDebugMemoryContext2** ppMemCxt) override
 	{
 		UINT64 newAddr;
 		if (!_physicalMemorySpace)
@@ -155,29 +155,51 @@ struct Z80CodeContext : public IDebugCodeContext2, IFelixCodeContext
 		return S_OK;
 	}
 
-	virtual HRESULT __stdcall Compare(CONTEXT_COMPARE compare, IDebugMemoryContext2** rgpMemoryContextSet, DWORD dwMemoryContextSetLen, DWORD* pdwMemoryContext) override
+	virtual HRESULT STDMETHODCALLTYPE Compare(CONTEXT_COMPARE compare, IDebugMemoryContext2** rgpMemoryContextSet, DWORD dwMemoryContextSetLen, DWORD* pdwMemoryContext) override
 	{
+		RETURN_HR_IF_NULL(E_POINTER, pdwMemoryContext);
+		RETURN_HR_IF(E_POINTER, dwMemoryContextSetLen && !rgpMemoryContextSet);
+
 		for (DWORD i = 0; i < dwMemoryContextSetLen; i++)
 		{
-			wil::com_ptr_nothrow<IFelixCodeContext> other;
+			com_ptr<IFelixCodeContext> other;
 			auto hr = rgpMemoryContextSet[i]->QueryInterface(&other); RETURN_IF_FAILED(hr);
+			if (_physicalMemorySpace != other->PhysicalMemorySpace())
+				continue;
+
+			bool match = false;
 			switch (compare)
 			{
-			case CONTEXT_EQUAL:
-				if ((_physicalMemorySpace == other->PhysicalMemorySpace()) && (_addr == other->Address()))
-				{
-					*pdwMemoryContext = i;
-					return S_OK;
-				}
-				break;
+				case CONTEXT_EQUAL:
+					match = _addr == other->Address();
+					break;
 
-			case CONTEXT_SAME_MODULE:
-				// Always equal since we only have one module.
+				case CONTEXT_LESS_THAN:
+					match = other->Address() < _addr;
+					break;
+
+				case CONTEXT_GREATER_THAN:
+					match = other->Address() > _addr;
+					break;
+
+				case CONTEXT_SAME_MODULE:
+				{
+					com_ptr<IDebugModule2> firstModule;
+					com_ptr<IDebugModule2> secondModule;
+					if (SUCCEEDED(GetModuleAtAddress(_program, _addr, &firstModule))
+						&& SUCCEEDED(GetModuleAtAddress(_program, other->Address(), &secondModule)))
+						match = firstModule == secondModule;
+					break;
+				}
+
+				default:
+					RETURN_HR(E_NOTIMPL);
+			}
+
+			if (match)
+			{
 				*pdwMemoryContext = i;
 				return S_OK;
-
-			default:
-				RETURN_HR(E_NOTIMPL);
 			}
 		}
 
@@ -186,7 +208,7 @@ struct Z80CodeContext : public IDebugCodeContext2, IFelixCodeContext
 	#pragma endregion
 
 	#pragma region IDebugCodeContext2
-	virtual HRESULT __stdcall GetDocumentContext(IDebugDocumentContext2** ppSrcCxt) override
+	virtual HRESULT STDMETHODCALLTYPE GetDocumentContext(IDebugDocumentContext2** ppSrcCxt) override
 	{
 		// A debug engine should return a failure code such as E_FAIL when the out parameter is null
 		// such as when the code context has no associated source position.
@@ -198,7 +220,7 @@ struct Z80CodeContext : public IDebugCodeContext2, IFelixCodeContext
 		return S_OK;
 	}
 
-	virtual HRESULT __stdcall GetLanguageInfo(BSTR* pbstrLanguage, GUID* pguidLanguage) override
+	virtual HRESULT STDMETHODCALLTYPE GetLanguageInfo(BSTR* pbstrLanguage, GUID* pguidLanguage) override
 	{
 		*pbstrLanguage = SysAllocString(Z80AsmLanguageName); RETURN_IF_NULL_ALLOC(*pbstrLanguage);
 		*pguidLanguage = Z80AsmLanguageGuid;
