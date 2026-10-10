@@ -149,6 +149,9 @@ struct SldSymbols : IFelixSymbols
 		auto u8_filename = wil::make_hlocal_ansistring_nothrow (nullptr, filename_buffer_len - 1); RETURN_IF_NULL_ALLOC(u8_filename);
 		int ires = WideCharToMultiByte (CP_UTF8, 0, src_filename, -1, u8_filename.get(), filename_buffer_len, nullptr, nullptr); RETURN_HR_IF(E_FAIL, ires != filename_buffer_len);
 
+		for (auto p = strchr(u8_filename.get(), '\\'); p; p = strchr(p, '\\'))
+			*p = '/';
+
 		sld_entry entry;
 
 		{

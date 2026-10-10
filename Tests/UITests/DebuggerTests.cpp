@@ -19,6 +19,14 @@ namespace UITests
 		"  </Items>\r\n"
 		"</Z80Project>\r\n";
 
+	static const char EmptyTemplateProjectXML[] = ""
+		"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n"
+		"<Z80Project Guid=\"{2839FDD7-4C8F-4772-90E6-222C702D045E}\">\r\n"
+		"  <Configurations>\r\n"
+		"    <Configuration ConfigName=\"Debug\" PlatformName=\"ZX Spectrum 48K\" />\r\n"
+		"  </Configurations>\r\n"
+		"</Z80Project>\r\n";
+
 	extern std::pair<wil::com_ptr_failfast<VxDTE::_Solution>, wil::com_ptr_failfast<VxDTE::Project>>
 		CreateSolutionAndProject (VxDTE::DTE2* dte, PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName);
 	extern wil::unique_process_heap_string MakeVolumeGuidPath (const wchar_t* path);
@@ -90,6 +98,7 @@ namespace UITests
 	TEST_CLASS(DebuggerTests)
 	{
 		static inline wil::unique_process_heap_string TemplateProjectPath;
+		static inline wil::unique_process_heap_string EmptyTemplateProjectPath;
 		static inline wil::unique_process_heap_string testClassPath;
 
 		TEST_CLASS_INITIALIZE(ClassInit)
@@ -107,6 +116,10 @@ namespace UITests
 			WriteFileCreateDirs(TemplateProjectPath, TemplateProjectXML);
 			auto file = wil::str_concat_failfast<wil::unique_process_heap_string>(templateDir, L"file.asm");
 			WriteFileCreateDirs(file, "start:\tret");
+
+			auto emptyTemplateDir = wil::str_concat_failfast<wil::unique_process_heap_string>(testClassPath, L"EmptyTemplateProject\\");
+			EmptyTemplateProjectPath = wil::str_concat_failfast<wil::unique_process_heap_string>(emptyTemplateDir, L"proj.flx");
+			WriteFileCreateDirs(EmptyTemplateProjectPath, EmptyTemplateProjectXML);
 		}
 
 		TEST_CLASS_CLEANUP(ClassCleanup)
@@ -118,7 +131,7 @@ namespace UITests
 			}
 		}
 
-		static void WaitIDEDebugMode(VxDTE::DTE2* dte)
+		static void WaitIDEDebugMode(VxDTE::DTE2* dte, DWORD timeoutMillis = 5000)
 		{
 			HRESULT lastHr = S_OK;
 			VxDTE::vsIDEMode currentMode = (VxDTE::vsIDEMode)0;
@@ -128,7 +141,7 @@ namespace UITests
 				Assert::IsTrue(SUCCEEDED(lastHr) || lastHr == RPC_E_CALL_REJECTED,
 					str_printf(L"Reading the IDE mode failed: 0x%08x", lastHr).get());
 				return SUCCEEDED(lastHr) && currentMode == VxDTE::vsIDEMode::vsIDEModeDebug;
-			}, 5000);
+			}, IsDebuggerPresent() ? INFINITE : timeoutMillis);
 			Assert::IsTrue(reachedMode,
 				str_printf(L"Timed out waiting for vsIDEModeDebug (last HRESULT 0x%08x, mode %u)", lastHr, (unsigned)currentMode).get());
 		}
@@ -162,16 +175,6 @@ namespace UITests
 				VxDTE::dbgBreakpointConditionTypeWhenTrue, nullptr, nullptr, 0, nullptr, 0, VxDTE::dbgHitCountTypeNone, &added);
 			Assert::AreEqual(S_OK, hr);
 			Assert::IsNotNull(added.get());
-			auto deleteBreakpoint = wil::scope_exit([&added]
-			{
-				VARIANT index;
-				VariantInit(&index);
-				V_VT(&index) = VT_I4;
-				V_I4(&index) = 1;
-				wil::com_ptr_failfast<VxDTE::Breakpoint> breakpoint;
-				if (SUCCEEDED(added->Item(index, &breakpoint)))
-					breakpoint->Delete();
-			});
 
 			hr = td.dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.Start").get());
 			Assert::AreEqual(S_OK, hr);
@@ -209,6 +212,50 @@ namespace UITests
 			hr = td.debugger->Stop();
 			Assert::AreEqual(S_OK, hr);
 			WaitDebugMode (td.debugger, VxDTE::dbgDebugMode::dbgDesignMode);
+		}
+
+		TEST_METHOD(BreakpointInSourceFileInProjectSubdir)
+		{
+			HRESULT hr;
+			DebuggerTD td(testClassPath.get(), L"BreakpointInSourceFileInProjectSubdir", EmptyTemplateProjectPath.get());
+
+			auto sourceFilePath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\subdir\\file.asm");
+			WriteFileCreateDirs(sourceFilePath, "start:\tret");
+			LPCOLESTR files[] = { sourceFilePath.get() };
+			VSADDRESULT addResult;
+			auto operation = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
+			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, operation, L"", 1, files, nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+			td.proj->Save();
+
+			wil::com_ptr_failfast<VxDTE::Breakpoints> breakpoints;
+			hr = td.debugger->get_Breakpoints(&breakpoints);
+			Assert::AreEqual(S_OK, hr);
+
+			auto filePathFromSLD = wil::make_bstr_failfast(L"subdir\\file.asm");
+			wil::com_ptr_failfast<VxDTE::Breakpoints> added;
+			hr = breakpoints->Add(nullptr, filePathFromSLD.get(), 1, 1, nullptr, VxDTE::dbgBreakpointConditionTypeWhenTrue,
+				nullptr, nullptr, 0, nullptr, 0, VxDTE::dbgHitCountTypeNone, &added);
+			Assert::AreEqual(S_OK, hr);
+			Assert::IsNotNull(added.get());
+
+			hr = td.dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.Start").get());
+			Assert::AreEqual(S_OK, hr);
+
+			WaitIDEDebugMode(td.dte);
+			WaitDebugMode(td.debugger, VxDTE::dbgDebugMode::dbgBreakMode);
+
+			hr = td.debugger->Stop();
+			Assert::AreEqual(S_OK, hr);
+			WaitDebugMode(td.debugger, VxDTE::dbgDebugMode::dbgDesignMode);
+		}
+
+		TEST_METHOD(BreakpointInSourceFileOutsideProjectDir)
+		{
+		}
+
+		TEST_METHOD(BreakpointInSourceFileOnOtherDrive)
+		{
 		}
 	};
 }

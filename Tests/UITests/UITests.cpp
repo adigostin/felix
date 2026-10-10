@@ -833,7 +833,7 @@ namespace UITests
 				Assert::IsTrue(SUCCEEDED(lastHr) || lastHr == RPC_E_CALL_REJECTED,
 					str_printf(L"Reading the debugger mode failed: 0x%08x", lastHr).get());
 				return SUCCEEDED(lastHr) && currentMode == expectedMode;
-			}, timeoutMillis);
+			}, IsDebuggerPresent() ? INFINITE : timeoutMillis);
 		Assert::IsTrue(reachedMode,
 			str_printf(L"Timed out waiting for debugger mode %u (last HRESULT 0x%08x, mode %u)",
 				(unsigned)expectedMode, lastHr, (unsigned)currentMode).get());
