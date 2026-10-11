@@ -252,10 +252,84 @@ namespace UITests
 
 		TEST_METHOD(BreakpointInSourceFileOutsideProjectDir)
 		{
+			HRESULT hr;
+			DebuggerTD td(testClassPath.get(), L"BreakpointInSourceFileOutsideProjectDir", EmptyTemplateProjectPath.get());
+
+			// We put it outside the solution dir because, if our debug engine can't bind it,
+			// VS will attempt to bind it with all kinds of "smart" paths under the solution dir.
+			auto sourceFilePath = wil::str_concat_failfast<wil::unique_process_heap_string>(testClassPath, L"file.asm");
+			WriteFileCreateDirs(sourceFilePath, "start:\tret");
+			LPCOLESTR files[] = { sourceFilePath.get() };
+			VSADDRESULT addResult;
+			auto operation = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
+			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, operation, L"", 1, files, nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+			td.proj->Save();
+
+			wil::com_ptr_failfast<VxDTE::Breakpoints> breakpoints;
+			hr = td.debugger->get_Breakpoints(&breakpoints);
+			Assert::AreEqual(S_OK, hr);
+
+			auto filePathFromSLD = wil::make_bstr_failfast(sourceFilePath.get());
+			wil::com_ptr_failfast<VxDTE::Breakpoints> added;
+			hr = breakpoints->Add(nullptr, filePathFromSLD.get(), 1, 1, nullptr, VxDTE::dbgBreakpointConditionTypeWhenTrue,
+				nullptr, nullptr, 0, nullptr, 0, VxDTE::dbgHitCountTypeNone, &added);
+			Assert::AreEqual(S_OK, hr);
+			Assert::IsNotNull(added.get());
+
+			hr = td.dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.Start").get());
+			Assert::AreEqual(S_OK, hr);
+
+			WaitIDEDebugMode(td.dte);
+			WaitDebugMode(td.debugger, VxDTE::dbgDebugMode::dbgBreakMode);
+
+			hr = td.debugger->Stop();
+			Assert::AreEqual(S_OK, hr);
+			WaitDebugMode(td.debugger, VxDTE::dbgDebugMode::dbgDesignMode);
 		}
 
 		TEST_METHOD(BreakpointInSourceFileOnOtherDrive)
 		{
+			HRESULT hr;
+			DebuggerTD td(testClassPath.get(), L"BreakpointInSourceFileOnOtherDrive", EmptyTemplateProjectPath.get());
+
+			// We put it outside the solution dir because, if our debug engine can't bind it,
+			// VS will attempt to bind it with all kinds of "smart" paths under the solution dir.
+			BOOL bres = DefineDosDeviceW (DDD_NO_BROADCAST_SYSTEM, L"Q:", testClassPath.get());
+			Assert::IsTrue(bres);
+			auto cleanup = wil::scope_exit([&] {
+				DefineDosDeviceW (DDD_REMOVE_DEFINITION | DDD_EXACT_MATCH_ON_REMOVE | DDD_NO_BROADCAST_SYSTEM, L"Q:", testClassPath.get());
+			});
+
+			const wchar_t* sourceFilePath = L"Q:\\file.asm";
+			WriteFileCreateDirs(sourceFilePath, "start:\tret");
+			LPCOLESTR files[] = { sourceFilePath };
+			VSADDRESULT addResult;
+			auto operation = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
+			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, operation, L"", 1, files, nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+			td.proj->Save();
+
+			wil::com_ptr_failfast<VxDTE::Breakpoints> breakpoints;
+			hr = td.debugger->get_Breakpoints(&breakpoints);
+			Assert::AreEqual(S_OK, hr);
+
+			auto filePathFromSLD = wil::make_bstr_failfast(sourceFilePath);
+			wil::com_ptr_failfast<VxDTE::Breakpoints> added;
+			hr = breakpoints->Add(nullptr, filePathFromSLD.get(), 1, 1, nullptr, VxDTE::dbgBreakpointConditionTypeWhenTrue,
+				nullptr, nullptr, 0, nullptr, 0, VxDTE::dbgHitCountTypeNone, &added);
+			Assert::AreEqual(S_OK, hr);
+			Assert::IsNotNull(added.get());
+
+			hr = td.dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.Start").get());
+			Assert::AreEqual(S_OK, hr);
+
+			WaitIDEDebugMode(td.dte);
+			WaitDebugMode(td.debugger, VxDTE::dbgDebugMode::dbgBreakMode);
+
+			hr = td.debugger->Stop();
+			Assert::AreEqual(S_OK, hr);
+			WaitDebugMode(td.debugger, VxDTE::dbgDebugMode::dbgDesignMode);
 		}
 	};
 }

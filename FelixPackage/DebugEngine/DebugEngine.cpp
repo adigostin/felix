@@ -859,22 +859,7 @@ HRESULT GetAddressFromSourceLocation (IDebugModule2* module, LPCWSTR projectDirO
 	if (symbols->HasSourceLocationInformation() != S_OK)
 		return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 
-	wil::unique_hlocal_string filePathRelative;
-	if (projectDirOrNull)
-	{
-		auto relative = wil::make_process_heap_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(relative);
-		BOOL bRes = PathRelativePathToW (relative.get(), projectDirOrNull, FILE_ATTRIBUTE_DIRECTORY, sourceLocationFilename, 0); RETURN_HR_IF(CS_E_INVALID_PATH, !bRes);
-		filePathRelative = wil::make_hlocal_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(filePathRelative);
-		bRes = PathCanonicalize (filePathRelative.get(), relative.get()); RETURN_IF_WIN32_BOOL_FALSE(bRes);
-	}
-	else
-		RETURN_HR(E_NOTIMPL);
-
-	uint16_t addr;
-	hr = symbols->GetAddressFromSourceLocation(filePathRelative.get(), sourceLocationLineIndex, &addr); RETURN_IF_FAILED_EXPECTED(hr);
-
-	*pAddress = addr;
-	return S_OK;
+	return symbols->GetAddressFromSourceLocation(projectDirOrNull, sourceLocationFilename, sourceLocationLineIndex, pAddress);
 }
 
 HRESULT GetModuleAtAddress (IDebugProgram2* program, UINT64 address, OUT IDebugModule2** ppModule)

@@ -13,7 +13,7 @@ struct Z80SymSymbols : IFelixSymbols
 	{
 		_filename = wil::make_process_heap_string_nothrow(symbolsFullPath); RETURN_IF_NULL_ALLOC(_filename);
 		HANDLE hraw = CreateFileW (symbolsFullPath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr); RETURN_LAST_ERROR_IF_EXPECTED(hraw == INVALID_HANDLE_VALUE);
-		wil::unique_hfile h (hraw); 
+		wil::unique_hfile h (hraw);
 		DWORD file_size = GetFileSize (hraw, nullptr);
 		auto text = wil::make_hlocal_ansistring_nothrow(nullptr, file_size + 1); RETURN_IF_NULL_ALLOC(text);
 		DWORD bytes_read;
@@ -61,7 +61,7 @@ struct Z80SymSymbols : IFelixSymbols
 
 		if ((p[0] != 'C' && p[0] != 'D') || (p[1] != ' ' && p[1] != 9))
 			RETURN_HR(E_INVALID_Z80SYM_LINE);
-		
+
 		const char type = *p++;
 		while (*p == ' ' || *p == 9)
 		{
@@ -159,9 +159,10 @@ struct Z80SymSymbols : IFelixSymbols
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetAddressFromSourceLocation(
-		__RPC__in LPCWSTR src_filename,
-		__RPC__in uint32_t line_index,
-		__RPC__out UINT16* address_out) override
+		_In_opt_z_ LPCWSTR baseDir,
+		_In_z_ LPCWSTR srcFilename,
+		_In_ uint32_t lineIndex,
+		_Out_ UINT64* pAddress) override
 	{
 		return E_NOTIMPL;
 	}
@@ -174,7 +175,7 @@ struct Z80SymSymbols : IFelixSymbols
 		__RPC__deref_out_opt UINT16* foundOffset) override
 	{
 		HRESULT hr;
-		
+
 		if (searchKind == SK_None)
 			RETURN_HR(E_INVALIDARG);
 
@@ -239,7 +240,7 @@ struct Z80SymSymbols : IFelixSymbols
 				*foundOffset = address - prevEntry.address;
 				return S_OK;
 			}
-	
+
 			return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 		}
 	}

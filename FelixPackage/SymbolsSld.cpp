@@ -100,11 +100,11 @@ struct SldSymbols : IFelixSymbols
 		__RPC__out UINT32* srcLineIndex) override
 	{
 		sld_entry entry;
-		
+
 		{
 			const char* p = _text.get() + sizeof(header) - 1;
 			const char* prev_code_line = nullptr;
-			
+
 			while(true)
 			{
 				if (!*p)
@@ -143,12 +143,56 @@ struct SldSymbols : IFelixSymbols
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetAddressFromSourceLocation (LPCWSTR src_filename, uint32_t line_index, UINT16* address_out) override
+	virtual HRESULT STDMETHODCALLTYPE GetAddressFromSourceLocation (
+		_In_opt_z_ LPCWSTR baseDir,
+		_In_z_ LPCWSTR srcFilename,
+		_In_ uint32_t lineIndex,
+		_Out_ UINT64* pAddress) override
 	{
-		int filename_buffer_len = WideCharToMultiByte (CP_UTF8, 0, src_filename, -1, nullptr, 0, nullptr, nullptr); RETURN_HR_IF(E_FAIL, !filename_buffer_len);
-		auto u8_filename = wil::make_hlocal_ansistring_nothrow (nullptr, filename_buffer_len - 1); RETURN_IF_NULL_ALLOC(u8_filename);
-		int ires = WideCharToMultiByte (CP_UTF8, 0, src_filename, -1, u8_filename.get(), filename_buffer_len, nullptr, nullptr); RETURN_HR_IF(E_FAIL, ires != filename_buffer_len);
+		HRESULT hr;
 
+		// sjasmplus writes in the .sld filenames as follows:
+		//  - If the assembled file is in the CWD or a subdir of it, the filename is relative to the CWD.
+		//    (Our extension invokes sjasmplus with the project dir as CWD.)
+		//  - If the assembled file is anywhere else, the filename is absolute.
+
+		wil::unique_process_heap_string buffer;
+		if (!baseDir)
+		{
+			// Search for the filename we received as parameter.
+			_ASSERT(false); // Should we ever be here?!
+		}
+		else if (PathIsRelative(srcFilename))
+		{
+			_ASSERT(false); // Should we ever be here?!
+		}
+		else
+		{
+			wchar_t relative[MAX_PATH];
+			BOOL bRes = PathRelativePathToW (relative, baseDir, FILE_ATTRIBUTE_DIRECTORY, srcFilename, 0);
+			if (!bRes)
+			{
+				// Probably different drives. Search for the filename we received as parameter.
+			}
+			else if (relative[0] == '.' && relative[1] == '.'
+				&& (relative[2] == 0 || relative[2] == '\\' || relative[2] == '/'))
+			{
+				// Same drive but outside the baseDir. Search for the filename we received as parameter.
+			}
+			else
+			{
+				// In baseDir or a subdir of it. Use the relative path.
+				buffer = wil::make_process_heap_string_nothrow(nullptr, MAX_PATH); RETURN_IF_NULL_ALLOC(buffer);
+				bRes = PathCanonicalize (buffer.get(), relative); RETURN_IF_WIN32_BOOL_FALSE(bRes);
+				srcFilename = buffer.get();
+			}
+		}
+
+		int filename_buffer_len = WideCharToMultiByte (CP_UTF8, 0, srcFilename, -1, nullptr, 0, nullptr, nullptr); RETURN_HR_IF(E_FAIL, !filename_buffer_len);
+		auto u8_filename = wil::make_hlocal_ansistring_nothrow (nullptr, filename_buffer_len - 1); RETURN_IF_NULL_ALLOC(u8_filename);
+		int ires = WideCharToMultiByte (CP_UTF8, 0, srcFilename, -1, u8_filename.get(), filename_buffer_len, nullptr, nullptr); RETURN_HR_IF(E_FAIL, ires != filename_buffer_len);
+
+		// sjasmplus converts backslashes to slashes.
 		for (auto p = strchr(u8_filename.get(), '\\'); p; p = strchr(p, '\\'))
 			*p = '/';
 
@@ -169,14 +213,14 @@ struct SldSymbols : IFelixSymbols
 
 				if (!strncmp (entry.source_file, u8_filename.get(), (size_t)filename_buffer_len - 1)
 					&& isdigit(entry.source_line[0])
-					&& (strtoul(entry.source_line, nullptr, 10) >= line_index + 1))
+					&& (strtoul(entry.source_line, nullptr, 10) >= lineIndex + 1))
 				{
 					break;
 				}
 			}
 		}
 
-		*address_out = (uint16_t) strtoul (entry.value, nullptr, 10);
+		*pAddress = (uint16_t) strtoul (entry.value, nullptr, 10);
 		return S_OK;
 	}
 
@@ -200,7 +244,7 @@ struct SldSymbols : IFelixSymbols
 
 			if (entry.type[0] != 'F' || entry.type[1] != '|')
 				continue;
-			
+
 			uint16_t line_addr = (uint16_t)strtoul(entry.value, nullptr, 10);
 			if (line_addr == address)
 				break;

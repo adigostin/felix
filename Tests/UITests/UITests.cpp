@@ -513,6 +513,7 @@ namespace UITests
 		Assert::IsTrue(SUCCEEDED(hr));
 	}
 
+	// TODO: sjasmplus runs into problems with this path format. Use DefineDosDevice instead.
 	wil::unique_process_heap_string MakeVolumeGuidPath (const wchar_t* path)
 	{
 		wchar_t volPathName[50];
@@ -796,6 +797,29 @@ namespace UITests
 	wil::com_ptr_failfast<ITestPropertyNotifySink> MakeTestPropertyNotifySink()
 	{
 		return new (std::nothrow) TestPropertyNotifySink();
+	}
+
+	void WriteFileCreateDirs(const wchar_t* path, const char* fileContent)
+	{
+		HRESULT hr;
+
+		Assert::IsFalse(PathIsRelativeW(path));
+		size_t len = wcslen(path);
+		auto dir = wil::make_process_heap_string_failfast(path, len);
+		auto fn = PathFindFileName(dir.get());
+		Assert::IsTrue(fn > dir.get() && (fn[-1] == '/' || fn[-1] == '\\'));
+		fn[-1] = 0;
+
+		hr = wil::CreateDirectoryDeepNoThrow(dir.get());
+		Assert::IsTrue(SUCCEEDED(hr));
+
+		wil::unique_hfile handle (CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL));
+		Assert::IsTrue(handle.is_valid());
+		if (fileContent)
+		{
+			BOOL bres = WriteFile(handle.get(), fileContent, (DWORD)strlen(fileContent), NULL, NULL);
+			Assert::IsTrue(bres);
+		}
 	}
 
 	void RemoveDirectoryTree(PCWSTR dir)

@@ -160,9 +160,10 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("32BEBBF2-86DF-4D79-88DF-1123548C4D8E") I
 		__RPC__out UINT32* srcLineIndex) = 0;
 
 	virtual HRESULT STDMETHODCALLTYPE GetAddressFromSourceLocation(
-		__RPC__in LPCWSTR src_filename,
-		__RPC__in uint32_t line_index,
-		__RPC__out UINT16* address_out) = 0;
+		_In_opt_z_ LPCWSTR baseDir,
+		_In_z_ LPCWSTR srcFilename,
+		_In_ uint32_t lineIndex,
+		_Out_ UINT64* pAddress) = 0;
 
 	// Finds the symbol (code and/or data) located at a given address.
 	// If "offset" is NULL, looks only for an exact address match.

@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <utility>
+#include <crtdbg.h>
 
 // Windows Platform headers
 #include <Windows.h>
