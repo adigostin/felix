@@ -11,6 +11,7 @@ class Z80Module : public IDebugModule3, IZ80Module
 	UINT64 _address;
 	DWORD  _size;
 	wil::unique_process_heap_string _path;
+	wil::unique_process_heap_string _sourceBasePath;
 	wil::unique_process_heap_string _symbolsPath;
 	bool _user_code;
 	com_ptr<IDebugEngine2> _engine;
@@ -24,17 +25,16 @@ class Z80Module : public IDebugModule3, IZ80Module
 	HRESULT _symbolLoadResult = S_OK;
 
 public:
-	HRESULT InitInstance (UINT64 address, DWORD size, const wchar_t* path, const wchar_t* symbolsFilePath,
-		bool user_code, IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback)
+	HRESULT InitInstance (UINT64 address, DWORD size, LPCWSTR path, bool user_code, LPCWSTR sourceBasePath,
+		IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback)
 	{
 		_address = address;
 		_size = size;
 		_path = wil::make_process_heap_string_nothrow(path); RETURN_IF_NULL_ALLOC(_path);
-		if (symbolsFilePath)
-		{
-			_symbolsPath = wil::make_process_heap_string_nothrow(symbolsFilePath); RETURN_IF_NULL_ALLOC(_symbolsPath);
-		}
 		_user_code = user_code;
+		if (sourceBasePath) {
+			_sourceBasePath = wil::make_process_heap_string_nothrow(sourceBasePath); RETURN_IF_NULL_ALLOC(_sourceBasePath);
+		}
 		_engine = engine;
 		_program = program;
 		_callback = callback;
@@ -92,7 +92,7 @@ public:
 			BSTR (MODULE_INFO::*ptr);
 		};
 
-		static const mi_info infos[] = 
+		static const mi_info infos[] =
 		{
 			{ MIF_NAME,              &MODULE_INFO::m_bstrName },
 			{ MIF_URL,               &MODULE_INFO::m_bstrUrl },
@@ -283,7 +283,7 @@ public:
 		if (FAILED(_symbolLoadResult))
 			// We tried already to load them and this was the result. Don't try again.
 			return _symbolLoadResult;
-		
+
 		// Attempt to load them for the first time.
 		if (!_symbolsPath)
 		{
@@ -292,7 +292,7 @@ public:
 			BOOL bres = PathRenameExtension (symPath.get(), L".sld");
 			if (!bres)
 				return _symbolLoadResult = CO_E_BAD_PATH;
-			
+
 			if (!::PathFileExists(symPath.get()))
 			{
 				symPath = wil::make_process_heap_string_nothrow (_path.get(), MAX_PATH); RETURN_IF_NULL_ALLOC(symPath);
@@ -310,7 +310,7 @@ public:
 		auto* ext = PathFindExtension(_symbolsPath.get());
 		if (!wcscmp(ext, L".sld"))
 		{
-			_symbolLoadResult = MakeSldSymbols (_symbolsPath.get(), &_symbols);
+			_symbolLoadResult = MakeSldSymbols (_symbolsPath.get(), _sourceBasePath.get(), &_symbols);
 		}
 		else if (!wcscmp(ext, L".z80sym"))
 		{
@@ -337,11 +337,11 @@ public:
 	#pragma endregion
 };
 
-HRESULT MakeModule (UINT64 address, DWORD size, const wchar_t* path, const wchar_t* symbolsFilePath, bool user_code,
-	IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback, IDebugModule2** to) 
+HRESULT MakeModule (UINT64 address, DWORD size, LPCWSTR path, bool user_code, LPCWSTR sourceBasePath,
+	IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback, IDebugModule2** to)
 {
 	auto p = com_ptr(new (std::nothrow) Z80Module()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance (address, size, path, symbolsFilePath, user_code, engine, program, callback); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance (address, size, path, user_code, sourceBasePath, engine, program, callback); RETURN_IF_FAILED(hr);
 	*to = p.detach();
 	return S_OK;
 }

@@ -155,29 +155,29 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("32BEBBF2-86DF-4D79-88DF-1123548C4D8E") I
 	virtual HRESULT STDMETHODCALLTYPE HasSourceLocationInformation() = 0;
 
 	virtual HRESULT STDMETHODCALLTYPE GetSourceLocationFromAddress(
-		__RPC__in uint16_t address,
-		__RPC__deref_out BSTR* srcFilename,
-		__RPC__out UINT32* srcLineIndex) = 0;
+		_In_ uint16_t address,
+		_Outptr_ BSTR* sourceFilename,
+		_Out_ UINT32* sourceLineIndex,
+		_Out_opt_ UINT32* sourceRangeLineIndex) = 0;
 
 	virtual HRESULT STDMETHODCALLTYPE GetAddressFromSourceLocation(
-		_In_opt_z_ LPCWSTR baseDir,
 		_In_z_ LPCWSTR srcFilename,
 		_In_ uint32_t lineIndex,
 		_Out_ UINT64* pAddress) = 0;
 
 	// Finds the symbol (code and/or data) located at a given address.
 	// If "offset" is NULL, looks only for an exact address match.
-	virtual HRESULT STDMETHODCALLTYPE GetSymbolAtAddress(
-		__RPC__in uint16_t address,
-		__RPC__in SymbolKind searchKind,
-		__RPC__deref_out_opt SymbolKind* foundKind,
-		__RPC__deref_out_opt BSTR* foundSymbol,
-		__RPC__deref_out_opt UINT16* foundOffset) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetSymbolFromAddress(
+		_In_ uint16_t address,
+		_In_ SymbolKind searchKind,
+		_Out_opt_ SymbolKind* foundKind,
+		_Outptr_opt_ BSTR* foundSymbol,
+		_Out_opt_ UINT16* foundOffset) = 0;
 
 	// Returns S_OK or an error if not found.
-	virtual HRESULT STDMETHODCALLTYPE GetAddressFromSymbol (LPCWSTR symbolName, UINT16* address) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetAddressFromSymbol (_In_z_ LPCWSTR symbolName, _Out_ UINT16* address) = 0;
 
-	virtual HRESULT STDMETHODCALLTYPE GetFilename(BSTR * pbstrFilename) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetFilename(_Outptr_ BSTR* pbstrFilename) = 0;
 };
 
 static constexpr VSITEMID VSITEMID_GENFILES = 50;
@@ -314,7 +314,7 @@ HRESULT CreateFileFromTemplate (LPCWSTR fromPath, LPCWSTR toPath, IProjectConfig
 IFileNode* FindChildFileByName (IProjectNode* proj, IParentNode* parent, const wchar_t* fileName);
 HRESULT MakeFileNodeForExistingFile (LPCWSTR path, IFileNode** ppFile);
 HRESULT ParseNumber (LPCWSTR str, DWORD* value); // returns S_OK or S_FALSE
-HRESULT MakeSldSymbols (const wchar_t* symbolsFullPath, IFelixSymbols** to);
+HRESULT MakeSldSymbols (LPCWSTR symbolsFullPath, LPCWSTR sourceBasePath, IFelixSymbols** to);
 HRESULT MakeZ80SymSymbols (const wchar_t* symbolsFullPath, IFelixSymbols** to);
 const wchar_t* GetOutputExtensionFromOutputType (OutputFileType type);
 HRESULT ResolveMacros (const wchar_t* pszIn, IProjectConfig* config, wil::unique_process_heap_string& out);

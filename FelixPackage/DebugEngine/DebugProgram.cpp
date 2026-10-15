@@ -55,7 +55,7 @@ public:
 			|| TryQI<ISimulatorEventNotifySink>(this, riid, ppvObject)
 		)
 			return S_OK;
-		
+
 		#ifdef _DEBUG
 		if (   riid == IID_IDebugProgramEngines2
 			|| riid == IID_IDebugProgramEx2
@@ -168,7 +168,7 @@ public:
 		auto hr = simulator->Resume(checkBreakpointsAtCurrentPC); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
-	
+
 	HRESULT STDMETHODCALLTYPE Continue(IDebugThread2* pThread) override
 	{
 		// Despite the name, VS calls this function when the user starts debugging by clicking Start Debugging.
@@ -238,7 +238,7 @@ public:
 				{
 					hr = simulator->AddBreakpoint (BreakpointType::Code, false, pc + len, &_stepOverOrOutBreakpoint); RETURN_IF_FAILED(hr);
 					auto clearBP = wil::scope_exit([this]
-						{ 
+						{
 							simulator->RemoveBreakpoint(_stepOverOrOutBreakpoint);
 							_stepOverOrOutBreakpoint = 0;
 						});
@@ -288,19 +288,11 @@ public:
 		wil::unique_bstr filePath;
 		auto hr = pDocPos->GetFileName(&filePath); RETURN_IF_FAILED(hr);
 
-		wil::unique_bstr projectDir;
-		if (auto op = wil::try_com_query_nothrow<IFelixLaunchOptionsProvider>(_engine))
-		{
-			com_ptr<IFelixLaunchOptions> options;
-			if (SUCCEEDED(op->GetLaunchOptions(&options)))
-				options->get_ProjectDir(&projectDir);
-		}
-
 		TEXT_POSITION begin, end;
 		hr = pDocPos->GetRange (&begin, &end); RETURN_IF_FAILED(hr);
 
 		UINT64 address;
-		hr = ::GetAddressFromSourceLocation (this, projectDir.get(), filePath.get(), begin.dwLine, &address); RETURN_IF_FAILED(hr);
+		hr = ::GetAddressFromSourceLocation (this, filePath.get(), begin.dwLine, &address); RETURN_IF_FAILED(hr);
 
 		wil::com_ptr_nothrow<IDebugCodeContext2> cc;
 		hr = MakeDebugContext (false, address, this, IID_PPV_ARGS(&cc)); RETURN_IF_FAILED(hr);

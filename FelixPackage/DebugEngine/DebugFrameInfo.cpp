@@ -110,9 +110,9 @@ public:
 		{
 			// I stepped through decompiled VS2022 code and I noticed that if I set m_fHasDebugInfo to FALSE,
 			// VS tries to convert the module to some internal DotNet class named IDebugModule110;
-			// it cannot do the conversion since our modules are native C++; then VS unconditionally generates 
+			// it cannot do the conversion since our modules are native C++; then VS unconditionally generates
 			// a symbol filename with the ".pdb" extension and complains about it, for example "Spectrum48K.pdb".
-			// 
+			//
 			// (There may be other bad consequences when setting this uncoditionally to TRUE. I haven't noticed them yet.)
 			pFrameInfo->m_fHasDebugInfo = TRUE;
 			pFrameInfo->m_dwValidFields |= FIF_DEBUGINFO;
@@ -138,7 +138,7 @@ public:
 					mi.m_bstrName = nullptr;
 					pFrameInfo->m_dwValidFields |= FIF_MODULE;
 				}
-			
+
 			}
 			dwFieldSpec &= ~FIF_MODULE;
 		}
@@ -241,7 +241,7 @@ public:
 
 		// Let's create a simple call stack in which every stack location is a frame.
 		// A lot of Z80 code does tricks with the SP register, so it's nearly impossible to build a proper call stack.
-		
+
 		vector_nothrow<Entry> entries;
 
 		com_ptr<IDebugProgram2> program;
@@ -252,7 +252,7 @@ public:
 
 		z80_register_set regs;
 		hr = simulator->GetRegisters(&regs, sizeof(regs)); RETURN_IF_FAILED(hr);
-		
+
 		uint16_t sp = regs.sp;
 		uint16_t pc = regs.pc;
 		for (uint32_t i = 0;;)
@@ -273,7 +273,7 @@ public:
 				break; // could happen with a computer with 32 KB memory when SP is pointing above that
 
 			sp += 2;
-			
+
 			// Let's limit ourselves to 32 entries, in case the Z80 code does something weird
 			// with the SP register and our algorithm here goes haywire.
 			i++;

@@ -8,26 +8,17 @@ class DocumentContext : public IDebugDocumentContext2
 	ULONG _refCount = 0;
 
 	wil::unique_bstr _doc_path;
-	uint32_t _line_number;
+	uint32_t _lineIndex;
+	uint32_t _sourceRangeLineIndex;
 
 public:
-	HRESULT InitInstance (IDebugModule2* module, uint16_t address)
+	HRESULT InitInstance (IDebugProgram2* program, UINT64 address)
 	{
-		HRESULT hr;
-
-		wil::com_ptr_nothrow<IZ80Module> mz80;
-		hr = module->QueryInterface(&mz80); RETURN_IF_FAILED(hr);
-		wil::com_ptr_nothrow<IFelixSymbols> symbols;
-		hr = mz80->GetSymbols(&symbols); RETURN_IF_FAILED_EXPECTED(hr);
-		wil::unique_bstr doc_path;
-		uint32_t line_number;
-		hr = symbols->GetSourceLocationFromAddress(address, &doc_path, &line_number); RETURN_IF_FAILED_EXPECTED(hr);
-
-		//wil::com_ptr_nothrow<ISimulatedProgram> program;
-		//hr = mz80->GetProgram(&program); RETURN_IF_FAILED(hr);
-
-		_doc_path = std::move(doc_path);
-		_line_number = line_number;
+		auto hr = GetSourceLocationFromAddress (program, address, &_doc_path, &_lineIndex, &_sourceRangeLineIndex);
+		if (FAILED(hr))
+			return hr;
+		if (hr != S_OK)
+			return E_FAIL;
 		return S_OK;
 	}
 
@@ -91,13 +82,13 @@ public:
 	{
 		if (pBegPosition)
 		{
-			pBegPosition->dwLine = _line_number;
+			pBegPosition->dwLine = _lineIndex;
 			pBegPosition->dwColumn = 0;
 		}
 
 		if (pEndPosition)
 		{
-			pEndPosition->dwLine = _line_number;
+			pEndPosition->dwLine = _lineIndex;
 			pEndPosition->dwColumn = 100;
 		}
 
@@ -106,7 +97,19 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetSourceRange (TEXT_POSITION *pBegPosition, TEXT_POSITION *pEndPosition) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		if (pBegPosition)
+		{
+			pBegPosition->dwLine = _sourceRangeLineIndex;
+			pBegPosition->dwColumn = 0;
+		}
+
+		if (pEndPosition)
+		{
+			pEndPosition->dwLine = _lineIndex;
+			pEndPosition->dwColumn = 100;
+		}
+
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE Compare (DOCCONTEXT_COMPARE compare, IDebugDocumentContext2** rgpDocContextSet, DWORD dwDocContextSetLen, DWORD* pdwDocContext) override
@@ -121,10 +124,10 @@ public:
 	#pragma endregion
 };
 
-HRESULT MakeDocumentContext (IDebugModule2* module, uint16_t address, IDebugDocumentContext2** to)
+HRESULT MakeDocumentContext (IDebugProgram2* program, UINT64 address, IDebugDocumentContext2** to)
 {
 	auto p = com_ptr(new (std::nothrow) DocumentContext()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance(module, address); RETURN_IF_FAILED_EXPECTED(hr);
+	auto hr = p->InitInstance(program, address); RETURN_IF_FAILED_EXPECTED(hr);
 	*to = p.detach();
 	return S_OK;
 }

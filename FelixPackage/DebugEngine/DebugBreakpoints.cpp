@@ -144,7 +144,7 @@ public:
 
 		return S_OK;
 	}
-	
+
 	virtual HRESULT ContainsBreakpoint (IDebugBoundBreakpoint2* bp) override
 	{
 		auto it = _bps.find_if([bp](auto& p) { return p.second == bp; });
@@ -571,7 +571,7 @@ struct SimplePendingBreakpoint : IDebugPendingBreakpoint2, IDebugEventCallback2
 	com_ptr<IDebugErrorBreakpoint2> _errorBP;
 	bool _advisedDebugEventCallback = false;
 
-	static HRESULT CreateInstance (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program, 
+	static HRESULT CreateInstance (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program,
 		IBreakpointManager* bpman, bool physicalMemorySpace, UINT64 address, IDebugPendingBreakpoint2** to)
 	{
 		wil::com_ptr_nothrow<SimplePendingBreakpoint> p = new (std::nothrow) SimplePendingBreakpoint(); RETURN_IF_NULL_ALLOC(p);
@@ -626,11 +626,11 @@ struct SimplePendingBreakpoint : IDebugPendingBreakpoint2, IDebugEventCallback2
 			return S_FALSE;
 
 		auto hr = BoundBreakpointImpl::CreateInstance (this, _program, _bpman, _physicalMemorySpace, _address, &_boundBP); RETURN_IF_FAILED(hr);
-		
+
 		if (_stateInfo.state == BPS_ENABLED)
 			// Necessary when adding a breakpoint on a source code line while debugging.
 			_boundBP->Enable(TRUE);
-		
+
 		auto p = wil::com_ptr_nothrow(new (std::nothrow) BreakpointBoundEvent (this, _boundBP.get())); LOG_IF_NULL_ALLOC(p);
 		if (p)
 		{
@@ -819,10 +819,9 @@ class SourceLinePendingBreakpoint : IDebugPendingBreakpoint2, IDebugEventCallbac
 	wil::com_ptr_nothrow<IDebugBoundBreakpoint2> _boundBP;
 	wil::com_ptr_nothrow<IDebugErrorBreakpoint2> _errorBP;
 	bool _advisedDebugEventCallback = false;
-	wil::unique_bstr _projectDir;
 
 public:
-	static HRESULT CreateInstance (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program, 
+	static HRESULT CreateInstance (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program,
 		IBreakpointManager* bpman, IDebugBreakpointRequest2* bp_request, const wchar_t* file, uint32_t line_index, IDebugPendingBreakpoint2** to)
 	{
 		RETURN_HR_IF_NULL(E_INVALIDARG, program);
@@ -836,13 +835,6 @@ public:
 		p->_bp_request = bp_request;
 		p->_file = wil::make_process_heap_string_nothrow(file); RETURN_IF_NULL_ALLOC(p->_file);
 		p->_line_index = line_index;
-
-		if (auto op = wil::try_com_query_nothrow<IFelixLaunchOptionsProvider>(engine))
-		{
-			com_ptr<IFelixLaunchOptions> options;
-			if (SUCCEEDED(op->GetLaunchOptions(&options)) && options)
-				options->get_ProjectDir(&p->_projectDir);
-		}
 
 		*to = p.detach();
 		return S_OK;
@@ -877,7 +869,7 @@ public:
 		RETURN_HR_IF(E_BP_DELETED, _stateInfo.state == PBPS_DELETED);
 
 		UINT64 address;
-		auto hr = ::GetAddressFromSourceLocation (_program.get(), _projectDir.get(), _file.get(), _line_index, &address);
+		auto hr = ::GetAddressFromSourceLocation (_program.get(), _file.get(), _line_index, &address);
 		if (SUCCEEDED(hr))
 			return S_OK;
 
@@ -904,7 +896,7 @@ WI_ASSERT(!_errorBP);
 
 		bool physicalMemorySpace = false;
 		UINT64 address;
-		auto hr = ::GetAddressFromSourceLocation (_program.get(), _projectDir.get(), _file.get(), _line_index, &address);
+		auto hr = ::GetAddressFromSourceLocation (_program.get(), _file.get(), _line_index, &address);
 		if (FAILED(hr))
 		{
 			hr = ErrorBreakpoint::CreateInstance (_program.get(), this, BPET_GENERAL_WARNING, &_errorBP); RETURN_IF_FAILED(hr);
@@ -1056,7 +1048,6 @@ WI_ASSERT(!_errorBP);
 		_bpman = nullptr;
 		_bp_request = nullptr;
 		_file.reset();
-		_projectDir.reset();
 
 		_stateInfo.state = PBPS_DELETED;
 		return S_OK;
@@ -1093,7 +1084,7 @@ WI_ASSERT(!_errorBP);
 						{
 							bool physicalMemorySpace = false;
 							UINT64 address;
-							hr = ::GetAddressFromSourceLocation (module.get(), _projectDir.get(), _file.get(), _line_index, &address);
+							hr = ::GetAddressFromSourceLocation (module.get(), _file.get(), _line_index, &address);
 							if (SUCCEEDED(hr))
 							{
 								hr = BoundBreakpointImpl::CreateInstance (this, _program, _bpman, physicalMemorySpace, address, &_boundBP); RETURN_IF_FAILED(hr);

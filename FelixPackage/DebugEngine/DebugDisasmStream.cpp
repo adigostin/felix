@@ -6,6 +6,8 @@
 #include "shared/OtherGuids.h"
 #include "shared/z80_register_set.h"
 #include "shared/com.h"
+#include <optional>
+#include <utility>
 
 struct reg8
 {
@@ -181,11 +183,12 @@ class Z80Disassembly : public IDebugDisassemblyStream2
 	ULONG _refCount = 0;
 	DISASSEMBLY_STREAM_SCOPE _dwScope;
 	com_ptr<IDebugProgram2> _program;
+	std::optional<std::pair<wil::unique_bstr, uint32_t>> _lastSourceLocation;
 	//wil::com_ptr_nothrow<IZ80BlockInstruction> _blockInstruction;
 	uint16_t _address;
 
 public:
-	HRESULT InitInstance (DISASSEMBLY_STREAM_SCOPE dwScope, IDebugProgram2* program, IDebugCodeContext2* pCodeContext, IDebugDisassemblyStream2** to)
+	HRESULT InitInstance (DISASSEMBLY_STREAM_SCOPE dwScope, IDebugProgram2* program, IDebugCodeContext2* pCodeContext)
 	{
 		com_ptr<IFelixCodeContext> fcc;
 		auto hr = pCodeContext->QueryInterface(&fcc); RETURN_IF_FAILED(hr);
@@ -777,7 +780,7 @@ public:
 		else if (ptr[0] == 0xCB)
 		{
 			ptr++;
-			
+
 			// As per https://clrhome.org/table/, if there's a DD/FD before CB, the CPU reads a displacement before reading the opcode.
 			int8_t xydisp;
 			if (xy != hl_ix_iy::hl)
@@ -818,6 +821,7 @@ public:
 		{
 			auto dd = &prgDisassembly[i];
 			dd->dwFields = 0;
+			dd->dwFlags = 0;
 
 			if (dwFields & DSF_ADDRESS) // 1
 			{
@@ -858,7 +862,7 @@ public:
 				opersb operands;
 				wistd::unique_ptr<uint8_t[]> decodeBuffer;
 				static constexpr uint32_t longest_expected = 4;
-				decodeBuffer = wil::make_unique_nothrow<uint8_t[]>(longest_expected); 
+				decodeBuffer = wil::make_unique_nothrow<uint8_t[]>(longest_expected);
 				hr = simulator->ReadMemoryBus(_address, (uint16_t)longest_expected, decodeBuffer.get()); RETURN_IF_FAILED(hr);
 				decodedLength = DecodeInstruction (_address, decodeBuffer.get(), opcode, operands, dwFields & DSF_OPERANDS_SYMBOLS);
 				WI_ASSERT(decodedLength <= longest_expected);
@@ -925,29 +929,54 @@ public:
 				dd->dwFields |= DSF_CODELOCATIONID;
 			}
 
-			if (dwFields & DSF_POSITION) // 0x80
+			if (dwFields & (DSF_POSITION | DSF_DOCUMENTURL | DSF_FLAGS))
 			{
-				//dd->posBeg = ...;
-				//dd->posEnd = ...;
-				//dd->dwFields |= DSF_POSITION;
-			}
+				wil::unique_bstr sourceFilePath;
+				UINT32 sourceLine;
+				hr = GetSourceLocationFromAddress (_program, _address, &sourceFilePath, &sourceLine, nullptr);
+				if (hr == S_OK)
+				{
+					_ASSERT(!PathIsRelative(sourceFilePath.get()));
+					dd->dwFlags |= DF_HASSOURCE;
+					bool sameFile = _lastSourceLocation && !_wcsicmp(_lastSourceLocation->first.get(), sourceFilePath.get());
+					if (!sameFile)
+						dd->dwFlags |= DF_DOCUMENTCHANGE;
+					bool newSourceLocation = !sameFile || (sourceLine != _lastSourceLocation->second);
+					if (newSourceLocation)
+					{
+						if (dwFields & DSF_POSITION)
+						{
+							dd->posBeg.dwLine = sourceLine;
+							dd->posBeg.dwColumn = 0;
+							dd->posEnd.dwLine = sourceLine;
+							dd->posEnd.dwColumn = 100;
+							dd->dwFields |= DSF_POSITION;
+						}
 
-			if (dwFields & DSF_DOCUMENTURL) // 0x100
-			{
-				// ...
+						if (dwFields & DSF_DOCUMENTURL)
+						{
+							DWORD MaxUrlLen = 2083; // INTERNET_MAX_URL_LENGTH;
+							auto url = wil::make_process_heap_string_nothrow(nullptr, MaxUrlLen); RETURN_IF_NULL_ALLOC(url);
+							auto hr = UrlCreateFromPathW(sourceFilePath.get(), url.get(), &MaxUrlLen, 0); RETURN_IF_FAILED(hr);
+							dd->bstrDocumentUrl = SysAllocString(url.get()); RETURN_IF_NULL_ALLOC(dd->bstrDocumentUrl);
+							dd->dwFields |= DSF_DOCUMENTURL;
+						}
+
+						_lastSourceLocation.emplace(std::move(sourceFilePath), sourceLine);
+					}
+				}
 			}
 
 			if (dwFields & DSF_BYTEOFFSET) // 0x200
 			{
 				// The number of bytes the instruction is from the beginning of the code line.
+				// We don't currently support multi-instruction code lines, so this is always 0.
 				dd->dwByteOffset = 0;
 				dd->dwFields |= DSF_BYTEOFFSET;
 			}
 
 			if (dwFields & DSF_FLAGS) // 0x400
 			{
-				dd->dwFlags = 0;
-
 				if (simulator->Running_HR() == S_FALSE)
 				{
 					// Silly Disassembly Window sometimes calls this function while code is running, that's why the 'if'.
@@ -969,6 +998,7 @@ public:
 	virtual HRESULT __stdcall Seek(SEEK_START dwSeekStart, IDebugCodeContext2* pCodeContext, UINT64 uCodeLocationId, INT64 iInstructions) override
 	{
 ///		_blockInstruction = nullptr;
+		_lastSourceLocation.reset();
 
 		if (dwSeekStart == SEEK_START_CURRENT)
 		{
@@ -1062,7 +1092,7 @@ public:
 HRESULT MakeDisassemblyStream (DISASSEMBLY_STREAM_SCOPE dwScope, IDebugProgram2* program, IDebugCodeContext2* pCodeContext, IDebugDisassemblyStream2** to)
 {
 	auto p = com_ptr(new (std::nothrow) Z80Disassembly()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance (dwScope, program, pCodeContext, to); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance (dwScope, program, pCodeContext); RETURN_IF_FAILED(hr);
 	*to = p.detach();
 	return S_OK;
 }

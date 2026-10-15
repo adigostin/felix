@@ -3,3 +3,4 @@ Use tabs for indentation and spaces for alignment.
 Do not delete empty lines unrelated to the task.
 Do not mess up indentation.
 In test code use constructors and Assert:Xxx instead of InitInstance, and don't check for out of memory conditions.
+CRITICAL: Don't attempt building the extension while the experimental instance of VS is running. It's ok to kill the processes and attempt building the extension afterwards.

@@ -212,12 +212,8 @@ struct Z80CodeContext : public IDebugCodeContext2, IFelixCodeContext
 	{
 		// A debug engine should return a failure code such as E_FAIL when the out parameter is null
 		// such as when the code context has no associated source position.
-
 		*ppSrcCxt = nullptr;
-		com_ptr<IDebugModule2> module;
-		auto hr = GetModuleAtAddress(_program.get(), _addr, &module); RETURN_IF_FAILED_EXPECTED(hr);
-		hr = MakeDocumentContext (module.get(), (uint16_t)_addr, ppSrcCxt); RETURN_IF_FAILED_EXPECTED(hr);
-		return S_OK;
+		return MakeDocumentContext (_program, _addr, ppSrcCxt);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetLanguageInfo(BSTR* pbstrLanguage, GUID* pguidLanguage) override

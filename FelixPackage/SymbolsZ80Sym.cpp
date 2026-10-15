@@ -151,15 +151,15 @@ struct Z80SymSymbols : IFelixSymbols
 	virtual HRESULT STDMETHODCALLTYPE HasSourceLocationInformation() override { return S_FALSE; }
 
 	virtual HRESULT STDMETHODCALLTYPE GetSourceLocationFromAddress(
-		__RPC__in uint16_t address,
-		__RPC__deref_out BSTR* srcFilename,
-		__RPC__out UINT32* srcLineIndex) override
+		_In_ uint16_t address,
+		_Outptr_ BSTR* pbstrSourceFilename,
+		_Out_ UINT32* pSourceLineIndex,
+		_Out_opt_ UINT32* pSourceRangeLineIndex) override
 	{
 		return E_NOTIMPL;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetAddressFromSourceLocation(
-		_In_opt_z_ LPCWSTR baseDir,
 		_In_z_ LPCWSTR srcFilename,
 		_In_ uint32_t lineIndex,
 		_Out_ UINT64* pAddress) override
@@ -167,12 +167,12 @@ struct Z80SymSymbols : IFelixSymbols
 		return E_NOTIMPL;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetSymbolAtAddress(
-		__RPC__in uint16_t address,
-		__RPC__in SymbolKind searchKind,
-		__RPC__deref_out_opt SymbolKind* foundKind,
-		__RPC__deref_out_opt BSTR* foundSymbol,
-		__RPC__deref_out_opt UINT16* foundOffset) override
+	virtual HRESULT STDMETHODCALLTYPE GetSymbolFromAddress(
+		_In_ uint16_t address,
+		_In_ SymbolKind searchKind,
+		_Out_opt_ SymbolKind* foundKind,
+		_Outptr_opt_ BSTR* foundSymbol,
+		_Out_opt_ UINT16* foundOffset) override
 	{
 		HRESULT hr;
 
@@ -245,7 +245,7 @@ struct Z80SymSymbols : IFelixSymbols
 		}
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetAddressFromSymbol (LPCWSTR symbolName, UINT16* address) override
+	virtual HRESULT STDMETHODCALLTYPE GetAddressFromSymbol (_In_z_ LPCWSTR symbolName, _Out_ UINT16* address) override
 	{
 		static const char header[] = "Z80SYMVER1";
 		if (strncmp (_text.get(), header, sizeof(header) - 1))
@@ -272,7 +272,7 @@ struct Z80SymSymbols : IFelixSymbols
 		return E_SYMBOL_NOT_IN_SYMBOL_FILE;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetFilename (BSTR* pbstrFilename) override
+	virtual HRESULT STDMETHODCALLTYPE GetFilename (_Outptr_ BSTR* pbstrFilename) override
 	{
 		*pbstrFilename = SysAllocString(_filename.get()); RETURN_IF_NULL_ALLOC(*pbstrFilename);
 		return S_OK;

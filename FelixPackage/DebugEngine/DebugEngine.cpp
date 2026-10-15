@@ -459,12 +459,10 @@ public:
 		wil::unique_process_heap_string dll;
 		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, dll); RETURN_IF_FAILED(hr);
 		PathFindFileName(dll.get())[0] = 0; // remove file name
-		wil::unique_process_heap_string rom_path, rom_debug_info_path;
+		wil::unique_process_heap_string rom_path;
 		hr = wil::str_concat_nothrow(rom_path, dll, L"ROMs\\Spectrum48K.rom"); RETURN_IF_NULL_ALLOC(rom_path);
-		hr = wil::str_concat_nothrow(rom_debug_info_path, dll, L"ROMs\\Spectrum48K.z80sym"); RETURN_IF_NULL_ALLOC(rom_debug_info_path);
 		wil::com_ptr_nothrow<IDebugModule2> romModule;
-		hr = MakeModule (0, 0x5CCB, rom_path.get(), rom_debug_info_path.get(), false,
-			this, _program.get(), _callback.get(), &romModule); RETURN_IF_FAILED(hr);
+		hr = MakeModule (0, 0x5CCB, rom_path.get(), false, nullptr, this, _program, _callback, &romModule); RETURN_IF_FAILED(hr);
 		com_ptr<IDebugModuleCollection> mcoll;
 		hr = _program->QueryInterface(&mcoll); RETURN_IF_FAILED(hr);
 		hr = mcoll->AddModule(romModule.get()); RETURN_IF_FAILED(hr);
@@ -479,6 +477,13 @@ public:
 		if (!exePath)
 			RETURN_HR(E_NO_EXE_FILENAME);
 
+		wil::unique_bstr sourceBasePath;
+		if (!_launchOptions || FAILED(_launchOptions->get_ProjectDir(&sourceBasePath)))
+		{
+			sourceBasePath = wil::make_bstr_nothrow(exePath.get()); RETURN_IF_NULL_ALLOC(sourceBasePath);
+			PathRemoveFileSpec(sourceBasePath.get());
+		}
+
 		auto fileExt = PathFindExtension(exePath.get());
 		if (!_wcsicmp(fileExt, L".bin") || !_wcsicmp(fileExt, L".tap"))
 		{
@@ -489,11 +494,11 @@ public:
 			if (!_wcsicmp(fileExt, L".bin"))
 			{
 				hr = simulator->SetSpeed(100); RETURN_IF_FAILED(hr);
-				hr = LoadBinary(exePath.get()); RETURN_IF_FAILED_EXPECTED(hr);
+				hr = LoadBinary(exePath.get(), sourceBasePath.get()); RETURN_IF_FAILED_EXPECTED(hr);
 			}
 			else //if (!_wcsicmp(fileExt, L".tap"))
 			{
-				hr = LoadTap(exePath.get()); RETURN_IF_FAILED_EXPECTED(hr);
+				hr = LoadTap(exePath.get(), sourceBasePath.get()); RETURN_IF_FAILED_EXPECTED(hr);
 			}
 
 			terminateOnError.release();
@@ -512,8 +517,9 @@ public:
 				uiShell->ReportErrorInfo(hr);
 				return hr;
 			}
+
 			com_ptr<IDebugModule2> ram_module;
-			hr = MakeModule (0x4000, 0xC000, exePath.get(), nullptr, true, this, _program, _callback, &ram_module); RETURN_IF_FAILED(hr);
+			hr = MakeModule (0x4000, 0xC000, exePath.get(), true, sourceBasePath.get(), this, _program, _callback, &ram_module); RETURN_IF_FAILED(hr);
 			hr = mcoll->AddModule(ram_module); RETURN_IF_FAILED(hr);
 
 			hr = ProcessEntryPointBreakpointHit(); RETURN_IF_FAILED(hr);
@@ -572,7 +578,7 @@ public:
 		}
 	}
 
-	HRESULT LoadBinary (const wchar_t* exePath)
+	HRESULT LoadBinary (LPCWSTR exePath, LPCWSTR sourceBasePath)
 	{
 		HRESULT hr;
 
@@ -588,7 +594,7 @@ public:
 		com_ptr<IDebugModuleCollection> moduleColl;
 		hr = _program->QueryInterface(&moduleColl); RETURN_IF_FAILED(hr);
 		wil::com_ptr_nothrow<IDebugModule2> exe_module;
-		hr = MakeModule (baseAddress, loadedSize, exePath, nullptr, true,
+		hr = MakeModule (baseAddress, loadedSize, exePath, true, sourceBasePath,
 			this, _program.get(), _callback.get(), &exe_module); RETURN_IF_FAILED(hr);
 		hr = moduleColl->AddModule(exe_module.get()); RETURN_IF_FAILED(hr);
 
@@ -613,13 +619,13 @@ public:
 		return S_OK;
 	}
 
-	HRESULT LoadTap (const wchar_t* exePath)
+	HRESULT LoadTap (LPCWSTR exePath, LPCWSTR sourceBasePath)
 	{
 		HRESULT hr;
 
 		// Make a module from the end of the ROM module to the end of the RAM, since we don't know how much we're going to load from tape.
 		com_ptr<IDebugModule2> exe_module;
-		hr = MakeModule (0x5CCB, 0x10000 - 0x5CCB, exePath, nullptr, true,
+		hr = MakeModule (0x5CCB, 0x10000 - 0x5CCB, exePath, true, sourceBasePath,
 			this, _program.get(), _callback.get(), &exe_module); RETURN_IF_FAILED(hr);
 
 		com_ptr<IDebugModuleCollection> moduleColl;
@@ -830,7 +836,7 @@ HRESULT MakeDebugEngine (IDebugEngine2** to)
 	return S_OK;
 }
 
-HRESULT GetAddressFromSourceLocation (IDebugProgram2* program, LPCWSTR projectDirOrNull, LPCWSTR sourceLocationFilename, DWORD sourceLocationLineIndex, OUT UINT64* pAddress)
+HRESULT GetAddressFromSourceLocation (IDebugProgram2* program, LPCWSTR sourceLocationFilename, DWORD sourceLocationLineIndex, OUT UINT64* pAddress)
 {
 	RETURN_HR_IF(E_POINTER, !pAddress);
 
@@ -840,7 +846,7 @@ HRESULT GetAddressFromSourceLocation (IDebugProgram2* program, LPCWSTR projectDi
 	com_ptr<IDebugModule2> module;
 	while (SUCCEEDED(modules->Next(1, &module, nullptr)) && module)
 	{
-		hr = ::GetAddressFromSourceLocation(module.get(), projectDirOrNull, sourceLocationFilename, sourceLocationLineIndex, pAddress);
+		hr = ::GetAddressFromSourceLocation(module.get(), sourceLocationFilename, sourceLocationLineIndex, pAddress);
 		if (SUCCEEDED(hr))
 			return S_OK;
 	}
@@ -848,7 +854,7 @@ HRESULT GetAddressFromSourceLocation (IDebugProgram2* program, LPCWSTR projectDi
 	return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 }
 
-HRESULT GetAddressFromSourceLocation (IDebugModule2* module, LPCWSTR projectDirOrNull, LPCWSTR sourceLocationFilename, DWORD sourceLocationLineIndex, OUT UINT64* pAddress)
+HRESULT GetAddressFromSourceLocation (IDebugModule2* module, LPCWSTR sourceLocationFilename, DWORD sourceLocationLineIndex, OUT UINT64* pAddress)
 {
 	wil::com_ptr_nothrow<IZ80Module> z80m;
 	auto hr = module->QueryInterface(&z80m); RETURN_IF_FAILED_EXPECTED(hr);
@@ -859,10 +865,38 @@ HRESULT GetAddressFromSourceLocation (IDebugModule2* module, LPCWSTR projectDirO
 	if (symbols->HasSourceLocationInformation() != S_OK)
 		return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 
-	return symbols->GetAddressFromSourceLocation(projectDirOrNull, sourceLocationFilename, sourceLocationLineIndex, pAddress);
+	return symbols->GetAddressFromSourceLocation(sourceLocationFilename, sourceLocationLineIndex, pAddress);
 }
 
-HRESULT GetModuleAtAddress (IDebugProgram2* program, UINT64 address, OUT IDebugModule2** ppModule)
+HRESULT GetSourceLocationFromAddress (IDebugProgram2* program, UINT64 address, BSTR* pbstrSourceFilePath, UINT32* pSourceLineIndex, _Out_opt_ UINT32* sourceRangeLineIndex)
+{
+	com_ptr<IDebugModule2> module;
+	auto hr = ::GetModuleAtAddress(program, address, &module);
+	if (FAILED(hr))
+		return hr;
+
+	com_ptr<IZ80Module> z80Module;
+	hr = module->QueryInterface(&z80Module);
+	if (FAILED(hr))
+		return hr;
+
+	com_ptr<IFelixSymbols> symbols;
+	hr = z80Module->GetSymbols(&symbols);
+	if (FAILED(hr))
+		return hr;
+
+	hr = symbols->HasSourceLocationInformation();
+	if (FAILED(hr))
+		return hr;
+	if (hr != S_OK)
+		return E_FAIL;
+
+	RETURN_HR_IF(E_BOUNDS, address > UINT16_MAX);
+
+	return symbols->GetSourceLocationFromAddress ((uint16_t)address, pbstrSourceFilePath, pSourceLineIndex, sourceRangeLineIndex);
+}
+
+HRESULT GetModuleAtAddress (IDebugProgram2* program, UINT64 address, IDebugModule2** ppModule)
 {
 	*ppModule = nullptr;
 
@@ -880,7 +914,7 @@ HRESULT GetModuleAtAddress (IDebugProgram2* program, UINT64 address, OUT IDebugM
 		}
 	}
 
-	return E_NO_MODULE_AT_THIS_ADDRESS;
+	return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 }
 
 HRESULT GetSymbolFromAddress(
@@ -892,16 +926,16 @@ HRESULT GetSymbolFromAddress(
 	__RPC__deref_out_opt UINT16* foundOffset,
 	__RPC__deref_out_opt IDebugModule2** foundModule)
 {
-	wil::com_ptr_nothrow<IDebugModule2> m;
+	com_ptr<IDebugModule2> m;
 	auto hr = ::GetModuleAtAddress (program, address, &m); RETURN_IF_FAILED_EXPECTED(hr);
 
-	wil::com_ptr_nothrow<IZ80Module> z80m;
+	com_ptr<IZ80Module> z80m;
 	hr = m->QueryInterface(&z80m); RETURN_IF_FAILED(hr);
 
-	wil::com_ptr_nothrow<IFelixSymbols> syms;
+	com_ptr<IFelixSymbols> syms;
 	hr = z80m->GetSymbols(&syms); RETURN_IF_FAILED_EXPECTED(hr);
 
-	hr = syms->GetSymbolAtAddress(address, searchKind, foundKind, foundSymbol, foundOffset); RETURN_IF_FAILED_EXPECTED(hr);
+	hr = syms->GetSymbolFromAddress(address, searchKind, foundKind, foundSymbol, foundOffset); RETURN_IF_FAILED_EXPECTED(hr);
 
 	if (foundModule)
 		*foundModule = m.detach();

@@ -2,6 +2,7 @@
 #include "pch.h"
 #include "FelixPackage.h"
 #include "shared/com.h"
+#include <string_view>
 
 static const char header[] = "|SLD.data.version|1\r\n";
 
@@ -10,10 +11,20 @@ struct SldSymbols : IFelixSymbols
 	ULONG _refCount = 0;
 	wil::unique_process_heap_string _filename;
 	wil::unique_hlocal_ansistring _text;
+	wil::unique_process_heap_string _sourceBasePath;
 
-	HRESULT InitInstance (const wchar_t* symbolsFullPath)
+	HRESULT InitInstance (LPCWSTR symbolsFullPath, LPCWSTR sourceBasePath)
 	{
 		_filename = wil::make_process_heap_string_nothrow(symbolsFullPath); RETURN_IF_NULL_ALLOC(_filename);
+		if (sourceBasePath && sourceBasePath[0]) {
+			size_t len = wcslen(sourceBasePath);
+			_sourceBasePath = wil::make_process_heap_string_nothrow(sourceBasePath, len + 1); RETURN_IF_NULL_ALLOC(_sourceBasePath);
+			if (_sourceBasePath.get()[len - 1] != '\\' && _sourceBasePath.get()[len - 1] != '/')
+			{
+				_sourceBasePath.get()[len] = '\\';
+				_sourceBasePath.get()[len + 1] = 0;
+			}
+		}
 		HANDLE hraw = CreateFileW (symbolsFullPath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr); RETURN_LAST_ERROR_IF_EXPECTED(hraw == INVALID_HANDLE_VALUE);
 		wil::unique_hfile h (hraw);
 		DWORD file_size = GetFileSize (hraw, nullptr);
@@ -55,8 +66,10 @@ struct SldSymbols : IFelixSymbols
 		const char* fields[8];
 	};
 
-	static bool try_parse_line (const char*& p, sld_entry& e)
+	static bool try_parse_line (const char*& p_, sld_entry& e)
 	{
+		const char* p = p_;
+
 		const size_t expected_field_count = sizeof(sld_entry::fields) / sizeof(char*);
 		for (size_t i = 0;;)
 		{
@@ -75,18 +88,25 @@ struct SldSymbols : IFelixSymbols
 			}
 			else if (*p == '\r')
 			{
+				if (i != expected_field_count)
+					return false;
+
 				e.end_of_line = p;
 				p++;
 				if (*p == '\n')
 					p++;
-
-				return i == expected_field_count;
+				p_ = p;
+				return true;
 			}
 			else
 			{
 				// end of file
+				if (i != expected_field_count)
+					return false;
+
 				e.end_of_line = p;
-				return i == expected_field_count;
+				p_ = p;
+				return true;
 			}
 		}
 	}
@@ -95,16 +115,23 @@ struct SldSymbols : IFelixSymbols
 	virtual HRESULT STDMETHODCALLTYPE HasSourceLocationInformation() override { return S_OK; }
 
 	virtual HRESULT STDMETHODCALLTYPE GetSourceLocationFromAddress(
-		__RPC__in uint16_t address,
-		__RPC__deref_out BSTR* srcFilename,
-		__RPC__out UINT32* srcLineIndex) override
+		_In_ uint16_t address,
+		_Outptr_ BSTR* pbstrSourceFilename,
+		_Out_ UINT32* pSourceLineIndex,
+		_Out_opt_ UINT32* pSourceRangeLineIndex) override
 	{
-		sld_entry entry;
+		RETURN_HR_IF_NULL(E_POINTER, pbstrSourceFilename);
+		*pbstrSourceFilename = nullptr;
+
+		RETURN_HR_IF(E_UNEXPECTED, !_sourceBasePath);
+
+		const char* prevSldLine;
+		const char* foundSldLine;
 
 		{
 			const char* p = _text.get() + sizeof(header) - 1;
-			const char* prev_code_line = nullptr;
-
+			const char* prev = nullptr;
+			const char* prevprev = nullptr;
 			while(true)
 			{
 				if (!*p)
@@ -112,39 +139,81 @@ struct SldSymbols : IFelixSymbols
 
 				auto this_line = p;
 
-				bool bres = try_parse_line(p, entry); RETURN_HR_IF(E_INVALID_SLD_LINE, !bres);
+				sld_entry entry;
+				bool bres = try_parse_line(p, entry);
+				RETURN_HR_IF_MSG(HRESULT_FROM_WIN32(ERROR_BAD_FORMAT), !bres, "%.200S", p);
 
 				if (!strncmp (entry.type, "T|", 2))
 				{
 					uint16_t line_addr = (uint16_t)strtoul(entry.value, nullptr, 10);
 					if (line_addr == address)
-						break;
-
-					if (line_addr > address)
 					{
-						if (!prev_code_line)
-							return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
-						bres = try_parse_line(prev_code_line, entry); WI_ASSERT(bres);
+						// Searched address is at the start of this line.
+						prevSldLine = prev;
+						foundSldLine = this_line;
 						break;
 					}
 
-					prev_code_line = this_line;
+					if (line_addr > address)
+					{
+						// Searched address is after the start of the previous entry, but before this entry.
+						// It can be mid-instruction, or in a multiple-instruction line with instructions separated by ':'.
+						// We currently don't handle multiple-instruction lines.
+						if (!prev)
+							return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+						prevSldLine = prevprev;
+						foundSldLine = prev;
+						break;
+					}
+
+					prevprev = prev;
+					prev = this_line;
 				}
 			}
 		}
+
+		sld_entry entry;
+		bool bres = try_parse_line(foundSldLine, entry); _ASSERT(bres);
 
 		const char* filename_end = strchr(entry.source_file, '|');
 		size_t filename_len = filename_end - entry.source_file;
 		int ires = MultiByteToWideChar(CP_UTF8, 0, entry.source_file, (int)filename_len, nullptr, 0); RETURN_HR_IF(E_FAIL, !ires);
 		auto filenamew = wil::make_hlocal_string_nothrow(nullptr, (size_t)ires); RETURN_IF_NULL_ALLOC(filenamew);
 		ires = MultiByteToWideChar (CP_UTF8, 0, entry.source_file, (int)filename_len, filenamew.get(), (int)filename_len); RETURN_HR_IF(E_FAIL, !ires);
-		*srcFilename = SysAllocStringLen (filenamew.get(), (UINT)filename_len); RETURN_IF_NULL_ALLOC(*srcFilename);
-		*srcLineIndex = strtoul(entry.source_line, nullptr, 10) - 1;
+
+		wchar_t filePath[MAX_PATH];
+		auto res = PathCombineW (filePath, _sourceBasePath.get(), filenamew.get()); RETURN_HR_IF_NULL(E_FAIL, res);
+		*pbstrSourceFilename = SysAllocString(filePath); RETURN_IF_NULL_ALLOC(*pbstrSourceFilename);
+		*pSourceLineIndex = strtoul(entry.source_line, nullptr, 10) - 1;
+		if (pSourceRangeLineIndex)
+		{
+			if (!prevSldLine) {
+				*pSourceRangeLineIndex = 0;
+			}
+			else
+			{
+				sld_entry prevEntry;
+				bres = try_parse_line(prevSldLine, prevEntry); _ASSERT(bres);
+
+				// If prev entry is from another source file, we use the beginning of the found file as source range start.
+				auto foundfn = std::string_view { entry.source_file, strchr(entry.source_file, '|') };
+				auto prevfn = std::string_view{ prevEntry.source_file, strchr(prevEntry.source_file, '|') };
+				if (foundfn != prevfn)
+					*pSourceRangeLineIndex = 0;
+				else
+				{
+					UINT32 prevEntryLineNumber = strtoul(prevEntry.source_line, nullptr, 10);
+					UINT32 prevEntryLineIndex = prevEntryLineNumber - 1;
+					UINT32 thisRangeLineIndex = prevEntryLineIndex + 1;
+					*pSourceRangeLineIndex = thisRangeLineIndex < *pSourceLineIndex ? thisRangeLineIndex : *pSourceLineIndex;
+				}
+			}
+		}
+
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetAddressFromSourceLocation (
-		_In_opt_z_ LPCWSTR baseDir,
 		_In_z_ LPCWSTR srcFilename,
 		_In_ uint32_t lineIndex,
 		_Out_ UINT64* pAddress) override
@@ -157,7 +226,7 @@ struct SldSymbols : IFelixSymbols
 		//  - If the assembled file is anywhere else, the filename is absolute.
 
 		wil::unique_process_heap_string buffer;
-		if (!baseDir)
+		if (!_sourceBasePath)
 		{
 			// Search for the filename we received as parameter.
 			_ASSERT(false); // Should we ever be here?!
@@ -169,7 +238,7 @@ struct SldSymbols : IFelixSymbols
 		else
 		{
 			wchar_t relative[MAX_PATH];
-			BOOL bRes = PathRelativePathToW (relative, baseDir, FILE_ATTRIBUTE_DIRECTORY, srcFilename, 0);
+			BOOL bRes = PathRelativePathToW (relative, _sourceBasePath.get(), FILE_ATTRIBUTE_DIRECTORY, srcFilename, 0);
 			if (!bRes)
 			{
 				// Probably different drives. Search for the filename we received as parameter.
@@ -224,7 +293,7 @@ struct SldSymbols : IFelixSymbols
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetSymbolAtAddress (uint16_t address, SymbolKind searchKind, SymbolKind* foundKind, BSTR* foundSymbol, UINT16* foundOffset) override
+	virtual HRESULT STDMETHODCALLTYPE GetSymbolFromAddress (_In_ uint16_t address, _In_ SymbolKind searchKind, _Out_opt_ SymbolKind* foundKind, _Outptr_opt_ BSTR* foundSymbol, _Out_opt_ UINT16* foundOffset) override
 	{
 		// The .sld file doesn't make a difference between code and data.
 		// For example "label: nop" generates the same line in .sld as "label: db 0".
@@ -271,7 +340,7 @@ struct SldSymbols : IFelixSymbols
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetAddressFromSymbol (LPCWSTR symbolName, UINT16* address) override
+	virtual HRESULT STDMETHODCALLTYPE GetAddressFromSymbol (_In_z_ LPCWSTR symbolName, _Out_ UINT16* address) override
 	{
 		size_t symbolNameLen = wcslen(symbolName);
 		const char* p = _text.get() + sizeof(header) - 1;
@@ -311,7 +380,7 @@ struct SldSymbols : IFelixSymbols
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE GetFilename (BSTR* pbstrFilename) override
+	virtual HRESULT STDMETHODCALLTYPE GetFilename (_Outptr_ BSTR* pbstrFilename) override
 	{
 		*pbstrFilename = SysAllocString(_filename.get()); RETURN_IF_NULL_ALLOC(*pbstrFilename);
 		return S_OK;
@@ -319,10 +388,10 @@ struct SldSymbols : IFelixSymbols
 	#pragma endregion
 };
 
-HRESULT MakeSldSymbols (const wchar_t* symbolsFullPath, IFelixSymbols** to)
+HRESULT MakeSldSymbols (LPCWSTR symbolsFullPath, LPCWSTR sourceBasePath, IFelixSymbols** to)
 {
 	auto p = com_ptr(new (std::nothrow) SldSymbols()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance(symbolsFullPath); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance(symbolsFullPath, sourceBasePath); RETURN_IF_FAILED(hr);
 	*to = p.detach();
 	return S_OK;
 }

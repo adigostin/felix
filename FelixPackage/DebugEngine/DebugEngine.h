@@ -6,7 +6,6 @@
 // TODO: rename these to E_Z80_XXX
 #define E_UNKNOWN_FILE_EXTENSION             MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x201)
 #define E_UNRECOGNIZED_DEBUG_FILE_EXTENSION  MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x203)
-#define E_NO_MODULE_AT_THIS_ADDRESS          MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x207)
 #define E_NO_EXE_FILENAME                    MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x20B)
 
 struct __declspec(novtable) __declspec(uuid("{E6B46DE8-63A5-4F11-BDD8-E61559A5525E}")) IZ80DebugPort : IDebugPort2
@@ -69,18 +68,19 @@ HRESULT MakeDebugProcess (IDebugPort2* pPort, LPCOLESTR pszExe, IDebugEngine2* e
 // such as from a file located next to the module file with the same filename and a different extension.
 // The module implementation attempts to load the symbols only once per debug session, when the symbols
 // are needed for the first time, for example in the implementation of IZ80Module::GetSymbols.
-HRESULT MakeModule (UINT64 address, DWORD size, const wchar_t* path, const wchar_t* symbolsFilePath, bool user_code,
+HRESULT MakeModule (UINT64 address, DWORD size, LPCWSTR path, bool user_code, LPCWSTR sourceBasePath,
 	IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback, IDebugModule2** to);
 
 HRESULT MakeThread (IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback, IDebugThread2** ppThread);
 HRESULT MakeEnumDebugFrameInfo (FRAMEINFO_FLAGS dwFieldSpec, UINT nRadix, IDebugThread2* thread, IEnumDebugFrameInfo2** to);
 HRESULT MakeDebugContext (bool physicalMemorySpace, UINT64 uCodeLocationId, IDebugProgram2* program, REFIID riid, void** ppContext);
-HRESULT MakeDocumentContext (IDebugModule2* module, uint16_t address, IDebugDocumentContext2** to);
+HRESULT MakeDocumentContext (IDebugProgram2* program, UINT64 address, IDebugDocumentContext2** to);
 HRESULT MakeEnumRegisterGroupsPropertyInfo (IDebugThread2* thread, DEBUGPROP_INFO_FLAGS flags, IEnumDebugPropertyInfo2** to);
 HRESULT MakeDisassemblyStream (DISASSEMBLY_STREAM_SCOPE dwScope, IDebugProgram2* program, IDebugCodeContext2* pCodeContext, IDebugDisassemblyStream2** to);
-HRESULT GetAddressFromSourceLocation (IDebugProgram2* program, LPCWSTR projectDirOrNull, LPCWSTR sourceLocationFilename, DWORD sourceLocationLineIndex, OUT UINT64* pAddress);
-HRESULT GetAddressFromSourceLocation (IDebugModule2* module, LPCWSTR projectDirOrNull, LPCWSTR sourceLocationFilename, DWORD sourceLocationLineIndex, OUT UINT64* pAddress);
-HRESULT GetModuleAtAddress (IDebugProgram2* program, UINT64 address, OUT IDebugModule2** ppModule);
+HRESULT GetAddressFromSourceLocation (IDebugProgram2* program, LPCWSTR sourceLocationFilename, DWORD sourceLocationLineIndex, OUT UINT64* pAddress);
+HRESULT GetAddressFromSourceLocation (IDebugModule2* module, LPCWSTR sourceLocationFilename, DWORD sourceLocationLineIndex, OUT UINT64* pAddress);
+HRESULT GetSourceLocationFromAddress (IDebugProgram2* program, UINT64 address, BSTR* pbstrSourceFilePath, UINT32* pSourceLineIndex, _Out_opt_ UINT32* sourceRangeLineIndex);
+HRESULT GetModuleAtAddress (IDebugProgram2* program, UINT64 address, IDebugModule2** ppModule);
 HRESULT MakeExpressionContextNoSource (IDebugThread2* thread, IDebugExpressionContext2** to);
 HRESULT MakeRegisterExpression (IDebugThread2* thread, LPCOLESTR originalText, z80_reg16 reg, IDebugExpression2** to);
 HRESULT MakeNumberExpression (LPCOLESTR originalText, bool physicalMemorySpace, uint32_t value, IDebugProgram2* program, IDebugExpression2** to);

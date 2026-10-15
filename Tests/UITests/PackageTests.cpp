@@ -65,7 +65,7 @@ namespace UITests
 					wil::make_bstr_failfast(L"proj.flx").get(), VARIANT_FALSE, &proj);
 				Assert::AreEqual(S_OK, hr);
 
-				auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\folder/test.asm");
+				auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"folder/test.asm");
 				WriteFileCreateDirs(fileFullPath, "");
 				VSADDRESULT addResult;
 				auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000u);

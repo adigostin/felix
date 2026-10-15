@@ -3,6 +3,8 @@
 #include "shared/com.h"
 #include "UITests.h"
 #include "dispids.h"
+#include <string_view>
+#include <vector>
 
 namespace UITests
 {
@@ -326,6 +328,337 @@ namespace UITests
 
 			WaitIDEDebugMode(td.dte);
 			WaitDebugMode(td.debugger, VxDTE::dbgDebugMode::dbgBreakMode);
+
+			hr = td.debugger->Stop();
+			Assert::AreEqual(S_OK, hr); // it sometimes fails on here, don't know why
+			WaitDebugMode(td.debugger, VxDTE::dbgDebugMode::dbgDesignMode);
+		}
+
+		struct DisassemblyLines
+		{
+			wil::unique_bstr text;
+			std::vector<std::wstring_view> lines;
+		};
+
+		static DisassemblyLines GetDisassembly(VxDTE::DTE2* dte)
+		{
+			HRESULT hr;
+
+			hr = dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.Disassembly").get());
+			Assert::AreEqual(S_OK, hr);
+
+			wil::com_ptr_failfast<VxDTE::Windows> windows;
+			hr = dte->get_Windows(&windows);
+			Assert::AreEqual(S_OK, hr);
+
+			auto disassemblyGuid = wil::make_bstr_failfast(L"{CF577B8C-4134-11D2-83E5-00C04F9902C1}");
+			VARIANT index{};
+			index.vt = VT_BSTR;
+			index.bstrVal = disassemblyGuid.get();
+			wil::com_ptr_failfast<VxDTE::Window> disassemblyWindow;
+			hr = windows->Item(index, &disassemblyWindow);
+			Assert::AreEqual(S_OK, hr);
+			hr = disassemblyWindow->Activate();
+			Assert::AreEqual(S_OK, hr);
+
+			wil::com_ptr_failfast<IUIAutomation> uiAutomation;
+			hr = CoCreateInstance(__uuidof(CUIAutomation), nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&uiAutomation));
+			Assert::AreEqual(S_OK, hr);
+
+			wil::com_ptr_failfast<VxDTE::Window> mainWindow;
+			hr = dte->get_MainWindow(&mainWindow);
+			Assert::AreEqual(S_OK, hr);
+			long mainWindowHWnd;
+			hr = mainWindow->get_HWnd(&mainWindowHWnd);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::com_ptr_failfast<IUIAutomationElement> mainWindowElement;
+			hr = uiAutomation->ElementFromHandle((HWND)(LONG_PTR)mainWindowHWnd, &mainWindowElement);
+			Assert::AreEqual(S_OK, hr);
+			wil::unique_bstr disassemblyCaption;
+			hr = disassemblyWindow->get_Caption(disassemblyCaption.put());
+			Assert::AreEqual(S_OK, hr);
+			wil::com_ptr_failfast<IUIAutomationCondition> disassemblyCondition;
+			hr = uiAutomation->CreatePropertyCondition(UIA_NamePropertyId, wil::make_variant_bstr_failfast(disassemblyCaption.get()), &disassemblyCondition);
+			Assert::AreEqual(S_OK, hr);
+			wil::com_ptr_failfast<IUIAutomationElement> disassemblyElement;
+			hr = mainWindowElement->FindFirst(TreeScope_Descendants, disassemblyCondition.get(), &disassemblyElement);
+			Assert::AreEqual(S_OK, hr);
+			Assert::IsNotNull(disassemblyElement.get());
+
+			wil::com_ptr_failfast<IUIAutomationCondition> viewingOptionsCondition;
+			hr = uiAutomation->CreatePropertyCondition(UIA_NamePropertyId, wil::make_variant_bstr_failfast(L"Viewing Options"), &viewingOptionsCondition);
+			Assert::AreEqual(S_OK, hr);
+			wil::com_ptr_failfast<IUIAutomationElement> viewingOptionsElement;
+			hr = disassemblyElement->FindFirst(TreeScope_Descendants, viewingOptionsCondition.get(), &viewingOptionsElement);
+			Assert::AreEqual(S_OK, hr);
+			Assert::IsNotNull(viewingOptionsElement.get());
+
+			wil::com_ptr_failfast<IUnknown> viewingOptionsPatternUnknown;
+			hr = viewingOptionsElement->GetCurrentPattern(UIA_ExpandCollapsePatternId, &viewingOptionsPatternUnknown);
+			Assert::AreEqual(S_OK, hr);
+			auto viewingOptionsPattern = viewingOptionsPatternUnknown.query<IUIAutomationExpandCollapsePattern>();
+			ExpandCollapseState viewingOptionsState;
+			hr = viewingOptionsPattern->get_CurrentExpandCollapseState(&viewingOptionsState);
+			Assert::AreEqual(S_OK, hr);
+			if (viewingOptionsState == ExpandCollapseState_Collapsed)
+			{
+				hr = viewingOptionsPattern->Expand();
+				Assert::AreEqual(S_OK, hr);
+			}
+
+			wil::com_ptr_failfast<IUIAutomationCondition> showSourceCodeCondition;
+			hr = uiAutomation->CreatePropertyCondition(UIA_NamePropertyId, wil::make_variant_bstr_failfast(L"Show source code"), &showSourceCodeCondition);
+			Assert::AreEqual(S_OK, hr);
+			wil::com_ptr_failfast<IUIAutomationElement> showSourceCodeElement;
+			hr = disassemblyElement->FindFirst(TreeScope_Descendants, showSourceCodeCondition.get(), &showSourceCodeElement);
+			Assert::AreEqual(S_OK, hr);
+			Assert::IsNotNull(showSourceCodeElement.get());
+
+			wil::com_ptr_failfast<IUnknown> showSourceCodePatternUnknown;
+			hr = showSourceCodeElement->GetCurrentPattern(UIA_TogglePatternId, &showSourceCodePatternUnknown);
+			Assert::AreEqual(S_OK, hr);
+			auto showSourceCodePattern = showSourceCodePatternUnknown.query<IUIAutomationTogglePattern>();
+			ToggleState showSourceCodeState;
+			hr = showSourceCodePattern->get_CurrentToggleState(&showSourceCodeState);
+			Assert::AreEqual(S_OK, hr);
+			if (showSourceCodeState != ToggleState_On)
+			{
+				hr = showSourceCodePattern->Toggle();
+				Assert::AreEqual(S_OK, hr);
+			}
+			hr = showSourceCodePattern->get_CurrentToggleState(&showSourceCodeState);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual((int)ToggleState_On, (int)showSourceCodeState);
+
+			VARIANT textPatternAvailable{};
+			textPatternAvailable.vt = VT_BOOL;
+			textPatternAvailable.boolVal = VARIANT_TRUE;
+			wil::com_ptr_failfast<IUIAutomationCondition> textPatternCondition;
+			hr = uiAutomation->CreatePropertyCondition(UIA_IsTextPatternAvailablePropertyId, textPatternAvailable, &textPatternCondition);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::com_ptr_failfast<IUIAutomationElement> textElement;
+			hr = disassemblyElement->FindFirst(TreeScope_Descendants, textPatternCondition.get(), &textElement);
+			Assert::AreEqual(S_OK, hr);
+			Assert::IsNotNull(textElement.get());
+
+			wil::com_ptr_failfast<IUnknown> textPatternUnknown;
+			hr = textElement->GetCurrentPattern(UIA_TextPatternId, &textPatternUnknown);
+			Assert::AreEqual(S_OK, hr);
+			auto textPattern = textPatternUnknown.query<IUIAutomationTextPattern>();
+
+			wil::com_ptr_failfast<IUIAutomationTextRange> textRange;
+			hr = textPattern->get_DocumentRange(&textRange);
+			Assert::AreEqual(S_OK, hr);
+			wil::unique_bstr disassemblyText;
+			hr = textRange->GetText(-1, disassemblyText.put());
+			Assert::AreEqual(S_OK, hr);
+			//return wil::make_process_heap_string_failfast(disassemblyText.get(), SysStringLen(disassemblyText.get()));
+
+			DisassemblyLines lines = { std::move(disassemblyText) };
+
+			const wchar_t* lineStart = lines.text.get();
+			while (true)
+			{
+				const wchar_t* p = lineStart;
+				while (*p != L'\n' && *p != L'\0')
+					p++;
+				auto line = std::wstring_view(lineStart, p - lineStart);
+				if (!line.empty() && line.back() == L'\r')
+					line.remove_suffix(1);
+				lines.lines.push_back(line);
+				if (*p == L'\0')
+					break;
+				lineStart = p + 1;
+			}
+
+			return lines;
+		}
+
+		TEST_METHOD(DisassemblyIncludesSource)
+		{
+			HRESULT hr;
+			DebuggerTD td(testClassPath.get(), L"DisassemblyIncludesSource", EmptyTemplateProjectPath.get());
+
+			auto sourceFilePath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\file.asm");
+			static const char source[] =
+				"start:\r\n"
+				"\tld a, 1\r\n"
+				"; disassembly comment\r\n"
+				"\tinc a\r\n"
+				"\r\n"
+				"\tld b, 2\r\n"
+				"\tinc b\r\n"
+				"\tnop\r\n"
+				"\tdec a\r\n"
+				"\tret\r\n";
+			WriteFileCreateDirs(sourceFilePath, source);
+			LPCOLESTR files[] = { sourceFilePath.get() };
+			VSADDRESULT addResult;
+			auto operation = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
+			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, operation, L"", 1, files, nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+			td.proj->Save();
+
+			wil::com_ptr_failfast<VxDTE::Breakpoints> breakpoints;
+			hr = td.debugger->get_Breakpoints(&breakpoints);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::com_ptr_failfast<VxDTE::Breakpoints> added;
+			hr = breakpoints->Add(nullptr, wil::make_bstr_failfast(L"file.asm").get(), 1, 1, nullptr,
+				VxDTE::dbgBreakpointConditionTypeWhenTrue, nullptr, nullptr, 0, nullptr, 0, VxDTE::dbgHitCountTypeNone, &added);
+			Assert::AreEqual(S_OK, hr);
+			Assert::IsNotNull(added.get());
+
+			hr = td.dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.Start").get());
+			Assert::AreEqual(S_OK, hr);
+
+			WaitIDEDebugMode(td.dte);
+			WaitDebugMode(td.debugger, VxDTE::dbgDebugMode::dbgBreakMode);
+
+			auto disasm = GetDisassembly(td.dte);
+
+			auto assertAdjacentLines = [&disasm](const wchar_t* target, const wchar_t* previous, const wchar_t* next)
+			{
+				size_t lineIndex = 0;
+				while (lineIndex < disasm.lines.size() && disasm.lines[lineIndex].find(target) == std::wstring_view::npos)
+					++lineIndex;
+				Assert::IsTrue(lineIndex > 0);
+				Assert::IsTrue(lineIndex + 1 < disasm.lines.size());
+				Assert::IsTrue(disasm.lines[lineIndex - 1].find(previous) != std::wstring_view::npos);
+				Assert::IsTrue(disasm.lines[lineIndex + 1].find(next) != std::wstring_view::npos);
+			};
+			assertAdjacentLines(L"ld a, 1", L"start:", L"LD A, 1");
+			assertAdjacentLines(L"inc a", L"; disassembly comment", L"INC A");
+
+			hr = td.debugger->Stop();
+			Assert::AreEqual(S_OK, hr);
+			WaitDebugMode(td.debugger, VxDTE::dbgDebugMode::dbgDesignMode);
+		}
+
+		TEST_METHOD(DisassemblyCorrectOnFileTransitionInSLD)
+		{
+			HRESULT hr;
+			DebuggerTD td(testClassPath.get(), L"DisassemblyIncludesCommentsAtStartOfSourceFile", EmptyTemplateProjectPath.get());
+
+			auto libFilePath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\lib.asm");
+			WriteFileCreateDirs(libFilePath, "e0:\tret\r\n");
+			auto startFilePath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\start.asm");
+			static const char source[] =
+				"; start comment 1\r\n"
+				"; start comment 2\r\n"
+				"; start comment 3\r\n"
+				"start:\r\n"
+				"\tcall e0\r\n"
+				"\tret\r\n";
+			WriteFileCreateDirs(startFilePath, source);
+
+			LPCOLESTR files[] = { libFilePath.get(), startFilePath.get() };
+			VSADDRESULT addResult;
+			auto operation = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
+			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, operation, L"", 2, files, nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+			td.proj->Save();
+
+			wil::com_ptr_failfast<VxDTE::Breakpoints> breakpoints;
+			hr = td.debugger->get_Breakpoints(&breakpoints);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::com_ptr_failfast<VxDTE::Breakpoints> added;
+			hr = breakpoints->Add(nullptr, wil::make_bstr_failfast(L"start.asm").get(), 5, 1, nullptr,
+				VxDTE::dbgBreakpointConditionTypeWhenTrue, nullptr, nullptr, 0, nullptr, 0, VxDTE::dbgHitCountTypeNone, &added);
+			Assert::AreEqual(S_OK, hr);
+			Assert::IsNotNull(added.get());
+
+			hr = td.dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.Start").get());
+			Assert::AreEqual(S_OK, hr);
+
+			WaitIDEDebugMode(td.dte);
+			WaitDebugMode(td.debugger, VxDTE::dbgDebugMode::dbgBreakMode);
+
+			auto disasm = GetDisassembly(td.dte);
+			size_t i = 0;
+			while (i < disasm.lines.size() && disasm.lines[i].find(L"; start comment 1") == std::wstring_view::npos)
+				++i;
+			Assert::IsTrue(i < disasm.lines.size());
+			++i;
+			while (i < disasm.lines.size() && disasm.lines[i].find(L"; start comment 2") == std::wstring_view::npos)
+				++i;
+			Assert::IsTrue(i < disasm.lines.size());
+			++i;
+			while (i < disasm.lines.size() && disasm.lines[i].find(L"; start comment 3") == std::wstring_view::npos)
+				++i;
+			Assert::IsTrue(i < disasm.lines.size());
+			++i;
+			while (i < disasm.lines.size() && disasm.lines[i].find(L"start:") == std::wstring_view::npos)
+				++i;
+			Assert::IsTrue(i < disasm.lines.size());
+
+			hr = td.debugger->Stop();
+			Assert::AreEqual(S_OK, hr);
+			WaitDebugMode(td.debugger, VxDTE::dbgDebugMode::dbgDesignMode);
+		}
+
+		TEST_METHOD(DisassemblyIncludesSourceForRepeatedBlock)
+		{
+			HRESULT hr;
+			DebuggerTD td(testClassPath.get(), L"DisassemblyIncludesSourceForRepeatedBlock", EmptyTemplateProjectPath.get());
+
+			auto sourceFilePath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\repeat.asm");
+			static const char source[] =
+				"start:\r\n"
+				"\tDUP 2\r\n"
+				"\tld a, 1\r\n"
+				"\tinc a\r\n"
+				"\tld h, d : ld l, e\r\n"
+				"\tEDUP\r\n"
+				"\tret\r\n";
+			WriteFileCreateDirs(sourceFilePath, source);
+			LPCOLESTR files[] = { sourceFilePath.get() };
+			VSADDRESULT addResult;
+			auto operation = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
+			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, operation, L"", 1, files, nullptr, &addResult);
+			Assert::AreEqual(S_OK, hr);
+			hr = td.proj->Save();
+			Assert::AreEqual(S_OK, hr);
+
+			wil::com_ptr_failfast<VxDTE::Breakpoints> breakpoints;
+			hr = td.debugger->get_Breakpoints(&breakpoints);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::com_ptr_failfast<VxDTE::Breakpoints> added;
+			hr = breakpoints->Add(nullptr, wil::make_bstr_failfast(L"repeat.asm").get(), 3, 1, nullptr,
+				VxDTE::dbgBreakpointConditionTypeWhenTrue, nullptr, nullptr, 0, nullptr, 0, VxDTE::dbgHitCountTypeNone, &added);
+			Assert::AreEqual(S_OK, hr);
+			Assert::IsNotNull(added.get());
+
+			hr = td.dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.Start").get());
+			Assert::AreEqual(S_OK, hr);
+
+			WaitIDEDebugMode(td.dte);
+			WaitDebugMode(td.debugger, VxDTE::dbgDebugMode::dbgBreakMode);
+
+			auto disasm = GetDisassembly(td.dte);
+			size_t lineIndex = 0;
+			for (unsigned iteration = 0; iteration < 2; iteration++)
+			{
+				for (auto [opcode, previousLine] : {
+					std::pair { L"LD A, 1", L"ld a, 1" },
+					std::pair { L"INC A", L"inc a" },
+					std::pair { L"LD H, D", L"ld h, d : ld l, e" },
+					std::pair { L"LD L, E", L"LD H, D" } })
+				{
+					while (lineIndex < disasm.lines.size() && disasm.lines[lineIndex].find(opcode) == std::wstring_view::npos)
+						++lineIndex;
+					Assert::IsTrue(lineIndex < disasm.lines.size(),
+						str_printf(L"Missing %s in repetition %u.\r\n%s", opcode, iteration + 1, disasm.text.get()).get());
+					Assert::IsTrue(lineIndex > 0);
+					Assert::IsTrue(disasm.lines[lineIndex - 1].find(previousLine) != std::wstring_view::npos,
+						str_printf(L"Missing %s before %s in repetition %u.\r\n%s", previousLine, opcode, iteration + 1, disasm.text.get()).get());
+					++lineIndex;
+				}
+			}
 
 			hr = td.debugger->Stop();
 			Assert::AreEqual(S_OK, hr);
