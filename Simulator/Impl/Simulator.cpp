@@ -70,6 +70,10 @@ class SimulatorImpl : public ISimulator, IScreenDeviceCompleteEventHandler, ITap
 
 	std::variant<ri_paused, ri_running, ri_max_speed> _running_info; // this is used only by the simulator thread
 	bool _running = false; // and this only by the main thread
+
+	// Used for enforcing the rule that simulation state (running/paused) must not be changed from application callbacks.
+	bool _changingRunningState = false;
+
 	wil::unique_handle _cpuThread;
 	wil::unique_handle _cpu_thread_exit_request;
 	com_ptr<ConnectionPointImpl<ISimulatorEventNotifySink>> _eventHandlers;
@@ -652,20 +656,7 @@ public:
 						screen.release();
 				}
 			};
-		auto lock = _mainThreadQueueLock.lock_exclusive();
-		bool pushed = _mainThreadWorkQueue.try_push_back(std::move(work));
-		if (pushed)
-		{
-			BOOL posted = PostMessageW (_hwnd, WM_MAIN_THREAD_WORK, 0, 0);
-			if (!posted)
-			{
-				DWORD le = GetLastError();
-				_mainThreadWorkQueue.remove(_mainThreadWorkQueue.end() - 1);
-				return HRESULT_FROM_WIN32(le);
-			}
-		}
-
-		return S_OK;
+		return PostWorkToMainThread(std::move(work));
 	}
 
 	template<typename IEvent>
@@ -707,16 +698,23 @@ public:
 		return S_OK;
 	}
 
-	void PostWorkToMainThread (stdext::inplace_function<void()> work)
+	HRESULT PostWorkToMainThread (stdext::inplace_function<void()> work)
 	{
 		auto lock = _mainThreadQueueLock.lock_exclusive();
+
 		bool pushed = _mainThreadWorkQueue.try_push_back(std::move(work));
-		if (pushed)
+		if (!pushed)
+			return E_OUTOFMEMORY;
+
+		BOOL posted = PostMessageW (_hwnd, WM_MAIN_THREAD_WORK, 0, 0);
+		if (!posted)
 		{
-			BOOL posted = PostMessageW (_hwnd, WM_MAIN_THREAD_WORK, 0, 0);
-			if (!posted)
-				_mainThreadWorkQueue.remove(_mainThreadWorkQueue.end() - 1);
+			DWORD le = GetLastError();
+			_mainThreadWorkQueue.remove(_mainThreadWorkQueue.end() - 1);
+			return HRESULT_FROM_WIN32(le);
 		}
+
+		return S_OK;
 	}
 
 	void DrainWorkQueue()
@@ -853,22 +851,39 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE Break() override
 	{
-		if (!_running)
-			return S_FALSE;
+		RETURN_HR_IF(E_UNEXPECTED, _changingRunningState);
+		_changingRunningState = true;
+		auto resetSS = wil::scope_exit([this] { _changingRunningState = false; });
 
-		// We have a race condition here: If the simulation thread breaks simulation for any reason
-		// (for example because the CPU hit a breakpoint), it will post a callback to the main thread,
-		// and that callback will be executed after we exit this Break() function. The callback
-		// will find execution already stopped. A fix would be to check _running_info before assigning it
-		// in the function we pass to RunOnSimulatorThread(), and return something like S_FALSE if simulation
-		// is already stopped.
+		// When breaking execution (either via the Break() function, or via a breakpoint, or when the .tap finishes playing),
+		// we first assign "_running_info" on the simulator thread, and only then assign "_running" on the GUI thread.
+
 		auto hr = RunOnSimulatorThread([this]
-			{
-				_running_info = ri_paused{ };
-				return S_OK;
-			});
+		{
+			if (std::holds_alternative<ri_paused>(_running_info))
+				return S_FALSE;
+
+			_running_info = ri_paused{ };
+			return S_OK;
+		});
 		RETURN_IF_FAILED(hr);
 
+		if (hr == S_FALSE)
+		{
+			// The simulation was already stopped. It might even have stopped just as we were passing the lambda
+			// to the simulator thread.) Whoever stopped it has posted the notification to the GUI thread via
+			// PostWorkToMainThread, but we don't know if the GUI thread has had a chance to process that
+			// notification yet. Since the Break() function is synchronous, we must make sure the notification
+			// is dispatched and processed before we return.
+			DrainWorkQueue();
+
+			_ASSERT(!_running);
+			return S_FALSE;
+		}
+
+		// (3) The simulation was stopped by the lambda.
+
+		_ASSERT(_running);
 		_running = false;
 
 		using BreakEvent = SimulatorEvent<ISimulatorBreakEvent>;
@@ -894,7 +909,15 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE Resume (BOOL checkBreakpointsAtCurrentPC) override
 	{
+		RETURN_HR_IF(E_UNEXPECTED, _changingRunningState);
+		_changingRunningState = true;
+		auto resetSS = wil::scope_exit([this] { _changingRunningState = false; });
+
 		RETURN_HR_IF(E_UNEXPECTED, _running);
+
+		// When resuming execution, we first assign assign "_running" on the GUI thread,
+		// and only "_running_info" on the simulator thread.
+		_running = true;
 
 		auto hr = RunOnSimulatorThread([this, checkBreakpointsAtCurrentPC]
 			{
@@ -924,10 +947,8 @@ public:
 			});
 		RETURN_IF_FAILED(hr);
 
-		_running = true;
 		using ResumeEvent = SimulatorEvent<ISimulatorResumeEvent>;
 		auto event = com_ptr(new (std::nothrow) ResumeEvent()); RETURN_IF_NULL_ALLOC(event);
-
 		_eventHandlers->Notify([&event](ISimulatorEventNotifySink* sink)
 			{ return sink->NotifySimulatorEvent(event, __uuidof(event)); });
 

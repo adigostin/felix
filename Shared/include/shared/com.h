@@ -51,6 +51,72 @@ HRESULT copy_to (T&& ptrSource, _COM_Outptr_result_maybenull_ U** ptrResult)
 	return S_OK;
 }
 
+// Runs the message loop until the callback succeeds (returns S_OK),
+// the timeout expires (returns S_FALSE), or an error occurs (returns an error HRESULT).
+inline HRESULT WaitWithMessageLoop(void* conditionContext, BOOL(*condition)(void*), DWORD timeoutMilliseconds)
+{
+	DWORD startTime = GetTickCount();
+	if (condition(conditionContext))
+		return S_OK;
+	DWORD lastConditionCheckTime = GetTickCount();
+	constexpr DWORD conditionCheckIntervalMilliseconds = 20;
+
+	while (true)
+	{
+		DWORD now = GetTickCount();
+		DWORD elapsedMillis = now - startTime;
+		if (elapsedMillis >= timeoutMilliseconds)
+			return S_FALSE;
+
+		DWORD sinceConditionCheckMillis = now - lastConditionCheckTime;
+		if (sinceConditionCheckMillis >= conditionCheckIntervalMilliseconds)
+		{
+			if (condition(conditionContext))
+				return S_OK;
+			lastConditionCheckTime = GetTickCount();
+			continue;
+		}
+
+		DWORD remainingTimeoutMillis = timeoutMilliseconds - elapsedMillis;
+		DWORD remainingConditionCheckMillis = conditionCheckIntervalMilliseconds - sinceConditionCheckMillis;
+		DWORD waitMillis = remainingTimeoutMillis < remainingConditionCheckMillis ? remainingTimeoutMillis : remainingConditionCheckMillis;
+		DWORD dwRet = MsgWaitForMultipleObjectsEx(0, nullptr, waitMillis, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+
+		if (dwRet == WAIT_TIMEOUT)
+			continue;
+
+		if (dwRet == WAIT_FAILED)
+			return HRESULT_FROM_WIN32(GetLastError());
+
+		if (dwRet != WAIT_OBJECT_0)
+			return E_UNEXPECTED;
+
+		MSG msg;
+		if (!PeekMessage(&msg, 0, 0, 0, PM_NOREMOVE))
+			continue;
+
+		BOOL bRet = ::GetMessageW(&msg, NULL, 0, 0);
+		if (bRet == -1)
+			return HRESULT_FROM_WIN32(GetLastError());
+
+		if (bRet > 0)
+		{
+			::TranslateMessage(&msg);
+			::DispatchMessageW(&msg);
+		}
+	}
+}
+
+template <typename Condition>
+static HRESULT WaitWithMessageLoop(Condition condition, DWORD timeoutMilliseconds)
+{
+	return WaitWithMessageLoop(&condition,
+		[](void* conditionContext) -> BOOL
+		{
+			return (*static_cast<Condition*>(conditionContext))() ? TRUE : FALSE;
+		}, timeoutMilliseconds);
+}
+
 // ============================================================================
 
 template<typename I, std::enable_if_t<std::is_constructible_v<IUnknown*, I*>, int> = 0>

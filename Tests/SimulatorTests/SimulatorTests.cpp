@@ -150,7 +150,7 @@ public:
 	}
 };
 
-namespace Z80SimulatorTests
+namespace CPUTests
 {
 	TEST_CLASS(Z80SimulatorTests)
 	{

@@ -6,7 +6,7 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-namespace Z80SimulatorTests
+namespace SimulatorTests
 {
 	TEST_CLASS(COMTests)
 	{

@@ -332,20 +332,6 @@ HRESULT WriteZxSpectrumSystemVar (IFelixSymbols* romSymbols, LPCWSTR name, UINT1
 HRESULT SimulateToEDITOR (IFelixSymbols* romSymbols);
 HRESULT SimulateBasicCommand (IFelixSymbols* romSymbols, const char* pszCommand);
 
-// Runs the message loop until the callback succeeds (returns S_OK),
-// the timeout expires (returns S_FALSE), or an error occurs (returns an error HRESULT).
-HRESULT WaitWithMessageLoop(void* conditionContext, BOOL(*condition)(void*), DWORD timeoutMilliseconds);
-
-template <typename Condition>
-static HRESULT WaitWithMessageLoop(Condition condition, DWORD timeoutMilliseconds)
-{
-	return WaitWithMessageLoop(&condition,
-		[](void* conditionContext) -> BOOL
-		{
-			return (*static_cast<Condition*>(conditionContext))() ? TRUE : FALSE;
-		}, timeoutMilliseconds);
-}
-
 // Returns S_OK when debugging stops, S_FALSE if the user cancels, or an error HRESULT on failure or timeout.
 HRESULT ConfirmStopDebugging();
 HRESULT PickSaveFile (LPCWSTR filter, wil::unique_process_heap_string& filename);

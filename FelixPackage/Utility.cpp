@@ -1525,60 +1525,6 @@ HRESULT NotifyPropertyChanged (ConnectionPointImpl<IPropertyNotifySink>* cp, std
 		});
 }
 
-HRESULT WaitWithMessageLoop(void* conditionContext, BOOL(*condition)(void*), DWORD timeoutMilliseconds)
-{
-	DWORD startTime = GetTickCount();
-	if (condition(conditionContext))
-		return S_OK;
-	DWORD lastConditionCheckTime = GetTickCount();
-	constexpr DWORD conditionCheckIntervalMilliseconds = 20;
-
-	while (true)
-	{
-		DWORD now = GetTickCount();
-		DWORD elapsedMillis = now - startTime;
-		if (elapsedMillis >= timeoutMilliseconds)
-			return S_FALSE;
-
-		DWORD sinceConditionCheckMillis = now - lastConditionCheckTime;
-		if (sinceConditionCheckMillis >= conditionCheckIntervalMilliseconds)
-		{
-			if (condition(conditionContext))
-				return S_OK;
-			lastConditionCheckTime = GetTickCount();
-			continue;
-		}
-
-		DWORD remainingTimeoutMillis = timeoutMilliseconds - elapsedMillis;
-		DWORD remainingConditionCheckMillis = conditionCheckIntervalMilliseconds - sinceConditionCheckMillis;
-		DWORD waitMillis = remainingTimeoutMillis < remainingConditionCheckMillis ? remainingTimeoutMillis : remainingConditionCheckMillis;
-		DWORD dwRet = MsgWaitForMultipleObjectsEx(0, nullptr, waitMillis, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
-
-		if (dwRet == WAIT_TIMEOUT)
-			continue;
-
-		if (dwRet == WAIT_FAILED)
-			return HRESULT_FROM_WIN32(GetLastError());
-
-		if (dwRet != WAIT_OBJECT_0)
-			return E_UNEXPECTED;
-
-		MSG msg;
-		if (!PeekMessage(&msg, 0, 0, 0, PM_NOREMOVE))
-			continue;
-
-		BOOL bRet = ::GetMessageW(&msg, NULL, 0, 0);
-		if (bRet == -1)
-			return HRESULT_FROM_WIN32(GetLastError());
-
-		if (bRet > 0)
-		{
-			::TranslateMessage(&msg);
-			::DispatchMessageW(&msg);
-		}
-	}
-}
-
 HRESULT ConfirmStopDebugging()
 {
 	com_ptr<IVsDebugger> debugger;

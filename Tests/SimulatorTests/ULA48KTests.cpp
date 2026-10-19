@@ -6,7 +6,7 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-namespace Z80SimulatorTests
+namespace ULATests
 {
 	static constexpr UINT64 TStatesPerLine48K = 224;
 	static constexpr UINT64 FirstScreenLine48K = 64;
@@ -28,9 +28,8 @@ namespace Z80SimulatorTests
 	public:
 		TEST_METHOD(SaveScreen)
 		{
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
+			HRESULT hr;
+			auto simulator = MakeSimulator();
 			Assert::AreEqual(S_OK, simulator->Reset(32768, SpectrumVariant48K));
 
 			UINT64 time;
@@ -89,9 +88,8 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(BitmapAddressingAndPixelBitOrder)
 		{
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
+			auto simulator = MakeSimulator();
+			HRESULT hr;
 
 			static const uint8_t program[] = {
 				0x3E, 0x80, 0x32, 0x00, 0x40, // LD A,80h; LD (4000h),A: pixel x=0, y=0
@@ -120,9 +118,8 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(AttributeCellAndBrightColors)
 		{
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
+			auto simulator = MakeSimulator();
+			HRESULT hr;
 
 			static const uint8_t program[] = {
 				0x3E, 0x80,                   // LD A,80h: set the leftmost bitmap pixel.
@@ -149,9 +146,8 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(BorderColorFromPortFE)
 		{
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
+			auto simulator = MakeSimulator();
+			HRESULT hr;
 
 			static const uint8_t program[] = {
 				0x3E, 0x02,             // LD A,2: red border
@@ -174,9 +170,8 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(CrtSnapshotShowsPixelAsBeamReachesItsScanline)
 		{
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
+			auto simulator = MakeSimulator();
+			HRESULT hr;
 
 			static const uint8_t program[] = {
 				0x3E, 0x80,                   // LD A,80h
@@ -201,9 +196,8 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(CrtSnapshotShowsHorizontalBeamProgress)
 		{
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
+			auto simulator = MakeSimulator();
+			HRESULT hr;
 
 			static const uint8_t program[] = {
 				0x3E, 0x80,                   // LD A,80h

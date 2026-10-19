@@ -108,6 +108,7 @@
     <ClCompile Include="SimulatorTests.cpp" />
     <ClCompile Include="COMTests.cpp" />
     <ClCompile Include="SimulatorAPITests.cpp" />
+    <ClCompile Include="TransitionTests.cpp" />
     <ClCompile Include="Utilities.cpp" />
     <ClCompile Include="ULA48KTests.cpp" />
   </ItemGroup>

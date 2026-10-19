@@ -77,3 +77,11 @@ unsigned long ScreenImage::GetPixel(DWORD x, DWORD y) const
 	Assert::IsTrue(y < height);
 	return pixels[static_cast<size_t>(y) * width + x];
 }
+
+wil::com_ptr_failfast<ISimulator> MakeSimulator (LPCWSTR const* romFilenames, size_t romFilenameCount, SpectrumVariant initialVariant)
+{
+	wil::com_ptr_failfast<ISimulator> simulator;
+	HRESULT hr = MakeSimulator(romFilenames, romFilenameCount, initialVariant, &simulator);
+	Assert::AreEqual(S_OK, hr);
+	return simulator;
+}

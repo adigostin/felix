@@ -18,3 +18,9 @@ struct ScreenImage
 };
 
 ScreenImage CaptureScreen(ISimulator* simulator, BOOL includeBorder);
+
+wil::com_ptr_failfast<ISimulator> MakeSimulator (
+	LPCWSTR const* romFilenames = nullptr,
+	size_t romFilenameCount = 0,
+	SpectrumVariant initialVariant = SpectrumVariant48K
+);

@@ -7,7 +7,7 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-namespace Z80SimulatorTests
+namespace SimulatorTests
 {
 	class TempFile
 	{
@@ -112,7 +112,7 @@ namespace Z80SimulatorTests
 		}
 	}
 
-	static void Create128KSimulator(TempFile& romFile, com_ptr<ISimulator>& simulator)
+	static wil::com_ptr_failfast<ISimulator> Create128KSimulator(TempFile& romFile)
 	{
 		vector_nothrow<uint8_t> rom;
 		Assert::IsTrue(rom.try_resize(0x8000));
@@ -122,8 +122,7 @@ namespace Z80SimulatorTests
 
 		LPCWSTR romFilenames[SpectrumVariantCount] = {};
 		romFilenames[SpectrumVariant128] = romFile.Path();
-		HRESULT hr = MakeSimulator(romFilenames, _countof(romFilenames), SpectrumVariant128, &simulator);
-		Assert::AreEqual(S_OK, hr);
+		return MakeSimulator(romFilenames, _countof(romFilenames), SpectrumVariant128);
 	}
 
 	static void AppendZ80V23Header(vector_nothrow<uint8_t>& snapshot, uint16_t headerLength, uint8_t hardwareMode)
@@ -170,10 +169,9 @@ namespace Z80SimulatorTests
 			snapshot[30 + 0x4000] = 0x25; // First byte at 0x8000
 			snapshot[30 + 0xBFFF] = 0x36; // Last byte at 0xFFFF
 
-			TempFile file (L".z80");
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
+			TempFile file(L".z80");
+			auto simulator = MakeSimulator();
+			HRESULT hr;
 			file.Write(snapshot);
 			hr = simulator->LoadFile(file.Path());
 			Assert::AreEqual(S_OK, hr);
@@ -204,10 +202,9 @@ namespace Z80SimulatorTests
 			}
 			snapshot.try_insert(snapshot.end(), { 0x00, 0xED, 0xED, 0x00 }); // End-of-data marker
 
-			TempFile file (L".z80");
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
+			TempFile file(L".z80");
+			auto simulator = MakeSimulator();
+			HRESULT hr;
 			file.Write(snapshot);
 			hr = simulator->LoadFile(file.Path());
 			Assert::AreEqual(S_OK, hr);
@@ -236,10 +233,9 @@ namespace Z80SimulatorTests
 			AppendUncompressedPage(snapshot, 4, 0x24); // 48K page at 0x8000
 			AppendUncompressedPage(snapshot, 5, 0x35); // 48K page at 0xC000
 
-			TempFile file (L".z80");
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
+			TempFile file(L".z80");
+			auto simulator = MakeSimulator();
+			HRESULT hr;
 			file.Write(snapshot);
 			hr = simulator->LoadFile(file.Path());
 			Assert::AreEqual(S_OK, hr);
@@ -271,10 +267,9 @@ namespace Z80SimulatorTests
 			for (uint8_t page = 3; page <= 10; page++) // Eight RAM pages in a 128K snapshot
 				AppendUncompressedPage(snapshot, page, static_cast<uint8_t>(0x20 + page));
 
-			TempFile file (L".z80");
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
+			TempFile file(L".z80");
+			auto simulator = MakeSimulator();
+			HRESULT hr;
 			file.Write(snapshot);
 			hr = simulator->LoadFile(file.Path());
 			Assert::AreEqual(S_OK, hr);
@@ -293,8 +288,7 @@ namespace Z80SimulatorTests
 		TEST_METHOD(PagingSelectsAllEightRamBanksAndFixedBankAliases)
 		{
 			TempFile romFile(L".rom");
-			com_ptr<ISimulator> simulator;
-			Create128KSimulator(romFile, simulator);
+			auto simulator = Create128KSimulator(romFile);
 
 			TestProgram program;
 			static constexpr uint8_t bankValues[] = { 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7 };
@@ -325,8 +319,7 @@ namespace Z80SimulatorTests
 		TEST_METHOD(PagingPortPartialDecodeAndRomSelection)
 		{
 			TempFile romFile(L".rom");
-			com_ptr<ISimulator> simulator;
-			Create128KSimulator(romFile, simulator);
+			auto simulator = Create128KSimulator(romFile);
 
 			TestProgram program;
 			program.Emit({ 0x01, 0xFD, 0x7F });  // LD BC,7FFDh
@@ -371,8 +364,7 @@ namespace Z80SimulatorTests
 		TEST_METHOD(PagingScreenBankIsIndependentOfCpuRamBank)
 		{
 			TempFile romFile(L".rom");
-			com_ptr<ISimulator> simulator;
-			Create128KSimulator(romFile, simulator);
+			auto simulator = Create128KSimulator(romFile);
 
 			TestProgram program;
 			program.Emit({ 0x01, 0xFD, 0x7F });  // LD BC,7FFDh
@@ -399,8 +391,7 @@ namespace Z80SimulatorTests
 		TEST_METHOD(PagingLockPreventsFurtherRamRomAndScreenChanges)
 		{
 			TempFile romFile(L".rom");
-			com_ptr<ISimulator> simulator;
-			Create128KSimulator(romFile, simulator);
+			auto simulator = Create128KSimulator(romFile);
 
 			TestProgram program;
 			program.Emit({ 0x01, 0xFD, 0x7F });  // LD BC,7FFDh
@@ -444,9 +435,8 @@ namespace Z80SimulatorTests
 			AppendCompressedPage(snapshot, 5, 0x4000, 0x35);
 
 			TempFile file(L".z80");
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
+			auto simulator = MakeSimulator();
+			HRESULT hr;
 			file.Write(snapshot);
 			Assert::AreEqual(S_OK, simulator->LoadFile(file.Path()));
 			Assert::AreEqual<uint8_t>(0x18, ReadMemory(simulator, 0x4000));
@@ -462,9 +452,8 @@ namespace Z80SimulatorTests
 				AppendCompressedPage(snapshot, page, 0x4000, static_cast<uint8_t>(0x30 + page - 3));
 
 			TempFile file(L".z80");
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
+			auto simulator = MakeSimulator();
+			HRESULT hr;
 			file.Write(snapshot);
 			Assert::AreEqual(S_OK, simulator->LoadFile(file.Path()));
 			Assert::AreEqual<uint8_t>(0x35, ReadMemory(simulator, 0x4000));
@@ -481,9 +470,8 @@ namespace Z80SimulatorTests
 			AppendCompressedPage(snapshot, 5, 0x4000, 0x35);
 
 			TempFile file(L".z80");
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
+			auto simulator = MakeSimulator();
+			HRESULT hr;
 			file.Write(snapshot);
 			hr = simulator->LoadFile(file.Path());
 			Assert::IsTrue(FAILED(hr));
@@ -498,9 +486,8 @@ namespace Z80SimulatorTests
 			AppendCompressedPage(snapshot, 5, 0x4000, 0x35);
 
 			TempFile file(L".z80");
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
+			auto simulator = MakeSimulator();
+			HRESULT hr;
 			file.Write(snapshot);
 			hr = simulator->LoadFile(file.Path());
 			Assert::IsTrue(FAILED(hr));
@@ -515,9 +502,8 @@ namespace Z80SimulatorTests
 			Assert::IsTrue(snapshot.try_insert(snapshot.end(), { 0xED, 0xED }));
 
 			TempFile file(L".z80");
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
+			auto simulator = MakeSimulator();
+			HRESULT hr;
 			file.Write(snapshot);
 			hr = simulator->LoadFile(file.Path());
 			Assert::IsTrue(FAILED(hr));
@@ -529,9 +515,8 @@ namespace Z80SimulatorTests
 			snapshot.try_resize(27 + 48 * 1024);
 
 			TempFile file(L".sna");
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
+			auto simulator = MakeSimulator();
+			HRESULT hr;
 
 			hr = simulator->Reset(0, SpectrumVariant128);
 			Assert::AreEqual(S_OK, hr);
@@ -551,8 +536,7 @@ namespace Z80SimulatorTests
 		TEST_METHOD(ResetWhilePausedNotifiesScreenComplete)
 		{
 			HRESULT hr;
-			wil::com_ptr_failfast<ISimulator> simulator;
-			MakeSimulator (nullptr, 0, SpectrumVariant48K, &simulator);
+			auto simulator = MakeSimulator();
 
 			auto screenHandler = wil::com_ptr_failfast(new TestScreenCompleteHandler());
 			hr = simulator->AdviseScreenComplete(screenHandler);
@@ -595,17 +579,13 @@ namespace Z80SimulatorTests
 
 		TEST_METHOD(ResetWhileRunning)
 		{
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
+			auto simulator = MakeSimulator();
 			VerifyResetWhileRunning(simulator.get(), 100);
 		}
 
 		TEST_METHOD(ResetWhileRunningAtMaxSpeed)
 		{
-			com_ptr<ISimulator> simulator;
-			HRESULT hr = MakeSimulator(nullptr, 0, SpectrumVariant48K, &simulator);
-			Assert::AreEqual(S_OK, hr);
+			auto simulator = MakeSimulator();
 			VerifyResetWhileRunning(simulator.get(), UINT32_MAX);
 		}
 
