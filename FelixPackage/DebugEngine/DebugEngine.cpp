@@ -246,16 +246,19 @@ public:
 
 	virtual HRESULT __stdcall ContinueFromSynchronousEvent(IDebugEvent2* pEvent) override
 	{
+		HRESULT hr;
+
 		wil::com_ptr_nothrow<IDebugProgramDestroyEvent2> pde;
 		if (SUCCEEDED(pEvent->QueryInterface(&pde)))
 		{
 			// Now that we told the SDM that we destroyed the program and the SDM is done acting on the event,
 			// we tell also the port about the program being gone. This should release even more references.
 
-			wil::com_ptr_nothrow<IZ80DebugPort> z80Port;
-			auto hr = _port->QueryInterface(&z80Port); RETURN_IF_FAILED(hr);
-
-			hr = z80Port->SendProgramDestroyEventToSinks (_program.get(), 0); RETURN_IF_FAILED(hr);
+			com_ptr<IDebugPortNotify2> portNotify;
+			hr = _port->QueryInterface(&portNotify); RETURN_IF_FAILED(hr);
+			com_ptr<IDebugProgramNode2> node;
+			hr = _program->QueryInterface(&node); RETURN_IF_FAILED(hr);
+			hr = portNotify->RemoveProgramNode(node); RETURN_IF_FAILED(hr);
 
 			_simulatorEventsToken.reset();
 
@@ -439,9 +442,11 @@ public:
 
 		wil::com_ptr_nothrow<IDebugPort2> port;
 		hr = pProcess->GetPort(&port); RETURN_IF_FAILED(hr);
-		wil::com_ptr_nothrow<IZ80DebugPort> z80Port;
-		hr = port->QueryInterface(&z80Port); RETURN_IF_FAILED(hr);
-		hr = z80Port->SendProgramCreateEventToSinks (_program.get()); RETURN_IF_FAILED(hr);
+		com_ptr<IDebugPortNotify2> portNotify;
+		hr = _port->QueryInterface(&portNotify); RETURN_IF_FAILED(hr);
+		com_ptr<IDebugProgramNode2> node;
+		hr = _program->QueryInterface(&node); RETURN_IF_FAILED(hr);
+		hr = portNotify->AddProgramNode(node); RETURN_IF_FAILED(hr);
 
 		using ProgramCreateEvent = EventBase<IDebugProgramCreateEvent2, EVENT_ASYNCHRONOUS>;
 		wil::com_ptr_nothrow<ProgramCreateEvent> pce = new (std::nothrow) ProgramCreateEvent(); RETURN_IF_NULL_ALLOC(pce);

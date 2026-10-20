@@ -6,7 +6,7 @@
 #include "shared/unordered_map_nothrow.h"
 #include "shared/OtherGuids.h"
 
-class Z80DebugPort : public IZ80DebugPort, IConnectionPointContainer
+class Z80DebugPort : public IDebugPort2, IConnectionPointContainer, IDebugPortNotify2
 {
 	ULONG _refCount = 0;
 	wil::unique_bstr _portName;
@@ -44,15 +44,17 @@ public:
 		*/
 	}
 
+	IUnknown* AsUnknown() { return static_cast<IUnknown*>(static_cast<IDebugPort2*>(this)); }
+
 	#pragma region IUnknown
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
 	{
 		RETURN_HR_IF_NULL(E_POINTER, ppvObject);
 		*ppvObject = nullptr;
 
-		if (   TryQI<IUnknown>(static_cast<IZ80DebugPort*>(this), riid, ppvObject)
+		if (   TryQI<IUnknown>(AsUnknown(), riid, ppvObject)
 			|| TryQI<IDebugPort2>(this, riid, ppvObject)
-			|| TryQI<IZ80DebugPort>(this, riid, ppvObject)
+			|| TryQI<IDebugPortNotify2>(this, riid, ppvObject)
 			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
 		)
 			return S_OK;
@@ -124,19 +126,22 @@ public:
 	}
 	#pragma endregion
 
-	#pragma region IZ80DebugPort
+	#pragma region IDebugPortNotify2
 
 	// From https://docs.microsoft.com/en-us/visualstudio/extensibility/debugger/required-port-supplier-interfaces?view=vs-2022
 	// A port typically sends program create and destroy events in response to
 	// the AddProgramNode and RemoveProgramNode methods, respectively.
 
-	virtual HRESULT STDMETHODCALLTYPE SendProgramCreateEventToSinks (IDebugProgram2 *pProgram) override
+	virtual HRESULT STDMETHODCALLTYPE AddProgramNode (IDebugProgramNode2 *pProgramNode) override
 	{
+		com_ptr<IDebugProgram2> pProgram;
+		auto hr = pProgramNode->QueryInterface(&pProgram); RETURN_IF_FAILED(hr);
+
 		using ProgramCreateEvent = EventBase<IDebugProgramCreateEvent2, EVENT_ASYNCHRONOUS>;
 		wil::com_ptr_nothrow<ProgramCreateEvent> pce = new (std::nothrow) ProgramCreateEvent(); RETURN_IF_NULL_ALLOC(pce);
 
 		com_ptr<IDebugProcess2> process;
-		auto hr = pProgram->GetProcess(&process); RETURN_IF_FAILED(hr);
+		hr = pProgram->GetProcess(&process); RETURN_IF_FAILED(hr);
 
 		_portEventsCP->Notify([this,pProgram,pce,&process](IDebugPortEvents2* e) {
 			return e->Event(nullptr, this, process, pProgram, pce, IID_IDebugProgramCreateEvent2);
@@ -145,8 +150,11 @@ public:
 		return S_OK;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE SendProgramDestroyEventToSinks (IDebugProgram2 *pProgram, DWORD exitCode) override
+	virtual HRESULT STDMETHODCALLTYPE RemoveProgramNode (IDebugProgramNode2 *pProgramNode) override
 	{
+		com_ptr<IDebugProgram2> pProgram;
+		auto hr = pProgramNode->QueryInterface(&pProgram); RETURN_IF_FAILED(hr);
+
 		struct ProgramDestroyEvent : public EventBase<IDebugProgramDestroyEvent2, EVENT_ASYNCHRONOUS>
 		{
 			DWORD _exitCode;
@@ -159,7 +167,7 @@ public:
 		};
 
 		auto pde = com_ptr (new (std::nothrow) ProgramDestroyEvent()); RETURN_IF_NULL_ALLOC(pde);
-		pde->_exitCode = exitCode;
+		pde->_exitCode = 0;//exitCode;
 
 		_portEventsCP->Notify([this,pProgram,pde](IDebugPortEvents2* e) {
 			return e->Event(nullptr, this, nullptr, pProgram, pde, IID_IDebugProgramDestroyEvent2);

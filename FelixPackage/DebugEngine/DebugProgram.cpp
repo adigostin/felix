@@ -10,7 +10,7 @@
 
 static const wchar_t SingleDebugProgramName[] = L"Z80 Program";
 
-class DebugProgramImpl : public IDebugProgram2, IDebugModuleCollection, ISimulatorEventNotifySink
+class DebugProgramImpl : public IDebugProgram2, IDebugProgramNode2, IDebugModuleCollection, ISimulatorEventNotifySink
 {
 	ULONG _refCount = 0;
 	GUID _programId;
@@ -51,6 +51,7 @@ public:
 
 		if (   TryQI<IUnknown>(static_cast<IDebugProgram2*>(this), riid, ppvObject)
 			|| TryQI<IDebugProgram2>(this, riid, ppvObject)
+			|| TryQI<IDebugProgramNode2>(this, riid, ppvObject)
 			|| TryQI<IDebugModuleCollection>(this, riid, ppvObject)
 			|| TryQI<ISimulatorEventNotifySink>(this, riid, ppvObject)
 		)
@@ -326,6 +327,40 @@ public:
 		return E_NOTIMPL;
 	}
 	HRESULT STDMETHODCALLTYPE WriteDump(DUMPTYPE DumpType, LPCOLESTR pszDumpUrl) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+	#pragma endregion
+
+	#pragma region IDebugProgramNode2
+	virtual HRESULT STDMETHODCALLTYPE GetProgramName (BSTR *pbstrProgramName) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetHostName (GETHOSTNAME_TYPE dwHostNameType, BSTR *pbstrHostName) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetHostPid (AD_PROCESS_ID *pHostProcessId) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetHostMachineName_V7 (BSTR *pbstrHostMachineName) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE Attach_V7 (IDebugProgram2 *pMDMProgram, IDebugEventCallback2 *pCallback, DWORD dwReason) override
+	{
+		RETURN_HR(E_NOTIMPL);
+	}
+
+	//virtual HRESULT STDMETHODCALLTYPE GetEngineInfo (BSTR *pbstrEngine, GUID *pguidEngine) override { RETURN_HR(E_NOTIMPL); }
+
+	virtual HRESULT STDMETHODCALLTYPE DetachDebugger_V7() override
 	{
 		RETURN_HR(E_NOTIMPL);
 	}

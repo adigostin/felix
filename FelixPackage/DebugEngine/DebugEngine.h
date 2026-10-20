@@ -8,12 +8,6 @@
 #define E_UNRECOGNIZED_DEBUG_FILE_EXTENSION  MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x203)
 #define E_NO_EXE_FILENAME                    MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x20B)
 
-struct __declspec(novtable) __declspec(uuid("{E6B46DE8-63A5-4F11-BDD8-E61559A5525E}")) IZ80DebugPort : IDebugPort2
-{
-	virtual HRESULT STDMETHODCALLTYPE SendProgramCreateEventToSinks  (IDebugProgram2 *pProgram) = 0;
-	virtual HRESULT STDMETHODCALLTYPE SendProgramDestroyEventToSinks (IDebugProgram2 *pProgram, DWORD exitCode) = 0;
-};
-
 struct __declspec(novtable) __declspec(uuid("EE50873B-DFAC-4F23-826D-495832A8FD6F")) IZ80Module : IUnknown
 {
 	virtual HRESULT STDMETHODCALLTYPE GetSymbols (IFelixSymbols** symbols) = 0;
