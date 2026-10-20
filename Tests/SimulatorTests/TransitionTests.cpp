@@ -162,5 +162,62 @@ namespace SimulatorTests
 			Assert::AreEqual(S_OK, simulator->Break());
 			Assert::AreEqual(S_FALSE, simulator->Running_HR());
 		}
+
+		TEST_METHOD(SimulateOneFromBreakEventHandler)
+		{
+			struct BreakEventSink : ISimulatorEventNotifySink
+			{
+				ULONG _refCount = 1;
+				AdviseSinkToken _token;
+				ISimulator* _simulator;
+				HRESULT simulateOneResult = E_FAIL;
+
+				BreakEventSink(ISimulator* simulator)
+					: _simulator(simulator)
+				{
+					auto hr = AdviseSink<ISimulatorEventNotifySink>(simulator, this, &_token);
+					Assert::AreEqual(S_OK, hr);
+				}
+
+				HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
+				{
+					if (TryQI<IUnknown>(this, riid, ppvObject) || TryQI<ISimulatorEventNotifySink>(this, riid, ppvObject))
+						return S_OK;
+
+					*ppvObject = nullptr;
+					return E_NOINTERFACE;
+				}
+
+				ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
+				ULONG STDMETHODCALLTYPE Release() override { return --_refCount; }
+
+				HRESULT STDMETHODCALLTYPE NotifySimulatorEvent(ISimulatorEvent*, REFIID riidEvent) override
+				{
+					if (riidEvent == __uuidof(ISimulatorBreakEvent))
+						simulateOneResult = _simulator->SimulateOne();
+
+					return S_OK;
+				}
+			};
+
+			auto simulator = MakeSimulator();
+			BreakEventSink sink(simulator);
+
+			Assert::AreEqual(S_OK, simulator->Resume(TRUE));
+			Assert::AreEqual(S_OK, simulator->Break());
+			Assert::AreEqual(E_UNEXPECTED, sink.simulateOneResult);
+		}
+
+		TEST_METHOD(SimulateOneWhileHalted)
+		{
+			auto simulator = MakeSimulator();
+			const UINT16 haltAddress = 0x8000;
+			const UINT8 haltOpcode = 0x76;
+
+			Assert::AreEqual(S_OK, simulator->Reset(haltAddress, SpectrumVariant48K));
+			Assert::AreEqual(S_OK, simulator->WriteMemoryBus(haltAddress, sizeof(haltOpcode), &haltOpcode));
+			Assert::AreEqual(S_OK, simulator->SimulateOne());
+			simulator->SimulateOne();
+		}
 	};
 }

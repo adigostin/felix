@@ -982,28 +982,18 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE SimulateOne() override
 	{
+		RETURN_HR_IF(E_UNEXPECTED, _changingRunningState);
+		_changingRunningState = true;
+		auto resetSS = wil::scope_exit([this] { _changingRunningState = false; });
+
 		RETURN_HR_IF(E_UNEXPECTED, _running);
 
 		auto hr = RunOnSimulatorThread ([this]
 			{
 				AssertDevicesUpToDateWithCPU();
-
-				if (!_cpu->Halted())
-				{
-					bool advanced = _cpu->SimulateOne(nullptr);
-					WI_ASSERT(advanced);
-					SimulateDevicesToTime(_cpu->cpu_time);
-				}
-				else
-				{
-					do
-					{
-						bool advanced = _cpu->SimulateOne(nullptr);
-						WI_ASSERT(advanced);
-						SimulateDevicesToTime(_cpu->cpu_time);
-					} while (_cpu->Halted());
-				}
-
+				bool advanced = _cpu->SimulateOne(nullptr);
+				_ASSERT(advanced);
+				SimulateDevicesToTime(_cpu->cpu_time);
 				return S_OK;
 			});
 		RETURN_IF_FAILED(hr);
