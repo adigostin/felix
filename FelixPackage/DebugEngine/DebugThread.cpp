@@ -7,15 +7,12 @@
 class FelixThread : public IDebugThread2
 {
 	ULONG _refCount = 0;
-	com_ptr<IDebugEngine2> _engine;
-	com_ptr<IDebugProgram2> _program;
+	com_ptr<IWeakRef> _program;
 
 public:
-	HRESULT InitInstance (IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback)
+	HRESULT InitInstance (IDebugProgram2* program)
 	{
-		_engine = engine;
-		_program = program;
-		return S_OK;
+		return program->QueryInterface(&_program);
 	}
 
 	#pragma region IUnknown
@@ -82,9 +79,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetProgram (IDebugProgram2 **ppProgram) override
 	{
-		*ppProgram = _program.get();
-		_program->AddRef();
-		return S_OK;
+		return _program->QueryInterface(ppProgram);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE CanSetNextStatement (IDebugStackFrame2 *pStackFrame, IDebugCodeContext2 *pCodeContext) override
@@ -134,10 +129,10 @@ public:
 	#pragma endregion
 };
 
-HRESULT MakeThread (IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback, IDebugThread2** ppThread)
+HRESULT MakeThread (IDebugProgram2* program, IDebugThread2** ppThread)
 {
 	auto p = com_ptr(new (std::nothrow) FelixThread()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance(engine, program, callback); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance(program); RETURN_IF_FAILED(hr);
 	*ppThread = p.detach();
 	return S_OK;
 }

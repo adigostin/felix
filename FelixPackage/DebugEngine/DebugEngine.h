@@ -65,7 +65,7 @@ HRESULT MakeDebugProcess (IDebugPort2* pPort, LPCOLESTR pszExe, IDebugEngine2* e
 HRESULT MakeModule (UINT64 address, DWORD size, LPCWSTR path, bool user_code, LPCWSTR sourceBasePath,
 	IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback, IDebugModule2** to);
 
-HRESULT MakeThread (IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback, IDebugThread2** ppThread);
+HRESULT MakeThread (IDebugProgram2* program, IDebugThread2** ppThread);
 HRESULT MakeEnumDebugFrameInfo (FRAMEINFO_FLAGS dwFieldSpec, UINT nRadix, IDebugThread2* thread, IEnumDebugFrameInfo2** to);
 HRESULT MakeDebugContext (bool physicalMemorySpace, UINT64 uCodeLocationId, IDebugProgram2* program, REFIID riid, void** ppContext);
 HRESULT MakeDocumentContext (IDebugProgram2* program, UINT64 address, IDebugDocumentContext2** to);

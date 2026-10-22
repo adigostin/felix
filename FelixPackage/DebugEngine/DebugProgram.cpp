@@ -13,6 +13,7 @@ static const wchar_t SingleDebugProgramName[] = L"Z80 Program";
 class DebugProgramImpl : public IDebugProgram2, IDebugProgramNode2, IDebugModuleCollection, ISimulatorEventNotifySink
 {
 	ULONG _refCount = 0;
+	WeakRefToThis _weakRefToThis;
 	GUID _programId;
 	com_ptr<IDebugProcess2> _process;
 	vector_nothrow<com_ptr<IDebugModule2>> _modules;
@@ -25,15 +26,13 @@ class DebugProgramImpl : public IDebugProgram2, IDebugProgramNode2, IDebugModule
 public:
 	HRESULT InitInstance (IDebugProcess2* process, IDebugEngine2* engine, IDebugEventCallback2* callback)
 	{
-		HRESULT hr;
-
 		RETURN_HR_IF_NULL(E_INVALIDARG, process);
-
+		auto hr = _weakRefToThis.InitInstance(static_cast<IDebugProgram2*>(this)); RETURN_IF_FAILED(hr);
 		_process = process;
 
 		hr = CoCreateGuid (&_programId); RETURN_IF_FAILED(hr);
 
-		hr = MakeThread (engine, this, callback, &_thread); RETURN_IF_FAILED(hr);
+		hr = MakeThread(this, &_thread); RETURN_IF_FAILED(hr);
 
 		hr = AdviseSink<ISimulatorEventNotifySink>(simulator, static_cast<IDebugProgram2*>(this), &_eventNotifyToken); RETURN_IF_FAILED(hr);
 
@@ -56,6 +55,9 @@ public:
 			|| TryQI<ISimulatorEventNotifySink>(this, riid, ppvObject)
 		)
 			return S_OK;
+
+		if (riid == __uuidof(IWeakRef))
+			return _weakRefToThis.QueryIWeakRef(ppvObject);
 
 		#ifdef _DEBUG
 		if (   riid == IID_IDebugProgramEngines2
