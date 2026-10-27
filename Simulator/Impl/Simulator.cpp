@@ -1909,7 +1909,7 @@ public:
 
 	virtual void OnTapPlayComplete() override
 	{
-		if (_breakOnTapComplete)
+		if (_breakOnTapComplete && !std::holds_alternative<ri_paused>(_running_info))
 		{
 			_running_info = ri_paused{ };
 

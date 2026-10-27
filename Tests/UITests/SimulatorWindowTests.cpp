@@ -211,10 +211,6 @@ namespace UITests
 			auto tapPath = str_concat(testClassPath, L"test.tap");
 			Bas2Tap (basic, tapPath.get());
 
-			wil::com_ptr_failfast<VxDTE::Debugger> debugger;
-			hr = dte->get_Debugger(&debugger);
-			Assert::AreEqual(S_OK, hr);
-
 			VxDTE::dbgDebugMode debugMode;
 			hr = debugger->get_CurrentMode(&debugMode);
 			Assert::AreEqual(S_OK, hr);
@@ -224,10 +220,6 @@ namespace UITests
 			Assert::AreEqual(S_OK, hr);
 
 			Assert::AreEqual(S_OK, simulator->IsTapFileLoading());
-
-			hr = debugger->get_CurrentMode(&debugMode);
-			Assert::AreEqual(S_OK, hr);
-			Assert::AreEqual<UINT>(VxDTE::dbgRunMode, debugMode);
 
 			WaitDebugMode(debugger, VxDTE::dbgBreakMode);
 

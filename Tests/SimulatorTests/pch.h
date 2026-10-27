@@ -13,4 +13,6 @@
 #include <algorithm>
 #include <wil/com.h>
 
+#include <span>
+
 #endif //PCH_H

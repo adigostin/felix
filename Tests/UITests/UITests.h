@@ -79,7 +79,7 @@ namespace UITests
 	bool WaitWithMessageLoop (const condition_t& condition, DWORD timeoutMilliseconds)
 	{
 		DWORD tickStart = GetTickCount();
-		while (timeoutMilliseconds == INFINITE || GetTickCount() - tickStart < timeoutMilliseconds)
+		while (IsDebuggerPresent() || timeoutMilliseconds == INFINITE || GetTickCount() - tickStart < timeoutMilliseconds)
 		{
 			if (condition())
 				return true;
@@ -133,8 +133,19 @@ namespace UITests
 	void TryRemoveDirectoryTree(PCWSTR directory);
 	void WaitDebugMode (VxDTE::Debugger* debugger, VxDTE::dbgDebugMode expectedMode, DWORD timeoutMillis = 5000);
 
+	struct MessageFilterRegistration
+	{
+		wil::com_ptr_failfast<IMessageFilter> previous;
+
+		MessageFilterRegistration();
+		~MessageFilterRegistration();
+		MessageFilterRegistration(const MessageFilterRegistration&) = delete;
+		MessageFilterRegistration& operator=(const MessageFilterRegistration&) = delete;
+	};
+
 	struct TD
 	{
+		MessageFilterRegistration messageFilter;
 		wil::com_ptr_failfast<VxDTE::DTE2> dte;
 		wil::unique_process_heap_string testDir;
 		wil::unique_process_heap_string slnFilePath;

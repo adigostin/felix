@@ -54,11 +54,57 @@ namespace UITests
 		"</Z80Project>\r\n";
 
 	#pragma region DTE Initialization
+	struct MessageFilter : IMessageFilter
+	{
+		ULONG _refCount = 1;
+
+		virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
+		{
+			if (TryQI<IUnknown>(this, riid, ppvObject) || TryQI<IMessageFilter>(this, riid, ppvObject))
+				return S_OK;
+
+			*ppvObject = nullptr;
+			return E_NOINTERFACE;
+		}
+		virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
+		virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
+
+		virtual DWORD STDMETHODCALLTYPE HandleInComingCall(DWORD, HTASK, DWORD, LPINTERFACEINFO) override
+		{
+			return SERVERCALL_ISHANDLED;
+		}
+
+		virtual DWORD STDMETHODCALLTYPE RetryRejectedCall(HTASK, DWORD elapsed, DWORD rejectType) override
+		{
+			if ((rejectType == SERVERCALL_RETRYLATER || rejectType == SERVERCALL_REJECTED) && elapsed < 5000)
+				return 100;
+			return static_cast<DWORD>(-1);
+		}
+
+		virtual DWORD STDMETHODCALLTYPE MessagePending(HTASK, DWORD, DWORD) override
+		{
+			return PENDINGMSG_WAITDEFPROCESS;
+		}
+	};
+
+	MessageFilterRegistration::MessageFilterRegistration()
+	{
+		wil::com_ptr_failfast<IMessageFilter> filter;
+		filter.attach(new MessageFilter());
+		auto hr = CoRegisterMessageFilter(filter.get(), &previous);
+		Assert::AreEqual(S_OK, hr);
+	}
+
+	MessageFilterRegistration::~MessageFilterRegistration()
+	{
+		wil::com_ptr_failfast<IMessageFilter> filter;
+		auto hr = CoRegisterMessageFilter(previous.get(), &filter);
+		Assert::AreEqual(S_OK, hr);
+	}
+
 	static HRESULT GetDTE (DWORD processId, VxDTE::DTE2** ppDTE)
 	{
 		HRESULT hr;
-
-		//MessageFilter.Register();
 
 		wil::unique_process_heap_string fn;
 		hr = wil::GetModuleFileNameW(nullptr, fn); RETURN_IF_FAILED_EXPECTED(hr);

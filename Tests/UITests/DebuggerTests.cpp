@@ -143,7 +143,7 @@ namespace UITests
 				Assert::IsTrue(SUCCEEDED(lastHr) || lastHr == RPC_E_CALL_REJECTED,
 					str_printf(L"Reading the IDE mode failed: 0x%08x", lastHr).get());
 				return SUCCEEDED(lastHr) && currentMode == VxDTE::vsIDEMode::vsIDEModeDebug;
-			}, IsDebuggerPresent() ? INFINITE : timeoutMillis);
+			}, timeoutMillis);
 			Assert::IsTrue(reachedMode,
 				str_printf(L"Timed out waiting for vsIDEModeDebug (last HRESULT 0x%08x, mode %u)", lastHr, (unsigned)currentMode).get());
 		}

@@ -9,41 +9,6 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace SimulatorTests
 {
-	class TempFile
-	{
-		wchar_t _filename[MAX_PATH];
-
-	public:
-		TempFile(LPCWSTR fileExtension)
-		{
-			wchar_t tempDirectory[MAX_PATH];
-			DWORD tempDirectoryLength = GetTempPathW(_countof(tempDirectory), tempDirectory);
-			Assert::IsTrue(tempDirectoryLength != 0 && tempDirectoryLength < _countof(tempDirectory));
-			Assert::IsTrue(GetTempFileNameW(tempDirectory, L"z80", 0, _filename) != 0);
-			Assert::IsTrue(DeleteFileW(_filename));
-			auto extension = wcsrchr(_filename, L'.');
-			Assert::IsNotNull(extension);
-			wcscpy_s(extension, _countof(_filename) - (extension - _filename), fileExtension);
-		}
-
-		~TempFile()
-		{
-			DeleteFileW(_filename);
-		}
-
-		void Write(const vector_nothrow<uint8_t>& contents)
-		{
-			wil::unique_hfile file(CreateFileW(_filename, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
-			Assert::IsTrue(file.is_valid());
-
-			DWORD bytesWritten = 0;
-			Assert::IsTrue(WriteFile(file.get(), contents.data(), contents.size(), &bytesWritten, nullptr) != FALSE);
-			Assert::AreEqual<DWORD>(contents.size(), bytesWritten);
-		}
-
-		LPCWSTR Path() const { return _filename; }
-	};
-
 	static void AppendWord(vector_nothrow<uint8_t>& bytes, uint16_t value)
 	{
 		bytes.try_push_back(static_cast<uint8_t>(value));

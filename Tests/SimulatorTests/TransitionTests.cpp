@@ -8,52 +8,6 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace SimulatorTests
 {
-	class TestSimulatorEventNotifySink : public ISimulatorEventNotifySink
-	{
-		ULONG _refCount = 1; // objects of this type live on stack
-		AdviseSinkToken _token;
-
-	public:
-		DWORD breakpoints = 0;
-		DWORD breaks = 0;
-		DWORD simulateOnes = 0;
-		DWORD resumes = 0;
-
-        TestSimulatorEventNotifySink (ISimulator* simulator)
-		{
-			auto hr = AdviseSink<ISimulatorEventNotifySink>(simulator, this, &_token);
-			Assert::AreEqual(S_OK, hr);
-		}
-
-		virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
-		{
-			if (TryQI<IUnknown>(this, riid, ppvObject) || TryQI<ISimulatorEventNotifySink>(this, riid, ppvObject))
-				return S_OK;
-
-			*ppvObject = nullptr;
-			return E_NOINTERFACE;
-		}
-
-		virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
-		virtual ULONG STDMETHODCALLTYPE Release() override { return --_refCount; }
-
-		virtual HRESULT STDMETHODCALLTYPE NotifySimulatorEvent(ISimulatorEvent*, REFIID riidEvent) override
-		{
-			if (riidEvent == __uuidof(ISimulatorBreakpointEvent))
-				breakpoints++;
-			else if (riidEvent == __uuidof(ISimulatorBreakEvent))
-				breaks++;
-			else if (riidEvent == __uuidof(ISimulatorSimulateOneEvent))
-				simulateOnes++;
-			else if (riidEvent == __uuidof(ISimulatorResumeEvent))
-				resumes++;
-			else
-				Assert::Fail();
-
-			return S_OK;
-		}
-	};
-
 	TEST_CLASS(TransitionTests)
 	{
 	public:
@@ -70,7 +24,7 @@ namespace SimulatorTests
 			Assert::AreEqual<UINT32>(0, sink.breakpoints);
 			Assert::AreEqual<UINT32>(0, sink.breaks);
 			Assert::AreEqual<UINT32>(0, sink.simulateOnes);
-			Assert::AreEqual	<UINT32>(0, sink.resumes);
+			Assert::AreEqual<UINT32>(0, sink.resumes);
 		}
 
 		TEST_METHOD(BreakRightAfterBreakpoint)
@@ -218,6 +172,33 @@ namespace SimulatorTests
 			Assert::AreEqual(S_OK, simulator->WriteMemoryBus(haltAddress, sizeof(haltOpcode), &haltOpcode));
 			Assert::AreEqual(S_OK, simulator->SimulateOne());
 			simulator->SimulateOne();
+		}
+
+		TEST_METHOD(ResetAfterBreakingWhileTapIsPlayingDoesNotBreakAgain)
+		{
+			TempFile tapFile(L".tap");
+			tapFile.Write({ 3, 0, 0, 0, 0 });
+
+			auto simulator = MakeSimulator();
+			TestSimulatorEventNotifySink sink(simulator);
+			HRESULT hr;
+
+			hr = simulator->BeginPlayTapFile(tapFile.Path(), TRUE);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(S_OK, simulator->IsTapFileLoading());
+
+			hr = simulator->Resume(FALSE);
+			Assert::AreEqual(S_OK, hr);
+			hr = simulator->Break();
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(S_FALSE, simulator->Running_HR());
+			Assert::AreEqual(S_OK, simulator->IsTapFileLoading());
+			Assert::AreEqual<UINT32>(1, sink.breaks);
+
+			hr = simulator->Reset(0, SpectrumVariant48K);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(S_FALSE, simulator->IsTapFileLoading());
+			Assert::AreEqual<UINT32>(1, sink.breaks);
 		}
 	};
 }
