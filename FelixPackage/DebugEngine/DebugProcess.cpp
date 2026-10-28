@@ -6,32 +6,65 @@
 
 static const wchar_t SingleDebugProcessName[] = L"Z80 Process";
 
-class DebugProcessImpl : public IDebugProcess2
+class DebugProcessImpl : public IFelixDebugProcess
 {
 	ULONG _refCount = 0;
+	WeakRefToThis _weakRefToThis;
 	wil::unique_hlocal_string _exe_path;
 	AD_PROCESS_ID _pid;
 	GUID _processGuid;
-	com_ptr<IDebugPort2> _parentPort;
 	FILETIME _creationTime;
 	com_ptr<IDebugProgram2> _program;
+	bool _attached = false;
 
 public:
-	HRESULT InitInstance (IDebugPort2* pPort, LPCOLESTR pszExe, IDebugEngine2* engine, IDebugEventCallback2* callback)
+	HRESULT InitInstance (LPCWSTR romPath)
 	{
-		_pid.ProcessIdType = AD_PROCESS_ID_GUID;
-		if (pszExe)
-		{
-			_exe_path = wil::make_hlocal_string_nothrow(pszExe); RETURN_IF_NULL_ALLOC(_exe_path);
-		}
+		auto hr = _weakRefToThis.InitInstance(static_cast<IDebugProcess2*>(this)); RETURN_IF_FAILED(hr);
 
-		auto hr = CoCreateGuid (&_pid.ProcessId.guidProcessId); RETURN_IF_FAILED(hr);
+		_pid.ProcessIdType = AD_PROCESS_ID_SYSTEM;
+		_pid.ProcessId.dwProcessId = SimulatorProcessId;
 		hr = CoCreateGuid (&_processGuid); RETURN_IF_FAILED(hr);
-		_parentPort = pPort;
 		::GetSystemTimeAsFileTime (&_creationTime);
 
-		hr = MakeDebugProgram (this, engine, callback, &_program); RETURN_IF_FAILED(hr);
+		hr = ReplaceProgram(romPath); RETURN_IF_FAILED(hr);
+		
+		com_ptr<IDebugModule2> romModule;
+		hr = MakeModule(0, 0x4000, romPath, false, nullptr, &romModule); RETURN_IF_FAILED(hr);
+		com_ptr<IFelixProgram> modules;
+		hr = _program->QueryInterface(&modules); RETURN_IF_FAILED(hr);
+		hr = modules->AddModule(romModule.get()); RETURN_IF_FAILED(hr);
 
+		com_ptr<IDebugPortNotify2> portNotify;
+		hr = debugPort->QueryInterface(&portNotify); RETURN_IF_FAILED(hr);
+		com_ptr<IDebugProgramNode2> node;
+		hr = _program->QueryInterface(&node); RETURN_IF_FAILED(hr);
+		hr = portNotify->AddProgramNode(node.get()); RETURN_IF_FAILED(hr);
+
+		return S_OK;
+	}
+
+	HRESULT STDMETHODCALLTYPE ReplaceProgram(LPCWSTR exePath) override
+	{
+		RETURN_HR_IF(E_UNEXPECTED, _attached);
+		auto path = wil::make_hlocal_string_nothrow(exePath); RETURN_IF_NULL_ALLOC(path);
+		GUID programId;
+		auto hr = CoCreateGuid(&programId); RETURN_IF_FAILED(hr);
+		com_ptr<IDebugProgram2> program;
+		hr = MakeDebugProgram(this, programId, &program); RETURN_IF_FAILED(hr);
+		if (_program)
+		{
+			com_ptr<IFelixProgram> modules;
+			hr = _program->QueryInterface(&modules); RETURN_IF_FAILED(hr);
+			hr = modules->UnloadModules(); RETURN_IF_FAILED(hr);
+			com_ptr<IDebugPortNotify2> portNotify;
+			hr = debugPort->QueryInterface(&portNotify); RETURN_IF_FAILED(hr);
+			com_ptr<IDebugProgramNode2> node;
+			hr = _program->QueryInterface(&node); RETURN_IF_FAILED(hr);
+			hr = portNotify->RemoveProgramNode(node.get()); RETURN_IF_FAILED(hr);
+		}
+		_exe_path = std::move(path);
+		_program = std::move(program);
 		return S_OK;
 	}
 
@@ -43,9 +76,13 @@ public:
 
 		if (   TryQI<IUnknown>(static_cast<IDebugProcess2*>(this), riid, ppvObject)
 			|| TryQI<IDebugProcess2>(this, riid, ppvObject)
+			|| TryQI<IFelixDebugProcess>(this, riid, ppvObject)
 		)
 			return S_OK;
-		
+
+		if (riid == __uuidof(IWeakRef))
+			return _weakRefToThis.QueryIWeakRef(ppvObject);
+
 		#ifdef _DEBUG
 		if (   riid == IID_IClientSecurity
 			|| riid == IID_IMarshal
@@ -135,8 +172,9 @@ public:
 		if (Fields & PIF_FLAGS)
 		{
 			pProcessInfo->Flags = 0;
-			pProcessInfo->Flags |= PIFLAG_DEBUGGER_ATTACHED;
-			pProcessInfo->Flags |= simulator->Running_HR() == S_OK
+			if (_attached)
+				pProcessInfo->Flags |= PIFLAG_DEBUGGER_ATTACHED;
+			pProcessInfo->Flags |= simulator && simulator->Running_HR() == S_OK
 				? PIFLAG_PROCESS_RUNNING
 				: PIFLAG_PROCESS_STOPPED;
 			pProcessInfo->Fields |= PIF_FLAGS;
@@ -182,24 +220,42 @@ public:
 	HRESULT STDMETHODCALLTYPE Terminate() override
 	{
 		// called for example when we return an error code from ResumeProcess()
-		_program->Terminate();
-		_program = nullptr;
+		auto hr = _program->Terminate(); RETURN_IF_FAILED(hr);
+		_attached = false;
 		return S_OK;
 	}
 
 	HRESULT STDMETHODCALLTYPE Attach(IDebugEventCallback2* pCallback, GUID* rgguidSpecificEngines, DWORD celtSpecificEngines, HRESULT* rghrEngineAttach) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		RETURN_HR_IF(E_UNEXPECTED, !simulator);
+		RETURN_HR_IF_NULL(E_POINTER, pCallback);
+		RETURN_HR_IF(E_ATTACH_DEBUGGER_ALREADY_ATTACHED, _attached);
+		RETURN_HR_IF(E_POINTER, celtSpecificEngines && rghrEngineAttach == nullptr);
+
+		bool supportedEngine = celtSpecificEngines == 0;
+		for (DWORD i = 0; i < celtSpecificEngines; i++)
+		{
+			bool supported = !rgguidSpecificEngines
+				|| rgguidSpecificEngines[i] == GUID_NULL
+				|| rgguidSpecificEngines[i] == Engine_Id;
+			rghrEngineAttach[i] = supported ? S_OK : E_NOINTERFACE;
+			supportedEngine |= supported;
+		}
+
+		RETURN_HR_IF(E_NOINTERFACE, !supportedEngine);
+		_attached = true;
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE CanDetach() override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE Detach() override
 	{
-		RETURN_HR(E_NOTIMPL);
+		_attached = false;
+		return S_OK;
 	}
 
 	HRESULT STDMETHODCALLTYPE GetPhysicalProcessId(AD_PROCESS_ID* pProcessId) override
@@ -227,23 +283,22 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE CauseBreak() override
 	{
-		RETURN_HR(E_NOTIMPL);
+		return simulator->Break();
 	}
 
 	HRESULT STDMETHODCALLTYPE GetPort(IDebugPort2** ppPort) override
 	{
-		*ppPort = _parentPort.get();
-		(*ppPort)->AddRef();
-		return S_OK;
+		return copy_to(debugPort, ppPort);
 	}
 	#pragma endregion
 };
 
-HRESULT MakeDebugProcess (IDebugPort2* pPort, LPCOLESTR pszExe, IDebugEngine2* engine,
-	IDebugEventCallback2* callback, IDebugProcess2** ppProcess)
+HRESULT MakeDebugProcess (LPCWSTR romPath, IDebugProcess2** ppProcess)
 {
+	RETURN_HR_IF(E_UNEXPECTED, !simulator);
+	RETURN_HR_IF_NULL(E_POINTER, romPath);
 	auto p = com_ptr(new (std::nothrow) DebugProcessImpl()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance(pPort, pszExe, engine, callback); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance(romPath); RETURN_IF_FAILED(hr);
 	*ppProcess = p.detach();
 	return S_OK;
 }

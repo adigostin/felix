@@ -3,6 +3,7 @@
 #include "shared/com.h"
 #include "shared/OtherGuids.h"
 #include "shared/vector_nothrow.h"
+#include "shared/unordered_map_nothrow.h"
 #include "../FelixPackageUi/resource.h"
 #include "DebugEngine.h"
 #include "DebugEventBase.h"
@@ -10,37 +11,37 @@
 
 static const wchar_t SingleDebugProgramName[] = L"Z80 Program";
 
-class DebugProgramImpl : public IDebugProgram2, IDebugProgramNode2, IDebugModuleCollection, ISimulatorEventNotifySink
+class DebugProgramImpl : public IFelixProgram, IDebugProgramNode2, ISimulatorEventNotifySink
 {
 	ULONG _refCount = 0;
 	WeakRefToThis _weakRefToThis;
 	GUID _programId;
-	com_ptr<IDebugProcess2> _process;
+	com_ptr<IWeakRef> _engine;
+	com_ptr<IWeakRef> _process;
 	vector_nothrow<com_ptr<IDebugModule2>> _modules;
-	com_ptr<IDebugEngine2> _engine;
 	com_ptr<IDebugEventCallback2> _callback;
 	com_ptr<IDebugThread2> _thread;
 	AdviseSinkToken _eventNotifyToken;
 	SIM_BP_COOKIE _stepOverOrOutBreakpoint = 0;
+	unordered_map_nothrow<SIM_BP_COOKIE, com_ptr<IDebugBoundBreakpoint2>> _bps;
 
 public:
-	HRESULT InitInstance (IDebugProcess2* process, IDebugEngine2* engine, IDebugEventCallback2* callback)
+	HRESULT InitInstance (IDebugProcess2* process, REFGUID programId)
 	{
 		RETURN_HR_IF_NULL(E_INVALIDARG, process);
 		auto hr = _weakRefToThis.InitInstance(static_cast<IDebugProgram2*>(this)); RETURN_IF_FAILED(hr);
-		_process = process;
-
-		hr = CoCreateGuid (&_programId); RETURN_IF_FAILED(hr);
-
+		hr = process->QueryInterface(&_process); RETURN_IF_FAILED(hr);
+		_programId = programId;
 		hr = MakeThread(this, &_thread); RETURN_IF_FAILED(hr);
-
-		hr = AdviseSink<ISimulatorEventNotifySink>(simulator, static_cast<IDebugProgram2*>(this), &_eventNotifyToken); RETURN_IF_FAILED(hr);
-
-		_engine = engine;
-		_callback = callback;
-
 		return S_OK;
 	}
+
+	~DebugProgramImpl()
+	{
+		WI_ASSERT(_bps.empty());
+	}
+
+	IUnknown* AsUnknown() { return static_cast<IDebugProgram2*>(this); }
 
 	#pragma region IUnknown
 	HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
@@ -48,10 +49,10 @@ public:
 		RETURN_HR_IF(E_POINTER, !ppvObject);
 		*ppvObject = nullptr;
 
-		if (   TryQI<IUnknown>(static_cast<IDebugProgram2*>(this), riid, ppvObject)
+		if (   TryQI<IUnknown>(AsUnknown(), riid, ppvObject)
 			|| TryQI<IDebugProgram2>(this, riid, ppvObject)
 			|| TryQI<IDebugProgramNode2>(this, riid, ppvObject)
-			|| TryQI<IDebugModuleCollection>(this, riid, ppvObject)
+			|| TryQI<IFelixProgram>(this, riid, ppvObject)
 			|| TryQI<ISimulatorEventNotifySink>(this, riid, ppvObject)
 		)
 			return S_OK;
@@ -60,10 +61,9 @@ public:
 			return _weakRefToThis.QueryIWeakRef(ppvObject);
 
 		#ifdef _DEBUG
-		if (   riid == IID_IDebugProgramEngines2
-			|| riid == IID_IDebugProgramEx2
+		if (   /*riid == IID_IDebugProgramEngines2
+			|| */riid == IID_IDebugProgramEx2
 			|| riid == IID_IDebugProgram3
-			|| riid == IID_IDebugEngineProgram2
 			|| riid == IID_IDebugDisconnectableProgram166
 			|| riid == IID_IDebugProgramEnhancedStep90
 			|| riid == IID_IClientSecurity
@@ -115,13 +115,12 @@ public:
 
 	HRESULT STDMETHODCALLTYPE GetProcess(IDebugProcess2** ppProcess) override
 	{
-		*ppProcess = _process;
-		_process->AddRef();
-		return S_OK;
+		return _process->QueryInterface(ppProcess);
 	}
 
 	HRESULT STDMETHODCALLTYPE Terminate() override
 	{
+		WI_ASSERT(_callback && _eventNotifyToken);
 		if (_stepOverOrOutBreakpoint)
 		{
 			auto hr = simulator->RemoveBreakpoint(_stepOverOrOutBreakpoint); LOG_IF_FAILED(hr);
@@ -129,11 +128,8 @@ public:
 		}
 
 		_eventNotifyToken.reset();
-		_engine = nullptr;
-		_callback = nullptr;
-		_thread = nullptr;
-		_modules.clear();
-		_process = nullptr;
+		_callback.reset();
+		_engine.reset();
 		return S_OK;
 	}
 
@@ -149,7 +145,10 @@ public:
 
 	HRESULT STDMETHODCALLTYPE Detach(void) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		com_ptr<IDebugEngine2> engine;
+		auto hr = _engine->QueryInterface(&engine); RETURN_IF_FAILED(hr);
+		hr = Terminate(); RETURN_IF_FAILED(hr);
+		return engine->DestroyProgram(this);
 	}
 
 	HRESULT STDMETHODCALLTYPE GetProgramId(GUID* pguidProgramId) override
@@ -179,6 +178,8 @@ public:
 		// (If the user stars debugging by clicking Step Into instead, VS does not call this function;
 		// it assumes execution is stopped because we sent the Load Complete event as SYNC_STOP).
 
+		if (simulator->Running_HR() == S_OK)
+			return S_OK;
 		bool checkBreakpointsAtCurrentPC = true;
 		auto hr = simulator->Resume(checkBreakpointsAtCurrentPC); RETURN_IF_FAILED(hr);
 		return S_OK;
@@ -337,17 +338,35 @@ public:
 	#pragma region IDebugProgramNode2
 	virtual HRESULT STDMETHODCALLTYPE GetProgramName (BSTR *pbstrProgramName) override
 	{
-		RETURN_HR(E_NOTIMPL);
+      RETURN_HR_IF_NULL(E_POINTER, pbstrProgramName);
+		*pbstrProgramName = SysAllocString(SingleDebugProgramName); RETURN_IF_NULL_ALLOC(*pbstrProgramName);
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetHostName (GETHOSTNAME_TYPE dwHostNameType, BSTR *pbstrHostName) override
 	{
-		RETURN_HR(E_NOTIMPL);
+     RETURN_HR_IF_NULL(E_POINTER, pbstrHostName);
+		*pbstrHostName = nullptr;
+		if (dwHostNameType == GHN_FILE_NAME)
+		{
+			wchar_t path[MAX_PATH];
+			DWORD length = GetModuleFileNameW(nullptr, path, ARRAYSIZE(path));
+			RETURN_LAST_ERROR_IF(length == 0 || length == ARRAYSIZE(path));
+			*pbstrHostName = SysAllocString(path); RETURN_IF_NULL_ALLOC(*pbstrHostName);
+		}
+		else
+		{
+			*pbstrHostName = SysAllocString(L"Visual Studio"); RETURN_IF_NULL_ALLOC(*pbstrHostName);
+		}
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetHostPid (AD_PROCESS_ID *pHostProcessId) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		RETURN_HR_IF_NULL(E_POINTER, pHostProcessId);
+		com_ptr<IDebugProcess2> process;
+		auto hr = GetProcess(&process); RETURN_IF_FAILED(hr);
+		return process->GetPhysicalProcessId(pHostProcessId);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetHostMachineName_V7 (BSTR *pbstrHostMachineName) override
@@ -400,35 +419,102 @@ public:
 		}
 	};
 
-	#pragma region IDebugModuleCollection
+	#pragma region IFelixProgram
 	virtual HRESULT STDMETHODCALLTYPE AddModule (IDebugModule2* module) override
 	{
 		bool pushed = _modules.try_push_back(module); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		return NotifyModule(module, TRUE);
+	}
 
-		wil::com_ptr_nothrow<ModuleLoadEvent> event;
-		auto hr = ModuleLoadEvent::CreateInstance(module, TRUE, &event); RETURN_IF_FAILED(hr);
-		hr = event->Send (_callback.get(), _engine.get(), this, _thread.get()); LOG_IF_FAILED(hr);
+	virtual HRESULT STDMETHODCALLTYPE UnloadModules() override
+	{
+		for (auto& module : _modules)
+		{
+			auto hr = NotifyModule(module.get(), FALSE); RETURN_IF_FAILED(hr);
+		}
+		_modules.clear();
+		return S_OK;
+	}
 
+	virtual HRESULT STDMETHODCALLTYPE AddBreakpoint (IDebugBoundBreakpoint2* bp, BreakpointType type, bool physicalMemorySpace, UINT64 address) override
+	{
+		for (auto& existing : _bps)
+			RETURN_HR_IF(E_INVALIDARG, existing.second == bp);
+
+		bool reserved = _bps.try_reserve(_bps.size() + 1); RETURN_HR_IF(E_OUTOFMEMORY, !reserved);
+		SIM_BP_COOKIE cookie;
+		auto hr = simulator->AddBreakpoint(type, physicalMemorySpace, address, &cookie); RETURN_IF_FAILED(hr);
+		bool inserted = _bps.try_insert({ cookie, bp }); WI_ASSERT(inserted);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE RemoveBreakpoint (IDebugBoundBreakpoint2* bp) override
+	{
+		auto it = _bps.find_if([bp](auto& p) { return p.second == bp; }); RETURN_HR_IF(E_INVALIDARG, it == _bps.end());
+		auto hr = simulator->RemoveBreakpoint(it->first); LOG_IF_FAILED(hr);
+		_bps.erase(it);
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE ContainsBreakpoint (IDebugBoundBreakpoint2* bp) override
+	{
+		auto it = _bps.find_if([bp](auto& p) { return p.second == bp; });
+		return (it != _bps.end()) ? S_OK : S_FALSE;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE EngineAttach (IDebugEngine2* pEngine, IDebugEventCallback2* pCallback, ATTACH_REASON dwReason) override
+	{
+		HRESULT hr;
+		WI_ASSERT(!_callback && !_eventNotifyToken);
+		hr = pEngine->QueryInterface(IID_PPV_ARGS(&_engine)); RETURN_IF_FAILED(hr);
+		_callback = pCallback;
+		hr = AdviseSink<ISimulatorEventNotifySink>(simulator, AsUnknown(), &_eventNotifyToken); RETURN_IF_FAILED(hr);
+		auto terminateOnFailure = wil::scope_exit([this] { Terminate(); });
+		for (auto& module : _modules)
+		{
+			hr = NotifyModule(module.get(), TRUE); RETURN_IF_FAILED(hr);
+		}
+		terminateOnFailure.release();
 		return S_OK;
 	}
 	#pragma endregion
+
+	HRESULT NotifyModule(IDebugModule2* module, BOOL load)
+	{
+		if (!_callback)
+			return S_OK;
+
+		com_ptr<IDebugEventCallback2> callback;
+		auto hr = _callback->QueryInterface(&callback); RETURN_IF_FAILED(hr);
+		wil::com_ptr_nothrow<ModuleLoadEvent> event;
+		hr = ModuleLoadEvent::CreateInstance(module, load, &event); RETURN_IF_FAILED(hr);
+		hr = event->Send (callback.get(), nullptr, this, _thread.get()); RETURN_IF_FAILED(hr);
+
+		return S_OK;
+	}
 
 	HRESULT SendStepCompleteEvent()
 	{
 		// Must be stopping as per https://docs.microsoft.com/en-us/visualstudio/extensibility/debugger/supported-event-types?view=vs-2019
 		using StepCompleteEvent = EventBase<IDebugStepCompleteEvent2, EVENT_SYNC_STOP>;
 		com_ptr<StepCompleteEvent> e = new (std::nothrow) StepCompleteEvent(); RETURN_IF_NULL_ALLOC(e);
-		auto hr = e->Send (_callback.get(), _engine.get(), this, _thread.get()); RETURN_IF_FAILED(hr);
+		com_ptr<IDebugEventCallback2> callback;
+		auto hr = _callback->QueryInterface(&callback); RETURN_IF_FAILED(hr);
+		hr = e->Send (callback.get(), nullptr, this, _thread.get()); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
 	#pragma region ISimulatorEventNotifySink
 	virtual HRESULT STDMETHODCALLTYPE NotifySimulatorEvent (ISimulatorEvent* event, REFIID riidEvent) override
 	{
+		HRESULT hr;
+
 		if (riidEvent == __uuidof(ISimulatorBreakpointEvent))
 		{
 			com_ptr<ISimulatorBreakpointEvent> bpe;
-			auto hr = event->QueryInterface(&bpe); RETURN_IF_FAILED(hr);
+			hr = event->QueryInterface(&bpe); RETURN_IF_FAILED(hr);
+			vector_nothrow<com_ptr<IDebugBoundBreakpoint2>> bps;
+			bool stepComplete = false;
 			for (ULONG i = 0; i < bpe->GetBreakpointCount(); i++)
 			{
 				SIM_BP_COOKIE bp;
@@ -437,13 +523,37 @@ public:
 				{
 					if (bp == _stepOverOrOutBreakpoint)
 					{
-						auto hr = simulator->RemoveBreakpoint(_stepOverOrOutBreakpoint); LOG_IF_FAILED(hr);
+						hr = simulator->RemoveBreakpoint(_stepOverOrOutBreakpoint); LOG_IF_FAILED(hr);
 						_stepOverOrOutBreakpoint = 0;
-						return SendStepCompleteEvent();
+						stepComplete = true;
 					}
-					else
-					{ } // some other breakpoint, not interesting for us
+					if (auto it = _bps.find(bp); it != _bps.end())
+					{
+						bool pushed = bps.try_push_back(it->second); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+					}
 				}
+			}
+
+			if (stepComplete)
+			{
+				hr = SendStepCompleteEvent(); RETURN_IF_FAILED(hr);
+			}
+
+			if (!bps.empty())
+			{
+				struct BreakpointEvent : EventBase<IDebugBreakpointEvent2, EVENT_SYNC_STOP>
+				{
+					com_ptr<IEnumDebugBoundBreakpoints2> _boundBPs;
+
+					virtual HRESULT STDMETHODCALLTYPE EnumBreakpoints (IEnumDebugBoundBreakpoints2** ppEnum) override
+					{
+						return _boundBPs.copy_to(ppEnum);
+					}
+				};
+
+				auto breakpointEvent = com_ptr(new (std::nothrow) BreakpointEvent()); RETURN_IF_NULL_ALLOC(breakpointEvent);
+				hr = enumerator<IEnumDebugBoundBreakpoints2, IDebugBoundBreakpoint2>::create_instance(std::move(bps), &breakpointEvent->_boundBPs); RETURN_IF_FAILED(hr);
+				hr = breakpointEvent->Send(_callback, nullptr, this, _thread); RETURN_IF_FAILED(hr);
 			}
 
 			return S_OK;
@@ -453,7 +563,9 @@ public:
 		{
 			using BreakEvent = EventBase<IDebugBreakEvent2, EVENT_SYNC_STOP>;
 			com_ptr<BreakEvent> e = new (std::nothrow) BreakEvent(); RETURN_IF_NULL_ALLOC(e);
-			auto hr = e->Send (_callback, _engine, this, _thread); RETURN_IF_FAILED(hr);
+			com_ptr<IDebugEventCallback2> callback;
+			auto hr = _callback->QueryInterface(&callback); RETURN_IF_FAILED(hr);
+			hr = e->Send (callback, nullptr, this, _thread); RETURN_IF_FAILED(hr);
 			return S_OK;
 		}
 
@@ -465,10 +577,10 @@ public:
 	#pragma endregion
 };
 
-HRESULT MakeDebugProgram (IDebugProcess2* process, IDebugEngine2* engine, IDebugEventCallback2* callback, IDebugProgram2** ppProgram)
+HRESULT MakeDebugProgram (IDebugProcess2* process, REFGUID programId, IDebugProgram2** ppProgram)
 {
 	auto p = com_ptr(new (std::nothrow) DebugProgramImpl()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance (process, engine, callback); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance (process, programId); RETURN_IF_FAILED(hr);
 	*ppProgram = p.detach();
 	return S_OK;
 }

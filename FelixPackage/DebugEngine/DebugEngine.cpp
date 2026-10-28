@@ -17,10 +17,8 @@ class Z80DebugEngine : public IDebugEngine2, IDebugEngineLaunch2, ISimulatorEven
 	wil::unique_bstr _registryRoot;
 	WORD langId = 0;
 	com_ptr<IDebugEventCallback2> _callback;
-	com_ptr<IDebugPort2> _port;
-	com_ptr<IDebugProgram2> _program;
+	com_ptr<IFelixProgram> _program;
 	com_ptr<IFelixLaunchOptions> _launchOptions;
-	com_ptr<IBreakpointManager> _bpman;
 	SIM_BP_COOKIE _entryPointBreakpoint = 0;
 	SIM_BP_COOKIE _exitPointBreakpoint = 0;
 	AdviseSinkToken _simulatorEventsToken;
@@ -107,6 +105,68 @@ public:
 
 	virtual HRESULT __stdcall Attach(IDebugProgram2** rgpPrograms, IDebugProgramNode2** rgpProgramNodes, DWORD celtPrograms, IDebugEventCallback2* pCallback, ATTACH_REASON dwReason) override
 	{
+		RETURN_HR_IF_NULL(E_POINTER, rgpPrograms);
+		RETURN_HR_IF_NULL(E_POINTER, pCallback);
+		RETURN_HR_IF(E_INVALIDARG, celtPrograms != 1 || !rgpPrograms[0]);
+		RETURN_HR_IF(E_UNEXPECTED, _program);
+		RETURN_HR_IF(E_UNEXPECTED, !simulator);
+		RETURN_HR_IF(E_UNEXPECTED, _callback);
+
+		com_ptr<IDebugProcess2> process;
+		auto hr = rgpPrograms[0]->GetProcess(&process); RETURN_IF_FAILED(hr);
+		RETURN_HR_IF(E_UNEXPECTED, process.try_query<IUnknown>() != simulatorProcess.try_query<IUnknown>());
+
+		_callback = pCallback;
+		hr = rgpPrograms[0]->QueryInterface(&_program); RETURN_IF_FAILED(hr);
+
+		auto resetOnFailure = wil::scope_exit([this,&process]
+			{
+				_simulatorEventsToken.reset();
+				process->Detach();
+				_program = nullptr;
+				_callback = nullptr;
+			});
+
+		hr = AdviseSink<ISimulatorEventNotifySink>(simulator, _weakRefToThis, &_simulatorEventsToken); RETURN_IF_FAILED(hr);
+
+		struct EngineCreateEvent : public EventBase<IDebugEngineCreateEvent2, EVENT_ASYNCHRONOUS>
+		{
+			com_ptr<IDebugEngine2> _engine;
+
+			virtual HRESULT STDMETHODCALLTYPE GetEngine (IDebugEngine2 **pEngine) override
+			{
+				return copy_to(_engine, pEngine);
+			}
+		};
+
+		auto ece = com_ptr (new (std::nothrow) EngineCreateEvent()); RETURN_IF_NULL_ALLOC(ece);
+		ece->_engine = this;
+		hr = ece->Send(pCallback, this, nullptr, nullptr); RETURN_IF_FAILED(hr);
+
+		using ProgramCreateEvent = EventBase<IDebugProgramCreateEvent2, EVENT_ASYNCHRONOUS>;
+		wil::com_ptr_nothrow<ProgramCreateEvent> pce = new (std::nothrow) ProgramCreateEvent(); RETURN_IF_NULL_ALLOC(pce);
+		hr = pce->Send(pCallback, this, _program, nullptr); RETURN_IF_FAILED(hr);
+
+		using ThreadCreateEvent = EventBase<IDebugThreadCreateEvent2, EVENT_ASYNCHRONOUS>;
+		wil::com_ptr_nothrow<ThreadCreateEvent> tce = new (std::nothrow) ThreadCreateEvent(); RETURN_IF_NULL_ALLOC(tce);
+		com_ptr<IEnumDebugThreads2> threads;
+		hr = _program->EnumThreads(&threads); RETURN_IF_FAILED(hr);
+		com_ptr<IDebugThread2> thread;
+		hr = threads->Next(1, &thread, nullptr); RETURN_IF_FAILED(hr);
+		hr = tce->Send(pCallback, this, _program, thread); RETURN_IF_FAILED(hr);
+
+		hr = _program->EngineAttach(this, pCallback, dwReason); RETURN_IF_FAILED(hr);
+		auto terminateOnFailure = wil::scope_exit([this] { _program->Terminate(); });
+		if (dwReason == ATTACH_REASON_LAUNCH)
+		{
+			hr = LoadProgram(process); RETURN_IF_FAILED(hr);
+		}
+		else
+		{
+			hr = SendLoadCompleteEvent(pCallback, this, _program, thread); RETURN_IF_FAILED(hr);
+		}
+		terminateOnFailure.release();
+		resetOnFailure.release();
 		return S_OK;
 	}
 
@@ -130,7 +190,7 @@ public:
 					com_ptr<IFelixCodeContext> z80cc;
 					hr = cc->QueryInterface(&z80cc); RETURN_IF_FAILED(hr);
 					RETURN_HR_IF(E_FAIL, z80cc->PhysicalMemorySpace());
-					hr = MakeSimplePendingBreakpoint (_callback, this, _program, _bpman, false, z80cc->Address(), ppPendingBP); RETURN_IF_FAILED(hr);
+					hr = MakeSimplePendingBreakpoint (_callback, this, _program, false, z80cc->Address(), ppPendingBP); RETURN_IF_FAILED(hr);
 					return S_OK;
 				}
 
@@ -165,7 +225,7 @@ public:
 
 					RETURN_HR_IF(E_FAIL, !converted);
 
-					hr = MakeSimplePendingBreakpoint (_callback, this, _program, _bpman, false, address, ppPendingBP); RETURN_IF_FAILED(hr);
+					hr = MakeSimplePendingBreakpoint (_callback, this, _program, false, address, ppPendingBP); RETURN_IF_FAILED(hr);
 					return S_OK;
 				}
 
@@ -192,7 +252,7 @@ public:
 					TEXT_POSITION begin, end;
 					hr = doc_pos->GetRange(&begin, &end); RETURN_IF_FAILED(hr);
 
-					hr = MakeSourceLinePendingBreakpoint (_callback, this, _program, _bpman, pBPRequest, file_path.get(), begin.dwLine, ppPendingBP); RETURN_IF_FAILED(hr);
+					hr = MakeSourceLinePendingBreakpoint (_callback, this, _program, pBPRequest, file_path.get(), begin.dwLine, ppPendingBP); RETURN_IF_FAILED(hr);
 					return S_OK;
 				}
 
@@ -238,10 +298,8 @@ public:
 	virtual HRESULT __stdcall DestroyProgram(IDebugProgram2* pProgram) override
 	{
 		// called for example when we return an error code from ResumeProcess()
-		wil::com_ptr_nothrow<ProgramDestroyEvent> pde = new (std::nothrow) ProgramDestroyEvent(); RETURN_IF_NULL_ALLOC(pde);
-		pde->_exitCode = 0;
-		auto hr = pde->Send (_callback.get(), this, pProgram, nullptr); LOG_IF_FAILED(hr);
-		return S_OK;
+		WI_ASSERT(pProgram == _program.get());
+		return TerminateProcess(nullptr);
 	}
 
 	virtual HRESULT __stdcall ContinueFromSynchronousEvent(IDebugEvent2* pEvent) override
@@ -251,16 +309,9 @@ public:
 		wil::com_ptr_nothrow<IDebugProgramDestroyEvent2> pde;
 		if (SUCCEEDED(pEvent->QueryInterface(&pde)))
 		{
-			// Now that we told the SDM that we destroyed the program and the SDM is done acting on the event,
-			// we tell also the port about the program being gone. This should release even more references.
-
-			com_ptr<IDebugPortNotify2> portNotify;
-			hr = _port->QueryInterface(&portNotify); RETURN_IF_FAILED(hr);
-			com_ptr<IDebugProgramNode2> node;
-			hr = _program->QueryInterface(&node); RETURN_IF_FAILED(hr);
-			hr = portNotify->RemoveProgramNode(node); RETURN_IF_FAILED(hr);
-
-			_simulatorEventsToken.reset();
+			com_ptr<IDebugProcess2> process;
+			hr = _program->GetProcess(&process); RETURN_IF_FAILED(hr);
+			hr = process->Detach(); RETURN_IF_FAILED(hr);
 
 			WI_ASSERT(simulator->HasBreakpoints_HR() == S_FALSE);
 			if (simulator->Running_HR() == S_FALSE)
@@ -271,8 +322,7 @@ public:
 			_callback = nullptr;
 			_program = nullptr;
 			_launchOptions = nullptr;
-			_bpman = nullptr;
-			_port = nullptr;
+			_romSymbols = nullptr;
 
 			return S_OK;
 		}
@@ -325,6 +375,8 @@ public:
 
 	virtual HRESULT __stdcall CauseBreak() override
 	{
+		if (_program)
+			return _program->CauseBreak();
 		RETURN_HR(E_NOTIMPL);
 	}
 	#pragma endregion
@@ -395,33 +447,15 @@ public:
 			hr = LoadFromXml (_launchOptions.get(), nullptr, stream.get(), 1200); RETURN_IF_FAILED(hr);
 			hr = _launchOptions->get_Platform(&platform); RETURN_IF_FAILED(hr);
 		}
-		//_callback = pCallback;
-		//auto reset_callback_ptr = wil::scope_exit([this] { _callback = nullptr; });
 
 		hr = simulator->Break(); RETURN_IF_FAILED(hr);
 		hr = simulator->Reset(0, platform); RETURN_IF_FAILED(hr);
 
-		com_ptr<IDebugProcess2> process;
-		hr = MakeDebugProcess (pPort, pszExe, this, pCallback, &process); RETURN_IF_FAILED(hr);
-
-		struct EngineCreateEvent : public EventBase<IDebugEngineCreateEvent2, EVENT_ASYNCHRONOUS>
-		{
-			wil::com_ptr_nothrow<IDebugEngine2> _engine;
-
-			virtual HRESULT STDMETHODCALLTYPE GetEngine (IDebugEngine2 **pEngine) override
-			{
-				*pEngine = _engine.get();
-				_engine->AddRef();
-				return S_OK;
-			}
-		};
-
-		wil::com_ptr_nothrow<EngineCreateEvent> ece = new (std::nothrow) EngineCreateEvent(); RETURN_IF_NULL_ALLOC(ece);
-		ece->_engine = this;
-		hr = ece->Send(pCallback, this, nullptr, nullptr); RETURN_IF_FAILED(hr);
-
-		_callback = pCallback;
-		_port = pPort;
+		com_ptr<IDebugProcess2> process = simulatorProcess;
+		com_ptr<IFelixDebugProcess> felixProcess;
+		hr = simulatorProcess->QueryInterface(&felixProcess); RETURN_IF_FAILED(hr);
+		hr = felixProcess->ReplaceProgram(pszExe); RETURN_IF_FAILED(hr);
+		hr = process->Attach(pCallback, nullptr, 0, nullptr); RETURN_IF_FAILED(hr);
 
 		*ppProcess = process.detach();
 		return S_OK;
@@ -431,51 +465,37 @@ public:
 
 	virtual HRESULT __stdcall ResumeProcess(IDebugProcess2* pProcess) override
 	{
-		// TODO: cleanup member variables in case of failure in this function.
-
+		HRESULT hr;
 		com_ptr<IEnumDebugPrograms2> programs;
-		auto hr = pProcess->EnumPrograms(&programs); RETURN_IF_FAILED(hr);
-		hr = programs->Next(1, &_program, nullptr); RETURN_IF_FAILED(hr);
-		auto resetProgram = wil::scope_exit([this] { _program = nullptr; });
-
-		hr = MakeBreakpointManager(_callback, this, _program, &_bpman); RETURN_IF_FAILED(hr);
-
-		wil::com_ptr_nothrow<IDebugPort2> port;
+		hr = pProcess->EnumPrograms(&programs); RETURN_IF_FAILED(hr);
+		com_ptr<IDebugProgram2> program;
+		hr = programs->Next(1, &program, nullptr); RETURN_IF_FAILED(hr);
+		com_ptr<IDebugPort2> port;
 		hr = pProcess->GetPort(&port); RETURN_IF_FAILED(hr);
 		com_ptr<IDebugPortNotify2> portNotify;
-		hr = _port->QueryInterface(&portNotify); RETURN_IF_FAILED(hr);
+		hr = port->QueryInterface(&portNotify); RETURN_IF_FAILED(hr);
 		com_ptr<IDebugProgramNode2> node;
-		hr = _program->QueryInterface(&node); RETURN_IF_FAILED(hr);
-		hr = portNotify->AddProgramNode(node); RETURN_IF_FAILED(hr);
+		hr = program->QueryInterface(&node); RETURN_IF_FAILED(hr);
+		return portNotify->AddProgramNode(node);
+	}
 
-		using ProgramCreateEvent = EventBase<IDebugProgramCreateEvent2, EVENT_ASYNCHRONOUS>;
-		wil::com_ptr_nothrow<ProgramCreateEvent> pce = new (std::nothrow) ProgramCreateEvent(); RETURN_IF_NULL_ALLOC(pce);
-		hr = pce->Send(_callback, this, _program, nullptr); RETURN_IF_FAILED(hr);
-
-		using ThreadCreateEvent = EventBase<IDebugThreadCreateEvent2, EVENT_ASYNCHRONOUS>;
-		wil::com_ptr_nothrow<ThreadCreateEvent> tce = new (std::nothrow) ThreadCreateEvent(); RETURN_IF_NULL_ALLOC(tce);
-		com_ptr<IEnumDebugThreads2> enumThreads;
-		hr = _program->EnumThreads(&enumThreads); RETURN_IF_FAILED(hr);
-		com_ptr<IDebugThread2> thread;
-		hr = enumThreads->Next(1, &thread, nullptr); RETURN_IF_FAILED(hr);
-		hr = tce->Send (_callback.get(), this, _program.get(), thread.get()); LOG_IF_FAILED(hr);
-
+	HRESULT LoadProgram(IDebugProcess2* pProcess)
+	{
 		// Create a debug module for the ROM.
 		wil::unique_process_heap_string dll;
-		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, dll); RETURN_IF_FAILED(hr);
+		auto hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, dll); RETURN_IF_FAILED(hr);
 		PathFindFileName(dll.get())[0] = 0; // remove file name
 		wil::unique_process_heap_string rom_path;
 		hr = wil::str_concat_nothrow(rom_path, dll, L"ROMs\\Spectrum48K.rom"); RETURN_IF_NULL_ALLOC(rom_path);
 		wil::com_ptr_nothrow<IDebugModule2> romModule;
-		hr = MakeModule (0, 0x5CCB, rom_path.get(), false, nullptr, this, _program, _callback, &romModule); RETURN_IF_FAILED(hr);
-		com_ptr<IDebugModuleCollection> mcoll;
+		hr = MakeModule (0, 0x5CCB, rom_path.get(), false, nullptr, &romModule); RETURN_IF_FAILED(hr);
+		com_ptr<IFelixProgram> mcoll;
 		hr = _program->QueryInterface(&mcoll); RETURN_IF_FAILED(hr);
 		hr = mcoll->AddModule(romModule.get()); RETURN_IF_FAILED(hr);
+
 		com_ptr<IZ80Module> rom;
 		hr = romModule->QueryInterface(&rom); RETURN_IF_FAILED(hr);
 		hr = rom->GetSymbols(&_romSymbols); RETURN_IF_FAILED(hr);
-
-		hr = AdviseSink<ISimulatorEventNotifySink>(simulator, _weakRefToThis, &_simulatorEventsToken); RETURN_IF_FAILED(hr);
 
 		wil::unique_bstr exePath;
 		hr = pProcess->GetName (GN_FILENAME, &exePath); RETURN_IF_FAILED(hr);
@@ -524,7 +544,7 @@ public:
 			}
 
 			com_ptr<IDebugModule2> ram_module;
-			hr = MakeModule (0x4000, 0xC000, exePath.get(), true, sourceBasePath.get(), this, _program, _callback, &ram_module); RETURN_IF_FAILED(hr);
+			hr = MakeModule (0x4000, 0xC000, exePath.get(), true, sourceBasePath.get(), &ram_module); RETURN_IF_FAILED(hr);
 			hr = mcoll->AddModule(ram_module); RETURN_IF_FAILED(hr);
 
 			hr = ProcessEntryPointBreakpointHit(); RETURN_IF_FAILED(hr);
@@ -540,7 +560,6 @@ public:
 		// in the design mode layout. It will switch to the debug mode layout - with the simulator window
 		// hidden - after this function returns.
 
-		resetProgram.release();
 		return S_OK;
 	}
 
@@ -596,11 +615,10 @@ public:
 			return uiShell->ReportErrorInfo(hr), hr;
 
 		// Make a module as large as the loaded binary file.
-		com_ptr<IDebugModuleCollection> moduleColl;
+		com_ptr<IFelixProgram> moduleColl;
 		hr = _program->QueryInterface(&moduleColl); RETURN_IF_FAILED(hr);
 		wil::com_ptr_nothrow<IDebugModule2> exe_module;
-		hr = MakeModule (baseAddress, loadedSize, exePath, true, sourceBasePath,
-			this, _program.get(), _callback.get(), &exe_module); RETURN_IF_FAILED(hr);
+		hr = MakeModule (baseAddress, loadedSize, exePath, true, sourceBasePath, &exe_module); RETURN_IF_FAILED(hr);
 		hr = moduleColl->AddModule(exe_module.get()); RETURN_IF_FAILED(hr);
 
 		// Now that we created all modules, let's try to resolve the entry point address string.
@@ -630,10 +648,9 @@ public:
 
 		// Make a module from the end of the ROM module to the end of the RAM, since we don't know how much we're going to load from tape.
 		com_ptr<IDebugModule2> exe_module;
-		hr = MakeModule (0x5CCB, 0x10000 - 0x5CCB, exePath, true, sourceBasePath,
-			this, _program.get(), _callback.get(), &exe_module); RETURN_IF_FAILED(hr);
+		hr = MakeModule (0x5CCB, 0x10000 - 0x5CCB, exePath, true, sourceBasePath, &exe_module); RETURN_IF_FAILED(hr);
 
-		com_ptr<IDebugModuleCollection> moduleColl;
+		com_ptr<IFelixProgram> moduleColl;
 		hr = _program->QueryInterface(&moduleColl); RETURN_IF_FAILED(hr);
 		hr = moduleColl->AddModule(exe_module); RETURN_IF_FAILED(hr);
 
@@ -752,7 +769,7 @@ public:
 		// We sent the Program Destroy event synchronously. This means execution continues on this thread,
 		// this function returns, and sometime later the SDM will process the event and will call our
 		// ContinueFromSynchronousEvent() with the event as parameter. In ContinueFromSynchronousEvent(),
-		// we tell the port that the program is gone and we release our reference to the program.
+		// we release the session's references without removing the program from discovery.
 		// (Various tool windows might still keep references around. An example is the call stack window
 		// which keeps many indirect references, via IEnumDebugFrameInfo2, until the user closes Visual Studio.
 		// Another example is the Disassembly window.)

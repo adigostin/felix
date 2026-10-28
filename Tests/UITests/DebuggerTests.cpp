@@ -664,5 +664,88 @@ namespace UITests
 			Assert::AreEqual(S_OK, hr);
 			WaitDebugMode(td.debugger, VxDTE::dbgDebugMode::dbgDesignMode);
 		}
+
+		TEST_METHOD(AttachToSimulatorWithRomSymbols)
+		{
+			DebuggerTD td(testClassPath.get(), L"AttachToSimulatorWithRomSymbols", EmptyTemplateProjectPath.get());
+			wil::com_ptr_failfast<IDispatch> simWindowDisp;
+			auto hr = td.dte->GetObject(wil::make_bstr_failfast(L"SimulatorWindow").get(), &simWindowDisp);
+			Assert::AreEqual(S_OK, hr);
+			auto simWindow = simWindowDisp.query<ISimulatorWindowAutomationObject>();
+			wil::com_ptr_failfast<ISimulator_> simulator;
+			hr = simWindow->GetSimulator(&simulator);
+			Assert::AreEqual(S_OK, hr);
+			hr = simulator->Reset(0, SpectrumVariant48K);
+			Assert::AreEqual(S_OK, hr);
+
+			auto debugger = td.debugger.query<VxDTE::Debugger2>();
+			wil::com_ptr_failfast<VxDTE::Transports> transports;
+			hr = debugger->get_Transports(&transports);
+			Assert::AreEqual(S_OK, hr);
+			wil::com_ptr_failfast<VxDTE::Transport> transport;
+			hr = transports->Item(wil::make_variant_bstr_failfast(L"Z80PortSupplierName"), &transport);
+			Assert::AreEqual(S_OK, hr);
+
+			auto assertRunning = [&]
+			{
+				UINT64 before;
+				auto hr = simulator->GetTime(&before);
+				Assert::AreEqual(S_OK, hr);
+				Assert::IsTrue(WaitWithMessageLoop([&]
+				{
+					UINT64 now;
+					auto hr = simulator->GetTime(&now);
+					Assert::AreEqual(S_OK, hr);
+					return now > before;
+				}, 5000), L"The simulator should be running.");
+			};
+
+			for (unsigned cycle = 0; cycle < 2; cycle++)
+			{
+				wil::com_ptr_failfast<VxDTE::Processes> processes;
+				hr = debugger->GetProcesses(transport.get(), wil::make_bstr_failfast(L"Single Z80 Port").get(), &processes);
+				Assert::AreEqual(S_OK, hr);
+				long count;
+				hr = processes->get_Count(&count);
+				Assert::AreEqual(S_OK, hr);
+				Assert::AreEqual(1L, count);
+				wil::com_ptr_failfast<VxDTE::Process> process;
+				VARIANT index{};
+				index.vt = VT_I4;
+				index.lVal = 1;
+				hr = processes->Item(index, &process);
+				Assert::AreEqual(S_OK, hr);
+				hr = process.query<VxDTE::Process2>()->Attach2(wil::make_variant_bstr_failfast(L"Z80 Simulator Debug Engine"));
+				Assert::AreEqual(S_OK, hr);
+				WaitDebugMode(td.debugger, VxDTE::dbgRunMode);
+				assertRunning();
+
+				hr = td.dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.BreakAll").get());
+				Assert::AreEqual(S_OK, hr);
+				WaitDebugMode(td.debugger, VxDTE::dbgBreakMode);
+				hr = simulator->SetPC(0x0027);
+				Assert::AreEqual(S_OK, hr);
+				hr = td.dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.StepInto").get());
+				Assert::AreEqual(S_OK, hr);
+				WaitDebugMode(td.debugger, VxDTE::dbgBreakMode);
+				UINT16 pc;
+				hr = simulator->GetPC(&pc);
+				Assert::AreEqual(S_OK, hr);
+				Assert::AreEqual<UINT16>(0x0038, pc);
+				auto disassembly = GetDisassembly(td.dte);
+				Assert::IsNotNull(wcsstr(disassembly.text.get(), L"MASK-INT"), disassembly.text.get());
+
+				if (cycle != 0)
+				{
+					hr = td.debugger->Go(VARIANT_FALSE);
+					Assert::AreEqual(S_OK, hr);
+					WaitDebugMode(td.debugger, VxDTE::dbgRunMode);
+				}
+				hr = td.dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.DetachAll").get());
+				Assert::AreEqual(S_OK, hr);
+				WaitDebugMode(td.debugger, VxDTE::dbgDesignMode);
+				assertRunning();
+			}
+		}
 	};
 }

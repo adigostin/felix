@@ -5,6 +5,7 @@
 #include "shared/com.h"
 #include "shared/unordered_map_nothrow.h"
 #include "shared/OtherGuids.h"
+#include <msdbg172.h>
 
 class Z80DebugPort : public IDebugPort2, IConnectionPointContainer, IDebugPortNotify2
 {
@@ -68,6 +69,8 @@ public:
 		if (riid == IID_IFastRundown) return E_NOINTERFACE;
 		if (riid == IID_CDebugPort) return E_NOINTERFACE;
 		if (riid == IID_IDebugPortEx2) return E_NOINTERFACE; // This interface is normally private between the SDM and the custom port supplier.
+		if (riid == IID_IDebugPort170) return E_NOINTERFACE;
+		if (riid == IID_IDebugPort172) return E_NOINTERFACE;
 		if (riid == IID_INoIdea7) return E_NOINTERFACE;
 		if (riid == IID_IdentityUnmarshal) return E_NOINTERFACE;
 		if (riid == IID_INotARealInterface) return E_NOINTERFACE;
@@ -116,13 +119,20 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetProcess(AD_PROCESS_ID ProcessId, IDebugProcess2** ppProcess) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		  RETURN_HR_IF_NULL(E_POINTER, ppProcess);
+		*ppProcess = nullptr;
+		  RETURN_HR_IF(E_UNEXPECTED, !simulatorProcess);
+
+		RETURN_HR_IF(E_INVALIDARG, ProcessId.ProcessIdType != AD_PROCESS_ID_SYSTEM
+			 || ProcessId.ProcessId.dwProcessId != SimulatorProcessId);
+
+		 return copy_to(simulatorProcess, ppProcess);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE EnumProcesses(IEnumDebugProcesses2** ppEnum) override
 	{
-		RETURN_HR(E_NOTIMPL);
-		//return MakeSingleEntryEnumerator<IEnumDebugProcesses2, IDebugProcess2>(_z80Program->AsProcess(), ppEnum);
+		  RETURN_HR_IF_NULL(E_POINTER, ppEnum);
+		return make_single_entry_enumerator<IEnumDebugProcesses2, IDebugProcess2>(simulatorProcess.get(), ppEnum);
 	}
 	#pragma endregion
 

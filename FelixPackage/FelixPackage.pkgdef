@@ -103,7 +103,7 @@
 
 [$RootKey$\AD7Metrics\PortSupplier\{AFD42502-0F35-43DA-98A3-7CA143B51E62}]
 "CLSID"="{A51C1431-B378-4C13-B32B-8513D35CA4A4}"
-"Name"="Z80SimulatorPortSupplier"
+"Name"="Z80PortSupplierName"
 [$RootKey$\CLSID\{A51C1431-B378-4C13-B32B-8513D35CA4A4}]
 "InprocServer32"="$PackageFolder$\FelixPackage.dll"
 

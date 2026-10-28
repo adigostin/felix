@@ -4,159 +4,8 @@
 #include "DebugEventBase.h"
 #include "../FelixPackage.h"
 #include "shared/com.h"
-#include "shared/unordered_map_nothrow.h"
 
 // https://docs.microsoft.com/en-us/visualstudio/extensibility/debugger/binding-breakpoints?view=vs-2022
-
-class BreakpointManagerImpl : public IBreakpointManager, ISimulatorEventNotifySink
-{
-	ULONG _refCount = 0;
-	com_ptr<IDebugEventCallback2> _callback;
-	com_ptr<IDebugEngine2> _engine;
-	com_ptr<IDebugProgram2> _program;
-	unordered_map_nothrow<SIM_BP_COOKIE, com_ptr<IDebugBoundBreakpoint2>> _bps;
-	AdviseSinkToken _eventNotifyToken;
-
-public:
-	static HRESULT CreateInstance (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program, IBreakpointManager** ppManager)
-	{
-		auto p = com_ptr(new (std::nothrow) BreakpointManagerImpl()); RETURN_IF_NULL_ALLOC(p);
-		p->_callback = callback;
-		p->_engine = engine;
-		p->_program = program;
-		*ppManager = p.detach();
-		return S_OK;
-	}
-
-	~BreakpointManagerImpl()
-	{
-		WI_ASSERT(_bps.empty());
-	}
-
-	#pragma region IUnknown
-	HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
-	{
-		RETURN_HR_IF(E_POINTER, !ppvObject);
-
-		if (   TryQI<IUnknown>(static_cast<IBreakpointManager*>(this), riid, ppvObject)
-			|| TryQI<IBreakpointManager>(this, riid, ppvObject)
-			|| TryQI<ISimulatorEventNotifySink>(this, riid, ppvObject))
-			return S_OK;
-
-		*ppvObject = nullptr;
-		RETURN_HR(E_NOINTERFACE);
-	}
-
-	virtual ULONG STDMETHODCALLTYPE AddRef() override { return ++_refCount; }
-
-	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
-	#pragma endregion
-
-	#pragma region ISimulatorEventNotifySink
-	virtual HRESULT STDMETHODCALLTYPE NotifySimulatorEvent (ISimulatorEvent* event, REFIID riidEvent) override
-	{
-		if (riidEvent == __uuidof(ISimulatorBreakpointEvent))
-		{
-			com_ptr<ISimulatorBreakpointEvent> bpe;
-			auto hr = event->QueryInterface(&bpe); RETURN_IF_FAILED(hr);
-			ULONG count = bpe->GetBreakpointCount();
-			vector_nothrow<com_ptr<IDebugBoundBreakpoint2>> bps;
-			for (ULONG i = 0; i < count; i++)
-			{
-				SIM_BP_COOKIE hitBp;
-				hr = bpe->GetBreakpointAt(i, &hitBp); LOG_IF_FAILED(hr);
-				if (SUCCEEDED(hr))
-				{
-					if (auto it = _bps.find(hitBp); it != _bps.end())
-					{
-						bool pushed = bps.try_push_back(it->second);  RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
-					}
-				}
-			}
-
-			if (bps.size())
-			{
-				wil::com_ptr_nothrow<IEnumDebugBoundBreakpoints2> boundBPsEnum;
-				auto hr = enumerator<IEnumDebugBoundBreakpoints2, IDebugBoundBreakpoint2>::create_instance(std::move(bps), &boundBPsEnum); RETURN_IF_FAILED(hr);
-
-				struct BreakpointEvent : public EventBase<IDebugBreakpointEvent2, EVENT_SYNC_STOP>
-				{
-					wil::com_ptr_nothrow<IEnumDebugBoundBreakpoints2> _boundBPs;
-
-					virtual HRESULT STDMETHODCALLTYPE EnumBreakpoints (IEnumDebugBoundBreakpoints2 **ppEnum) override
-					{
-						auto hr = wil::com_copy_to_nothrow(_boundBPs, ppEnum); RETURN_IF_FAILED(hr);
-						return S_OK;
-					}
-				};
-
-				wil::com_ptr_nothrow<BreakpointEvent> event = new (std::nothrow) BreakpointEvent(); RETURN_IF_NULL_ALLOC(event);
-				event->_boundBPs = std::move(boundBPsEnum);
-				com_ptr<IEnumDebugThreads2> threads;
-				hr = _program->EnumThreads(&threads); RETURN_IF_FAILED(hr);
-				com_ptr<IDebugThread2> thread;
-				hr = threads->Next(1, &thread, nullptr); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_FAIL, hr != S_OK);
-				hr = event->Send (_callback, _engine, _program, thread); RETURN_IF_FAILED(hr);
-			}
-
-			return S_OK;
-		}
-
-		return S_FALSE;
-	}
-	#pragma endregion
-
-	#pragma region IBreakpointManager
-	virtual HRESULT AddBreakpoint (IDebugBoundBreakpoint2* bp, BreakpointType type, bool physicalMemorySpace, UINT64 address) override
-	{
-		HRESULT hr;
-
-		for (auto& existing : _bps)
-			RETURN_HR_IF(E_INVALIDARG, existing.second == bp);
-
-		bool reserved = _bps.try_reserve(_bps.size() + 1); RETURN_HR_IF(E_OUTOFMEMORY, !reserved);
-
-		if (_bps.empty())
-		{
-			hr = AdviseSink<ISimulatorEventNotifySink>(simulator, static_cast<IBreakpointManager*>(this), &_eventNotifyToken); RETURN_IF_FAILED(hr);
-		}
-
-		SIM_BP_COOKIE cookie;
-		hr = simulator->AddBreakpoint (type, physicalMemorySpace, address, &cookie);
-		if (FAILED(hr))
-		{
-			_eventNotifyToken.reset();
-			RETURN_HR(hr);
-		}
-
-		bool inserted = _bps.try_insert({ cookie, bp }); WI_ASSERT(inserted);
-		return S_OK;
-	}
-
-	virtual HRESULT RemoveBreakpoint (IDebugBoundBreakpoint2* bp) override
-	{
-		auto it = _bps.find_if([bp](auto& p) { return p.second == bp; }); RETURN_HR_IF(E_INVALIDARG, it == _bps.end());
-		auto hr = simulator->RemoveBreakpoint(it->first); LOG_IF_FAILED(hr);
-		_bps.erase(it);
-
-		if (_bps.empty())
-			_eventNotifyToken.reset();
-
-		return S_OK;
-	}
-
-	virtual HRESULT ContainsBreakpoint (IDebugBoundBreakpoint2* bp) override
-	{
-		auto it = _bps.find_if([bp](auto& p) { return p.second == bp; });
-		return (it != _bps.end()) ? S_OK : S_FALSE;
-	}
-	#pragma endregion
-};
-
-HRESULT MakeBreakpointManager (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program, IBreakpointManager** ppManager)
-{
-	return BreakpointManagerImpl::CreateInstance(callback, engine, program, ppManager);
-};
 
 // ============================================================================
 
@@ -256,21 +105,19 @@ struct BoundBreakpointImpl : IDebugBoundBreakpoint2, IDebugBreakpointResolution2
 {
 	ULONG _refCount = 0;
 	com_ptr<IDebugPendingBreakpoint2> _parent;
-	com_ptr<IDebugProgram2> _program;
-	com_ptr<IBreakpointManager> _bpman;
+	com_ptr<IFelixProgram> _program;
 	bool _physicalMemorySpace;
 	UINT64 _address;
 	DWORD _hitCount = 0;
 	enum_BP_STATE _state = BPS_NONE;
 
-	static HRESULT CreateInstance (IDebugPendingBreakpoint2* parent, IDebugProgram2* program, IBreakpointManager* bpman,
+	static HRESULT CreateInstance (IDebugPendingBreakpoint2* parent, IFelixProgram* program,
 		bool physicalMemorySpace, UINT64 address, IDebugBoundBreakpoint2** to)
 	{
 		auto p = wil::com_ptr_nothrow(new (std::nothrow) BoundBreakpointImpl()); RETURN_IF_NULL_ALLOC(p);
 
 		p->_parent = parent;
 		p->_program = program;
-		p->_bpman = bpman;
 		p->_physicalMemorySpace = physicalMemorySpace;
 		p->_address = address;
 
@@ -340,7 +187,7 @@ struct BoundBreakpointImpl : IDebugBoundBreakpoint2, IDebugBreakpointResolution2
 		{
 			if (_state != BPS_ENABLED)
 			{
-				hr = _bpman->AddBreakpoint(this, BreakpointType::Code, _physicalMemorySpace, _address); RETURN_IF_FAILED(hr);
+				hr = _program->AddBreakpoint(this, BreakpointType::Code, _physicalMemorySpace, _address); RETURN_IF_FAILED(hr);
 			}
 
 			_state = BPS_ENABLED;
@@ -350,7 +197,7 @@ struct BoundBreakpointImpl : IDebugBoundBreakpoint2, IDebugBreakpointResolution2
 		{
 			if (_state == BPS_ENABLED)
 			{
-				hr = _bpman->RemoveBreakpoint(this); RETURN_IF_FAILED(hr);
+				hr = _program->RemoveBreakpoint(this); RETURN_IF_FAILED(hr);
 			}
 			_state = BPS_DISABLED;
 			return S_OK;
@@ -385,10 +232,9 @@ struct BoundBreakpointImpl : IDebugBoundBreakpoint2, IDebugBreakpointResolution2
 
 		if (_state == BPS_ENABLED)
 		{
-			auto hr = _bpman->RemoveBreakpoint(this); LOG_IF_FAILED(hr);
+			auto hr = _program->RemoveBreakpoint(this); LOG_IF_FAILED(hr);
 			_parent = nullptr;
 			_program = nullptr;
-			_bpman = nullptr;
 		}
 
 		_state = BPS_DELETED;
@@ -562,8 +408,7 @@ struct SimplePendingBreakpoint : IDebugPendingBreakpoint2, IDebugEventCallback2
 	ULONG _refCount = 0;
 	com_ptr<IDebugEventCallback2> _callback;
 	com_ptr<IDebugEngine2> _engine;
-	com_ptr<IDebugProgram2> _program;
-	com_ptr<IBreakpointManager> _bpman;
+	com_ptr<IFelixProgram> _program;
 	bool _physicalMemorySpace;
 	UINT64 _address;
 	PENDING_BP_STATE_INFO _stateInfo = { };
@@ -571,14 +416,13 @@ struct SimplePendingBreakpoint : IDebugPendingBreakpoint2, IDebugEventCallback2
 	com_ptr<IDebugErrorBreakpoint2> _errorBP;
 	bool _advisedDebugEventCallback = false;
 
-	static HRESULT CreateInstance (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program,
-		IBreakpointManager* bpman, bool physicalMemorySpace, UINT64 address, IDebugPendingBreakpoint2** to)
+	static HRESULT CreateInstance (IDebugEventCallback2* callback, IDebugEngine2* engine, IFelixProgram* program,
+		bool physicalMemorySpace, UINT64 address, IDebugPendingBreakpoint2** to)
 	{
 		wil::com_ptr_nothrow<SimplePendingBreakpoint> p = new (std::nothrow) SimplePendingBreakpoint(); RETURN_IF_NULL_ALLOC(p);
 		p->_callback = callback;
 		p->_engine = engine;
 		p->_program = program;
-		p->_bpman = bpman;
 		p->_physicalMemorySpace = physicalMemorySpace;
 		p->_address = address;
 		*to = p.detach();
@@ -625,7 +469,7 @@ struct SimplePendingBreakpoint : IDebugPendingBreakpoint2, IDebugEventCallback2
 		if (_boundBP)
 			return S_FALSE;
 
-		auto hr = BoundBreakpointImpl::CreateInstance (this, _program, _bpman, _physicalMemorySpace, _address, &_boundBP); RETURN_IF_FAILED(hr);
+		auto hr = BoundBreakpointImpl::CreateInstance (this, _program, _physicalMemorySpace, _address, &_boundBP); RETURN_IF_FAILED(hr);
 
 		if (_stateInfo.state == BPS_ENABLED)
 			// Necessary when adding a breakpoint on a source code line while debugging.
@@ -797,10 +641,9 @@ struct SimplePendingBreakpoint : IDebugPendingBreakpoint2, IDebugEventCallback2
 	#pragma endregion
 };
 
-HRESULT MakeSimplePendingBreakpoint (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program,
-	IBreakpointManager* bpman, bool physicalMemorySpace, UINT64 address, IDebugPendingBreakpoint2** to)
+HRESULT MakeSimplePendingBreakpoint (IDebugEventCallback2* callback, IDebugEngine2* engine, 	IFelixProgram* program, bool physicalMemorySpace, UINT64 address, IDebugPendingBreakpoint2** to)
 {
-	return SimplePendingBreakpoint::CreateInstance (callback, engine, program, bpman, physicalMemorySpace, address, to);
+	return SimplePendingBreakpoint::CreateInstance (callback, engine, program, physicalMemorySpace, address, to);
 }
 
 // ============================================================================
@@ -810,8 +653,7 @@ class SourceLinePendingBreakpoint : IDebugPendingBreakpoint2, IDebugEventCallbac
 	ULONG _refCount = 0;
 	com_ptr<IDebugEventCallback2> _callback;
 	com_ptr<IDebugEngine2> _engine;
-	com_ptr<IDebugProgram2> _program;
-	com_ptr<IBreakpointManager> _bpman;
+	com_ptr<IFelixProgram> _program;
 	wil::com_ptr_nothrow<IDebugBreakpointRequest2> _bp_request;
 	wil::unique_process_heap_string _file;
 	uint32_t _line_index;
@@ -821,8 +663,8 @@ class SourceLinePendingBreakpoint : IDebugPendingBreakpoint2, IDebugEventCallbac
 	bool _advisedDebugEventCallback = false;
 
 public:
-	static HRESULT CreateInstance (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program,
-		IBreakpointManager* bpman, IDebugBreakpointRequest2* bp_request, const wchar_t* file, uint32_t line_index, IDebugPendingBreakpoint2** to)
+	static HRESULT CreateInstance (IDebugEventCallback2* callback, IDebugEngine2* engine, IFelixProgram* program,
+		IDebugBreakpointRequest2* bp_request, const wchar_t* file, uint32_t line_index, IDebugPendingBreakpoint2** to)
 	{
 		RETURN_HR_IF_NULL(E_INVALIDARG, program);
 
@@ -831,7 +673,6 @@ public:
 		p->_callback = callback;
 		p->_engine = engine;
 		p->_program = program;
-		p->_bpman = bpman;
 		p->_bp_request = bp_request;
 		p->_file = wil::make_process_heap_string_nothrow(file); RETURN_IF_NULL_ALLOC(p->_file);
 		p->_line_index = line_index;
@@ -911,7 +752,7 @@ WI_ASSERT(!_errorBP);
 		else
 		{
 			_errorBP = nullptr;
-			hr = BoundBreakpointImpl::CreateInstance (this, _program, _bpman, physicalMemorySpace, address, &_boundBP); RETURN_IF_FAILED(hr);
+			hr = BoundBreakpointImpl::CreateInstance (this, _program, physicalMemorySpace, address, &_boundBP); RETURN_IF_FAILED(hr);
 
 			if (_stateInfo.state == PBPS_ENABLED)
 				// Necessary when adding a breakpoint on a source code line while debugging.
@@ -1045,7 +886,6 @@ WI_ASSERT(!_errorBP);
 		_callback = nullptr;
 		_engine = nullptr;
 		_program = nullptr;
-		_bpman = nullptr;
 		_bp_request = nullptr;
 		_file.reset();
 
@@ -1087,7 +927,7 @@ WI_ASSERT(!_errorBP);
 							hr = ::GetAddressFromSourceLocation (module.get(), _file.get(), _line_index, &address);
 							if (SUCCEEDED(hr))
 							{
-								hr = BoundBreakpointImpl::CreateInstance (this, _program, _bpman, physicalMemorySpace, address, &_boundBP); RETURN_IF_FAILED(hr);
+								hr = BoundBreakpointImpl::CreateInstance (this, _program, physicalMemorySpace, address, &_boundBP); RETURN_IF_FAILED(hr);
 								_errorBP = nullptr;
 
 								WI_ASSERT (_stateInfo.state == PBPS_ENABLED);
@@ -1116,9 +956,8 @@ WI_ASSERT(!_errorBP);
 	#pragma endregion
 };
 
-HRESULT MakeSourceLinePendingBreakpoint (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program,
-	IBreakpointManager* bpman,
+HRESULT MakeSourceLinePendingBreakpoint (IDebugEventCallback2* callback, IDebugEngine2* engine, IFelixProgram* program,
 	IDebugBreakpointRequest2* bp_request, const wchar_t* file, uint32_t line_index, IDebugPendingBreakpoint2** to)
 {
-	return SourceLinePendingBreakpoint::CreateInstance (callback, engine, program, bpman, bp_request, file, line_index, to);
+	return SourceLinePendingBreakpoint::CreateInstance (callback, engine, program, bp_request, file, line_index, to);
 }

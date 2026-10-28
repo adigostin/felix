@@ -39,6 +39,8 @@ FELIX_API wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 wil::com_ptr_nothrow<IVsShell> shell;
 wil::com_ptr_nothrow<IVsUIShell> uiShell;
 com_ptr<ISimulator> simulator;
+com_ptr<IDebugPort2> debugPort;
+com_ptr<IDebugProcess2> simulatorProcess;
 wil::unique_bstr genFilesStr;
 wil::unique_bstr preincludeFilename;
 wil::unique_bstr postincludeFilename;
@@ -174,6 +176,10 @@ public:
 		}
 
 		hr = MakeSimulator(romFilenames, _countof(romFilenames), variant, &simulator); RETURN_IF_FAILED(hr);
+
+		hr = MakeDebugPort(SingleDebugPortName, SingleDebugPortId, &debugPort); RETURN_IF_FAILED(hr);
+
+		hr = MakeDebugProcess(romFilenames[SpectrumVariant48K], &simulatorProcess); RETURN_IF_FAILED(hr);
 		simulator->Resume(false);
 
 		return S_OK;
@@ -181,6 +187,8 @@ public:
 
 	void ReleaseZxSpectrumSimulator()
 	{
+		simulatorProcess = nullptr;
+		debugPort = nullptr;
 		simulator = nullptr;
 
 		if (_profferZXSimulatorServiceCookie)

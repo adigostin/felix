@@ -13,11 +13,21 @@ struct __declspec(novtable) __declspec(uuid("EE50873B-DFAC-4F23-826D-495832A8FD6
 	virtual HRESULT STDMETHODCALLTYPE GetSymbols (IFelixSymbols** symbols) = 0;
 };
 
-struct DECLSPEC_NOVTABLE DECLSPEC_UUID("25071BD1-2108-4D4D-B665-8FE19E31A6CF") IDebugModuleCollection : IUnknown
+struct DECLSPEC_NOVTABLE DECLSPEC_UUID("80F0C048-F2BA-4FC7-B180-1C93AA7462BA") IFelixProgram : IDebugProgram2
 {
 	// Adds a module to the program and sends VS the IDebugModuleLoadEvent2 event.
 	// (VS will in turn attempts to bind breakpoints.)
 	virtual HRESULT STDMETHODCALLTYPE AddModule (IDebugModule2* module) = 0;
+	virtual HRESULT STDMETHODCALLTYPE UnloadModules() = 0;
+	virtual HRESULT STDMETHODCALLTYPE AddBreakpoint (IDebugBoundBreakpoint2* bp, BreakpointType type, bool physicalMemorySpace, UINT64 address) = 0;
+	virtual HRESULT STDMETHODCALLTYPE RemoveBreakpoint (IDebugBoundBreakpoint2* bp) = 0;
+	virtual HRESULT STDMETHODCALLTYPE ContainsBreakpoint (IDebugBoundBreakpoint2* bp) = 0;
+	virtual HRESULT STDMETHODCALLTYPE EngineAttach (IDebugEngine2* pEngine, IDebugEventCallback2* pCallback, ATTACH_REASON dwReason) = 0;
+};
+
+struct DECLSPEC_NOVTABLE DECLSPEC_UUID("2BF19E5A-6231-47C6-87DB-2AA904DC51CE") IFelixDebugProcess : IDebugProcess2
+{
+	virtual HRESULT STDMETHODCALLTYPE ReplaceProgram (LPCWSTR exePath) = 0;
 };
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{1EFD0353-0389-4325-BA93-5834A6198E57}") IFelixCodeContext : IUnknown
@@ -34,36 +44,23 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{7B10BF8A-903E-4FDD-927C-D9827EEF0229}")
 	virtual HRESULT GetLaunchOptions (IFelixLaunchOptions** ppOptions) = 0;
 };
 
-struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{FCC163D3-2F23-457E-BDDD-EE5A94D9EC83}") IBreakpointManager : IUnknown
-{
-	virtual HRESULT AddBreakpoint (IDebugBoundBreakpoint2* bp, BreakpointType type, bool physicalMemorySpace, UINT64 address) = 0;
-	virtual HRESULT RemoveBreakpoint (IDebugBoundBreakpoint2* bp) = 0;
-	virtual HRESULT ContainsBreakpoint (IDebugBoundBreakpoint2* bp) = 0;
-};
-
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{EE258338-F1FA-4FE5-A518-F7A589F43B60}") IFelixLoadCompleteEvent : IUnknown
 {
 };
 
-HRESULT MakeBreakpointManager (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program, IBreakpointManager** ppManager);
-HRESULT MakeSimplePendingBreakpoint (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program,
-	IBreakpointManager* bpman, bool physicalMemorySpace, UINT64 address, IDebugPendingBreakpoint2** to);
-HRESULT MakeSourceLinePendingBreakpoint (IDebugEventCallback2* callback, IDebugEngine2* engine, IDebugProgram2* program,
-	IBreakpointManager* bpman,
+HRESULT MakeSimplePendingBreakpoint (IDebugEventCallback2* callback, IDebugEngine2* engine, IFelixProgram* program,
+	bool physicalMemorySpace, UINT64 address, IDebugPendingBreakpoint2** to);
+HRESULT MakeSourceLinePendingBreakpoint (IDebugEventCallback2* callback, IDebugEngine2* engine, IFelixProgram* program,
 	IDebugBreakpointRequest2* bp_request, const wchar_t* file, uint32_t line_index, IDebugPendingBreakpoint2** to);
 HRESULT MakeDebugPort (const wchar_t* portName, const GUID& portId, IDebugPort2** port);
-HRESULT MakeDebugProgram (IDebugProcess2* process, IDebugEngine2* engine, IDebugEventCallback2* callback, IDebugProgram2** ppProgram);
-HRESULT MakeDebugProcess (IDebugPort2* pPort, LPCOLESTR pszExe, IDebugEngine2* engine,
-	IDebugEventCallback2* callback, IDebugProcess2** ppProcess);
+HRESULT MakeDebugProgram (IDebugProcess2* process, REFGUID programId, IDebugProgram2** ppProgram);
+HRESULT MakeDebugProcess (LPCWSTR romPath, IDebugProcess2** ppProcess);
 
-// If "symbolsFilePath" is non-NULL, it is the full path to the file with symbols; the module implementation
-// will not attempt to load symbols from other places.
-// If "symbolsFilePath" is NULL, the module implementation may attempt to load symbols from other places,
-// such as from a file located next to the module file with the same filename and a different extension.
-// The module implementation attempts to load the symbols only once per debug session, when the symbols
-// are needed for the first time, for example in the implementation of IZ80Module::GetSymbols.
-HRESULT MakeModule (UINT64 address, DWORD size, LPCWSTR path, bool user_code, LPCWSTR sourceBasePath,
-	IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback, IDebugModule2** to);
+inline constexpr DWORD SimulatorProcessId = 0xFFFFFFFF;
+extern com_ptr<IDebugProcess2> simulatorProcess;
+
+// Symbols are loaded when the module is created and retained for the module's lifetime.
+HRESULT MakeModule (UINT64 address, DWORD size, LPCWSTR path, bool user_code, LPCWSTR sourceBasePath, IDebugModule2** to);
 
 HRESULT MakeThread (IDebugProgram2* program, IDebugThread2** ppThread);
 HRESULT MakeEnumDebugFrameInfo (FRAMEINFO_FLAGS dwFieldSpec, UINT nRadix, IDebugThread2* thread, IEnumDebugFrameInfo2** to);

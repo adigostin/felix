@@ -291,7 +291,7 @@ public:
 			dti.clsidPortSupplier = PortSupplier_Id;
 			dti.bstrPortName = portNameBstr.get();
 			dti.bstrOptions = options.get();
-			dti.grfLaunch = grfLaunch;
+			dti.grfLaunch = grfLaunch | DBGLAUNCH_DetachOnStop;
 			dti.fSendStdoutToOutputWindow = TRUE;
 
 			hr = debugger->LaunchDebugTargets (1, &dti);

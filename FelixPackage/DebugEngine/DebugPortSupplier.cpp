@@ -8,14 +8,10 @@
 class Z80DebugPortSupplier : public IDebugPortSupplier2
 {
 	ULONG _refCount = 0;
-	wil::com_ptr_nothrow<IDebugPort2> _z80Port;
 
 public:
 	HRESULT InitInstance()
 	{
-		// Let's pretend that we (the supplier) have detected an attached port; we create a IDebugPort2 for it.
-		// This is needed in case the user starts the IDE and without any solution open clicks Attach...
-		//auto hr = MakeDebugPort(SingleDebugPortName, SingleDebugPortId, &p->_z80Port); IfFailedAssertRet();
 		return S_OK;
 	}
 
@@ -62,12 +58,13 @@ public:
 
 	virtual HRESULT __stdcall GetPort(REFGUID guidPort, IDebugPort2** ppPort) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		RETURN_HR_IF(E_INVALIDARG, guidPort != SingleDebugPortId);
+		return copy_to(debugPort, ppPort);
 	}
 
 	virtual HRESULT __stdcall EnumPorts(IEnumDebugPorts2** ppEnum) override
 	{
-		return make_single_entry_enumerator<IEnumDebugPorts2, IDebugPort2>(_z80Port.get(), ppEnum);
+		return make_single_entry_enumerator<IEnumDebugPorts2, IDebugPort2>(debugPort, ppEnum);
 	}
 
 	virtual HRESULT __stdcall CanAddPort() override
@@ -77,29 +74,15 @@ public:
 
 	virtual HRESULT __stdcall AddPort (IDebugPortRequest2* pRequest, IDebugPort2** ppPort) override
 	{
-		HRESULT hr;
-
-		*ppPort = nullptr;
-
 		wil::unique_bstr portName;
-		hr = pRequest->GetPortName(&portName); RETURN_IF_FAILED(hr);
+		auto hr = pRequest->GetPortName(&portName); RETURN_IF_FAILED(hr);
 
-		if (_z80Port)
-		{
-			// We have a port already. If the name matches, we return this port.
-			// Don't know why VS asks us to add a port even when it's already there.
-			if (!portName || wcscmp(portName.get(), SingleDebugPortName))
-				RETURN_HR(E_UNEXPECTED);
-		}
-		else
-		{
-			hr = MakeDebugPort (portName.get(), SingleDebugPortId, &_z80Port); RETURN_IF_FAILED(hr);
-		}
+		// We have a port already. If the name matches, we return this port.
+		// Don't know why VS asks us to add a port even when it's already there.
+		if (!portName || wcscmp(portName.get(), SingleDebugPortName))
+			RETURN_HR(E_INVALIDARG);
 
-		*ppPort = _z80Port.get();
-		(*ppPort)->AddRef();
-
-		return S_OK;
+		return copy_to(debugPort, ppPort);
 	}
 
 	virtual HRESULT __stdcall RemovePort(IDebugPort2* pPort) override

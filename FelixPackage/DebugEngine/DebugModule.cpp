@@ -3,7 +3,6 @@
 #include "shared/OtherGuids.h"
 #include "shared/com.h"
 #include "DebugEngine.h"
-#include "DebugEventBase.h"
 
 class Z80Module : public IDebugModule3, IZ80Module
 {
@@ -14,19 +13,11 @@ class Z80Module : public IDebugModule3, IZ80Module
 	wil::unique_process_heap_string _sourceBasePath;
 	wil::unique_process_heap_string _symbolsPath;
 	bool _user_code;
-	com_ptr<IDebugEngine2> _engine;
-	com_ptr<IDebugProgram2> _program;
-	com_ptr<IDebugEventCallback2> _callback;
-
-	// _symbols==NULL and SUCCEEDED(_symbolLoadResult) - loading has not been attempted yet during this debug sessions
-	// _symbols==NULL and FAILED(_symbolLoadResult) - loading has been attempted and failed with the error code from _symbolLoadResult
-	// _symbols!=NULL - loading has been attempted and was successful.
 	com_ptr<IFelixSymbols> _symbols;
 	HRESULT _symbolLoadResult = S_OK;
 
 public:
-	HRESULT InitInstance (UINT64 address, DWORD size, LPCWSTR path, bool user_code, LPCWSTR sourceBasePath,
-		IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback)
+	HRESULT InitInstance (UINT64 address, DWORD size, LPCWSTR path, bool user_code, LPCWSTR sourceBasePath)
 	{
 		_address = address;
 		_size = size;
@@ -35,9 +26,7 @@ public:
 		if (sourceBasePath) {
 			_sourceBasePath = wil::make_process_heap_string_nothrow(sourceBasePath); RETURN_IF_NULL_ALLOC(_sourceBasePath);
 		}
-		_engine = engine;
-		_program = program;
-		_callback = callback;
+		_symbolLoadResult = LoadSymbolsFromFile();
 		return S_OK;
 	}
 
@@ -124,7 +113,7 @@ public:
 
 		if (dwFields & MIF_FLAGS)
 		{
-			pInfo->m_dwModuleFlags = 0;
+			pInfo->m_dwModuleFlags = _symbols ? MIF_SYMBOLS_LOADED : 0;
 			pInfo->dwValidFields |= MIF_FLAGS;
 			dwFields &= ~MIF_FLAGS;
 		}
@@ -249,42 +238,17 @@ public:
 	}
 	#pragma endregion
 
-	struct SymbolSearchEvent : EventBase<IDebugSymbolSearchEvent2, EVENT_ASYNCHRONOUS>
-	{
-		com_ptr<IDebugModule3> _module;
-		wil::unique_hlocal_string _debugMessage;
-		MODULE_INFO_FLAGS _flags;
-
-		SymbolSearchEvent (IDebugModule3* module, wil::unique_hlocal_string debugMessage, MODULE_INFO_FLAGS flags)
-			: _module(module), _debugMessage(std::move(debugMessage)), _flags(flags)
-		{ }
-
-		virtual HRESULT STDMETHODCALLTYPE GetSymbolSearchInfo (IDebugModule3 **pModule, BSTR *pbstrDebugMessage, MODULE_INFO_FLAGS *pdwModuleInfoFlags) override
-		{
-			_module.copy_to(pModule);
-			*pbstrDebugMessage = SysAllocString(_debugMessage.get()); RETURN_IF_NULL_ALLOC(*pbstrDebugMessage);
-			*pdwModuleInfoFlags = _flags;
-			return S_OK;
-		}
-	};
-
 	#pragma region IZ80Module
 	virtual HRESULT STDMETHODCALLTYPE GetSymbols (IFelixSymbols** symbols) override
 	{
-		if (_symbols)
-		{
-			*symbols = _symbols;
-			_symbols->AddRef();
-			return S_OK;
-		}
+		_symbols.copy_to(symbols);
+		return _symbolLoadResult;
+	}
 
-		*symbols = nullptr;
+	#pragma endregion
 
-		if (FAILED(_symbolLoadResult))
-			// We tried already to load them and this was the result. Don't try again.
-			return _symbolLoadResult;
-
-		// Attempt to load them for the first time.
+	HRESULT LoadSymbolsFromFile()
+	{
 		if (!_symbolsPath)
 		{
 			size_t bufferLen = wcslen(_path.get()) + 10;
@@ -319,29 +283,14 @@ public:
 		else
 			_symbolLoadResult = E_UNRECOGNIZED_DEBUG_FILE_EXTENSION;
 
-		if (FAILED(_symbolLoadResult))
-		{
-			if (auto errorMessage = wil::make_hlocal_string_nothrow(L"load error"))
-				if (auto e = com_ptr(new (std::nothrow) SymbolSearchEvent(this, std::move(errorMessage), 0)))
-					e->Send(_callback.get(), _engine.get(), _program.get(), nullptr);
-			RETURN_HR(_symbolLoadResult);
-		}
-
-		if (auto errorMessage = wil::make_hlocal_string_nothrow(_symbolsPath.get()))
-			if (auto e = com_ptr(new (std::nothrow) SymbolSearchEvent(this, std::move(errorMessage), MIF_SYMBOLS_LOADED)))
-				e->Send(_callback.get(), _engine.get(), _program.get(), nullptr);
-
-		_symbols.copy_to(symbols);
-		return S_OK;
+		return _symbolLoadResult;
 	}
-	#pragma endregion
 };
 
-HRESULT MakeModule (UINT64 address, DWORD size, LPCWSTR path, bool user_code, LPCWSTR sourceBasePath,
-	IDebugEngine2* engine, IDebugProgram2* program, IDebugEventCallback2* callback, IDebugModule2** to)
+HRESULT MakeModule (UINT64 address, DWORD size, LPCWSTR path, bool user_code, LPCWSTR sourceBasePath, IDebugModule2** to)
 {
 	auto p = com_ptr(new (std::nothrow) Z80Module()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance (address, size, path, user_code, sourceBasePath, engine, program, callback); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance (address, size, path, user_code, sourceBasePath); RETURN_IF_FAILED(hr);
 	*to = p.detach();
 	return S_OK;
 }
