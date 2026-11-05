@@ -665,45 +665,58 @@ namespace UITests
 			WaitDebugMode(td.debugger, VxDTE::dbgDebugMode::dbgDesignMode);
 		}
 
-		TEST_METHOD(AttachToSimulatorWithRomSymbols)
+		TEST_METHOD(SimulatorWindow_TapDebug)
 		{
-			DebuggerTD td(testClassPath.get(), L"AttachToSimulatorWithRomSymbols", EmptyTemplateProjectPath.get());
-			wil::com_ptr_failfast<IDispatch> simWindowDisp;
-			auto hr = td.dte->GetObject(wil::make_bstr_failfast(L"SimulatorWindow").get(), &simWindowDisp);
-			Assert::AreEqual(S_OK, hr);
-			auto simWindow = simWindowDisp.query<ISimulatorWindowAutomationObject>();
-			wil::com_ptr_failfast<ISimulator_> simulator;
-			hr = simWindow->GetSimulator(&simulator);
-			Assert::AreEqual(S_OK, hr);
-			hr = simulator->Reset(0, SpectrumVariant48K);
-			Assert::AreEqual(S_OK, hr);
+			HRESULT hr;
+			DebuggerTD td(testClassPath.get(), L"SimulatorWindow_TapDebug", EmptyTemplateProjectPath.get());
 
-			auto debugger = td.debugger.query<VxDTE::Debugger2>();
-			wil::com_ptr_failfast<VxDTE::Transports> transports;
-			hr = debugger->get_Transports(&transports);
-			Assert::AreEqual(S_OK, hr);
-			wil::com_ptr_failfast<VxDTE::Transport> transport;
-			hr = transports->Item(wil::make_variant_bstr_failfast(L"Z80PortSupplierName"), &transport);
-			Assert::AreEqual(S_OK, hr);
+			static const char basic[] = "10 POKE 32768, 85\r\n20 POKE 32769,170";
+			auto tapPath = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\test.tap");
+			Bas2Tap(basic, td.projDir.get(), tapPath.get());
 
-			auto assertRunning = [&]
+			auto [simWindow, simulator] = GetSimulatorWindow(td.dte);
+
+			VxDTE::dbgDebugMode debugMode;
+			hr = td.debugger->get_CurrentMode(&debugMode);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<UINT>(VxDTE::dbgDesignMode, debugMode);
+
+			hr = simWindow->DebugTapFile(wil::make_bstr_failfast(tapPath.get()).get(), TRUE);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(S_OK, simulator->IsTapFileLoading());
+			WaitDebugMode(td.debugger, VxDTE::dbgBreakMode);
+
+			Assert::AreEqual<UINT8>(0, ReadMemoryBus(simulator, 32768));
+			Assert::AreEqual<UINT8>(0, ReadMemoryBus(simulator, 32769));
+
+			td.dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.Start").get());
+			// Will go to dbgRunMode and then quickly to dbgDesignMode.
+
+			WaitDebugMode(td.debugger, VxDTE::dbgDesignMode);
+
+			simulator->Break();
+			Assert::AreEqual<UINT8>(85, ReadMemoryBus(simulator, 32768));
+			Assert::AreEqual<UINT8>(170, ReadMemoryBus(simulator, 32769));
+		}
+
+		TEST_METHOD(AttachToSimulator)
+		{
+			HRESULT hr;
+
+			MessageFilterRegistration messageFilter;
+
+			// Attach through the simulator's port supplier and wait for VS to finish switching to the Debug layout.
+			auto attachToSimulator = [](VxDTE::DTE2* dte, VxDTE::Debugger* debugger)
 			{
-				UINT64 before;
-				auto hr = simulator->GetTime(&before);
+				auto debugger2 = wil::com_query_failfast<VxDTE::Debugger2>(debugger);
+				wil::com_ptr_failfast<VxDTE::Transports> transports;
+				auto hr = debugger2->get_Transports(&transports);
 				Assert::AreEqual(S_OK, hr);
-				Assert::IsTrue(WaitWithMessageLoop([&]
-				{
-					UINT64 now;
-					auto hr = simulator->GetTime(&now);
-					Assert::AreEqual(S_OK, hr);
-					return now > before;
-				}, 5000), L"The simulator should be running.");
-			};
-
-			for (unsigned cycle = 0; cycle < 2; cycle++)
-			{
+				wil::com_ptr_failfast<VxDTE::Transport> transport;
+				hr = transports->Item(wil::make_variant_bstr_failfast(L"Z80PortSupplierName"), &transport);
+				Assert::AreEqual(S_OK, hr);
 				wil::com_ptr_failfast<VxDTE::Processes> processes;
-				hr = debugger->GetProcesses(transport.get(), wil::make_bstr_failfast(L"Single Z80 Port").get(), &processes);
+				hr = debugger2->GetProcesses(transport, wil::make_bstr_failfast(L"Single Z80 Port").get(), &processes);
 				Assert::AreEqual(S_OK, hr);
 				long count;
 				hr = processes->get_Count(&count);
@@ -717,35 +730,85 @@ namespace UITests
 				Assert::AreEqual(S_OK, hr);
 				hr = process.query<VxDTE::Process2>()->Attach2(wil::make_variant_bstr_failfast(L"Z80 Simulator Debug Engine"));
 				Assert::AreEqual(S_OK, hr);
-				WaitDebugMode(td.debugger, VxDTE::dbgRunMode);
-				assertRunning();
+				WaitDebugMode(debugger, VxDTE::dbgRunMode, 10000);
+				WaitIDEDebugMode(dte, 10000);
+			};
 
-				hr = td.dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.BreakAll").get());
+			// Detach rather than stop so the simulator remains available for the next VS launch.
+			auto detachFromSimulator = [](VxDTE::DTE2* dte, VxDTE::Debugger* debugger)
+			{
+				auto hr = dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.DetachAll").get());
 				Assert::AreEqual(S_OK, hr);
-				WaitDebugMode(td.debugger, VxDTE::dbgBreakMode);
-				hr = simulator->SetPC(0x0027);
-				Assert::AreEqual(S_OK, hr);
-				hr = td.dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.StepInto").get());
-				Assert::AreEqual(S_OK, hr);
-				WaitDebugMode(td.debugger, VxDTE::dbgBreakMode);
-				UINT16 pc;
-				hr = simulator->GetPC(&pc);
-				Assert::AreEqual(S_OK, hr);
-				Assert::AreEqual<UINT16>(0x0038, pc);
-				auto disassembly = GetDisassembly(td.dte);
-				Assert::IsNotNull(wcsstr(disassembly.text.get(), L"MASK-INT"), disassembly.text.get());
+				WaitDebugMode(debugger, VxDTE::dbgDesignMode, 10000);
+			};
 
-				if (cycle != 0)
+			{
+				auto vs = LaunchVS();
+				auto closevs = wil::scope_exit([&] { CloseVS(vs); });
+				wil::com_ptr_failfast<VxDTE::Debugger> debugger;
+				hr = vs.dte->get_Debugger(&debugger);
+				Assert::AreEqual(S_OK, hr);
+
+				// Hide the simulator window so that the Design layout is saved without it.
+				wil::com_ptr_failfast<VxDTE::Windows> windows;
+				hr = vs.dte->get_Windows(&windows);
+				Assert::AreEqual(S_OK, hr);
+				wil::com_ptr_failfast<VxDTE::Window> window;
+				hr = windows->Item(wil::make_variant_bstr_failfast(L"{6F52DA3A-E13C-4A1E-A178-98805F356A66}"), &window);
+				hr = window->put_Visible(VARIANT_FALSE);
+				Assert::AreEqual(S_OK, hr);
+				VARIANT_BOOL visible;
+				hr = window->get_Visible(&visible);
+				Assert::AreEqual(S_OK, hr);
+				Assert::AreEqual<VARIANT_BOOL>(VARIANT_FALSE, visible);
+
+				// Attaching will switch to the Debug layout, in which the simulator window might be visible. Close it.
+				attachToSimulator(vs.dte, debugger);
+				auto detach = wil::scope_exit([&] { detachFromSimulator(vs.dte, debugger); });
+
+				hr = window->get_Visible(&visible);
+				Assert::AreEqual(S_OK, hr);
+				if (visible)
 				{
-					hr = td.debugger->Go(VARIANT_FALSE);
+					hr = window->put_Visible(VARIANT_FALSE);
 					Assert::AreEqual(S_OK, hr);
-					WaitDebugMode(td.debugger, VxDTE::dbgRunMode);
 				}
-				hr = td.dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.DetachAll").get());
+				hr = window->get_Visible(&visible);
 				Assert::AreEqual(S_OK, hr);
-				WaitDebugMode(td.debugger, VxDTE::dbgDesignMode);
-				assertRunning();
+				Assert::AreEqual<VARIANT_BOOL>(VARIANT_FALSE, visible);
+			}
+
+			{
+				// A fresh VS process should have the simulator window hidden both in the Design layout
+				// and in the Debug layout. Thus the package shouldn't be loaded. We can't check over DTE
+				// whether a package is loaded or not; we kind of assume it isn't because we closed VS above
+				// with the simulator window closed in both the Design and the Debug layouts. The package is
+				// supposed to be loaded by our implementation of IDebugEngine2::Attach (check the code there).
+
+				auto vs = LaunchVS();
+				auto closevs = wil::scope_exit([&] { CloseVS(vs); });
+				wil::com_ptr_failfast<VxDTE::Debugger> debugger;
+				hr = vs.dte->get_Debugger(&debugger);
+				Assert::AreEqual(S_OK, hr);
+
+				attachToSimulator(vs.dte, debugger);
+				auto detach = wil::scope_exit([&] { detachFromSimulator(vs.dte, debugger); });
 			}
 		}
+		/*
+		TEST_METHOD(RunDebuggerTestsInRandomOrder)
+		{
+			BreakpointInSourceFileOnOtherDrive();
+			DisassemblyIncludesSourceForRepeatedBlock();
+			AttachToSimulator();
+			DebugBinaryWithBreakpoint();
+			DisassemblyIncludesSource();
+			BreakpointInSourceFileOutsideProjectDir();
+			DisassemblyCorrectOnFileTransitionInSLD();
+			SimulatorWindow_TapDebug();
+			BreakpointInSourceFileInProjectSubdir();
+			DebugBinary_EntryPointIsNumber();
+		}
+		*/
 	};
 }

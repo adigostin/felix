@@ -188,7 +188,6 @@ FELIX_API extern wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 extern wil::com_ptr_nothrow<IVsShell> shell;
 extern wil::com_ptr_nothrow<IVsUIShell> uiShell;
 extern wil::com_ptr_nothrow<ISimulator> simulator;
-extern com_ptr<IDebugPort2> debugPort;
 extern wil::unique_bstr genFilesStr;
 extern wil::unique_bstr preincludeFilename;
 extern wil::unique_bstr postincludeFilename;

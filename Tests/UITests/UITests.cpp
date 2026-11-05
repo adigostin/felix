@@ -183,7 +183,7 @@ namespace UITests
 		return data.window_handle;
 	}
 
-	static void Attach (DWORD targetVSProcessID, VxDTE::_DTE* targetVSDTE, VxDTE::Debugger* debugger, VxDTE::Process** ppTargetVSAttachedProcess)
+	static void Attach (DWORD targetVSProcessID, VxDTE::_DTE* targetVSDTE, VxDTE::Debugger* debugger, bool mixedDebugging, VxDTE::Process** ppTargetVSAttachedProcess)
 	{
 		HRESULT hr;
 		auto dbg3 = wil::com_query_failfast<VxDTE::Debugger3>(debugger);
@@ -205,8 +205,8 @@ namespace UITests
 					&& (DWORD)pid == targetVSProcessID)
 				{
 					targetVSDTE->put_SuppressUI(VARIANT_TRUE);
-					//hr = targetProcess->Attach2(wil::make_variant_bstr_failfast(L"Managed/Native"));
-					hr = targetProcess->Attach2(wil::make_variant_bstr_failfast(L"Native"));
+					const wchar_t* engines = mixedDebugging ? L"Managed/Native" : L"Native";
+					hr = targetProcess->Attach2(wil::make_variant_bstr_failfast(engines));
 					targetVSDTE->put_SuppressUI(VARIANT_FALSE);
 					Assert::IsTrue(SUCCEEDED(hr));
 					*ppTargetVSAttachedProcess = targetProcess.detach();
@@ -218,7 +218,7 @@ namespace UITests
 		Assert::Fail();
 	}
 
-	static void FindAndAttach (DWORD targetVsProcessId, VxDTE::_DTE* targetVSDTE, VxDTE::Process** ppTargetVSAttachedProcess)
+	static void FindAndAttach (DWORD targetVsProcessId, VxDTE::_DTE* targetVSDTE, bool mixedDebugging, VxDTE::Process** ppTargetVSAttachedProcess)
 	{
 		HRESULT hr;
 
@@ -293,7 +293,7 @@ namespace UITests
 								&& (DWORD)pid == selfId)
 							{
 								// This is the correct VS, so attach and return.
-								Attach (targetVsProcessId, targetVSDTE, debugger, ppTargetVSAttachedProcess);
+								Attach (targetVsProcessId, targetVSDTE, debugger, mixedDebugging, ppTargetVSAttachedProcess);
 								return;
 							}
 						}
@@ -308,6 +308,7 @@ namespace UITests
 	VSInstance LaunchVS (const wchar_t* envVar)
 	{
 		HRESULT hr;
+		BOOL bres;
 
 		auto lock = cs.lock();
 		auto resetev = wil::scope_exit([] { SetEnvironmentVariable(L"FelixTestUI", nullptr); });
@@ -325,8 +326,24 @@ namespace UITests
 		auto cmdLine = wil::str_concat_failfast<wil::unique_process_heap_string>(L"\"", devenvExe, L"\" ", devenvArguments);
 		STARTUPINFO si = { .cb = sizeof(si) };
 		wil::unique_process_information pi;
-		BOOL bres = CreateProcessW (devenvExe.get(), cmdLine.get(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi);
+
+		#define MIXED_DEBUGGING 0
+
+		#if MIXED_DEBUGGING
+		// Prevent using precompiled images on module load
+		wil::unique_process_heap_string previousZapDisable;
+		hr = wil::TryGetEnvironmentVariableW(L"COMPlus_ZapDisable", previousZapDisable);
+		Assert::AreEqual(S_OK, hr);
+		bres = SetEnvironmentVariableW(L"COMPlus_ZapDisable", L"1");
 		Assert::IsTrue(bres);
+		#endif
+		bres = CreateProcessW (devenvExe.get(), cmdLine.get(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi);
+		#if MIXED_DEBUGGING
+		BOOL restored = SetEnvironmentVariableW(L"COMPlus_ZapDisable", previousZapDisable.get());
+		Assert::IsTrue(restored);
+		#endif
+		Assert::IsTrue(bres);
+
 		DWORD exitCode;
 		bres = GetExitCodeProcess (pi.hProcess, &exitCode);
 		Assert::IsTrue(bres);
@@ -381,7 +398,7 @@ namespace UITests
 
 		wil::com_ptr_failfast<VxDTE::Process> targetVSAttachedProcess;
 		if (IsDebuggerPresent())
-			FindAndAttach(pi.dwProcessId, dte, &targetVSAttachedProcess);
+			FindAndAttach(pi.dwProcessId, dte, MIXED_DEBUGGING, &targetVSAttachedProcess);
 
 		return VSInstance{ .dte = std::move(dte), .attachedProcess = std::move(targetVSAttachedProcess), .processID = pi.dwProcessId };
 	}
@@ -613,6 +630,42 @@ namespace UITests
 		}
 
 		return output;
+	}
+
+	void Bas2Tap(const char* basicText, PCWSTR testDir, PCWSTR tapPath)
+	{
+		PCWSTR separator = testDir[wcslen(testDir) - 1] == L'\\' || testDir[wcslen(testDir) - 1] == L'/' ? L"" : L"\\";
+		auto basPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, separator, L"test.bas");
+		WriteFileCreateDirs(basPath, basicText);
+		DeleteFile(tapPath);
+		auto command = wil::str_printf_failfast<wil::unique_process_heap_string>(L"bas2tap -a10 \"%s\" \"%s\"", basPath.get(), tapPath);
+		STARTUPINFO si = { .cb = sizeof(si) };
+		wil::unique_process_information pi;
+		Assert::IsTrue(CreateProcessW(nullptr, command.get(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi));
+		Assert::AreEqual(WAIT_OBJECT_0, WaitForSingleObject(pi.hProcess, INFINITE));
+		DWORD exitCode;
+		Assert::IsTrue(GetExitCodeProcess(pi.hProcess, &exitCode));
+		Assert::AreEqual(DWORD(0), exitCode);
+	}
+
+	std::pair<wil::com_ptr_failfast<ISimulatorWindowAutomationObject>, wil::com_ptr_failfast<ISimulator_>> GetSimulatorWindow(VxDTE::DTE2* dte)
+	{
+		wil::com_ptr_failfast<IDispatch> simWindowDisp;
+		auto hr = dte->GetObject(wil::make_bstr_failfast(L"SimulatorWindow").get(), &simWindowDisp);
+		Assert::AreEqual(S_OK, hr);
+		auto simWindow = simWindowDisp.query<ISimulatorWindowAutomationObject>();
+		wil::com_ptr_failfast<ISimulator_> simulator;
+		hr = simWindow->GetSimulator(&simulator);
+		Assert::AreEqual(S_OK, hr);
+		return { std::move(simWindow), std::move(simulator) };
+	}
+
+	UINT8 ReadMemoryBus(ISimulator_* simulator, UINT16 addr)
+	{
+		UINT8 data;
+		auto hr = simulator->ReadMemoryBus8(addr, &data);
+		Assert::AreEqual(S_OK, hr);
+		return data;
 	}
 
 	void DisableGeneratedFiles (VxDTE::Project* proj)

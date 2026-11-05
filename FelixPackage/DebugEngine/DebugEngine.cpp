@@ -23,7 +23,8 @@ class Z80DebugEngine : public IDebugEngine2, IDebugEngineLaunch2, ISimulatorEven
 	SIM_BP_COOKIE _exitPointBreakpoint = 0;
 	AdviseSinkToken _simulatorEventsToken;
 	AdviseSinkToken _tapPlaySinkToken;
-	com_ptr<IFelixSymbols> _romSymbols;
+	wil::unique_process_heap_string _launchExe;
+	SpectrumVariant _platform = SpectrumVariantCount;
 
 public:
 	HRESULT InitInstance()
@@ -103,21 +104,50 @@ public:
 		RETURN_HR(E_NOTIMPL);
 	}
 
+	// https://learn.microsoft.com/en-us/visualstudio/extensibility/debugger/attaching-to-the-program?view=visualstudio
 	virtual HRESULT __stdcall Attach(IDebugProgram2** rgpPrograms, IDebugProgramNode2** rgpProgramNodes, DWORD celtPrograms, IDebugEventCallback2* pCallback, ATTACH_REASON dwReason) override
 	{
+		HRESULT hr;
 		RETURN_HR_IF_NULL(E_POINTER, rgpPrograms);
 		RETURN_HR_IF_NULL(E_POINTER, pCallback);
 		RETURN_HR_IF(E_INVALIDARG, celtPrograms != 1 || !rgpPrograms[0]);
 		RETURN_HR_IF(E_UNEXPECTED, _program);
-		RETURN_HR_IF(E_UNEXPECTED, !simulator);
 		RETURN_HR_IF(E_UNEXPECTED, _callback);
 
+		// If VS calls us from the Debug -> Attach to Process dialog, it's possible the package hasn't been loaded yet.
+		// Happens when the Simulator window is visible in neither the Design layout nor in the Debug layout.
+		if (!simulator)
+		{
+			com_ptr<IServiceProvider> sp;
+			hr = GetGlobalServiceProvider(&sp); RETURN_IF_FAILED(hr);
+			com_ptr<IVsShell> shell;
+			hr = sp->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
+			com_ptr<IVsPackage> package;
+			static const GUID felix = { 0x768BC57B, 0x42A8, 0x42AB, { 0xB3, 0x89, 0x45, 0x79, 0x46, 0xC4, 0xFC, 0x6A } };
+			hr = shell->LoadPackage(felix, &package); RETURN_IF_FAILED(hr);
+			RETURN_HR_IF(E_UNEXPECTED, !simulator);
+		}
+
+		// From https://learn.microsoft.com/en-us/visualstudio/extensibility/debugger/reference/idebugengine2-attach:
+		// When this method is called, the DE needs to send these events in sequence:
+		// 1. IDebugEngineCreateEvent2 (if it has not already been sent for a particular instance of the debug engine)
+		// 2. IDebugProgramCreateEvent2
+		// 3. IDebugLoadCompleteEvent2
+
+		// From https://learn.microsoft.com/en-us/visualstudio/extensibility/debugger/attaching-and-detaching-to-a-program?view=visualstudio:
+		// 2. The DE sends an IDebugEngineCreateEvent2 to the SDM with an EVENT_SYNC attribute.
+		// 3. The DE sends an IDebugProgramCreateEvent2 to the SDM with an EVENT_SYNC attribute.
+		// 4. The DE sends an IDebugLoadCompleteEvent2 to the SDM with an EVENT_SYNC_STOP attribute.
+
 		com_ptr<IDebugProcess2> process;
-		auto hr = rgpPrograms[0]->GetProcess(&process); RETURN_IF_FAILED(hr);
-		RETURN_HR_IF(E_UNEXPECTED, process.try_query<IUnknown>() != simulatorProcess.try_query<IUnknown>());
+		hr = rgpPrograms[0]->GetProcess(&process); RETURN_IF_FAILED(hr);
 
 		_callback = pCallback;
 		hr = rgpPrograms[0]->QueryInterface(&_program); RETURN_IF_FAILED(hr);
+
+		HRESULT hrEngineAttach;
+		hr = process->Attach(pCallback, const_cast<GUID*>(&Engine_Id), 1, &hrEngineAttach); RETURN_IF_FAILED(hr);
+		RETURN_IF_FAILED(hrEngineAttach);
 
 		auto resetOnFailure = wil::scope_exit([this,&process]
 			{
@@ -159,12 +189,19 @@ public:
 		auto terminateOnFailure = wil::scope_exit([this] { _program->Terminate(); });
 		if (dwReason == ATTACH_REASON_LAUNCH)
 		{
-			hr = LoadProgram(process); RETURN_IF_FAILED(hr);
+			// ATTACH_REASON_LAUNCH indicates that the DE is attaching to the program because
+			// the user launched the process that contains it.
+			hr = LoadProgram(_launchExe.get()); RETURN_IF_FAILED(hr);
 		}
-		else
+		else if (dwReason == ATTACH_REASON_USER)
 		{
+			// ATTACH_REASON_USER indicates that the user has explicitly requested the DE
+			// to attach to a program (or the process that contains a program).
 			hr = SendLoadCompleteEvent(pCallback, this, _program, thread); RETURN_IF_FAILED(hr);
 		}
+		else
+			RETURN_HR(E_NOTIMPL);
+
 		terminateOnFailure.release();
 		resetOnFailure.release();
 		return S_OK;
@@ -313,16 +350,15 @@ public:
 			hr = _program->GetProcess(&process); RETURN_IF_FAILED(hr);
 			hr = process->Detach(); RETURN_IF_FAILED(hr);
 
-			WI_ASSERT(simulator->HasBreakpoints_HR() == S_FALSE);
+			_ASSERT(simulator->HasBreakpoints_HR() == S_FALSE);
 			if (simulator->Running_HR() == S_FALSE)
 			{
-				auto hr = simulator->Resume(false); LOG_IF_FAILED(hr);
+				hr = simulator->Resume(false); LOG_IF_FAILED(hr);
 			}
 
 			_callback = nullptr;
 			_program = nullptr;
 			_launchOptions = nullptr;
-			_romSymbols = nullptr;
 
 			return S_OK;
 		}
@@ -444,26 +480,24 @@ public:
 		WI_ASSERT(!_program);
 		WI_ASSERT(!_launchOptions);
 
-		SpectrumVariant platform = SpectrumVariant48K;
+		_launchExe = wil::make_process_heap_string_nothrow(pszExe); RETURN_IF_NULL_ALLOC(_launchExe);
+
+		_platform = SpectrumVariant48K;
 		if (pszOptions)
 		{
 			auto stream = com_ptr(SHCreateMemStream((BYTE*)pszOptions, 2 * (UINT)wcslen(pszOptions))); RETURN_IF_NULL_ALLOC(stream);
 			hr = MakeLaunchOptions(&_launchOptions); RETURN_IF_FAILED(hr);
 			hr = LoadFromXml (_launchOptions.get(), nullptr, stream.get(), 1200); RETURN_IF_FAILED(hr);
-			hr = _launchOptions->get_Platform(&platform); RETURN_IF_FAILED(hr);
+			hr = _launchOptions->get_Platform(&_platform); RETURN_IF_FAILED(hr);
 		}
 
 		hr = simulator->Break(); RETURN_IF_FAILED(hr);
-		hr = simulator->Reset(0, platform); RETURN_IF_FAILED(hr);
+		hr = simulator->Reset(0, _platform); RETURN_IF_FAILED(hr);
 
-		com_ptr<IDebugProcess2> process = simulatorProcess;
-		com_ptr<IFelixDebugProcess> felixProcess;
-		hr = simulatorProcess->QueryInterface(&felixProcess); RETURN_IF_FAILED(hr);
-		hr = felixProcess->ReplaceProgram(pszExe); RETURN_IF_FAILED(hr);
-		hr = process->Attach(pCallback, nullptr, 0, nullptr); RETURN_IF_FAILED(hr);
+		com_ptr<IDebugProcess2> process;
+		pPort->GetProcess(AD_PROCESS_ID{ AD_PROCESS_ID_SYSTEM, SimulatorProcessId }, &process); RETURN_IF_FAILED(hr);
 
-		*ppProcess = process.detach();
-		return S_OK;
+		return copy_to(process, ppProcess);
 	}
 
 	// https://docs.microsoft.com/en-us/previous-versions/bb145570%28v%3dvs.90%29
@@ -471,71 +505,53 @@ public:
 	virtual HRESULT __stdcall ResumeProcess(IDebugProcess2* pProcess) override
 	{
 		HRESULT hr;
-		com_ptr<IEnumDebugPrograms2> programs;
-		hr = pProcess->EnumPrograms(&programs); RETURN_IF_FAILED(hr);
-		com_ptr<IDebugProgram2> program;
-		hr = programs->Next(1, &program, nullptr); RETURN_IF_FAILED(hr);
-		com_ptr<IDebugPort2> port;
-		hr = pProcess->GetPort(&port); RETURN_IF_FAILED(hr);
-		com_ptr<IDebugPortNotify2> portNotify;
-		hr = port->QueryInterface(&portNotify); RETURN_IF_FAILED(hr);
-		com_ptr<IDebugProgramNode2> node;
-		hr = program->QueryInterface(&node); RETURN_IF_FAILED(hr);
-		return portNotify->AddProgramNode(node);
+
+		com_ptr<IFelixDebugProcess> felixProcess;
+		hr = pProcess->QueryInterface(&felixProcess); RETURN_IF_FAILED(hr);
+		hr = felixProcess->InitDebugProgram(_platform); RETURN_IF_FAILED(hr);
+
+		return S_OK;
 	}
 
-	HRESULT LoadProgram(IDebugProcess2* pProcess)
+	HRESULT LoadProgram (LPCWSTR exePath)
 	{
-		// Create a debug module for the ROM.
-		wil::unique_process_heap_string dll;
-		auto hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, dll); RETURN_IF_FAILED(hr);
-		PathFindFileName(dll.get())[0] = 0; // remove file name
-		wil::unique_process_heap_string rom_path;
-		hr = wil::str_concat_nothrow(rom_path, dll, L"ROMs\\Spectrum48K.rom"); RETURN_IF_NULL_ALLOC(rom_path);
-		wil::com_ptr_nothrow<IDebugModule2> romModule;
-		hr = MakeModule (0, 0x5CCB, rom_path.get(), false, nullptr, &romModule); RETURN_IF_FAILED(hr);
+		HRESULT hr;
 		com_ptr<IFelixProgram> mcoll;
 		hr = _program->QueryInterface(&mcoll); RETURN_IF_FAILED(hr);
-		hr = mcoll->AddModule(romModule.get()); RETURN_IF_FAILED(hr);
-
-		com_ptr<IZ80Module> rom;
-		hr = romModule->QueryInterface(&rom); RETURN_IF_FAILED(hr);
-		hr = rom->GetSymbols(&_romSymbols); RETURN_IF_FAILED(hr);
-
-		wil::unique_bstr exePath;
-		hr = pProcess->GetName (GN_FILENAME, &exePath); RETURN_IF_FAILED(hr);
-		if (!exePath)
-			RETURN_HR(E_NO_EXE_FILENAME);
 
 		wil::unique_bstr sourceBasePath;
 		if (!_launchOptions || FAILED(_launchOptions->get_ProjectDir(&sourceBasePath)))
 		{
-			sourceBasePath = wil::make_bstr_nothrow(exePath.get()); RETURN_IF_NULL_ALLOC(sourceBasePath);
+			sourceBasePath = wil::make_bstr_nothrow(exePath); RETURN_IF_NULL_ALLOC(sourceBasePath);
 			PathRemoveFileSpec(sourceBasePath.get());
 		}
 
-		auto fileExt = PathFindExtension(exePath.get());
+		auto fileExt = PathFindExtension(exePath);
 		if (!_wcsicmp(fileExt, L".bin") || !_wcsicmp(fileExt, L".tap"))
 		{
-			hr = SimulateToEDITOR(_romSymbols); RETURN_IF_FAILED(hr);
+			com_ptr<IDebugModule2> romModule;
+			hr = GetModuleAtAddress(_program, 0, &romModule); RETURN_IF_FAILED(hr);
+			com_ptr<IFelixSymbols> romSymbols;
+			hr = romModule.try_query<IZ80Module>()->GetSymbols(&romSymbols); RETURN_IF_FAILED(hr);
+			hr = SimulateToEDITOR(romSymbols); RETURN_IF_FAILED(hr);
 
 			auto terminateOnError = wil::scope_exit([this] { TerminateInternal(); });
 
 			if (!_wcsicmp(fileExt, L".bin"))
 			{
 				hr = simulator->SetSpeed(100); RETURN_IF_FAILED(hr);
-				hr = LoadBinary(exePath.get(), sourceBasePath.get()); RETURN_IF_FAILED_EXPECTED(hr);
+				hr = LoadBinary(romSymbols, exePath, sourceBasePath.get()); RETURN_IF_FAILED_EXPECTED(hr);
 			}
 			else //if (!_wcsicmp(fileExt, L".tap"))
 			{
-				hr = LoadTap(exePath.get(), sourceBasePath.get()); RETURN_IF_FAILED_EXPECTED(hr);
+				hr = LoadTap(romSymbols, exePath, sourceBasePath.get()); RETURN_IF_FAILED_EXPECTED(hr);
 			}
 
 			terminateOnError.release();
 		}
 		else if (!_wcsicmp(fileExt, L".sna"))
 		{
-			hr = simulator->LoadFile(exePath.get());
+			hr = simulator->LoadFile(exePath);
 			if (FAILED(hr))
 			{
 				// The LoadFile function generates rich error info via SetErrorInfo.
@@ -549,7 +565,7 @@ public:
 			}
 
 			com_ptr<IDebugModule2> ram_module;
-			hr = MakeModule (0x4000, 0xC000, exePath.get(), true, sourceBasePath.get(), &ram_module); RETURN_IF_FAILED(hr);
+			hr = MakeModule (0x4000, 0xC000, exePath, true, sourceBasePath.get(), &ram_module); RETURN_IF_FAILED(hr);
 			hr = mcoll->AddModule(ram_module); RETURN_IF_FAILED(hr);
 
 			hr = ProcessEntryPointBreakpointHit(); RETURN_IF_FAILED(hr);
@@ -607,7 +623,7 @@ public:
 		}
 	}
 
-	HRESULT LoadBinary (LPCWSTR exePath, LPCWSTR sourceBasePath)
+	HRESULT LoadBinary (IFelixSymbols* romSymbols, LPCWSTR exePath, LPCWSTR sourceBasePath)
 	{
 		HRESULT hr;
 
@@ -636,7 +652,7 @@ public:
 		// PRINT USR <LaunchAddress>
 		char cmdLine[16];
 		int cmdLineLen = sprintf_s (cmdLine, "\xF5\xC0%u\x0D\x80", launchAddress); RETURN_HR_IF(E_FAIL, cmdLineLen < 0);
-		hr = SimulateBasicCommand(_romSymbols, cmdLine); RETURN_IF_FAILED(hr);
+		hr = SimulateBasicCommand(romSymbols, cmdLine); RETURN_IF_FAILED(hr);
 
 		// Now put another breakpoint at the entry point of the Z80 program.
 		WI_ASSERT(!_entryPointBreakpoint);
@@ -647,7 +663,7 @@ public:
 		return S_OK;
 	}
 
-	HRESULT LoadTap (LPCWSTR exePath, LPCWSTR sourceBasePath)
+	HRESULT LoadTap (IFelixSymbols* romSymbols, LPCWSTR exePath, LPCWSTR sourceBasePath)
 	{
 		HRESULT hr;
 
@@ -667,7 +683,7 @@ public:
 		}
 
 		// LOAD "".
-		hr = SimulateBasicCommand (_romSymbols, "\xEF\x22\x22\x0D\x80"); RETURN_IF_FAILED(hr);
+		hr = SimulateBasicCommand (romSymbols, "\xEF\x22\x22\x0D\x80"); RETURN_IF_FAILED(hr);
 
 		// Resume simulation so that the ZX Spectrum ROM parses our command and calls the Z80 program.
 		hr = simulator->Resume(true); RETURN_IF_FAILED(hr);
@@ -700,8 +716,12 @@ public:
 		hr = SendEntryPointEvent (_callback.get(), this, _program.get(), thread.get()); LOG_IF_FAILED(hr);
 
 		// Let's put a breakpoint at the exit point.
+		com_ptr<IDebugModule2> romModule;
+		hr = GetModuleAtAddress(_program, 0, &romModule); RETURN_IF_FAILED(hr);
+		com_ptr<IFelixSymbols> romSymbols;
+		hr = romModule.try_query<IZ80Module>()->GetSymbols(&romSymbols); RETURN_IF_FAILED(hr);
 		uint16_t addr;
-		hr = _romSymbols->GetAddressFromSymbol(L"MAIN-4", &addr); RETURN_IF_FAILED(hr);
+		hr = romSymbols->GetAddressFromSymbol(L"MAIN-4", &addr); RETURN_IF_FAILED(hr);
 		hr = simulator->AddBreakpoint(BreakpointType::Code, false, addr, &_exitPointBreakpoint); RETURN_IF_FAILED(hr);
 
 		// The simulation paused execution before calling us, and we sent the entry point even which is a stopping event.

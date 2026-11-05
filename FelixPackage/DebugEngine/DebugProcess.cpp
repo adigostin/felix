@@ -10,61 +10,66 @@ class DebugProcessImpl : public IFelixDebugProcess
 {
 	ULONG _refCount = 0;
 	WeakRefToThis _weakRefToThis;
-	wil::unique_hlocal_string _exe_path;
+	wil::unique_process_heap_string _exe_path;
 	AD_PROCESS_ID _pid;
 	GUID _processGuid;
+	com_ptr<IDebugPort2> _parentPort;
 	FILETIME _creationTime;
 	com_ptr<IDebugProgram2> _program;
 	bool _attached = false;
 
 public:
-	HRESULT InitInstance (LPCWSTR romPath)
+	HRESULT InitInstance (IDebugPort2* pPort, SpectrumVariant variant)
 	{
 		auto hr = _weakRefToThis.InitInstance(static_cast<IDebugProcess2*>(this)); RETURN_IF_FAILED(hr);
-
+		_parentPort = pPort;
 		_pid.ProcessIdType = AD_PROCESS_ID_SYSTEM;
 		_pid.ProcessId.dwProcessId = SimulatorProcessId;
 		hr = CoCreateGuid (&_processGuid); RETURN_IF_FAILED(hr);
 		::GetSystemTimeAsFileTime (&_creationTime);
 
-		hr = ReplaceProgram(romPath); RETURN_IF_FAILED(hr);
-		
-		com_ptr<IDebugModule2> romModule;
-		hr = MakeModule(0, 0x4000, romPath, false, nullptr, &romModule); RETURN_IF_FAILED(hr);
-		com_ptr<IFelixProgram> modules;
-		hr = _program->QueryInterface(&modules); RETURN_IF_FAILED(hr);
-		hr = modules->AddModule(romModule.get()); RETURN_IF_FAILED(hr);
-
-		com_ptr<IDebugPortNotify2> portNotify;
-		hr = debugPort->QueryInterface(&portNotify); RETURN_IF_FAILED(hr);
-		com_ptr<IDebugProgramNode2> node;
-		hr = _program->QueryInterface(&node); RETURN_IF_FAILED(hr);
-		hr = portNotify->AddProgramNode(node.get()); RETURN_IF_FAILED(hr);
+		hr = InitDebugProgram(variant); RETURN_IF_FAILED(hr);
 
 		return S_OK;
 	}
 
-	HRESULT STDMETHODCALLTYPE ReplaceProgram(LPCWSTR exePath) override
+	virtual HRESULT STDMETHODCALLTYPE InitDebugProgram (SpectrumVariant platform) override
 	{
+		HRESULT hr;
 		RETURN_HR_IF(E_UNEXPECTED, _attached);
-		auto path = wil::make_hlocal_string_nothrow(exePath); RETURN_IF_NULL_ALLOC(path);
-		GUID programId;
-		auto hr = CoCreateGuid(&programId); RETURN_IF_FAILED(hr);
-		com_ptr<IDebugProgram2> program;
-		hr = MakeDebugProgram(this, programId, &program); RETURN_IF_FAILED(hr);
+
+		com_ptr<IDebugPortNotify2> portNotify;
+		hr = _parentPort->QueryInterface(&portNotify); RETURN_IF_FAILED(hr);
+
 		if (_program)
 		{
 			com_ptr<IFelixProgram> modules;
 			hr = _program->QueryInterface(&modules); RETURN_IF_FAILED(hr);
 			hr = modules->UnloadModules(); RETURN_IF_FAILED(hr);
-			com_ptr<IDebugPortNotify2> portNotify;
-			hr = debugPort->QueryInterface(&portNotify); RETURN_IF_FAILED(hr);
 			com_ptr<IDebugProgramNode2> node;
 			hr = _program->QueryInterface(&node); RETURN_IF_FAILED(hr);
 			hr = portNotify->RemoveProgramNode(node.get()); RETURN_IF_FAILED(hr);
+			_exe_path.reset();
 		}
-		_exe_path = std::move(path);
-		_program = std::move(program);
+
+		hr = MakeDebugProgram(this, &_program); RETURN_IF_FAILED(hr);
+		wil::unique_process_heap_string dll;
+		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, dll); RETURN_IF_FAILED(hr);
+		PathFindFileName(dll.get())[0] = 0; // remove file name
+		RETURN_HR_IF(E_NOTIMPL, platform != SpectrumVariant48K);
+		hr = wil::str_concat_nothrow(_exe_path, dll, L"ROMs\\Spectrum48K.rom"); RETURN_IF_NULL_ALLOC(_exe_path);
+
+		// Create a debug module for the ROM.
+		wil::com_ptr_nothrow<IDebugModule2> romModule;
+		hr = MakeModule (0, 0x5CCB, _exe_path.get(), false, nullptr, &romModule); RETURN_IF_FAILED(hr);
+		com_ptr<IFelixProgram> mcoll;
+		hr = _program->QueryInterface(&mcoll); RETURN_IF_FAILED(hr);
+		hr = mcoll->AddModule(romModule.get()); RETURN_IF_FAILED(hr);
+
+		com_ptr<IDebugProgramNode2> node;
+		hr = _program->QueryInterface(&node); RETURN_IF_FAILED(hr);
+		hr = portNotify->AddProgramNode(node.get()); RETURN_IF_FAILED(hr); // VS will call IDebugEngine2::Attach from this
+
 		return S_OK;
 	}
 
@@ -227,8 +232,6 @@ public:
 
 	HRESULT STDMETHODCALLTYPE Attach(IDebugEventCallback2* pCallback, GUID* rgguidSpecificEngines, DWORD celtSpecificEngines, HRESULT* rghrEngineAttach) override
 	{
-		RETURN_HR_IF(E_UNEXPECTED, !simulator);
-		RETURN_HR_IF_NULL(E_POINTER, pCallback);
 		RETURN_HR_IF(E_ATTACH_DEBUGGER_ALREADY_ATTACHED, _attached);
 		RETURN_HR_IF(E_POINTER, celtSpecificEngines && rghrEngineAttach == nullptr);
 
@@ -283,22 +286,21 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE CauseBreak() override
 	{
+		RETURN_HR_IF(E_UNEXPECTED, !simulator);
 		return simulator->Break();
 	}
 
 	HRESULT STDMETHODCALLTYPE GetPort(IDebugPort2** ppPort) override
 	{
-		return copy_to(debugPort, ppPort);
+		return copy_to(_parentPort, ppPort);
 	}
 	#pragma endregion
 };
 
-HRESULT MakeDebugProcess (LPCWSTR romPath, IDebugProcess2** ppProcess)
+HRESULT MakeDebugProcess (IDebugPort2* pPort, SpectrumVariant variant, IDebugProcess2** ppProcess)
 {
-	RETURN_HR_IF(E_UNEXPECTED, !simulator);
-	RETURN_HR_IF_NULL(E_POINTER, romPath);
 	auto p = com_ptr(new (std::nothrow) DebugProcessImpl()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance(romPath); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance(pPort, variant); RETURN_IF_FAILED(hr);
 	*ppProcess = p.detach();
 	return S_OK;
 }

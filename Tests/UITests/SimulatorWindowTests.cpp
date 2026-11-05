@@ -44,39 +44,13 @@ namespace UITests
 			dte.reset();
 		}
 
-		static void Bas2Tap (const char* basicText, const wchar_t* tapPath)
-		{
-			auto basPath = str_concat(testClassPath, L"test.bas");
-			WriteFileCreateDirs (basPath, basicText);
-
-			DeleteFile(tapPath);
-			auto cmdLine = wil::str_printf_failfast<wil::unique_process_heap_string>(L"bas2tap -a10 %s %s", basPath, tapPath);
-			STARTUPINFO si = { .cb = sizeof(si) };
-			wil::unique_process_information pi;
-			BOOL bres = CreateProcessW (NULL, cmdLine.get(), 0, 0, 0, 0, 0, 0, &si, &pi);
-			Assert::IsTrue(bres);
-			WaitForSingleObject(pi.hProcess, INFINITE);
-			DWORD exitCode;
-			bres = GetExitCodeProcess(pi.hProcess, &exitCode);
-			Assert::IsTrue(bres);
-			Assert::AreEqual(0ul, exitCode);
-		}
-
-		static UINT8 ReadMemoryBus (UINT16 addr)
-		{
-			UINT8 data;
-			auto hr = simulator->ReadMemoryBus8(addr, &data);
-			Assert::AreEqual(S_OK, hr);
-			return data;
-		}
-
 		TEST_METHOD(SimulatorWindow_TapLoad)
 		{
 			HRESULT hr;
 
 			static const char basic[] = "10 POKE 32768, 85\r\n20 POKE 32769,170";
 			auto tapPath = str_concat(testClassPath, L"test.tap");
-			Bas2Tap (basic, tapPath.get());
+			Bas2Tap(basic, testClassPath.get(), tapPath.get());
 
 			hr = simWindow->OpenTapFile (wil::make_bstr_failfast(tapPath.get()).get(), TRUE);
 			Assert::AreEqual(S_OK, hr);
@@ -92,8 +66,8 @@ namespace UITests
 
 			simulator->Break();
 
-			Assert::AreEqual<UINT8>(85, ReadMemoryBus(32768));
-			Assert::AreEqual<UINT8>(170, ReadMemoryBus(32769));
+			Assert::AreEqual<UINT8>(85, ReadMemoryBus(simulator, 32768));
+			Assert::AreEqual<UINT8>(170, ReadMemoryBus(simulator, 32769));
 		}
 
 		TEST_METHOD(SimulatorWindow_TapLoadWhileTapLoading)
@@ -102,7 +76,7 @@ namespace UITests
 
 			static const char basic[] = "10 POKE 32768, 85\r\n20 POKE 32769,170";
 			auto tapPath = str_concat(testClassPath, L"test.tap");
-			Bas2Tap (basic, tapPath.get());
+			Bas2Tap(basic, testClassPath.get(), tapPath.get());
 
 			hr = simWindow->OpenTapFile (wil::make_bstr_failfast(tapPath.get()).get(), FALSE);
 			Assert::AreEqual(S_OK, hr);
@@ -127,8 +101,8 @@ namespace UITests
 
 			simulator->Break();
 
-			Assert::AreEqual<UINT8>(85, ReadMemoryBus(32768));
-			Assert::AreEqual<UINT8>(170, ReadMemoryBus(32769));
+			Assert::AreEqual<UINT8>(85, ReadMemoryBus(simulator, 32768));
+			Assert::AreEqual<UINT8>(170, ReadMemoryBus(simulator, 32769));
 		}
 
 		struct TapPlayNotifySink : ITapPlayNotifySink
@@ -173,7 +147,7 @@ namespace UITests
 
 			static const char basic[] = "10 POKE 32768, 85\r\n20 POKE 32769,170";
 			auto tapPath = str_concat(testClassPath, L"test.tap");
-			Bas2Tap (basic, tapPath.get());
+			Bas2Tap(basic, testClassPath.get(), tapPath.get());
 
 			wil::com_ptr_failfast<IConnectionPoint> cp;
 			hr = simulator.query<IConnectionPointContainer>()->FindConnectionPoint(__uuidof(ITapPlayNotifySink), &cp);
@@ -201,39 +175,6 @@ namespace UITests
 
 			Assert::AreEqual(1ul, sink->startingCalled);
 			Assert::AreEqual(0ul, sink->completeCalled);
-		}
-
-		TEST_METHOD(SimulatorWindow_TapDebug)
-		{
-			HRESULT hr;
-
-			static const char basic[] = "10 POKE 32768, 85\r\n20 POKE 32769,170";
-			auto tapPath = str_concat(testClassPath, L"test.tap");
-			Bas2Tap (basic, tapPath.get());
-
-			VxDTE::dbgDebugMode debugMode;
-			hr = debugger->get_CurrentMode(&debugMode);
-			Assert::AreEqual(S_OK, hr);
-			Assert::AreEqual<UINT>(VxDTE::dbgDesignMode, debugMode);
-
-			hr = simWindow->DebugTapFile (wil::make_bstr_failfast(tapPath.get()).get(), TRUE);
-			Assert::AreEqual(S_OK, hr);
-
-			Assert::AreEqual(S_OK, simulator->IsTapFileLoading());
-
-			WaitDebugMode(debugger, VxDTE::dbgBreakMode);
-
-			Assert::AreEqual<UINT8>(0, ReadMemoryBus(32768));
-			Assert::AreEqual<UINT8>(0, ReadMemoryBus(32769));
-
-			dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.Start").get());
-			// Will go to dbgRunMode and then quickly to dbgDesignMode.
-
-			WaitDebugMode(debugger, VxDTE::dbgDesignMode);
-
-			simulator->Break();
-			Assert::AreEqual<UINT8>(85, ReadMemoryBus(32768));
-			Assert::AreEqual<UINT8>(170, ReadMemoryBus(32769));
 		}
 
 		TEST_METHOD(Simulator_ResetCommandPreservesVariant)

@@ -8,10 +8,14 @@
 class Z80DebugPortSupplier : public IDebugPortSupplier2
 {
 	ULONG _refCount = 0;
+	wil::com_ptr_nothrow<IDebugPort2> _z80Port;
 
 public:
 	HRESULT InitInstance()
 	{
+		// Let's pretend that we (the supplier) have detected an attached port; we create a IDebugPort2 for it.
+		// This is needed in case the user starts the IDE and, without any solution open, clicks Attach.
+		auto hr = MakeDebugPort(SingleDebugPortName, SingleDebugPortId, &_z80Port); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
 
@@ -59,17 +63,17 @@ public:
 	virtual HRESULT __stdcall GetPort(REFGUID guidPort, IDebugPort2** ppPort) override
 	{
 		RETURN_HR_IF(E_INVALIDARG, guidPort != SingleDebugPortId);
-		return copy_to(debugPort, ppPort);
+		return copy_to(_z80Port, ppPort);
 	}
 
 	virtual HRESULT __stdcall EnumPorts(IEnumDebugPorts2** ppEnum) override
 	{
-		return make_single_entry_enumerator<IEnumDebugPorts2, IDebugPort2>(debugPort, ppEnum);
+		return make_single_entry_enumerator<IEnumDebugPorts2, IDebugPort2>(_z80Port, ppEnum);
 	}
 
 	virtual HRESULT __stdcall CanAddPort() override
 	{
-		return S_OK;
+		return S_FALSE;
 	}
 
 	virtual HRESULT __stdcall AddPort (IDebugPortRequest2* pRequest, IDebugPort2** ppPort) override
@@ -82,7 +86,7 @@ public:
 		if (!portName || wcscmp(portName.get(), SingleDebugPortName))
 			RETURN_HR(E_INVALIDARG);
 
-		return copy_to(debugPort, ppPort);
+		return copy_to(_z80Port, ppPort);
 	}
 
 	virtual HRESULT __stdcall RemovePort(IDebugPort2* pPort) override

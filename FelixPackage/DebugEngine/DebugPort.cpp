@@ -13,6 +13,7 @@ class Z80DebugPort : public IDebugPort2, IConnectionPointContainer, IDebugPortNo
 	wil::unique_bstr _portName;
 	GUID _portId;
 	com_ptr<ConnectionPointImpl<IDebugPortEvents2>> _portEventsCP;
+	com_ptr<IDebugProcess2> _process;
 
 public:
 	HRESULT InitInstance (LPCWSTR portName, REFGUID portId)
@@ -21,28 +22,10 @@ public:
 		_portName = wil::make_bstr_nothrow(portName); RETURN_IF_NULL_ALLOC(_portName);
 		_portId = portId;
 		hr = MakeConnectionPoint(this, &_portEventsCP); RETURN_IF_FAILED(hr);
-		/*
-		// Let's pretend we detected a process running on the "device" that we (the port) are "connected" to.
-		auto hr = MakeSimulatedProgram(&p->_z80Program); _ASSERT(SUCCEEDED(hr));
-		wil::com_ptr_nothrow<IDebugProgramPublisher2> publisher;
-		hr = CoCreateInstance (CLSID_ProgramPublisher, nullptr, CLSCTX_INPROC_SERVER, __uuidof(publisher), (void**)&publisher); IfFailedAssertRet();
-		hr = publisher->PublishProgramNode(p->_z80Program->AsProgramNode()); IfFailedAssertRet();
-		hr = publisher->PublishProgram ({ 1, &Engine_Id }, L"Programu", p->_z80Program->AsProgram()); IfFailedAssertRet();
-		*/
-		return S_OK;
-	}
 
-	~Z80DebugPort()
-	{
-		/*
-		wil::com_ptr_nothrow<IDebugProgramPublisher2> publisher;
-		auto hr = CoCreateInstance (CLSID_ProgramPublisher, nullptr, CLSCTX_INPROC_SERVER, __uuidof(publisher), (void**)&publisher);
-		if (SUCCEEDED(hr))
-		{
-		publisher->UnpublishProgram (p->_z80Program->AsProgram());
-		publisher->UnpublishProgramNode(p->_z80Program->AsProgramNode());
-		}
-		*/
+		hr = MakeDebugProcess (this, SpectrumVariant48K, &_process); RETURN_IF_FAILED(hr);
+
+		return S_OK;
 	}
 
 	IUnknown* AsUnknown() { return static_cast<IUnknown*>(static_cast<IDebugPort2*>(this)); }
@@ -119,20 +102,18 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE GetProcess(AD_PROCESS_ID ProcessId, IDebugProcess2** ppProcess) override
 	{
-		  RETURN_HR_IF_NULL(E_POINTER, ppProcess);
+		RETURN_HR_IF_NULL(E_POINTER, ppProcess);
 		*ppProcess = nullptr;
-		  RETURN_HR_IF(E_UNEXPECTED, !simulatorProcess);
 
 		RETURN_HR_IF(E_INVALIDARG, ProcessId.ProcessIdType != AD_PROCESS_ID_SYSTEM
 			 || ProcessId.ProcessId.dwProcessId != SimulatorProcessId);
 
-		 return copy_to(simulatorProcess, ppProcess);
+		 return copy_to(_process, ppProcess);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE EnumProcesses(IEnumDebugProcesses2** ppEnum) override
 	{
-		  RETURN_HR_IF_NULL(E_POINTER, ppEnum);
-		return make_single_entry_enumerator<IEnumDebugProcesses2, IDebugProcess2>(simulatorProcess.get(), ppEnum);
+		return make_single_entry_enumerator<IEnumDebugProcesses2, IDebugProcess2>(_process, ppEnum);
 	}
 	#pragma endregion
 

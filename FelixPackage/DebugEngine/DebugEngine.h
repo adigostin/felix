@@ -27,7 +27,7 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("80F0C048-F2BA-4FC7-B180-1C93AA7462BA") I
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("2BF19E5A-6231-47C6-87DB-2AA904DC51CE") IFelixDebugProcess : IDebugProcess2
 {
-	virtual HRESULT STDMETHODCALLTYPE ReplaceProgram (LPCWSTR exePath) = 0;
+	virtual HRESULT STDMETHODCALLTYPE InitDebugProgram (SpectrumVariant platform) = 0;
 };
 
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{1EFD0353-0389-4325-BA93-5834A6198E57}") IFelixCodeContext : IUnknown
@@ -53,11 +53,10 @@ HRESULT MakeSimplePendingBreakpoint (IDebugEventCallback2* callback, IDebugEngin
 HRESULT MakeSourceLinePendingBreakpoint (IDebugEventCallback2* callback, IDebugEngine2* engine, IFelixProgram* program,
 	IDebugBreakpointRequest2* bp_request, const wchar_t* file, uint32_t line_index, IDebugPendingBreakpoint2** to);
 HRESULT MakeDebugPort (const wchar_t* portName, const GUID& portId, IDebugPort2** port);
-HRESULT MakeDebugProgram (IDebugProcess2* process, REFGUID programId, IDebugProgram2** ppProgram);
-HRESULT MakeDebugProcess (LPCWSTR romPath, IDebugProcess2** ppProcess);
+HRESULT MakeDebugProgram (IDebugProcess2* process, IDebugProgram2** ppProgram);
+HRESULT MakeDebugProcess (IDebugPort2* pPort, SpectrumVariant variant, IDebugProcess2** ppProcess);
 
 inline constexpr DWORD SimulatorProcessId = 0xFFFFFFFF;
-extern com_ptr<IDebugProcess2> simulatorProcess;
 
 // Symbols are loaded when the module is created and retained for the module's lifetime.
 HRESULT MakeModule (UINT64 address, DWORD size, LPCWSTR path, bool user_code, LPCWSTR sourceBasePath, IDebugModule2** to);

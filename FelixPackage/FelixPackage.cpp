@@ -39,8 +39,6 @@ FELIX_API wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 wil::com_ptr_nothrow<IVsShell> shell;
 wil::com_ptr_nothrow<IVsUIShell> uiShell;
 com_ptr<ISimulator> simulator;
-com_ptr<IDebugPort2> debugPort;
-com_ptr<IDebugProcess2> simulatorProcess;
 wil::unique_bstr genFilesStr;
 wil::unique_bstr preincludeFilename;
 wil::unique_bstr postincludeFilename;
@@ -177,9 +175,6 @@ public:
 
 		hr = MakeSimulator(romFilenames, _countof(romFilenames), variant, &simulator); RETURN_IF_FAILED(hr);
 
-		hr = MakeDebugPort(SingleDebugPortName, SingleDebugPortId, &debugPort); RETURN_IF_FAILED(hr);
-
-		hr = MakeDebugProcess(romFilenames[SpectrumVariant48K], &simulatorProcess); RETURN_IF_FAILED(hr);
 		simulator->Resume(false);
 
 		return S_OK;
@@ -187,8 +182,6 @@ public:
 
 	void ReleaseZxSpectrumSimulator()
 	{
-		simulatorProcess = nullptr;
-		debugPort = nullptr;
 		simulator = nullptr;
 
 		if (_profferZXSimulatorServiceCookie)
@@ -512,6 +505,10 @@ public:
 
 		hr = CreateZxSpectrumSimulator(); RETURN_IF_FAILED(hr);
 
+		// TODO: find another way to register these type libraries. If the user has two versions of VS
+		// and our extension installed in both, and if he uses one of them, the code below will register
+		// these type libraries to the DLL of that version of VS. If he then uninstalls that version of
+		// VS, or uninstalls our extension from it, the other one will no longer work.
 		wil::unique_process_heap_string fn;
 		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, fn); RETURN_IF_FAILED(hr);
 		hr = wil::str_concat_nothrow(fn, L"\\1"); RETURN_IF_FAILED(hr);

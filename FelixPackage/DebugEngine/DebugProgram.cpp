@@ -26,12 +26,12 @@ class DebugProgramImpl : public IFelixProgram, IDebugProgramNode2, ISimulatorEve
 	unordered_map_nothrow<SIM_BP_COOKIE, com_ptr<IDebugBoundBreakpoint2>> _bps;
 
 public:
-	HRESULT InitInstance (IDebugProcess2* process, REFGUID programId)
+	HRESULT InitInstance (IDebugProcess2* process)
 	{
-		RETURN_HR_IF_NULL(E_INVALIDARG, process);
-		auto hr = _weakRefToThis.InitInstance(static_cast<IDebugProgram2*>(this)); RETURN_IF_FAILED(hr);
+		HRESULT hr;
+		hr = _weakRefToThis.InitInstance(static_cast<IDebugProgram2*>(this)); RETURN_IF_FAILED(hr);
+		hr = CoCreateGuid(&_programId); RETURN_IF_FAILED(hr);
 		hr = process->QueryInterface(&_process); RETURN_IF_FAILED(hr);
-		_programId = programId;
 		hr = MakeThread(this, &_thread); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
@@ -338,21 +338,22 @@ public:
 	#pragma region IDebugProgramNode2
 	virtual HRESULT STDMETHODCALLTYPE GetProgramName (BSTR *pbstrProgramName) override
 	{
-      RETURN_HR_IF_NULL(E_POINTER, pbstrProgramName);
+		RETURN_HR_IF_NULL(E_POINTER, pbstrProgramName);
 		*pbstrProgramName = SysAllocString(SingleDebugProgramName); RETURN_IF_NULL_ALLOC(*pbstrProgramName);
 		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetHostName (GETHOSTNAME_TYPE dwHostNameType, BSTR *pbstrHostName) override
 	{
-     RETURN_HR_IF_NULL(E_POINTER, pbstrHostName);
+		RETURN_HR_IF_NULL(E_POINTER, pbstrHostName);
 		*pbstrHostName = nullptr;
 		if (dwHostNameType == GHN_FILE_NAME)
 		{
-			wchar_t path[MAX_PATH];
-			DWORD length = GetModuleFileNameW(nullptr, path, ARRAYSIZE(path));
-			RETURN_LAST_ERROR_IF(length == 0 || length == ARRAYSIZE(path));
-			*pbstrHostName = SysAllocString(path); RETURN_IF_NULL_ALLOC(*pbstrHostName);
+			RETURN_HR(E_NOTIMPL);
+			//wchar_t path[MAX_PATH];
+			//DWORD length = GetModuleFileNameW(nullptr, path, ARRAYSIZE(path));
+			//RETURN_LAST_ERROR_IF(length == 0 || length == ARRAYSIZE(path));
+			//*pbstrHostName = SysAllocString(path); RETURN_IF_NULL_ALLOC(*pbstrHostName);
 		}
 		else
 		{
@@ -577,10 +578,10 @@ public:
 	#pragma endregion
 };
 
-HRESULT MakeDebugProgram (IDebugProcess2* process, REFGUID programId, IDebugProgram2** ppProgram)
+HRESULT MakeDebugProgram (IDebugProcess2* process, IDebugProgram2** ppProgram)
 {
 	auto p = com_ptr(new (std::nothrow) DebugProgramImpl()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance (process, programId); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance (process); RETURN_IF_FAILED(hr);
 	*ppProgram = p.detach();
 	return S_OK;
 }
