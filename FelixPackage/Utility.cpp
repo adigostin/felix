@@ -1598,3 +1598,28 @@ HRESULT PickSaveFile (LPCWSTR filter, wil::unique_process_heap_string& filename)
 	filename = std::move(selectedFilename);
 	return S_OK;
 }
+
+// This is from the decompiled source of Microsoft.VisualStudio.Shell.OleServiceProvider.GlobalProvider,
+// which is called from the GlobalProvider property documented here:
+// https://learn.microsoft.com/en-us/dotnet/api/microsoft.visualstudio.shell.serviceprovider.globalprovider
+HRESULT GetGlobalServiceProvider(IServiceProvider** serviceProvider)
+{
+	HRESULT hr;
+
+	APTTYPE apartmentType;
+	APTTYPEQUALIFIER apartmentQualifier;
+	hr = CoGetApartmentType(&apartmentType, &apartmentQualifier); RETURN_IF_FAILED(hr);
+	RETURN_HR_IF(E_UNEXPECTED, apartmentType != APTTYPE_STA && apartmentType != APTTYPE_MAINSTA);
+
+	com_ptr<IMessageFilter> messageFilter;
+	hr = CoRegisterMessageFilter(nullptr, messageFilter.addressof()); RETURN_IF_FAILED(hr);
+	RETURN_HR_IF(E_UNEXPECTED, !messageFilter);
+
+	com_ptr<IMessageFilter> replacedMessageFilter;
+	hr = CoRegisterMessageFilter(messageFilter.get(), replacedMessageFilter.addressof()); RETURN_IF_FAILED(hr);
+
+	hr = messageFilter->QueryInterface(IID_PPV_ARGS(serviceProvider)); RETURN_IF_FAILED(hr);
+
+	return S_OK;
+}
+

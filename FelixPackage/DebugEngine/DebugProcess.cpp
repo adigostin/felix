@@ -136,7 +136,7 @@ public:
 		{
 			pProcessInfo->Flags = 0;
 			pProcessInfo->Flags |= PIFLAG_DEBUGGER_ATTACHED;
-			pProcessInfo->Flags |= simulator->Running_HR() == S_OK
+			pProcessInfo->Flags |= simulator && simulator->Running_HR() == S_OK
 				? PIFLAG_PROCESS_RUNNING
 				: PIFLAG_PROCESS_STOPPED;
 			pProcessInfo->Fields |= PIF_FLAGS;

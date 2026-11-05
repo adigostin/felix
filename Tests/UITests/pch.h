@@ -19,7 +19,7 @@
 #include <propvarutil.h>
 #include <shellapi.h>
 #include <Shlwapi.h>
-#include <ShObjIdl.h>
+#include <ShlObj.h>
 #undef EnumProcesses
 #include <UIAutomationClient.h>
 

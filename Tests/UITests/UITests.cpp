@@ -76,7 +76,8 @@ namespace UITests
 
 		virtual DWORD STDMETHODCALLTYPE RetryRejectedCall(HTASK, DWORD elapsed, DWORD rejectType) override
 		{
-			if ((rejectType == SERVERCALL_RETRYLATER || rejectType == SERVERCALL_REJECTED) && elapsed < 5000)
+			if ((rejectType == SERVERCALL_RETRYLATER || rejectType == SERVERCALL_REJECTED)
+				&& (IsDebuggerPresent() || elapsed < 50000))
 				return 100;
 			return static_cast<DWORD>(-1);
 		}
@@ -373,17 +374,9 @@ namespace UITests
 			hr = invpat->Invoke();
 			Assert::IsTrue(SUCCEEDED(hr));
 
-			// Let's wait for the main window to become the top level window
-			DWORD tickStart = GetTickCount();
-			while (true)
-			{
-				handle = FindTopLevelWindow(pi.dwProcessId);
-				if (handle == (HWND)(size_t)(DWORD)dteMainWindowHWnd)
-					break;
-				if (GetTickCount() - tickStart >= 5000)
-					Assert::Fail();
-				Sleep(100);
-			}
+			WaitWithMessageLoop([&pi,dteMainWindowHWnd] {
+				return FindTopLevelWindow(pi.dwProcessId) == (HWND)(size_t)(DWORD)dteMainWindowHWnd;
+			}, 5000);
 		}
 
 		wil::com_ptr_failfast<VxDTE::Process> targetVSAttachedProcess;
@@ -403,32 +396,37 @@ namespace UITests
 			vs.attachedProcess.reset();
 		}
 
-		// Comment this macro to keep VS running after running the test. Useful for debugging.
-		#define CLOSE_IT
-
-		#ifdef CLOSE_IT
-		hr = vs.dte->put_SuppressUI(VARIANT_TRUE);
-		Assert::IsTrue(SUCCEEDED(hr));
-
-		wil::com_ptr_failfast<IUnknown> solution;
-		hr = vs.dte->get_Solution((VxDTE::Solution**)solution.addressof());
-		Assert::IsTrue(SUCCEEDED(hr));
-		hr = solution.query<VxDTE::_Solution>()->Close();
-		Assert::IsTrue(SUCCEEDED(hr));
-
+		bool exited = false;
 		wil::unique_handle hProcess (OpenProcess (SYNCHRONIZE, FALSE, vs.processID));
 
-		bool exited = false;
-		//if (!hard && SUCCEEDED(dte->Quit())) dte->Quit() seems to return immediately and run asynchronously
-		if (!hard && SUCCEEDED(vs.dte->ExecuteCommand(wil::make_bstr_failfast(L"File.Exit").get(), wil::make_bstr_failfast(L"").get())))
+		if (vs.dte)
 		{
-			auto processExited = [&hProcess] { return WaitForSingleObject(hProcess.get(), 0) == WAIT_OBJECT_0; };
-			exited = WaitWithMessageLoop (processExited, IsDebuggerPresent() ? INFINITE : 10000);
+			// Comment this macro to keep VS running after running the test. Useful for debugging.
+			#define CLOSE_IT
+
+			#ifdef CLOSE_IT
+			hr = vs.dte->put_SuppressUI(VARIANT_TRUE);
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			wil::com_ptr_failfast<IUnknown> solution;
+			hr = vs.dte->get_Solution((VxDTE::Solution**)solution.addressof());
+			Assert::IsTrue(SUCCEEDED(hr));
+			hr = solution.query<VxDTE::_Solution>()->Close();
+			Assert::IsTrue(SUCCEEDED(hr));
+
+			//if (!hard && SUCCEEDED(dte->Quit())) dte->Quit() seems to return immediately and run asynchronously
+			if (!hard && SUCCEEDED(vs.dte->ExecuteCommand(wil::make_bstr_failfast(L"File.Exit").get(), wil::make_bstr_failfast(L"").get())))
+			{
+				auto processExited = [&hProcess] { return WaitForSingleObject(hProcess.get(), 0) == WAIT_OBJECT_0; };
+				exited = WaitWithMessageLoop (processExited, IsDebuggerPresent() ? INFINITE : 10000);
+			}
+			#endif
 		}
 
 		if (!exited)
 			TerminateProcess(hProcess.get(), 1234);
-		#endif
+
+		vs = { };
 	}
 	#pragma endregion
 
@@ -442,6 +440,7 @@ namespace UITests
 		HRESULT hr;
 
 		wil::SetResultLoggingCallback (WilLoggingCallback);
+		SetThreadDescription(GetCurrentThread(), L"Felix");
 
 		GetTempPathW (MAX_PATH + 1, tempPath);
 		swprintf_s (tempPath, L"%s%s\\", tempPath, L"FelixTestUI");
@@ -922,10 +921,10 @@ namespace UITests
 		dte = GetDefaultVSInstance();
 		wil::com_ptr_failfast<IUnknown> solution;
 		hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
-		Assert::IsTrue(SUCCEEDED(hr));
+		Assert::AreEqual(S_OK, hr);
 		sln = solution.query<VxDTE::_Solution>();
 		hr = sln->Create(wil::make_bstr_failfast(testDir.get()).get(), wil::make_bstr_failfast(L"test").get());
-		Assert::IsTrue(SUCCEEDED(hr));
+		Assert::AreEqual(S_OK, hr);
 
 		projDir = str_concat(testDir, L"\\proj");
 		Assert::IsTrue(CreateDirectory(projDir.get(), nullptr));
@@ -934,14 +933,14 @@ namespace UITests
 			wil::make_bstr_failfast(projectTemplatePath).get(),
 			wil::make_bstr_failfast(projDir.get()).get(),
 			wil::make_bstr_failfast(projectFileName).get(), VARIANT_FALSE, &proj);
-		Assert::IsTrue(SUCCEEDED(hr));
+		Assert::AreEqual(S_OK, hr);
 
 		hr = sln->SaveAs(wil::make_bstr_failfast(L"test").get());
-		Assert::IsTrue(SUCCEEDED(hr));
+		Assert::AreEqual(S_OK, hr);
 		projFilePath = str_concat(projDir, L"\\", projectFileName);
 
 		hr = sln->get_SolutionBuild(&slnBuild);
-		Assert::IsTrue(SUCCEEDED(hr));
+		Assert::AreEqual(S_OK, hr);
 	}
 
 	TD::~TD()

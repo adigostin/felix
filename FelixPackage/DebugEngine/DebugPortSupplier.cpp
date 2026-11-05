@@ -96,10 +96,7 @@ public:
 			hr = MakeDebugPort (portName.get(), SingleDebugPortId, &_z80Port); RETURN_IF_FAILED(hr);
 		}
 
-		*ppPort = _z80Port.get();
-		(*ppPort)->AddRef();
-
-		return S_OK;
+		return copy_to(_z80Port, ppPort);
 	}
 
 	virtual HRESULT __stdcall RemovePort(IDebugPort2* pPort) override
