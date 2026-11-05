@@ -26,7 +26,7 @@ class ProjectNode
 	, IVsHierarchyDeleteHandler3
 	, IXmlParent
 	, IProjectNode
-	, IPropertyChangeSink 
+	, IPropertyChangeSink
 	, IVsPerPropertyBrowsing
 	, IVsUpdateSolutionEvents
 	, VxDTE::Project
@@ -200,9 +200,9 @@ public:
 		{
 			// pszFilename is the full path of the file to open, the others are NULL.
 			const wchar_t* fn = PathFindFileName(pszFilename);
-			
+
 			_projectDir = wil::make_process_heap_string_nothrow(pszFilename, fn - pszFilename); RETURN_IF_NULL_ALLOC(_projectDir);
-			
+
 			_filename = wil::make_hlocal_string_nothrow(fn); RETURN_IF_NULL_ALLOC(_filename);
 			const wchar_t* ext = PathFindExtension(pszFilename);
 			_caption = wil::make_hlocal_string_nothrow(fn, ext - fn); RETURN_IF_NULL_ALLOC(_caption);
@@ -285,7 +285,7 @@ public:
 
 		return enumChildren(this);
 	}
-	
+
 	// Returns S_OK when found, S_FALSE when not found.
 	HRESULT FindDescendant (VSITEMID itemid, IChildNode** ppItem)
 	{
@@ -796,7 +796,7 @@ public:
 			RETURN_HR_IF(E_INVALIDARG, var.vt != VT_UNKNOWN);
 			return var.punkVal->QueryInterface(&_parentHierarchy);
 		}
-		
+
 		if (propid == VSHPROPID_ParentHierarchyItemid)
 		{
 			RETURN_HR_IF(E_INVALIDARG, var.vt != VT_VSITEMID);
@@ -862,10 +862,10 @@ public:
 	}
 
 	// A hierarchy is an object that contains many items, but does not necessarily contain an object
-	// for each of those items. Thus, to get information about any of the hierarchy items, you need 
-	// to query the hierarchy object for that information. The item identifier (itemid) is used to 
-	// identify the requested item in that query. Using the GetCanonicalName method, you pass in the 
-	// itemid and the canonical name is returned. The canonical name is a unique name used to distinguish 
+	// for each of those items. Thus, to get information about any of the hierarchy items, you need
+	// to query the hierarchy object for that information. The item identifier (itemid) is used to
+	// identify the requested item in that query. Using the GetCanonicalName method, you pass in the
+	// itemid and the canonical name is returned. The canonical name is a unique name used to distinguish
 	// a particular item in the hierarchy from every other item in the hierarchy.
 	virtual HRESULT STDMETHODCALLTYPE GetCanonicalName(VSITEMID itemid, BSTR* pbstrName) override
 	{
@@ -1015,7 +1015,7 @@ public:
 		if (!::MoveFile (oldFullPath.get(), newFullPath.get()))
 			RETURN_LAST_ERROR();
 
-		// Bookkeeping time. We need to update our project name, our title, 
+		// Bookkeeping time. We need to update our project name, our title,
 		// and force our rootnode to update its caption.
 		_filename = std::move(newFilename);
 		_caption = std::move(newCaption);
@@ -1023,7 +1023,7 @@ public:
 		// Make sure the property browser is updated
 		uiShell->RefreshPropertyBrowser(DISPID_VALUE); // return value ignored on purpose
 
-		// Let the world know that the project is renamed. Solution needs to be told of rename. 
+		// Let the world know that the project is renamed. Solution needs to be told of rename.
 		hr = solution->OnAfterRenameProject (this, oldFullPath.get(), newFullPath.get(), 0); LOG_IF_FAILED(hr);
 
 		for (auto& s : _hierarchyEventSinks)
@@ -1433,7 +1433,7 @@ public:
 		else if (itemid == VSITEMID_SELECTION)
 		{
 			// It seems if we have any kind of selection across multiple projects/hierachies in a solution,
-			// the right-click is handled somewhere else, so we get here only with selections from 
+			// the right-click is handled somewhere else, so we get here only with selections from
 			// a single project/hierarchy. This means GetCurrentSelection returns non-null in first parameter.
 			com_ptr<IVsMonitorSelection> monsel;
 			auto hr = serviceProvider->QueryService(SID_SVsShellMonitorSelection, &monsel); RETURN_IF_FAILED(hr);
@@ -1554,7 +1554,7 @@ public:
 			com_ptr<IStream> memStream;
 			memStream.attach (memStreamRaw);
 			hr = SaveToXml(static_cast<IProjectNodeProperties*>(this), ProjectElementName, 0, memStream); RETURN_IF_FAILED(hr);
-			
+
 			STATSTG stat;
 			hr = memStream->Stat(&stat, STATFLAG_NONAME); RETURN_IF_FAILED(hr);
 			RETURN_HR_IF(ERROR_FILE_TOO_LARGE, !!stat.cbSize.HighPart);
@@ -1715,7 +1715,7 @@ public:
 		hr = serviceProvider->QueryService(SID_SVsUIShellOpenDocument, &uiShellOpenDocument); RETURN_IF_FAILED_EXPECTED(hr);
 
 		static const GUID TextEditorFactory = { 0x8B382828, 0x6202, 0x11D1, { 0x88, 0x70, 0x00, 0x00, 0xF8, 0x75, 0x79, 0xD2 } };
-		hr = uiShellOpenDocument->OpenSpecificEditor (0, mkDocument.get(), TextEditorFactory, nullptr, rguidLogicalView, 
+		hr = uiShellOpenDocument->OpenSpecificEditor (0, mkDocument.get(), TextEditorFactory, nullptr, rguidLogicalView,
 			L"%3", this, itemid, punkDocDataExisting, nullptr, ppWindowFrame);
 		if (FAILED(hr))
 		{
@@ -1830,7 +1830,7 @@ public:
 	HRESULT AddExistingFile (IParentNode* location, LPCTSTR pszFullPathSource, IChildNode** ppNewFile, BOOL fSilent = FALSE, BOOL fLoad = FALSE)
 	{
 		HRESULT hr;
-		
+
 		wil::unique_hfile handle (CreateFile(pszFullPathSource, STANDARD_RIGHTS_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr));
 		RETURN_LAST_ERROR_IF_EXPECTED(!handle.is_valid());
 
@@ -1876,7 +1876,7 @@ public:
 						hr = InsertFolderNode(this, parent, insertBefore, insertAfter, ch); RETURN_IF_FAILED(hr);
 					}
 
-					parent = ch->AsParentNode(); 
+					parent = ch->AsParentNode();
 				}
 
 				// Do we already have an item with the same name under the selected location? If yes, we give an
@@ -1926,7 +1926,7 @@ public:
 	}
 
 	/// <summary>
-	/// 
+	///
 	/// </summary>
 	/// <param name="itemidLoc"></param>
 	/// <param name="dwAddItemOperation">VSADDITEMOP_CLONEFILE / VSADDITEMOP_OPENFILE </param>
@@ -2168,7 +2168,7 @@ public:
 			RETURN_HR_IF(E_INVALIDARG, !existing);
 
 			auto stream = com_ptr(SHCreateMemStream(nullptr, 0)); RETURN_IF_NULL_ALLOC(stream);
-		
+
 			hr = SaveToXml(existing, L"Temp", 0, stream); RETURN_IF_FAILED_EXPECTED(hr);
 
 			hr = stream->Seek({ 0 }, STREAM_SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
@@ -2886,7 +2886,7 @@ public:
 			sink.second->OnPropertyChanged(itemid, propid, 0);
 		return S_OK;
 	}
-	
+
 	virtual HRESULT STDMETHODCALLTYPE NotifyInvalidateItems (VSITEMID itemidParent) override
 	{
 		for (auto& sink : _hierarchyEventSinks)
@@ -3098,7 +3098,7 @@ public:
 	{
 		return E_NOTIMPL;
 	}
-	 
+
 	virtual HRESULT STDMETHODCALLTYPE get_IsDirty (VARIANT_BOOL *lpfReturn) override
 	{
 		return E_NOTIMPL;

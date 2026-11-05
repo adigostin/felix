@@ -289,7 +289,7 @@ public:
 
 	virtual HRESULT __stdcall GetEngineId(GUID* pguidEngine) override
 	{
-		*pguidEngine = Engine_CLSID;
+		*pguidEngine = Engine_Id;
 		return S_OK;
 	}
 
@@ -381,6 +381,11 @@ public:
 	}
 	#pragma endregion
 
+	// From https://learn.microsoft.com/en-us/visualstudio/extensibility/debugger/sending-the-required-events?view=visualstudio:
+	// "This event must be a stopping event."
+	//
+	// From https://learn.microsoft.com/en-us/visualstudio/extensibility/debugger/control-of-execution?view=visualstudio:
+	// "The debug session typically responds to this first stopping event by calling the program's Continue method."
 	struct FelixLoadCompleteEvent : IDebugEvent2, IDebugLoadCompleteEvent2, IFelixLoadCompleteEvent
 	{
 		ULONG _refCount = 0;

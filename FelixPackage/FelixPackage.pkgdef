@@ -18,7 +18,7 @@
 [$RootKey$\Packages\{768BC57B-42A8-42AB-B389-457946C4FC6A}]
 @="Felix Package"
 "InprocServer32"="$PackageFolder$\FelixPackage.dll"
-"CompanyName"="Adi Gostin"
+"CompanyName"="Adrian Gostin"
 "ProductName"="Felix"
 
 [$RootKey$\Packages\{768BC57B-42A8-42AB-B389-457946C4FC6A}\SatelliteDll]

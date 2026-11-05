@@ -332,7 +332,7 @@ HRESULT ReadZxSpectrumSystemVar (IFelixSymbols* romSymbols, LPCWSTR name, UINT16
 HRESULT WriteZxSpectrumSystemVar (IFelixSymbols* romSymbols, LPCWSTR name, UINT16 value);
 HRESULT SimulateToEDITOR (IFelixSymbols* romSymbols);
 HRESULT SimulateBasicCommand (IFelixSymbols* romSymbols, const char* pszCommand);
-
 // Returns S_OK when debugging stops, S_FALSE if the user cancels, or an error HRESULT on failure or timeout.
 HRESULT ConfirmStopDebugging();
 HRESULT PickSaveFile (LPCWSTR filter, wil::unique_process_heap_string& filename);
+HRESULT GetGlobalServiceProvider(IServiceProvider** serviceProvider);
