@@ -10,10 +10,9 @@ namespace UITests
 		{
 			HRESULT hr;
 			auto testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"PackageUnloads\\");
+			Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
 			auto vs = LaunchVS(testDir.get());
 			auto closeVS = wil::scope_exit([&vs] { CloseVS(vs); });
-
-			Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
 			wil::com_ptr_failfast<IUnknown> solution;
 			hr = vs.dte->get_Solution((VxDTE::Solution**)solution.addressof());
 			Assert::AreEqual(S_OK, hr);
