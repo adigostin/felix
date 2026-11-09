@@ -10,6 +10,7 @@
 #define NOMINMAX // Windows Platform min and max macros cause problems for the Standard C++ Library
 
 #include <OCIdl.h>
+#include "xaudio2/include/xaudio2redist.h"
 #include <algorithm>
 #include <wil/com.h>
 

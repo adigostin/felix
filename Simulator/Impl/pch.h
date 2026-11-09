@@ -15,6 +15,7 @@
 // Windows Platform headers
 #include <Shlwapi.h>
 #include <OCIdl.h>
+#include "xaudio2/include/xaudio2redist.h"
 
 
 // WIL

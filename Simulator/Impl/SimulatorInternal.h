@@ -2,7 +2,6 @@
 #pragma once
 #include "../Simulator.h"
 #include "shared/vector_nothrow.h"
-#include "xaudio2/include/xaudio2redist.h"
 
 struct DECLSPEC_NOVTABLE IDevice
 {
