@@ -61,9 +61,10 @@ public:
 			return _weakRefToThis.QueryIWeakRef(ppvObject);
 
 		#ifdef _DEBUG
-		if (   /*riid == IID_IDebugProgramEngines2
-			|| */riid == IID_IDebugProgramEx2
+		if (   riid == IID_IDebugProgramEngines2
+			|| riid == IID_IDebugProgramEx2
 			|| riid == IID_IDebugProgram3
+			|| riid == IID_IDebugEngineProgram140
 			|| riid == IID_IDebugDisconnectableProgram166
 			|| riid == IID_IDebugProgramEnhancedStep90
 			|| riid == IID_IClientSecurity
