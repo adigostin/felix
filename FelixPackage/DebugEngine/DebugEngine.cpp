@@ -113,20 +113,7 @@ public:
 		RETURN_HR_IF(E_INVALIDARG, celtPrograms != 1 || !rgpPrograms[0]);
 		RETURN_HR_IF(E_UNEXPECTED, _program);
 		RETURN_HR_IF(E_UNEXPECTED, _callback);
-
-		// If VS calls us from the Debug -> Attach to Process dialog, it's possible the package hasn't been loaded yet.
-		// Happens when the Simulator window is visible in neither the Design layout nor in the Debug layout.
-		if (!simulator)
-		{
-			com_ptr<IServiceProvider> sp;
-			hr = GetGlobalServiceProvider(&sp); RETURN_IF_FAILED(hr);
-			com_ptr<IVsShell> shell;
-			hr = sp->QueryService(SID_SVsShell, IID_PPV_ARGS(&shell)); RETURN_IF_FAILED(hr);
-			com_ptr<IVsPackage> package;
-			static const GUID felix = { 0x768BC57B, 0x42A8, 0x42AB, { 0xB3, 0x89, 0x45, 0x79, 0x46, 0xC4, 0xFC, 0x6A } };
-			hr = shell->LoadPackage(felix, &package); RETURN_IF_FAILED(hr);
-			RETURN_HR_IF(E_UNEXPECTED, !simulator);
-		}
+		RETURN_HR_IF(E_UNEXPECTED, !simulator);
 
 		// From https://learn.microsoft.com/en-us/visualstudio/extensibility/debugger/reference/idebugengine2-attach:
 		// When this method is called, the DE needs to send these events in sequence:
@@ -479,6 +466,7 @@ public:
 		WI_ASSERT(!_callback);
 		WI_ASSERT(!_program);
 		WI_ASSERT(!_launchOptions);
+		RETURN_HR_IF(E_UNEXPECTED, !simulator);
 
 		_launchExe = wil::make_process_heap_string_nothrow(pszExe); RETURN_IF_NULL_ALLOC(_launchExe);
 
@@ -495,7 +483,7 @@ public:
 		hr = simulator->Reset(0, _platform); RETURN_IF_FAILED(hr);
 
 		com_ptr<IDebugProcess2> process;
-		pPort->GetProcess(AD_PROCESS_ID{ AD_PROCESS_ID_SYSTEM, SimulatorProcessId }, &process); RETURN_IF_FAILED(hr);
+		hr = pPort->GetProcess(AD_PROCESS_ID{ AD_PROCESS_ID_SYSTEM, SimulatorProcessId }, &process); RETURN_IF_FAILED(hr);
 
 		return copy_to(process, ppProcess);
 	}

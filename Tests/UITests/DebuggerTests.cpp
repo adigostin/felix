@@ -702,98 +702,133 @@ namespace UITests
 		TEST_METHOD(AttachToSimulator)
 		{
 			HRESULT hr;
-
 			MessageFilterRegistration messageFilter;
 
-			// Attach through the simulator's port supplier and wait for VS to finish switching to the Debug layout.
-			auto attachToSimulator = [](VxDTE::DTE2* dte, VxDTE::Debugger* debugger)
+			auto getSimulatorWindow = [](VxDTE::DTE2* dte)
 			{
-				auto debugger2 = wil::com_query_failfast<VxDTE::Debugger2>(debugger);
+				wil::com_ptr_failfast<VxDTE::Windows> windows;
+				auto hr = dte->get_Windows(&windows);
+				Assert::AreEqual(S_OK, hr);
+				wil::com_ptr_failfast<VxDTE::Window> window;
+				hr = windows->Item(wil::make_variant_bstr_failfast(L"{6F52DA3A-E13C-4A1E-A178-98805F356A66}"), &window);
+				Assert::AreEqual(S_OK, hr);
+				return window;
+			};
+
+			auto getTransport = [](VxDTE::Debugger2* debugger)
+			{
 				wil::com_ptr_failfast<VxDTE::Transports> transports;
-				auto hr = debugger2->get_Transports(&transports);
+				auto hr = debugger->get_Transports(&transports);
 				Assert::AreEqual(S_OK, hr);
 				wil::com_ptr_failfast<VxDTE::Transport> transport;
 				hr = transports->Item(wil::make_variant_bstr_failfast(L"Z80PortSupplierName"), &transport);
 				Assert::AreEqual(S_OK, hr);
+				return transport;
+			};
+
+			auto getProcesses = [](VxDTE::Debugger2* debugger, VxDTE::Transport* transport, long expectedCount)
+			{
 				wil::com_ptr_failfast<VxDTE::Processes> processes;
-				hr = debugger2->GetProcesses(transport, wil::make_bstr_failfast(L"Single Z80 Port").get(), &processes);
+				auto hr = debugger->GetProcesses(transport, wil::make_bstr_failfast(L"Single Z80 Port").get(), &processes);
 				Assert::AreEqual(S_OK, hr);
 				long count;
 				hr = processes->get_Count(&count);
 				Assert::AreEqual(S_OK, hr);
-				Assert::AreEqual(1L, count);
+				Assert::AreEqual(expectedCount, count);
+				return processes;
+			};
+
+			auto attach = [](VxDTE::Processes* processes)
+			{
 				wil::com_ptr_failfast<VxDTE::Process> process;
 				VARIANT index{};
 				index.vt = VT_I4;
 				index.lVal = 1;
-				hr = processes->Item(index, &process);
+				auto hr = processes->Item(index, &process);
 				Assert::AreEqual(S_OK, hr);
 				hr = process.query<VxDTE::Process2>()->Attach2(wil::make_variant_bstr_failfast(L"Z80 Simulator Debug Engine"));
 				Assert::AreEqual(S_OK, hr);
-				WaitDebugMode(debugger, VxDTE::dbgRunMode, 10000);
-				WaitIDEDebugMode(dte, 10000);
 			};
 
-			// Detach rather than stop so the simulator remains available for the next VS launch.
-			auto detachFromSimulator = [](VxDTE::DTE2* dte, VxDTE::Debugger* debugger)
+			auto hideWindow = [](VxDTE::Window* window)
 			{
-				auto hr = dte->ExecuteCommand(wil::make_bstr_failfast(L"Debug.DetachAll").get());
-				Assert::AreEqual(S_OK, hr);
-				WaitDebugMode(debugger, VxDTE::dbgDesignMode, 10000);
-			};
-
-			{
-				auto vs = LaunchVS();
-				auto closevs = wil::scope_exit([&] { CloseVS(vs); });
-				wil::com_ptr_failfast<VxDTE::Debugger> debugger;
-				hr = vs.dte->get_Debugger(&debugger);
-				Assert::AreEqual(S_OK, hr);
-
-				// Hide the simulator window so that the Design layout is saved without it.
-				wil::com_ptr_failfast<VxDTE::Windows> windows;
-				hr = vs.dte->get_Windows(&windows);
-				Assert::AreEqual(S_OK, hr);
-				wil::com_ptr_failfast<VxDTE::Window> window;
-				hr = windows->Item(wil::make_variant_bstr_failfast(L"{6F52DA3A-E13C-4A1E-A178-98805F356A66}"), &window);
-				hr = window->put_Visible(VARIANT_FALSE);
+				auto hr = window->put_Visible(VARIANT_FALSE);
 				Assert::AreEqual(S_OK, hr);
 				VARIANT_BOOL visible;
 				hr = window->get_Visible(&visible);
 				Assert::AreEqual(S_OK, hr);
 				Assert::AreEqual<VARIANT_BOOL>(VARIANT_FALSE, visible);
+			};
 
-				// Attaching will switch to the Debug layout, in which the simulator window might be visible. Close it.
-				attachToSimulator(vs.dte, debugger);
-				auto detach = wil::scope_exit([&] { detachFromSimulator(vs.dte, debugger); });
-
-				hr = window->get_Visible(&visible);
-				Assert::AreEqual(S_OK, hr);
-				if (visible)
-				{
-					hr = window->put_Visible(VARIANT_FALSE);
-					Assert::AreEqual(S_OK, hr);
-				}
-				hr = window->get_Visible(&visible);
-				Assert::AreEqual(S_OK, hr);
-				Assert::AreEqual<VARIANT_BOOL>(VARIANT_FALSE, visible);
-			}
-
+			auto getDebugger = [](VxDTE::_DTE* dte)
 			{
-				// A fresh VS process should have the simulator window hidden both in the Design layout
-				// and in the Debug layout. Thus the package shouldn't be loaded. We can't check over DTE
-				// whether a package is loaded or not; we kind of assume it isn't because we closed VS above
-				// with the simulator window closed in both the Design and the Debug layouts. The package is
-				// supposed to be loaded by our implementation of IDebugEngine2::Attach (check the code there).
-
-				auto vs = LaunchVS();
-				auto closevs = wil::scope_exit([&] { CloseVS(vs); });
 				wil::com_ptr_failfast<VxDTE::Debugger> debugger;
-				hr = vs.dte->get_Debugger(&debugger);
+				auto hr = dte->get_Debugger(&debugger);
 				Assert::AreEqual(S_OK, hr);
+				auto debugger2 = debugger.query<VxDTE::Debugger2>();
+				return debugger2;
+			};
 
-				attachToSimulator(vs.dte, debugger);
-				auto detach = wil::scope_exit([&] { detachFromSimulator(vs.dte, debugger); });
+			// Save both layouts with the simulator window hidden so the next launch starts without a simulator.
+			{
+				auto vs = LaunchVS();
+				auto closeVS = wil::scope_exit([&] { CloseVS(vs); });
+
+				auto window = getSimulatorWindow(vs.dte);
+				hr = window->put_Visible(VARIANT_TRUE);
+				Assert::AreEqual(S_OK, hr);
+				hideWindow(window);
+
+				auto debugger = getDebugger(vs.dte);
+				auto transport = getTransport(debugger);
+				auto processes = getProcesses(debugger, transport, 1);
+				attach(processes);
+				WaitDebugMode(debugger, VxDTE::dbgRunMode);
+				WaitIDEDebugMode(vs.dte);
+
+				// The Debug layout can restore the window independently of the Design layout.
+				hideWindow(window);
+				hr = debugger->Stop();
+				Assert::AreEqual(S_OK, hr);
+				WaitDebugMode(debugger, VxDTE::dbgDesignMode);
 			}
+
+			auto vs = LaunchVS();
+			auto closeVS = wil::scope_exit([&] { CloseVS(vs); });
+			wil::com_ptr_failfast<IDispatch> simulatorDisp;
+			hr = vs.dte->GetObject(wil::make_bstr_failfast(L"Simulator").get(), &simulatorDisp);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsNull(simulatorDisp.get());
+
+			auto debugger = getDebugger(vs.dte);
+			auto transport = getTransport(debugger);
+
+			// Enumerating the port must not create a simulator or expose an attachable process.
+			{
+				auto processes = getProcesses(debugger, transport, 0);
+				hr = vs.dte->GetObject(wil::make_bstr_failfast(L"Simulator").get(), &simulatorDisp);
+				Assert::IsTrue(SUCCEEDED(hr));
+				Assert::IsNull(simulatorDisp.get());
+			}
+
+			// Showing the window creates the simulator and makes its automation interface available.
+			auto window = getSimulatorWindow(vs.dte);
+			hr = window->put_Visible(VARIANT_TRUE);
+			Assert::AreEqual(S_OK, hr);
+			hr = vs.dte->GetObject(wil::make_bstr_failfast(L"Simulator").get(), &simulatorDisp);
+			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::IsNotNull(simulatorDisp.get());
+
+			// The same port now exposes one process that can be attached using the simulator engine.
+			auto processes = getProcesses(debugger, transport, 1);
+			attach(processes);
+			WaitDebugMode(debugger, VxDTE::dbgRunMode);
+			hr = debugger->Break(VARIANT_FALSE);
+			Assert::AreEqual(S_OK, hr);
+			WaitDebugMode(debugger, VxDTE::dbgBreakMode);
+			hr = debugger->Stop();
+			Assert::AreEqual(S_OK, hr);
+			WaitDebugMode(debugger, VxDTE::dbgDesignMode);
 		}
 		/*
 		TEST_METHOD(RunDebuggerTestsInRandomOrder)

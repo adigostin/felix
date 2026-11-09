@@ -15,6 +15,8 @@ public:
 	{
 		// Let's pretend that we (the supplier) have detected an attached port; we create a IDebugPort2 for it.
 		// This is needed in case the user starts the IDE and, without any solution open, clicks Attach.
+		// VS doesn't offer us a chance to create the port later than this; it will call CanAddPort
+		// but not AddPort, even if we return S_OK from CanAddPort.
 		auto hr = MakeDebugPort(SingleDebugPortName, SingleDebugPortId, &_z80Port); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
@@ -100,6 +102,7 @@ HRESULT MakeDebugPortSupplier (IDebugPortSupplier2** to)
 {
 	auto p = com_ptr(new (std::nothrow) Z80DebugPortSupplier()); RETURN_IF_NULL_ALLOC(p);
 	auto hr = p->InitInstance(); RETURN_IF_FAILED(hr);
+	debugPortSupplier = p;
 	*to = p.detach();
 	return S_OK;
 }

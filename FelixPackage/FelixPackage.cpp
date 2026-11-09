@@ -22,7 +22,7 @@ const wchar_t FileElementName[] = L"File";
 const wchar_t FolderElementName[] = L"Folder";
 wil::unique_process_heap_string uiTestDir;
 static const wchar_t AlwaysReportSettingsName[] = L"AlwaysReportErrors";
-static const LPCWSTR romRelativePaths[SpectrumVariantCount] = {
+const LPCWSTR romRelativePaths[SpectrumVariantCount] = {
 	nullptr,
 	L"ROMs\\Spectrum48K.rom",
 	L"ROMs\\Spectrum128K.rom",
@@ -44,6 +44,7 @@ wil::unique_bstr preincludeFilename;
 wil::unique_bstr postincludeFilename;
 wil::unique_bstr newFolderNameFormat;
 wil::unique_process_heap_string packageDir;
+com_ptr<IDebugPortSupplier2> debugPortSupplier;
 
 HRESULT TestHelper_CreateInstance (IFelixTestHelper** out);
 
@@ -177,9 +178,20 @@ public:
 		}
 
 		hr = MakeSimulator(romFilenames, _countof(romFilenames), variant, &simulator); RETURN_IF_FAILED(hr);
+		auto resetOnFailure = wil::scope_exit([] { simulator = nullptr; });
 
 		simulator->Resume(false);
+		if (debugPortSupplier)
+		{
+			com_ptr<IDebugPort2> port;
+			hr = debugPortSupplier->GetPort(SingleDebugPortId, &port); RETURN_IF_FAILED(hr);
+			com_ptr<IFelixDebugPort> felixPort;
+			hr = port->QueryInterface(&felixPort); RETURN_IF_FAILED(hr);
+			hr = felixPort->OnSimulatorCreated(); RETURN_IF_FAILED(hr);
+		}
 
+		resetOnFailure.release();
+		uiShell->UpdateCommandUI(FALSE);
 		return S_OK;
 	}
 

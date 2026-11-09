@@ -13,22 +13,21 @@ class DebugProcessImpl : public IFelixDebugProcess
 	wil::unique_process_heap_string _exe_path;
 	AD_PROCESS_ID _pid;
 	GUID _processGuid;
-	com_ptr<IDebugPort2> _parentPort;
+	com_ptr<IWeakRef> _parentPort;
 	FILETIME _creationTime;
 	com_ptr<IDebugProgram2> _program;
 	bool _attached = false;
 
 public:
-	HRESULT InitInstance (IDebugPort2* pPort, SpectrumVariant variant)
+	HRESULT InitInstance (IDebugPort2* pPort)
 	{
-		auto hr = _weakRefToThis.InitInstance(static_cast<IDebugProcess2*>(this)); RETURN_IF_FAILED(hr);
-		_parentPort = pPort;
+		HRESULT hr;
+		hr = _weakRefToThis.InitInstance(static_cast<IDebugProcess2*>(this)); RETURN_IF_FAILED(hr);
+		hr = pPort->QueryInterface(&_parentPort); RETURN_IF_FAILED(hr);
 		_pid.ProcessIdType = AD_PROCESS_ID_SYSTEM;
 		_pid.ProcessId.dwProcessId = SimulatorProcessId;
 		hr = CoCreateGuid (&_processGuid); RETURN_IF_FAILED(hr);
 		::GetSystemTimeAsFileTime (&_creationTime);
-
-		hr = InitDebugProgram(variant); RETURN_IF_FAILED(hr);
 
 		return S_OK;
 	}
@@ -40,6 +39,7 @@ public:
 
 		com_ptr<IDebugPortNotify2> portNotify;
 		hr = _parentPort->QueryInterface(&portNotify); RETURN_IF_FAILED(hr);
+		RETURN_HR_IF_NULL(E_UNEXPECTED, portNotify);
 
 		if (_program)
 		{
@@ -56,8 +56,8 @@ public:
 		wil::unique_process_heap_string dll;
 		hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, dll); RETURN_IF_FAILED(hr);
 		PathFindFileName(dll.get())[0] = 0; // remove file name
-		RETURN_HR_IF(E_NOTIMPL, platform != SpectrumVariant48K);
-		hr = wil::str_concat_nothrow(_exe_path, dll, L"ROMs\\Spectrum48K.rom"); RETURN_IF_NULL_ALLOC(_exe_path);
+		const wchar_t* rom = romRelativePaths[platform];
+		hr = str_concat_nothrow(_exe_path, dll, rom); RETURN_IF_NULL_ALLOC(_exe_path);
 
 		// Create a debug module for the ROM.
 		wil::com_ptr_nothrow<IDebugModule2> romModule;
@@ -177,11 +177,14 @@ public:
 		if (Fields & PIF_FLAGS)
 		{
 			pProcessInfo->Flags = 0;
-			if (_attached)
-				pProcessInfo->Flags |= PIFLAG_DEBUGGER_ATTACHED;
-			pProcessInfo->Flags |= simulator && simulator->Running_HR() == S_OK
-				? PIFLAG_PROCESS_RUNNING
-				: PIFLAG_PROCESS_STOPPED;
+			if (simulator)
+			{
+				if (_attached)
+					pProcessInfo->Flags |= PIFLAG_DEBUGGER_ATTACHED;
+				pProcessInfo->Flags |= simulator->Running_HR() == S_OK
+					? PIFLAG_PROCESS_RUNNING
+					: PIFLAG_PROCESS_STOPPED;
+			}
 			pProcessInfo->Fields |= PIF_FLAGS;
 		}
 
@@ -292,15 +295,18 @@ public:
 
 	HRESULT STDMETHODCALLTYPE GetPort(IDebugPort2** ppPort) override
 	{
-		return copy_to(_parentPort, ppPort);
+		RETURN_HR_IF_NULL(E_POINTER, ppPort);
+		auto hr = _parentPort->QueryInterface(ppPort); RETURN_IF_FAILED(hr);
+		RETURN_HR_IF_NULL(E_UNEXPECTED, *ppPort);
+		return S_OK;
 	}
 	#pragma endregion
 };
 
-HRESULT MakeDebugProcess (IDebugPort2* pPort, SpectrumVariant variant, IDebugProcess2** ppProcess)
+HRESULT MakeDebugProcess (IDebugPort2* pPort, IDebugProcess2** ppProcess)
 {
 	auto p = com_ptr(new (std::nothrow) DebugProcessImpl()); RETURN_IF_NULL_ALLOC(p);
-	auto hr = p->InitInstance(pPort, variant); RETURN_IF_FAILED(hr);
+	auto hr = p->InitInstance(pPort); RETURN_IF_FAILED(hr);
 	*ppProcess = p.detach();
 	return S_OK;
 }

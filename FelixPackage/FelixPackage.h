@@ -192,6 +192,7 @@ extern wil::unique_bstr genFilesStr;
 extern wil::unique_bstr preincludeFilename;
 extern wil::unique_bstr postincludeFilename;
 extern wil::unique_bstr newFolderNameFormat;
+extern com_ptr<IDebugPortSupplier2> debugPortSupplier;
 
 extern const wchar_t Z80AsmLanguageName[];
 extern const wchar_t SingleDebugPortName[];
@@ -203,7 +204,7 @@ extern const wchar_t ConfigurationElementName[];
 extern const wchar_t FileElementName[];
 extern const wchar_t FolderElementName[];
 extern wil::unique_process_heap_string uiTestDir;
-
+extern const LPCWSTR romRelativePaths[SpectrumVariantCount];
 extern const wchar_t MacroOutputName[];
 extern const wchar_t MacroProjectName[];
 extern const wchar_t MacroProjectDir[];

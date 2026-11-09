@@ -30,6 +30,11 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("2BF19E5A-6231-47C6-87DB-2AA904DC51CE") I
 	virtual HRESULT STDMETHODCALLTYPE InitDebugProgram (SpectrumVariant platform) = 0;
 };
 
+struct DECLSPEC_NOVTABLE DECLSPEC_UUID("B03A8CD5-3766-462A-9BC5-568A1C9B775A") IFelixDebugPort : IUnknown
+{
+	virtual HRESULT STDMETHODCALLTYPE OnSimulatorCreated() = 0;
+};
+
 struct DECLSPEC_NOVTABLE DECLSPEC_UUID("{1EFD0353-0389-4325-BA93-5834A6198E57}") IFelixCodeContext : IUnknown
 {
 	// If 'false', the address is what the CPU sees (always 0 to 64K).
@@ -54,7 +59,7 @@ HRESULT MakeSourceLinePendingBreakpoint (IDebugEventCallback2* callback, IDebugE
 	IDebugBreakpointRequest2* bp_request, const wchar_t* file, uint32_t line_index, IDebugPendingBreakpoint2** to);
 HRESULT MakeDebugPort (const wchar_t* portName, const GUID& portId, IDebugPort2** port);
 HRESULT MakeDebugProgram (IDebugProcess2* process, IDebugProgram2** ppProgram);
-HRESULT MakeDebugProcess (IDebugPort2* pPort, SpectrumVariant variant, IDebugProcess2** ppProcess);
+HRESULT MakeDebugProcess (IDebugPort2* pPort, IDebugProcess2** ppProcess);
 
 inline constexpr DWORD SimulatorProcessId = 0xFFFFFFFF;
 

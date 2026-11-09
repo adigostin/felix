@@ -7,9 +7,10 @@
 #include "shared/OtherGuids.h"
 #include <msdbg172.h>
 
-class Z80DebugPort : public IDebugPort2, IConnectionPointContainer, IDebugPortNotify2
+class Z80DebugPort : public IDebugPort2, IConnectionPointContainer, IDebugPortNotify2, IFelixDebugPort
 {
 	ULONG _refCount = 0;
+	WeakRefToThis _weakRefToThis;
 	wil::unique_bstr _portName;
 	GUID _portId;
 	com_ptr<ConnectionPointImpl<IDebugPortEvents2>> _portEventsCP;
@@ -21,10 +22,34 @@ public:
 		HRESULT hr;
 		_portName = wil::make_bstr_nothrow(portName); RETURN_IF_NULL_ALLOC(_portName);
 		_portId = portId;
+		hr = _weakRefToThis.InitInstance(static_cast<IDebugPort2*>(this)); RETURN_IF_FAILED(hr);
 		hr = MakeConnectionPoint(this, &_portEventsCP); RETURN_IF_FAILED(hr);
 
-		hr = MakeDebugProcess (this, SpectrumVariant48K, &_process); RETURN_IF_FAILED(hr);
+		// Create a process only if we have a simulator. If the simulator window has not yet been shown
+		// and the user has not yet launched a Felix command, the package isn't loaded yet so the simulator
+		// doesn't exist. We can still get here if the user goes to Main Menu -> Debug -> Attach to Process.
+		if (simulator)
+		{
+			hr = OnSimulatorCreated(); RETURN_IF_FAILED(hr);
+		}
 
+		return S_OK;
+	}
+
+	HRESULT STDMETHODCALLTYPE OnSimulatorCreated() override
+	{
+		RETURN_HR_IF(E_UNEXPECTED, !simulator);
+		if (_process)
+			return S_OK;
+
+		SpectrumVariant variant;
+		auto hr = simulator->GetVariant(&variant); RETURN_IF_FAILED(hr);
+		hr = MakeDebugProcess(this, &_process); RETURN_IF_FAILED(hr);
+		auto resetOnFailure = wil::scope_exit([this] { _process = nullptr; });
+		com_ptr<IFelixDebugProcess> process;
+		hr = _process->QueryInterface(&process); RETURN_IF_FAILED(hr);
+		hr = process->InitDebugProgram(variant); RETURN_IF_FAILED(hr);
+		resetOnFailure.release();
 		return S_OK;
 	}
 
@@ -39,9 +64,13 @@ public:
 		if (   TryQI<IUnknown>(AsUnknown(), riid, ppvObject)
 			|| TryQI<IDebugPort2>(this, riid, ppvObject)
 			|| TryQI<IDebugPortNotify2>(this, riid, ppvObject)
+			|| TryQI<IFelixDebugPort>(this, riid, ppvObject)
 			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
 		)
 			return S_OK;
+
+		if (riid == __uuidof(IWeakRef))
+			return _weakRefToThis.QueryIWeakRef(ppvObject);
 
 		#ifdef _DEBUG
 		if (riid == IID_IClientSecurity) return E_NOINTERFACE;
@@ -108,7 +137,8 @@ public:
 		RETURN_HR_IF(E_INVALIDARG, ProcessId.ProcessIdType != AD_PROCESS_ID_SYSTEM
 			 || ProcessId.ProcessId.dwProcessId != SimulatorProcessId);
 
-		 return copy_to(_process, ppProcess);
+		RETURN_HR_IF(E_PROCESS_DESTROYED, !_process);
+		return copy_to(_process, ppProcess);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE EnumProcesses(IEnumDebugProcesses2** ppEnum) override
