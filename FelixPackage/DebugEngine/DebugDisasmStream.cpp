@@ -209,6 +209,9 @@ public:
 			|| TryQI<IDebugDisassemblyStream2>(this, riid, ppvObject))
 			return S_OK;
 
+		if (riid == GUID{ 0xB092EFAE, 0x9120, 0x4B35, { 0xBF, 0x24, 0xC5, 0xD1, 0x56, 0x7C, 0x24, 0xA0 } }) // IDebugDisassemblyStream1800
+			return E_NOINTERFACE;
+
 		if (   riid == IID_IManagedObject
 			|| riid == IID_IProvideClassInfo
 			|| riid == IID_IInspectable
