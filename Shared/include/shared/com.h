@@ -773,11 +773,12 @@ HRESULT PutBSTR (string_type& to, BSTR from)
 }
 
 template<typename string_type>
-bool EqualsBSTR (string_type& other, BSTR one)
+bool EqualsBSTR (string_type& other_, BSTR one)
 {
+	const wchar_t* other = wil::str_raw_ptr(other_);
 	if (!one || !one[0])
-		return !other.get() || !other.get()[0];
-	if (!other.get() || !other.get()[0])
+		return !other || !other[0];
+	if (!other || !other[0])
 		return false;
 	return !wcscmp(one, wil::str_raw_ptr(other));
 }

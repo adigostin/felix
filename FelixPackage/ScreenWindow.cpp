@@ -673,7 +673,7 @@ public:
 	{
 		auto hr = ConfirmStopDebugging(); RETURN_IF_FAILED(hr);
 		if (hr == S_FALSE)
-			return S_OK;
+			return HRESULT_FROM_WIN32(ERROR_CANCELLED);
 		WI_ASSERT(simulator->HasBreakpoints_HR() == S_FALSE);
 
 		wil::unique_bstr initial_directory;

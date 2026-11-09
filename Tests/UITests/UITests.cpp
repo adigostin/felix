@@ -423,13 +423,13 @@ namespace UITests
 
 			#ifdef CLOSE_IT
 			hr = vs.dte->put_SuppressUI(VARIANT_TRUE);
-			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<HRESULT>(S_OK, hr);
 
 			wil::com_ptr_failfast<IUnknown> solution;
 			hr = vs.dte->get_Solution((VxDTE::Solution**)solution.addressof());
-			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<HRESULT>(S_OK, hr);
 			hr = solution.query<VxDTE::_Solution>()->Close();
-			Assert::IsTrue(SUCCEEDED(hr));
+			Assert::AreEqual<HRESULT>(S_OK, hr);
 
 			//if (!hard && SUCCEEDED(dte->Quit())) dte->Quit() seems to return immediately and run asynchronously
 			if (!hard && SUCCEEDED(vs.dte->ExecuteCommand(wil::make_bstr_failfast(L"File.Exit").get(), wil::make_bstr_failfast(L"").get())))
@@ -553,7 +553,7 @@ namespace UITests
 			wil::make_bstr_failfast(projDir).get(),
 			wil::make_bstr_failfast(projName.get()).get(), VARIANT_FALSE, &proj);
 		Assert::IsTrue(SUCCEEDED(hr), str_printf(L"Solution::AddFromTemplate failed: 0x%08x", hr).get());
-		hr = sln->SaveAs(wil::make_bstr_failfast(solutionName).get());
+		hr = sln->SaveAs(wil::make_bstr_failfast(str_concat(solutionName, L".sln").get()).get());
 		Assert::IsTrue(SUCCEEDED(hr), str_printf(L"Solution::SaveAs failed: 0x%08x", hr).get());
 
 		return { std::move(sln), std::move(proj) };
