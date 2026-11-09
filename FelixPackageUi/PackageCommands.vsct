@@ -95,6 +95,8 @@
 
 			<Button guid="guidFelixPackageCmdSet" id="cmdidVariant48K" priority="0x0100" type="Button">
 				<Parent guid="guidFelixPackageCmdSet" id="cmdidSelectVariantGroup" />
+				<CommandFlag>DefaultInvisible</CommandFlag>
+				<CommandFlag>DynamicVisibility</CommandFlag>
 				<Strings>
 					<ButtonText>48K</ButtonText>
 				</Strings>
@@ -102,6 +104,8 @@
 
 			<Button guid="guidFelixPackageCmdSet" id="cmdidVariant128K" priority="0x0101" type="Button">
 				<Parent guid="guidFelixPackageCmdSet" id="cmdidSelectVariantGroup" />
+				<CommandFlag>DefaultInvisible</CommandFlag>
+				<CommandFlag>DynamicVisibility</CommandFlag>
 				<Strings>
 					<ButtonText>128K</ButtonText>
 				</Strings>
@@ -109,6 +113,8 @@
 
 			<Button guid="guidFelixPackageCmdSet" id="cmdidSaveScreen" priority="0x0101" type="Button">
 				<Parent guid="guidFelixPackageCmdSet" id="cmdidSimulatorSubGroup" />
+				<CommandFlag>DefaultInvisible</CommandFlag>
+				<CommandFlag>DynamicVisibility</CommandFlag>
 				<Strings>
 					<ButtonText>Save Screen</ButtonText>
 				</Strings>
@@ -134,6 +140,8 @@
 			<Button guid="guidFelixPackageCmdSet" id="cmdidResetSimulator" priority="0x103" type="Button">
 				<Parent guid="guidFelixPackageCmdSet" id="TWToolbarGroup" />
 				<Icon guid="guidImages" id="4" />
+				<CommandFlag>DefaultInvisible</CommandFlag>
+				<CommandFlag>DynamicVisibility</CommandFlag>
 				<Strings>
 					<ButtonText>Reset</ButtonText>
 				</Strings>
@@ -230,6 +238,8 @@ parts that the beam hasn't reached yet.
 			<Menu guid="guidFelixPackageCmdSet" id="cmdidSelectVariantMenu" priority="0x0100" type="Menu">
 				<Parent guid="guidFelixPackageCmdSet" id="cmdidSimulatorSubGroup" />
 				<CommandFlag>AlwaysCreate</CommandFlag>
+				<CommandFlag>DefaultInvisible</CommandFlag>
+				<CommandFlag>DynamicVisibility</CommandFlag>
 				<Strings>
 					<ButtonText>Select Variant</ButtonText>
 				</Strings>

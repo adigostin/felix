@@ -25,7 +25,7 @@ library SimulatorLib
 	};
 
 	[object, uuid(976F76E5-8EB1-422B-8A86-16E7AFCB1F9B), oleautomation, nonextensible]
-	interface ISimulator_ : IUnknown
+	interface ISimulator_ : IDispatch
 	{
 		HRESULT Break();
 		HRESULT GetPC (UINT16* pc);

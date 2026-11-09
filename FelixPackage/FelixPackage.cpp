@@ -43,6 +43,7 @@ wil::unique_bstr genFilesStr;
 wil::unique_bstr preincludeFilename;
 wil::unique_bstr postincludeFilename;
 wil::unique_bstr newFolderNameFormat;
+wil::unique_process_heap_string packageDir;
 
 HRESULT TestHelper_CreateInstance (IFelixTestHelper** out);
 
@@ -59,7 +60,6 @@ class FelixPackageImpl : public IVsPackage, IVsSolutionEvents, IOleCommandTarget
 	wil::com_ptr_nothrow<IVsWindowFrame> _simulatorWindowFrame;
 	wil::ThreadFailureCache _threadFailureCache;
 	sentry_options_t *_sentryOptions = nullptr;
-	wil::unique_process_heap_string packageDir;
 
 public:
 	HRESULT InitInstance()
@@ -148,8 +148,11 @@ public:
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
 
-	HRESULT CreateZxSpectrumSimulator()
+	static HRESULT CreateZxSpectrumSimulator()
 	{
+		if (simulator)
+			return S_OK;
+
 		wil::com_ptr_nothrow<IProfferService> srpProffer;
 		auto hr = serviceProvider->QueryService (SID_SProfferService, &srpProffer); RETURN_IF_FAILED(hr);
 
@@ -503,8 +506,6 @@ public:
 			hr = srpProffer->ProfferService (Z80AsmLanguageGuid, this, &_profferLanguageServiceCookie); RETURN_IF_FAILED(hr);
 		}
 
-		hr = CreateZxSpectrumSimulator(); RETURN_IF_FAILED(hr);
-
 		// TODO: find another way to register these type libraries. If the user has two versions of VS
 		// and our extension installed in both, and if he uses one of them, the code below will register
 		// these type libraries to the DLL of that version of VS. If he then uninstalls that version of
@@ -601,6 +602,13 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE GetAutomationObject (LPCOLESTR pszPropName, IDispatch **ppDisp) override
 	{
 		HRESULT hr;
+
+		if (!wcscmp(pszPropName, L"Simulator"))
+		{
+			if (!simulator)
+				return S_FALSE;
+			return simulator->QueryInterface(IID_PPV_ARGS(ppDisp));
+		}
 
 		if (!wcscmp(pszPropName, L"TestHelper"))
 		{
@@ -767,15 +775,22 @@ public:
 		{
 			for (ULONG i = 0; i < cCmds; i++)
 			{
-				if (const auto* var = FindCommandVariant(prgCmds[i].cmdID))
+				if (prgCmds[i].cmdID == cmdidSimulator)
+					prgCmds[i].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
+				else if (!simulator && (FindCommandVariant(prgCmds[i].cmdID)
+					|| prgCmds[i].cmdID == cmdidSelectVariantMenu
+					|| prgCmds[i].cmdID == cmdidSaveScreen
+					|| prgCmds[i].cmdID == cmdidResetSimulator))
+					prgCmds[i].cmdf = OLECMDF_SUPPORTED | OLECMDF_INVISIBLE;
+				else if (!simulator)
+					prgCmds[i].cmdf = 0;
+				else if (const auto* var = FindCommandVariant(prgCmds[i].cmdID))
 				{
 					SpectrumVariant variant;
 					auto hr = simulator->GetVariant(&variant); RETURN_IF_FAILED(hr);
 					prgCmds[i].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED
 						| (variant == var->second ? OLECMDF_LATCHED : 0);
 				}
-				else if (prgCmds[i].cmdID == cmdidSimulator)
-					prgCmds[i].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
 				else if (prgCmds[i].cmdID == cmdidSelectVariantMenu)
 					prgCmds[i].cmdf = OLECMDF_SUPPORTED | OLECMDF_ENABLED;
 				else if (prgCmds[i].cmdID == cmdidSaveScreen)
@@ -798,6 +813,8 @@ public:
 
 		if (*pguidCmdGroup == CLSID_FelixPackageCmdSet)
 		{
+			hr = CreateZxSpectrumSimulator(); RETURN_IF_FAILED(hr);
+
 			if (const auto* var = FindCommandVariant(nCmdID))
 			{
 				SpectrumVariant currentVariant;
@@ -899,6 +916,8 @@ public:
 	static HRESULT CreateSimulatorToolWindow (IVsWindowFrame** ppFrame)
 	{
 		HRESULT hr;
+
+		hr = CreateZxSpectrumSimulator(); RETURN_IF_FAILED(hr);
 
 		wil::com_ptr_nothrow<IVsWindowPane> pane;
 		hr = SimulatorWindowPane_CreateInstance (&pane); RETURN_IF_FAILED(hr);

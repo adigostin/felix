@@ -244,10 +244,12 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
 	{
 		RETURN_HR_IF(E_POINTER, !ppvObject);
+		*ppvObject = nullptr;
 
 		if (   TryQI<IUnknown>(static_cast<ISimulator*>(this), riid, ppvObject)
 			|| TryQI<ISimulator_>(this, riid, ppvObject)
 			|| TryQI<ISimulator>(this, riid, ppvObject)
+			|| TryQI<IDispatch>(this, riid, ppvObject)
 			|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
 		)
 			return S_OK;
@@ -259,6 +261,8 @@ public:
 
 	virtual ULONG STDMETHODCALLTYPE Release() override { return ReleaseST(this, _refCount); }
 	#pragma endregion
+
+	IMPLEMENT_IDISPATCH__(ISimulator_, nullptr, 2)
 
 	static LRESULT CALLBACK window_proc (HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{

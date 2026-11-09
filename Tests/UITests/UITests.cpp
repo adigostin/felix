@@ -654,9 +654,10 @@ namespace UITests
 		auto hr = dte->GetObject(wil::make_bstr_failfast(L"SimulatorWindow").get(), &simWindowDisp);
 		Assert::AreEqual(S_OK, hr);
 		auto simWindow = simWindowDisp.query<ISimulatorWindowAutomationObject>();
-		wil::com_ptr_failfast<ISimulator_> simulator;
-		hr = simWindow->GetSimulator(&simulator);
+		wil::com_ptr_failfast<IDispatch> simulatorDisp;
+		hr = dte->GetObject(wil::make_bstr_failfast(L"Simulator").get(), &simulatorDisp);
 		Assert::AreEqual(S_OK, hr);
+		auto simulator = simulatorDisp.query<ISimulator_>();
 		return { std::move(simWindow), std::move(simulator) };
 	}
 

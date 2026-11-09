@@ -621,17 +621,23 @@ HRESULT inline SetErrorInfo (HRESULT errorHR, LPCWSTR messageFormat, ...)
 	return errorHR;
 }
 
-#define IMPLEMENT_IDISPATCH_(IID, filename) static ITypeInfo* GetTypeInfo() { \
+#define IMPLEMENT_IDISPATCH__(IID, filename, resid) static ITypeInfo* GetTypeInfo() { \
 		static com_ptr<ITypeInfo> _typeInfo; \
 		if (!_typeInfo) { \
 			HRESULT hr; com_ptr<ITypeLib> _typeLib; \
-			if(!filename) { \
-				wil::unique_process_heap_string fn; \
+			wil::unique_process_heap_string fn; \
+			LPCWSTR typeLibFilename = (filename); \
+			if (!typeLibFilename) { \
 				hr = wil::GetModuleFileNameW((HMODULE)&__ImageBase, fn); FAIL_FAST_IF_FAILED(hr); \
-				hr = LoadTypeLibEx (fn.get(), REGKIND_NONE, &_typeLib); FAIL_FAST_IF_FAILED(hr); \
-			} else { \
-				hr = LoadTypeLibEx (filename, REGKIND_NONE, &_typeLib); FAIL_FAST_IF_FAILED(hr); \
+				typeLibFilename = fn.get(); \
 			} \
+			wil::unique_process_heap_string fullName; \
+			const unsigned int resourceId = static_cast<unsigned int>(resid); \
+			if (resourceId) { \
+				hr = wil::str_printf_nothrow(fullName, L"%s\\%u", typeLibFilename, resourceId); FAIL_FAST_IF_FAILED(hr); \
+				typeLibFilename = fullName.get(); \
+			} \
+			hr = LoadTypeLibEx (typeLibFilename, REGKIND_NONE, &_typeLib); FAIL_FAST_IF_FAILED(hr); \
 			hr = _typeLib->GetTypeInfoOfGuid(__uuidof(IID), &_typeInfo); FAIL_FAST_IF_FAILED(hr); \
 		} \
 		return _typeInfo.get(); \
@@ -649,6 +655,7 @@ HRESULT inline SetErrorInfo (HRESULT errorHR, LPCWSTR messageFormat, ...)
 		return DispInvoke (static_cast<IID*>(this), GetTypeInfo(), dispIdMember, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr); \
 	}
 
+#define IMPLEMENT_IDISPATCH_(IID, filename) IMPLEMENT_IDISPATCH__(IID, filename, 0)
 #define IMPLEMENT_IDISPATCH(IID) IMPLEMENT_IDISPATCH_(IID,NULL)
 
 #pragma region IWeakRef

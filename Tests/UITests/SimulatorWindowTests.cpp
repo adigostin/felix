@@ -26,14 +26,7 @@ namespace UITests
 			testClassPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"SimulatorWindowTests\\");
 			Assert::IsTrue(CreateDirectory(testClassPath.get(), nullptr));
 
-			wil::com_ptr_failfast<IDispatch> simWindowDisp;
-			hr = dte->GetObject(wil::make_bstr_failfast(L"SimulatorWindow").get(), &simWindowDisp);
-			Assert::AreEqual(S_OK, hr);
-
-			simWindow = simWindowDisp.query<ISimulatorWindowAutomationObject>();
-
-			hr = simWindow->GetSimulator(&simulator);
-			Assert::AreEqual(S_OK, hr);
+			std::tie(simWindow, simulator) = GetSimulatorWindow(dte.get());
 		}
 
 		TEST_CLASS_CLEANUP(ClassCleanup)

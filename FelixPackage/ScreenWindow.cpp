@@ -976,11 +976,6 @@ public:
 		auto hr = DebugFileInternal(pFilename); RETURN_IF_FAILED(hr);
 		return S_OK;
 	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetSimulator (ISimulator_** ppSimulator) override
-	{
-		return copy_to(simulator, ppSimulator);
-	}
 	#pragma endregion
 };
 
