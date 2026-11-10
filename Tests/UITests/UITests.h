@@ -121,6 +121,7 @@ namespace UITests
 	wil::com_ptr_failfast<ITestPropertyNotifySink> MakeTestPropertyNotifySink();
 
 	void WriteFileCreateDirs(const wchar_t* path, const char* fileContent);
+	wil::unique_process_heap_ansistring ReadAllText(PCWSTR path);
 	void Bas2Tap(const char* basicText, PCWSTR testDir, PCWSTR tapPath);
 	std::pair<wil::com_ptr_failfast<ISimulatorWindowAutomationObject>, wil::com_ptr_failfast<ISimulator_>> GetSimulatorWindow(VxDTE::DTE2* dte);
 	UINT8 ReadMemoryBus(ISimulator_* simulator, UINT16 addr);

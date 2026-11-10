@@ -921,6 +921,20 @@ namespace UITests
 		}
 	}
 
+	wil::unique_process_heap_ansistring ReadAllText(PCWSTR path)
+	{
+		wil::unique_hfile file(CreateFile(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+		Assert::IsTrue(file.is_valid());
+		DWORD fileSize = GetFileSize(file.get(), nullptr);
+		Assert::AreNotEqual<DWORD>(INVALID_FILE_SIZE, fileSize);
+		auto content = wil::make_process_heap_ansistring(nullptr, fileSize);
+		DWORD bytesRead;
+		BOOL bres = ReadFile(file.get(), content.get(), fileSize, &bytesRead, nullptr);
+		Assert::IsTrue(bres);
+		Assert::AreEqual(fileSize, bytesRead);
+		return content;
+	}
+
 	void RemoveDirectoryTree(PCWSTR dir)
 	{
 		auto buffer = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s%c", dir, L'\0');

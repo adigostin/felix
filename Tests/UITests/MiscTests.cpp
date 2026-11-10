@@ -451,13 +451,8 @@ namespace UITests
 			TD td(classPath.get(), L"GenPrePostInclude_GeneratedFilesNotSaved", TemplatePath_TwoConfigsOneFile.get());
 			auto hr = td.proj->Save(nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
-			wil::unique_hfile file (CreateFile(td.projFilePath.get(), GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0));
-			Assert::IsTrue(file.is_valid());
-			DWORD fileSize = GetFileSize(file.get(), 0);
-			auto buffer = wil::make_process_heap_ansistring(nullptr, fileSize);
-			BOOL bres = ReadFile(file.get(), buffer.get(), fileSize, nullptr, nullptr);
-			Assert::IsTrue(bres);
-			Assert::IsNull(strstr(buffer.get(), "GeneratedFiles"));
+			auto content = ReadAllText(td.projFilePath.get());
+			Assert::IsNull(strstr(content.get(), "GeneratedFiles"));
 		}
 
 		TEST_METHOD(GenPrePostInclude_AddFirstAsm_RemoveLastAsm)
