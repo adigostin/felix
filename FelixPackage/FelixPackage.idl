@@ -17,6 +17,11 @@ library ATLProject1Lib
 	interface ICommandLineList;
 	interface IProjectConfigPrePostBuildProperties;
 
+	const VSITEMID VSITEMID_GENFILES = 50;
+	const VSITEMID VSITEMID_PREINCLUDE = 51;
+	const VSITEMID VSITEMID_POSTINCLUDE = 52;
+	const VSITEMID VSITEMID_START = 100;
+
 	[uuid(15412FDD-6A57-420C-933E-0A89A1DF497D)]
 	enum OutputFileType { Binary, Sna, Tap };
 

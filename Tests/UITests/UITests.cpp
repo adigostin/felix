@@ -964,8 +964,6 @@ namespace UITests
 
 	TD::TD(PCWSTR testClassPath, PCWSTR testName, PCWSTR projectTemplatePath)
 	{
-		PCWSTR projectFileName = L"proj.flx";
-
 		HRESULT hr;
 		size_t rootLength = wcslen(testClassPath);
 		const wchar_t* separator = rootLength && (testClassPath[rootLength - 1] == L'\\' || testClassPath[rootLength - 1] == L'/') ? L"" : L"\\";
@@ -983,15 +981,24 @@ namespace UITests
 		projDir = str_concat(testDir, L"\\proj");
 		Assert::IsTrue(CreateDirectory(projDir.get(), nullptr));
 
-		hr = sln->AddFromTemplate (
-			wil::make_bstr_failfast(projectTemplatePath).get(),
-			wil::make_bstr_failfast(projDir.get()).get(),
-			wil::make_bstr_failfast(projectFileName).get(), VARIANT_FALSE, &proj);
-		Assert::AreEqual(S_OK, hr);
+		if (projectTemplatePath)
+		{
+			PCWSTR projectFileName = L"proj.flx";
+
+			hr = sln->AddFromTemplate (
+				wil::make_bstr_failfast(projectTemplatePath).get(),
+				wil::make_bstr_failfast(projDir.get()).get(),
+				wil::make_bstr_failfast(projectFileName).get(), VARIANT_FALSE, &proj);
+			Assert::AreEqual(S_OK, hr);
+
+			projFilePath = str_concat(projDir, L"\\", projectFileName);
+
+			hier = proj.query<IVsUIHierarchy>();
+		}
 
 		hr = sln->SaveAs(wil::make_bstr_failfast(L"test").get());
 		Assert::AreEqual(S_OK, hr);
-		projFilePath = str_concat(projDir, L"\\", projectFileName);
+		slnFilePath = str_concat(testDir, L"\\test.sln");
 
 		hr = sln->get_SolutionBuild(&slnBuild);
 		Assert::AreEqual(S_OK, hr);

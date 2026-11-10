@@ -180,10 +180,6 @@ struct DECLSPEC_NOVTABLE DECLSPEC_UUID("32BEBBF2-86DF-4D79-88DF-1123548C4D8E") I
 	virtual HRESULT STDMETHODCALLTYPE GetFilename(_Outptr_ BSTR* pbstrFilename) = 0;
 };
 
-static constexpr VSITEMID VSITEMID_GENFILES = 50;
-static constexpr VSITEMID VSITEMID_PREINCLUDE = 51;
-static constexpr VSITEMID VSITEMID_POSTINCLUDE = 52;
-static constexpr VSITEMID VSITEMID_START = 100;
 FELIX_API extern wil::com_ptr_nothrow<IServiceProvider> serviceProvider;
 extern wil::com_ptr_nothrow<IVsShell> shell;
 extern wil::com_ptr_nothrow<IVsUIShell> uiShell;

@@ -156,6 +156,7 @@ namespace UITests
 		wil::unique_process_heap_string projFilePath;
 		wil::com_ptr_failfast<VxDTE::_Solution> sln;
 		wil::com_ptr_failfast<VxDTE::Project> proj;
+		wil::com_ptr_failfast<IVsUIHierarchy> hier;
 		wil::com_ptr_failfast<VxDTE::SolutionBuild> slnBuild;
 
 		TD(PCWSTR testClassPath, PCWSTR testName, PCWSTR projectTemplatePath);
