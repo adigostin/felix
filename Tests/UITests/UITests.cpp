@@ -8,7 +8,7 @@
 namespace UITests
 {
 	static wil::critical_section cs;
-	static wil::com_ptr_failfast<IUIAutomation> automation;
+	wil::com_ptr_failfast<IUIAutomation> automation;
 	static VSInstance defaultInstance;
 
 	wchar_t tempPath[MAX_PATH + 1];
@@ -400,7 +400,7 @@ namespace UITests
 		if (IsDebuggerPresent())
 			FindAndAttach(pi.dwProcessId, dte, MIXED_DEBUGGING, &targetVSAttachedProcess);
 
-		return VSInstance{ .dte = std::move(dte), .attachedProcess = std::move(targetVSAttachedProcess), .processID = pi.dwProcessId };
+		return VSInstance{ .dte = std::move(dte), .mainWindow = std::move(dteMainWindow), .attachedProcess = std::move(targetVSAttachedProcess), .processID = pi.dwProcessId };
 	}
 
 	void CloseVS (VSInstance& vs, bool hard)
@@ -558,12 +558,12 @@ namespace UITests
 		wil::SetResultLoggingCallback(nullptr);
 	}
 
-	wil::com_ptr_failfast<VxDTE::DTE2> GetDefaultVSInstance()
+	VSInstance& GetDefaultVSInstance()
 	{
 		if (!defaultInstance.dte)
 			defaultInstance = LaunchVS();
 
-		return defaultInstance.dte;
+		return defaultInstance;
 	}
 
 	// <param name="testDir">The directory in which to create the solution.</param>
@@ -1032,7 +1032,7 @@ namespace UITests
 		testDir = str_concat(testClassPath, separator, testName);
 		Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
 
-		dte = GetDefaultVSInstance();
+		dte = GetDefaultVSInstance().dte;
 		wil::com_ptr_failfast<IUnknown> solution;
 		hr = dte->get_Solution((VxDTE::Solution**)solution.addressof());
 		Assert::AreEqual(S_OK, hr);
@@ -1056,6 +1056,8 @@ namespace UITests
 			projFilePath = str_concat(projDir, L"\\", projectFileName);
 
 			hier = proj.query<IVsUIHierarchy>();
+
+			vsproj = proj.query<IVsProject2>();
 		}
 
 		hr = sln->SaveAs(wil::make_bstr_failfast(L"test").get());

@@ -24,46 +24,6 @@ namespace UITests
 			RemoveDirectoryTree(classPath.get());
 		}
 
-		struct TestData
-		{
-			wil::unique_process_heap_string testDir;
-			wil::com_ptr_failfast<VxDTE::_Solution> sln;
-			wil::com_ptr_failfast<VxDTE::Project> dteproj;
-			wil::com_ptr_failfast<IVsUIHierarchy> hier;
-			wil::com_ptr_failfast<IVsProject> proj;
-
-			TestData (const wchar_t* testName, const wchar_t* projTemplatePath)
-			{
-				HRESULT hr;
-				testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(classPath, testName, L"\\");
-				Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
-
-				wil::com_ptr_failfast<IUnknown> solution;
-				hr = GetDefaultVSInstance()->get_Solution((VxDTE::Solution**)solution.addressof());
-				Assert::AreEqual(S_OK, hr);
-				sln = solution.query<VxDTE::_Solution>();
-				hr = sln->Create(wil::make_bstr_failfast(testDir.get()).get(), wil::make_bstr_failfast(L"test").get());
-				Assert::AreEqual(S_OK, hr);
-
-				hr = sln->AddFromTemplate (
-					wil::make_bstr_failfast(projTemplatePath).get(),
-					wil::make_bstr_failfast(testDir.get()).get(),
-					wil::make_bstr_failfast(L"test").get(), VARIANT_TRUE, &dteproj);
-				Assert::AreEqual(S_OK, hr);
-				hr = sln->SaveAs(wil::make_bstr_failfast(L"test").get());
-				Assert::AreEqual(S_OK, hr);
-
-				hier = dteproj.query<IVsUIHierarchy>();
-				proj = dteproj.query<IVsProject>();
-			}
-
-			~TestData()
-			{
-				sln->Close();
-				RemoveDirectoryTree(testDir.get());
-			}
-		};
-
 		static wil::com_ptr_failfast<VxDTE::Configuration> GetConfigurationByName(VxDTE::Configurations* configurations, PCWSTR name)
 		{
 			long count;
@@ -90,11 +50,11 @@ namespace UITests
 		TEST_METHOD(AddItemNew)
 		{
 			HRESULT hr;
-			TestData td (L"AddItemNew", TemplatePath_EmptyProject.get());
+			TD td (classPath.get(), L"AddItemNew", TemplatePath_EmptyProject.get());
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"test1.asm", 1,  TemplateEmptyFile, nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, oper, L"test1.asm", 1,  TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			wil::unique_variant firstChildItemId;
@@ -112,21 +72,21 @@ namespace UITests
 		TEST_METHOD(AddItemNew_NameAlreadyExists)
 		{
 			HRESULT hr;
-			TestData td (L"AddItemNew_NameAlreadyExists", TemplatePath_EmptyProject.get());
+			TD td (classPath.get(), L"AddItemNew_NameAlreadyExists", TemplatePath_EmptyProject.get());
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"file.asm", 1, TemplateEmptyFile, nullptr, &addResult);
+			hr = td.vsproj->AddItem (VSITEMID_ROOT, oper, L"file.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
-			hr = td.proj.query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"file.asm", 1, TemplateEmptyFile, nullptr, &addResult);
+			hr = td.vsproj->AddItem (VSITEMID_ROOT, oper, L"file.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), hr);
 		}
 
 		TEST_METHOD(AddItemNewToExistingFolder)
 		{
 			HRESULT hr;
-			TestData td (L"AddItemNewToExistingFolder", TemplatePath_EmptyProject.get());
+			TD td (classPath.get(), L"AddItemNewToExistingFolder", TemplatePath_EmptyProject.get());
 
 			wil::unique_variant folder;
 			hr = td.hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &folder);
@@ -136,7 +96,7 @@ namespace UITests
 
 			VSADDRESULT result;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&folder), oper, L"file.asm", 1, TemplateEmptyFile, nullptr, &result);
+			hr = td.vsproj->AddItem (V_VSITEMID(&folder), oper, L"file.asm", 1, TemplateEmptyFile, nullptr, &result);
 			Assert::AreEqual(S_OK, hr);
 
 			wil::unique_variant folderFirstChild;
@@ -153,7 +113,7 @@ namespace UITests
 		TEST_METHOD(AddItemTwoFilesInTwoFolders)
 		{
 			HRESULT hr;
-			TestData td (L"AddItemTwoFilesInTwoFolders", TemplatePath_EmptyProject.get());
+			TD td (classPath.get(), L"AddItemTwoFilesInTwoFolders", TemplatePath_EmptyProject.get());
 
 			wil::unique_variant tf1;
 			hr = td.hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &tf1);
@@ -171,9 +131,9 @@ namespace UITests
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&tf1), oper, L"file1.asm", 1, TemplateEmptyFile, nullptr, &addResult);
+			hr = td.vsproj->AddItem (V_VSITEMID(&tf1), oper, L"file1.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
-			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&tf2), oper, L"file2.asm", 1, TemplateEmptyFile, nullptr, &addResult);
+			hr = td.vsproj->AddItem (V_VSITEMID(&tf2), oper, L"file2.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			// First project child should be a folder.
@@ -211,7 +171,7 @@ namespace UITests
 		TEST_METHOD(AddExistingItemWithHierarchyEventSinks)
 		{
 			HRESULT hr;
-			TestData td (L"AddExistingItemWithHierarchyEventSinks", TemplatePath_EmptyProject.get());
+			TD td (classPath.get(), L"AddExistingItemWithHierarchyEventSinks", TemplatePath_EmptyProject.get());
 
 			auto sink = MakeTestHierarchyEventSink();
 			VSCOOKIE cookie;
@@ -219,11 +179,11 @@ namespace UITests
 			Assert::AreEqual(S_OK, hr);
 			auto unadvise = wil::scope_exit([cookie, &td] { td.hier->UnadviseHierarchyEvents(cookie); });
 
-			auto fullPathSource = wil::str_concat_failfast<wil::unique_process_heap_string>(td.testDir, L"file.asm");
+			auto fullPathSource = wil::str_concat_failfast<wil::unique_process_heap_string>(td.projDir, L"\\file.asm");
 			wil::unique_hfile (CreateFile(fullPathSource.get(), GENERIC_WRITE, 0, 0, CREATE_NEW, 0, 0));
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
-			hr = td.hier.try_query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(fullPathSource.addressof()), nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(fullPathSource.addressof()), nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 			Assert::AreEqual<int>(ADDRESULT_Success & 0xFF, addResult);
 
@@ -254,14 +214,14 @@ namespace UITests
 		TEST_METHOD(AddItemSort)
 		{
 			HRESULT hr;
-			TestData td (L"AddItemSort", TemplatePath_EmptyProject.get());
+			TD td (classPath.get(), L"AddItemSort", TemplatePath_EmptyProject.get());
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
 
-			hr = td.proj->AddItem(VSITEMID_ROOT, oper, L"start.asm", 1, TemplateEmptyFile, nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, oper, L"start.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
-			hr = td.proj->AddItem(VSITEMID_ROOT, oper, L"lib.asm", 1, TemplateEmptyFile, nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, oper, L"lib.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			wil::unique_variant more;
@@ -276,7 +236,7 @@ namespace UITests
 			hr = td.hier->SetProperty (V_VSITEMID(&evenMore), VSHPROPID_EditLabel, wil::make_variant_bstr_failfast(L"EvenMore"));
 			Assert::AreEqual(S_OK, hr);
 
-			hr = td.proj->AddItem(V_VSITEMID(&evenMore), oper, L"file.inc", 1, TemplateEmptyFile, nullptr, &addResult);
+			hr = td.vsproj->AddItem(V_VSITEMID(&evenMore), oper, L"file.inc", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			wil::unique_variant generatedFiles;
@@ -285,9 +245,9 @@ namespace UITests
 			hr = td.hier->SetProperty (V_VSITEMID(&generatedFiles), VSHPROPID_EditLabel, wil::make_variant_bstr_failfast(L"GeneratedFiles"));
 			Assert::AreEqual(S_OK, hr);
 
-			hr = td.proj->AddItem(V_VSITEMID(&generatedFiles), oper, L"preinclude.inc", 1, TemplateEmptyFile, nullptr, &addResult);
+			hr = td.vsproj->AddItem(V_VSITEMID(&generatedFiles), oper, L"preinclude.inc", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
-			hr = td.proj->AddItem(V_VSITEMID(&generatedFiles), oper, L"postinclude.inc", 1, TemplateEmptyFile, nullptr, &addResult);
+			hr = td.vsproj->AddItem(V_VSITEMID(&generatedFiles), oper, L"postinclude.inc", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			auto genFilesFolder = GetProperty_VSITEMID(td.hier, VSITEMID_ROOT, VSHPROPID_FirstChild);
@@ -395,26 +355,25 @@ namespace UITests
 		TEST_METHOD(PutItemsFourFilesUnsorted)
 		{
 			HRESULT hr;
-			TestData td (L"PutItemsFourFilesUnsorted", TemplatePath_EmptyProject.get());
+			TD td (classPath.get(), L"PutItemsFourFilesUnsorted", TemplatePath_EmptyProject.get());
 
-			auto proj = td.proj.try_query<IVsProject>();
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
 
 			// Add to empty parent
-			hr = proj->AddItem(VSITEMID_ROOT, oper, L"file3.asm", 1, TemplateEmptyFile, nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, oper, L"file3.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			// Insert in first pos
-			hr = proj->AddItem(VSITEMID_ROOT, oper, L"file1.asm", 1, TemplateEmptyFile, nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, oper, L"file1.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			// Insert between the two above
-			hr = proj->AddItem(VSITEMID_ROOT, oper, L"file2.asm", 1, TemplateEmptyFile, nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, oper, L"file2.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			// Add at the end
-			hr = proj->AddItem(VSITEMID_ROOT, oper, L"file4.asm", 1, TemplateEmptyFile, nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, oper, L"file4.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			// First project child should be file1.
@@ -437,47 +396,27 @@ namespace UITests
 		TEST_METHOD(GetItemsPutItems_WithFolders)
 		{
 			HRESULT hr;
-			auto testDir = str_concat(classPath, L"GetItemsPutItems_WithFolders\\");
-			Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
-			auto cleanup = wil::scope_exit([&testDir] { RemoveDirectoryTree(testDir.get()); });
-
-			wil::com_ptr_failfast<IUnknown> solution;
-			hr = GetDefaultVSInstance()->get_Solution((VxDTE::Solution**)solution.addressof());
-			Assert::AreEqual(S_OK, hr);
-			auto sln = solution.query<VxDTE::_Solution>();
-			hr = sln->Create(wil::make_bstr_failfast(testDir.get()).get(), wil::make_bstr_failfast(L"test").get());
-			Assert::AreEqual(S_OK, hr);
-			auto closesln = wil::scope_exit([&sln] { sln->Close(); });
-
-			wil::com_ptr_failfast<VxDTE::Project> proj1;
-			hr = sln->AddFromTemplate (
-				wil::make_bstr_failfast(TemplatePath_EmptyProject.get()).get(),
-				wil::make_bstr_failfast(testDir.get()).get(),
-				wil::make_bstr_failfast(L"test.flx").get(), VARIANT_TRUE, &proj1);
-			Assert::AreEqual(S_OK, hr);
-			hr = sln->SaveAs(wil::make_bstr_failfast(L"test").get());
-			Assert::AreEqual(S_OK, hr);
+			TD td (classPath.get(), L"GetItemsPutItems_WithFolders", TemplatePath_EmptyProject.get());
 
 			wil::unique_variant folder1;
-			hr = proj1.query<IVsUIHierarchy>()->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &folder1);
+			hr = td.hier->ExecCommand (VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, &folder1);
 			Assert::AreEqual(S_OK, hr);
-			hr = proj1.query<IVsUIHierarchy>()->SetProperty (V_VSITEMID(&folder1), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"folder"));
+			hr = td.hier->SetProperty (V_VSITEMID(&folder1), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"folder"));
 			Assert::AreEqual(S_OK, hr);
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = proj1.query<IVsProject>()->AddItem(V_VSITEMID(&folder1), oper, L"test.asm", 1, TemplateEmptyFile, nullptr, &addResult);
+			hr = td.vsproj->AddItem(V_VSITEMID(&folder1), oper, L"test.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
-			hr = proj1->Save(nullptr);
-			hr = sln->Close(VARIANT_TRUE);
+			hr = td.proj->Save(nullptr);
+			hr = td.sln->Close(VARIANT_TRUE);
 			Assert::AreEqual(S_OK, hr);
 
 			// ------------------------------------------------
 
-			auto projfn = str_concat(testDir, L"test.flx");
 			wil::com_ptr_failfast<VxDTE::Project> proj2;
-			hr = sln->AddFromFile (wil::make_bstr_failfast(projfn.get()).get(), VARIANT_TRUE, &proj2);
+			hr = td.sln->AddFromFile (wil::make_bstr_failfast(td.projFilePath.get()).get(), VARIANT_TRUE, &proj2);
 			Assert::AreEqual(S_OK, hr);
 
 			auto folder2 = GetProperty_VSITEMID(proj2.query<IVsHierarchy>(), VSITEMID_ROOT, VSHPROPID_FirstChild);
@@ -498,11 +437,11 @@ namespace UITests
 		TEST_METHOD(RemoveItemsFromRootNode)
 		{
 			HRESULT hr;
-			TestData td (L"RemoveItemsFromRootNode", TemplatePath_EmptyProject.get());
+			TD td (classPath.get(), L"RemoveItemsFromRootNode", TemplatePath_EmptyProject.get());
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"file.asm", 1,  TemplateEmptyFile, nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, oper, L"file.asm", 1,  TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			VSITEMID id;
@@ -531,7 +470,7 @@ namespace UITests
 		TEST_METHOD(RemoveItem_FirstOfTwo)
 		{
 			HRESULT hr;
-			TestData td (L"RemoveItem_FirstOfTwo", TemplatePath_EmptyProject.get());
+			TD td (classPath.get(), L"RemoveItem_FirstOfTwo", TemplatePath_EmptyProject.get());
 
 			auto path1 = wil::str_concat_failfast<wil::unique_process_heap_string>(td.testDir, L"file1.asm");
 			WriteFileCreateDirs(path1, "");
@@ -540,7 +479,7 @@ namespace UITests
 			const wchar_t* files[] = { path1.get(), path2.get() };
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", _countof(files), files, nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, oper, L"", _countof(files), files, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 			Assert::AreEqual<int>(ADDRESULT_Success & 0xFF, addResult);
 
@@ -566,20 +505,20 @@ namespace UITests
 		TEST_METHOD(DeleteItems_File)
 		{
 			HRESULT hr;
-			TestData td (L"DeleteItems_File", TemplatePath_EmptyProject.get());
+			TD td (classPath.get(), L"DeleteItems_File", TemplatePath_EmptyProject.get());
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.hier.try_query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"file.asm", 1, TemplateEmptyFile, nullptr, &addResult);
+			hr = td.vsproj->AddItem (VSITEMID_ROOT, oper, L"file.asm", 1, TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 			auto fileItemId = GetProperty_VSITEMID (td.hier, VSITEMID_ROOT, VSHPROPID_FirstChild);
 
 			wil::unique_bstr fileMk;
-			hr = td.proj->GetMkDocument(fileItemId, &fileMk);
+			hr = td.vsproj->GetMkDocument(fileItemId, &fileMk);
 			Assert::AreEqual(S_OK, hr);
 			Assert::IsTrue(PathFileExists(fileMk.get()));
 
-			hr = td.dteproj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(1, DELITEMOP_DeleteFromStorage, &fileItemId, DHO_SUPPRESS_UI);
+			hr = td.proj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(1, DELITEMOP_DeleteFromStorage, &fileItemId, DHO_SUPPRESS_UI);
 			Assert::AreEqual(S_OK, hr);
 
 			fileItemId = GetProperty_VSITEMID (td.hier, VSITEMID_ROOT, VSHPROPID_FirstChild);
@@ -590,7 +529,7 @@ namespace UITests
 		TEST_METHOD(DeleteItems_Folder)
 		{
 			HRESULT hr;
-			TestData td (L"DeleteItems_Folder", TemplatePath_EmptyProject.get());
+			TD td (classPath.get(), L"DeleteItems_Folder", TemplatePath_EmptyProject.get());
 
 			// Add folder and check directory exists in file system.
 			wil::unique_variant itemid;
@@ -599,23 +538,23 @@ namespace UITests
 			VSITEMID folderItemId = V_VSITEMID(&itemid);
 
 			auto folderName = GetProperty_String (td.hier, folderItemId, VSHPROPID_SaveName);
-			auto directoryFullPath = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s\\%s", td.testDir.get(), folderName.get());
+			auto directoryFullPath = wil::str_printf_failfast<wil::unique_process_heap_string>(L"%s\\%s", td.projDir.get(), folderName.get());
 			Assert::IsTrue(PathFileExists(directoryFullPath.get()));
 
 			// Add file in folder and check it exists in file system.
 			VSADDRESULT result;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj->AddItem (folderItemId, oper, L"file.asm", 1, TemplateEmptyFile, nullptr, &result);
+			hr = td.vsproj->AddItem (folderItemId, oper, L"file.asm", 1, TemplateEmptyFile, nullptr, &result);
 			Assert::AreEqual(S_OK, hr);
 
 			auto fileItemId = GetProperty_VSITEMID (td.hier, folderItemId, VSHPROPID_FirstChild);
 			wil::unique_bstr fileMk;
-			hr = td.proj->GetMkDocument(fileItemId, &fileMk);
+			hr = td.vsproj->GetMkDocument(fileItemId, &fileMk);
 			Assert::AreEqual(S_OK, hr);
 			Assert::IsTrue(PathFileExists(fileMk.get()));
 
 			// Delete folder.
-			hr = td.dteproj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(1, DELITEMOP_DeleteFromStorage, &folderItemId, DHO_SUPPRESS_UI);
+			hr = td.proj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(1, DELITEMOP_DeleteFromStorage, &folderItemId, DHO_SUPPRESS_UI);
 			Assert::AreEqual(S_OK, hr);
 
 			// Check there's no node in hierarchy
@@ -634,11 +573,11 @@ namespace UITests
 		TEST_METHOD(RenameFilePresentOnFileSystem)
 		{
 			HRESULT hr;
-			TestData td (L"RenameFilePresentOnFileSystem", TemplatePath_EmptyProject.get());
+			TD td (classPath.get(), L"RenameFilePresentOnFileSystem", TemplatePath_EmptyProject.get());
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj->AddItem(VSITEMID_ROOT, oper, L"file.asm", 1,  TemplateEmptyFile, nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, oper, L"file.asm", 1,  TemplateEmptyFile, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 			Assert::AreEqual<int>(ADDRESULT_Success & 0xFF, addResult);
 
@@ -647,7 +586,7 @@ namespace UITests
 			Assert::AreEqual(S_OK, hr);
 
 			wil::unique_bstr oldFullPath;
-			hr = td.proj->GetMkDocument(file, &oldFullPath);
+			hr = td.vsproj->GetMkDocument(file, &oldFullPath);
 			Assert::AreEqual(S_OK, hr);
 			PathFindFileName(oldFullPath.get())[0] = 0;
 			auto newFullPath = str_concat(oldFullPath, L"new.asm");
@@ -675,7 +614,7 @@ namespace UITests
 		TEST_METHOD(RenameFileAndCheckSorted)
 		{
 			HRESULT hr;
-			TestData td (L"RenameFileAndCheckSorted", TemplatePath_EmptyProject.get());
+			TD td (classPath.get(), L"RenameFileAndCheckSorted", TemplatePath_EmptyProject.get());
 
 			auto sink = MakeTestHierarchyEventSink();
 			VSCOOKIE hecookie;
@@ -686,9 +625,9 @@ namespace UITests
 			// Add files named "B", "C", "D".
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj->AddItem (VSITEMID_ROOT, oper, L"B", 1, TemplateEmptyFile, nullptr, &addResult); Assert::AreEqual(S_OK, hr);
-			hr = td.proj->AddItem (VSITEMID_ROOT, oper, L"C", 1, TemplateEmptyFile, nullptr, &addResult); Assert::AreEqual(S_OK, hr);
-			hr = td.proj->AddItem (VSITEMID_ROOT, oper, L"D", 1, TemplateEmptyFile, nullptr, &addResult); Assert::AreEqual(S_OK, hr);
+			hr = td.vsproj->AddItem (VSITEMID_ROOT, oper, L"B", 1, TemplateEmptyFile, nullptr, &addResult); Assert::AreEqual(S_OK, hr);
+			hr = td.vsproj->AddItem (VSITEMID_ROOT, oper, L"C", 1, TemplateEmptyFile, nullptr, &addResult); Assert::AreEqual(S_OK, hr);
+			hr = td.vsproj->AddItem (VSITEMID_ROOT, oper, L"D", 1, TemplateEmptyFile, nullptr, &addResult); Assert::AreEqual(S_OK, hr);
 
 			// First one should be "B", second one should be "C", third "D"
 			auto b = GetProperty_VSITEMID (td.hier, VSITEMID_ROOT, VSHPROPID_FirstChild);
@@ -726,7 +665,7 @@ namespace UITests
 		TEST_METHOD(ProjectDirPropertyEndsWithBackslash)
 		{
 			HRESULT hr;
-			TestData td (L"ProjectDirPropertyEndsWithBackslash", TemplatePath_EmptyProject.get());
+			TD td (classPath.get(), L"ProjectDirPropertyEndsWithBackslash", TemplatePath_EmptyProject.get());
 
 			wil::unique_variant projDir;
 			hr = td.hier->GetProperty (VSITEMID_ROOT, VSHPROPID_ProjectDir, &projDir);
@@ -738,7 +677,7 @@ namespace UITests
 		TEST_METHOD(LoadLegacyPlatformName)
 		{
 			HRESULT hr;
-			TestData td (L"LoadLegacyPlatformName", TemplatePath_EmptyProject.get());
+			TD td (classPath.get(), L"LoadLegacyPlatformName", TemplatePath_EmptyProject.get());
 
 			wil::com_ptr_failfast<IVsCfg> cfg;
 			ULONG actual;
@@ -756,10 +695,10 @@ namespace UITests
 		TEST_METHOD(AddCfgsOfPlatformName_ClonesAllConfigs)
 		{
 			HRESULT hr;
-			TestData td (L"AddCfgsOfPlatformName_ClonesAllConfigs", TemplatePath_TwoConfigsOneFile.get());
+			TD td (classPath.get(), L"AddCfgsOfPlatformName_ClonesAllConfigs", TemplatePath_TwoConfigsOneFile.get());
 
 			wil::com_ptr_failfast<VxDTE::ConfigurationManager> configurationManager;
-			hr = td.dteproj->get_ConfigurationManager(&configurationManager);
+			hr = td.proj->get_ConfigurationManager(&configurationManager);
 			Assert::AreEqual(S_OK, hr);
 			wil::unique_variant platformNames;
 			hr = configurationManager->get_PlatformNames(&platformNames);
@@ -793,10 +732,10 @@ namespace UITests
 		TEST_METHOD(DeleteCfgsOfPlatformName_DeletesAllConfigs)
 		{
 			HRESULT hr;
-			TestData td (L"DeleteCfgsOfPlatformName_DeletesAllConfigs", TemplatePath_TwoConfigsOneFile.get());
+			TD td (classPath.get(), L"DeleteCfgsOfPlatformName_DeletesAllConfigs", TemplatePath_TwoConfigsOneFile.get());
 
 			wil::com_ptr_failfast<VxDTE::ConfigurationManager> configurationManager;
-			hr = td.dteproj->get_ConfigurationManager(&configurationManager);
+			hr = td.proj->get_ConfigurationManager(&configurationManager);
 			Assert::AreEqual(S_OK, hr);
 			wil::unique_variant platformNames;
 			hr = configurationManager->get_PlatformNames(&platformNames);

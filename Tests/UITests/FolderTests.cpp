@@ -5,55 +5,23 @@
 
 namespace UITests
 {
-	extern std::pair<wil::com_ptr_failfast<VxDTE::_Solution>, wil::com_ptr_failfast<VxDTE::Project>>
-		CreateSolutionAndProject (VxDTE::DTE2* dte, PCWSTR testDir, PCWSTR solutionName, PCWSTR projectName);
-	extern wil::unique_process_heap_string MakeVolumeGuidPath (const wchar_t* path);
-
 	TEST_CLASS(FolderTests)
 	{
-		struct TD
-		{
-			wil::com_ptr_failfast<VxDTE::DTE2> dte;
-			wil::unique_process_heap_string testDir;
-			wil::unique_process_heap_string slnFilePath;
-			wil::unique_process_heap_string projDir;
-			wil::unique_process_heap_string projFilePath;
-			wil::com_ptr_failfast<VxDTE::_Solution> sln;
-			wil::com_ptr_failfast<VxDTE::Project> proj;
-
-			TD()
-			{
-				dte = GetDefaultVSInstance();
-				testDir = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"FolderTest");
-				Assert::IsTrue(CreateDirectory(testDir.get(), nullptr));
-				std::tie(sln, proj) = CreateSolutionAndProject(dte, testDir.get(), L"test", L"proj");
-				slnFilePath = str_concat(testDir, L"\\test.sln");
-				projDir = wil::str_concat_failfast<wil::unique_process_heap_string>(testDir, L"\\proj");
-				projFilePath = wil::str_concat_failfast<wil::unique_process_heap_string>(projDir, L"\\proj.flx");
-			}
-
-			~TD()
-			{
-				sln->Close();
-				RemoveDirectoryTree(testDir.get());
-			}
-		};
-
 		TEST_METHOD(CreateFolderNameExists)
 		{
-			TD td;
 			HRESULT hr;
+			TD td(tempPath, L"FolderTests_CreateFolderNameExists", TemplatePath_TwoConfigsOneFile.get());
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"Name", 1, TemplateEmptyFile, NULL, &addResult);
+			hr = td.vsproj->AddItem (VSITEMID_ROOT, oper, L"Name", 1, TemplateEmptyFile, NULL, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			VSITEMID fileItemId;
 			hr = td.proj.query<IVsHierarchy>()->ParseCanonicalName(L"Name", &fileItemId);
 			Assert::AreEqual(S_OK, hr);
 			wil::unique_bstr fileMk;
-			hr = td.proj.query<IVsProject>()->GetMkDocument(fileItemId, &fileMk);
+			hr = td.vsproj->GetMkDocument(fileItemId, &fileMk);
 			Assert::AreEqual(S_OK, hr);
 
 			VSITEMID nextVSItemID;
@@ -106,7 +74,7 @@ namespace UITests
 
 		TEST_METHOD(AddFileInFolder_DifferentFolderCase)
 		{
-			TD td;
+			TD td(tempPath, L"FolderTests_AddFileInFolder_DifferentFolderCase", TemplatePath_TwoConfigsOneFile.get());
 			wil::unique_variant folderItemId;
 			auto hr = td.proj.query<IVsUIHierarchy>()->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder,
 				OLECMDEXECOPT_DONTPROMPTUSER, wil::make_variant_bstr_failfast(L"Name").addressof(), &folderItemId);
@@ -117,23 +85,23 @@ namespace UITests
 
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000u);
 			VSADDRESULT addResult;
-			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(filePath.addressof()), nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(filePath.addressof()), nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 		}
 
 		TEST_METHOD(AddFolderCommand)
 		{
-			TD td;
 			HRESULT hr;
+			TD td(tempPath, L"FolderTests_AddFolderCommand", TemplatePath_TwoConfigsOneFile.get());
 
 			DisableGeneratedFiles(td.proj);
 
 			auto hier = td.proj.query<IVsUIHierarchy>();
-			
+
 			VSITEMID itemid;
 			hier->ParseCanonicalName(L"file.asm", &itemid);
 			hr = td.proj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(1, DELITEMOP_DeleteFromStorage, &itemid, DHO_SUPPRESS_UI);
-			
+
 			wil::unique_variant expandable;
 			hr = hier->GetProperty(VSITEMID_ROOT, VSHPROPID_Expandable, &expandable);
 			Assert::AreEqual(S_OK, hr);
@@ -169,7 +137,7 @@ namespace UITests
 
 		TEST_METHOD(AddFolderCommand_FolderExistsOnDisk)
 		{
-			TD td;
+			TD td(tempPath, L"FolderTests_AddFolderCommand_FolderExistsOnDisk", TemplatePath_TwoConfigsOneFile.get());
 			auto hier = td.proj.query<IVsUIHierarchy>();
 			auto hr = hier->ExecCommand(VSITEMID_ROOT, &CMDSETID_StandardCommandSet97, cmdidNewFolder, OLECMDEXECOPT_DONTPROMPTUSER, nullptr, nullptr);
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -189,8 +157,8 @@ namespace UITests
 
 		TEST_METHOD(AddSubFolder_FolderMissingOnDisk)
 		{
-			TD td;
 			HRESULT hr;
+			TD td(tempPath, L"FolderTests_AddSubFolder_FolderMissingOnDisk", TemplatePath_TwoConfigsOneFile.get());
 
 			auto hier = td.proj.query<IVsUIHierarchy>();
 
@@ -218,8 +186,8 @@ namespace UITests
 
 		TEST_METHOD(AddSubFolderCommand)
 		{
-			TD td;
 			HRESULT hr;
+			TD td(tempPath, L"FolderTests_AddSubFolderCommand", TemplatePath_TwoConfigsOneFile.get());
 			auto hier = td.proj.query<IVsUIHierarchy>();
 			DisableGeneratedFiles(td.proj);
 
@@ -282,8 +250,8 @@ namespace UITests
 
 		TEST_METHOD(RenameFolderAndCheckSorted)
 		{
-			TD td;
 			HRESULT hr;
+			TD td(tempPath, L"FolderTests_RenameFolderAndCheckSorted", TemplatePath_TwoConfigsOneFile.get());
 			auto hier = td.proj.query<IVsUIHierarchy>();
 			DisableGeneratedFiles(td.proj);
 

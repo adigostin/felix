@@ -1,13 +1,6 @@
 
 #pragma once
 #include "../FelixPackage/FelixPackage_h.h"
-#define FORCE_EXPLICIT_DTE_NAMESPACE
-#include <dte.h>
-namespace VxDTE
-{
-	#include <dte80.h>
-	#include <dte90.h>
-}
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -19,17 +12,20 @@ namespace UITests
 	extern wil::unique_process_heap_string TemplatePath_EmptyProject;
 	extern wil::unique_process_heap_string TemplatePath_EmptyFile;
 	extern LPCOLESTR TemplateEmptyFile[1];
+	extern wil::com_ptr_failfast<IUIAutomation> automation;
+
 	LONG GetBstrArraySize(VARIANT& values);
 	wil::unique_bstr GetBstrArrayElement(VARIANT& values, LONG index);
 
 	struct VSInstance
 	{
 		wil::com_ptr_failfast<VxDTE::DTE2> dte;
+		wil::com_ptr_failfast<VxDTE::Window> mainWindow;
 		wil::com_ptr_failfast<VxDTE::Process> attachedProcess; // NULL if not debugging
 		DWORD processID;
 	};
 
-	wil::com_ptr_failfast<VxDTE::DTE2> GetDefaultVSInstance();
+	VSInstance& GetDefaultVSInstance();
 	VSInstance LaunchVS (const wchar_t* envVar = nullptr);
 	void CloseVS (VSInstance& vs, bool hard = false);
 
@@ -160,6 +156,7 @@ namespace UITests
 		wil::com_ptr_failfast<VxDTE::_Solution> sln;
 		wil::com_ptr_failfast<VxDTE::Project> proj;
 		wil::com_ptr_failfast<IVsUIHierarchy> hier;
+		wil::com_ptr_failfast<IVsProject2> vsproj;
 		wil::com_ptr_failfast<VxDTE::SolutionBuild> slnBuild;
 
 		TD(PCWSTR testClassPath, PCWSTR testName, PCWSTR projectTemplatePath);

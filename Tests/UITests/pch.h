@@ -30,6 +30,13 @@
 #include <vsshell.h>
 #include <vsshell90.h>
 #include <vsshell110.h>
+#define FORCE_EXPLICIT_DTE_NAMESPACE
+#include <dte.h>
+namespace VxDTE
+{
+	#include <dte80.h>
+	#include <dte90.h>
+}
 
 #include <CppUnitTest.h>
 

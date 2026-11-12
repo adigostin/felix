@@ -20,7 +20,7 @@ namespace UITests
 
 		TEST_METHOD_INITIALIZE(FileTestInit)
 		{
-			dte = GetDefaultVSInstance();
+			dte = GetDefaultVSInstance().dte;
 			testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"FileTests");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
 			std::tie(sln, proj) = CreateSolutionAndProject(dte, testPath.get(), L"test", L"proj");
@@ -63,7 +63,7 @@ namespace UITests
 			auto newFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(projPath, L"\\new.asm");
 			Assert::IsTrue(PathFileExists(newFullPath.get()));
 		}
-		
+
 		TEST_METHOD(RenameFileInFolder)
 		{
 			HRESULT hr;
@@ -90,7 +90,7 @@ namespace UITests
 			auto fullPathNew = wil::str_concat_failfast<wil::unique_process_heap_string>(projPath, L"\\folder\\new.asm");
 			Assert::IsTrue(PathFileExists(fullPathNew.get()));
 		}
-		
+
 		TEST_METHOD(RenameFileOutsideProjectDirSameDrive)
 		{
 			auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\file.asm");
@@ -123,7 +123,7 @@ namespace UITests
 			auto newFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\new.asm");
 			Assert::IsTrue(PathFileExists(newFullPath.get()));
 		}
-		
+
 		TEST_METHOD(RenameFileOutsideProjectDirOtherDrive)
 		{
 			HRESULT hr;
@@ -147,7 +147,7 @@ namespace UITests
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::IsTrue(PathFileExists(newFullPath.get()));
 		}
-		
+
 		TEST_METHOD(AddFileAlreadyExists)
 		{
 			auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(projPath, L"\\folder/test.asm");
@@ -161,7 +161,7 @@ namespace UITests
 			hr = proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(fileFullPath.addressof()), nullptr, &addResult);
 			Assert::AreEqual(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), hr);
 		}
-		
+
 		TEST_METHOD(GetMkDocument_FileInProjectDir)
 		{
 			auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(projPath, L"\\file.asm");
@@ -173,7 +173,7 @@ namespace UITests
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::AreEqual((PCWSTR)fileFullPath.get(), (PCWSTR)mk.get());
 		}
-		
+
 		TEST_METHOD(GetMkDocument_FileNotInProjectDir_SameDrive)
 		{
 			auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(testPath, L"\\file.asm");
@@ -192,7 +192,7 @@ namespace UITests
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::AreEqual((PCWSTR)fileFullPath.get(), (PCWSTR)mk.get());
 		}
-		
+
 		TEST_METHOD(GetMkDocument_FileNotInProjectDir_OtherDrive)
 		{
 			auto fileFullPath = wil::str_concat_failfast<wil::unique_process_heap_string>(MakeVolumeGuidPath(testPath.get()), L"\\file.asm");
@@ -212,7 +212,7 @@ namespace UITests
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::AreEqual((PCWSTR)fileFullPath.get(), (PCWSTR)mk.get());
 		}
-		
+
 		TEST_METHOD(NotifyPropertyChanged_BuildToolKind)
 		{
 			VSITEMID itemId;
@@ -233,7 +233,7 @@ namespace UITests
 
 			Assert::IsTrue(sink->Called({ dispidBuildToolKind }));
 		}
-		
+
 		TEST_METHOD(ProjectDirtyOnFilePropertyChange)
 		{
 			VSITEMID itemId;

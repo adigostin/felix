@@ -21,7 +21,7 @@ namespace UITests
 
 		TEST_METHOD_INITIALIZE(NotifyTestInit)
 		{
-			dte = GetDefaultVSInstance();
+			dte = GetDefaultVSInstance().dte;
 			testPath = wil::str_concat_failfast<wil::unique_process_heap_string>(tempPath, L"NotifyTest");
 			Assert::IsTrue(CreateDirectory(testPath.get(), nullptr));
 			std::tie(sln, proj) = CreateSolutionAndProject(dte, testPath.get(), L"test", L"proj");
@@ -166,7 +166,7 @@ namespace UITests
 			// Remove folder
 			hr = proj.query<IVsHierarchyDeleteHandler3>()->DeleteItems(1, DELITEMOP_DeleteFromStorage, (VSITEMID*)&V_VSITEMID(&tf1), DHO_SUPPRESS_UI);
 			Assert::IsTrue(SUCCEEDED(hr));
-			Assert::IsTrue(sink->ItemRemoved(V_VSITEMID(&tf1)));	
+			Assert::IsTrue(sink->ItemRemoved(V_VSITEMID(&tf1)));
 		}
 
 		TEST_METHOD(NotifyPropertyChangingChanged_File)
@@ -223,7 +223,7 @@ namespace UITests
 			cbtProps->put_Description(wil::make_bstr_failfast(L"Desc").get());
 			cbtProps->put_Outputs(wil::make_bstr_failfast(L"Outputs").get());
 			called = WaitWithMessageLoop([&changeSink, &notifySink, &cbtDisp]
-				{ 
+				{
 					return changeSink->Called(cbtDisp, { dispidCommandLine, dispidDescription, dispidOutputs })
 						&& notifySink->Called({ dispidCommandLine, dispidDescription, dispidOutputs });
 				}, 1000);

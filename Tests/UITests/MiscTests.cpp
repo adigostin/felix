@@ -35,6 +35,7 @@ namespace UITests
 
 		TEST_METHOD(OpenSpecificEditor)
 		{
+			HRESULT hr;
 			TD td(classPath.get(), L"OpenSpecificEditor", TemplatePath_TwoConfigsOneFile.get());
 			// At some point between VS 17.10 and 17.14, the VS implementation of IVsUIShellOpenDocument::OpenStandardEditor
 			// started trying to open our .asm files not with "Source Code (Text) Editor", but with
@@ -44,13 +45,11 @@ namespace UITests
 			// This test verifies this solution. The test fails with the old code that calls OpenStandardEditor,
 			// and succeeds with the new code that calls OpenSpecificEditor.
 
-			HRESULT hr;
 			VSITEMID itemid;
 			hr = td.hier->ParseCanonicalName(L"file.asm", &itemid);
 			Assert::IsTrue(SUCCEEDED(hr));
-			auto vsp2 = td.proj.query<IVsProject2>();
 			com_ptr<IVsWindowFrame> wf;
-			hr = vsp2->OpenItem (itemid, LOGVIEWID_Primary, nullptr, &wf);
+			hr = td.vsproj->OpenItem (itemid, LOGVIEWID_Primary, nullptr, &wf);
 			Assert::IsTrue(SUCCEEDED(hr));
 			hr = wf->Show();
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -74,6 +73,7 @@ namespace UITests
 
 		TEST_METHOD(NavigateToErrorInFileInSubdir)
 		{
+			HRESULT hr;
 			TD td(classPath.get(), L"NavigateToErrorInFileInSubdir", TemplatePath_TwoConfigsOneFile.get());
 			// When the user double-clicks an error in the Error List window, VS goes out of its way to locate the file
 			// and find the project it contains. To repro the bug, we need to put the project file in a subdirectory
@@ -82,7 +82,6 @@ namespace UITests
 			// ProjectNode::ParseCanonicalName and ProjectNode::IsDocumentInProject (and ultimately in ParseCanonicalName).
 			// This test verifies the fixes in these functions.
 
-			HRESULT hr;
 			long buildFailCount;
 			BuildSolution(td.sln, &buildFailCount);
 			Assert::AreEqual(0l, buildFailCount);
@@ -92,7 +91,7 @@ namespace UITests
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(file1Path.addressof()), NULL, &addResult);
+			hr = td.vsproj->AddItem (VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(file1Path.addressof()), NULL, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
 			hr = td.proj->Save();
 			Assert::IsTrue(SUCCEEDED(hr));
@@ -135,13 +134,13 @@ namespace UITests
 			BOOL found = FALSE;
 			VSDOCUMENTPRIORITY prio = { };
 			VSITEMID itemid = { };
-			hr = td.proj.query<IVsProject>()->IsDocumentInProject(L"subdir\\file1.asm", &found, &prio, &itemid); // this would fail too
+			hr = td.vsproj->IsDocumentInProject(L"subdir\\file1.asm", &found, &prio, &itemid); // this would fail too
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::IsTrue(found);
-			hr = td.proj.query<IVsProject>()->IsDocumentInProject(L"subdir/..\\subdir/.\\file1.asm", &found, &prio, &itemid); // for bonus points
+			hr = td.vsproj->IsDocumentInProject(L"subdir/..\\subdir/.\\file1.asm", &found, &prio, &itemid); // for bonus points
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::IsTrue(found);
-			hr = td.proj.query<IVsProject>()->IsDocumentInProject(L"SubDir\\File1.ASM", &found, &prio, &itemid); // for bonus points
+			hr = td.vsproj->IsDocumentInProject(L"SubDir\\File1.ASM", &found, &prio, &itemid); // for bonus points
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::IsTrue(found);
 
@@ -154,11 +153,11 @@ namespace UITests
 
 		TEST_METHOD(GenPrePostInclude_OnlyActiveCfg)
 		{
+			HRESULT hr;
 			TD td(classPath.get(), L"GenPrePostInclude_OnlyActiveCfg", TemplatePath_TwoConfigsOneFile.get());
 			// Verify that the PreInclude.asm and PostInclude.asm are regenerated when editing the active configuration,
 			// and that they are _not_ regenerated when editing an inactive configuration.
 
-			HRESULT hr;
 			// Let's not go through the configuration manager since we haven't implemented Project::get_ConfigurationManager yet.
 			//Microsoft_VisualStudio_Interop::_SolutionPtr sln = sln0.get();
 			//auto configs = sln->SolutionBuild->SolutionConfigurations;
@@ -225,13 +224,13 @@ namespace UITests
 		}
 		TEST_METHOD(RemoveFileClosesEditor)
 		{
-			TD td(classPath.get(), L"RemoveFileClosesEditor", TemplatePath_TwoConfigsOneFile.get());
 			HRESULT hr;
+			TD td(classPath.get(), L"RemoveFileClosesEditor", TemplatePath_TwoConfigsOneFile.get());
 			VSITEMID itemId;
 			hr = td.hier->ParseCanonicalName(L"file.asm", &itemId);
 			Assert::IsTrue(SUCCEEDED(hr));
 			com_ptr<IVsWindowFrame> wf;
-			hr = td.proj.query<IVsProject2>()->OpenItem(itemId, LOGVIEWID_Code, nullptr, &wf);
+			hr = td.vsproj->OpenItem(itemId, LOGVIEWID_Code, nullptr, &wf);
 			wf->Show();
 			hr = wf->IsVisible();
 			Assert::AreEqual (S_OK, hr);
@@ -267,14 +266,14 @@ namespace UITests
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem (V_UI4(&folderItemId), oper, L"file2.asm", 1, TemplateEmptyFile, NULL, &addResult);
+			hr = td.vsproj->AddItem (V_UI4(&folderItemId), oper, L"file2.asm", 1, TemplateEmptyFile, NULL, &addResult);
 			Assert::AreEqual (S_OK, hr);
 
 			VSITEMID itemId;
 			hr = td.hier->ParseCanonicalName(L"NewFolder1\\file2.asm", &itemId);
 			Assert::AreEqual (S_OK, hr);
 			com_ptr<IVsWindowFrame> wf;
-			hr = td.proj.query<IVsProject2>()->OpenItem(itemId, LOGVIEWID_Code, nullptr, &wf);
+			hr = td.vsproj->OpenItem(itemId, LOGVIEWID_Code, nullptr, &wf);
 			wf->Show();
 			hr = wf->IsVisible();
 			Assert::AreEqual (S_OK, hr);
@@ -287,8 +286,8 @@ namespace UITests
 
 		TEST_METHOD(AddNewFile_SameNameAsFileOutsideProjectDir)
 		{
-			TD td(classPath.get(), L"AddNewFile_SameNameAsFileOutsideProjectDir", TemplatePath_TwoConfigsOneFile.get());
 			HRESULT hr;
+			TD td(classPath.get(), L"AddNewFile_SameNameAsFileOutsideProjectDir", TemplatePath_TwoConfigsOneFile.get());
 			const wchar_t file1RelPath[] = L"test.asm";
 			auto file1Path = str_concat(td.projDir, L"\\", file1RelPath);
 			WriteFileCreateDirs (file1Path, "; comment");
@@ -301,13 +300,13 @@ namespace UITests
 			LPCOLESTR filesToOpen[] = { file1Path.get(), file2Path.get(), file3Path };
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 3, filesToOpen, nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, oper, L"", 3, filesToOpen, nullptr, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			// Adding them again should fail.
 			for (const wchar_t* fileToOpen : filesToOpen)
 			{
-				hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 1, &fileToOpen, nullptr, &addResult);
+				hr = td.vsproj->AddItem(VSITEMID_ROOT, oper, L"", 1, &fileToOpen, nullptr, &addResult);
 				Assert::AreEqual(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), hr);
 			}
 
@@ -316,7 +315,7 @@ namespace UITests
 			{
 				BOOL found;
 				VSDOCUMENTPRIORITY prio;
-				hr = td.proj.query<IVsProject>()->IsDocumentInProject(filesToOpen[i], &found, &prio, &itemids[i]);
+				hr = td.vsproj->IsDocumentInProject(filesToOpen[i], &found, &prio, &itemids[i]);
 				Assert::IsTrue(SUCCEEDED(hr) && found);
 			}
 
@@ -338,8 +337,8 @@ namespace UITests
 
 		TEST_METHOD(CloneFile_SameNameAsFileOutsideProjectDir)
 		{
-			TD td(classPath.get(), L"CloneFile_SameNameAsFileOutsideProjectDir", TemplatePath_TwoConfigsOneFile.get());
 			HRESULT hr;
+			TD td(classPath.get(), L"CloneFile_SameNameAsFileOutsideProjectDir", TemplatePath_TwoConfigsOneFile.get());
 			auto templatePath = str_concat(td.testDir, L"\\template.asm");
 			WriteFileCreateDirs (templatePath, "; comment");
 
@@ -348,18 +347,18 @@ namespace UITests
 			WriteFileCreateDirs(file1Path, "; comment");
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(file1Path.addressof()), nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(file1Path.addressof()), nullptr, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"test.asm", 1, const_cast<LPCOLESTR*>(templatePath.addressof()), nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, oper, L"test.asm", 1, const_cast<LPCOLESTR*>(templatePath.addressof()), nullptr, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
 		}
 
 		TEST_METHOD(CloneFileToFolderMissingOnDisk)
 		{
-			TD td(classPath.get(), L"CloneFileToFolderMissingOnDisk", TemplatePath_TwoConfigsOneFile.get());
 			HRESULT hr;
+			TD td(classPath.get(), L"CloneFileToFolderMissingOnDisk", TemplatePath_TwoConfigsOneFile.get());
 			auto templatePath = str_concat(td.testDir, L"\\template.asm");
 			WriteFileCreateDirs (templatePath, "; comment");
 
@@ -370,7 +369,7 @@ namespace UITests
 			// Delete the folder on disk, then try to clone a file into it. We must at least not crash.
 
 			wil::unique_bstr folderMk;
-			hr = td.proj.query<IVsProject>()->GetMkDocument(V_VSITEMID(&folderItemId), &folderMk);
+			hr = td.vsproj->GetMkDocument(V_VSITEMID(&folderItemId), &folderMk);
 			Assert::IsTrue(SUCCEEDED(hr));
 
 			if (PathFileExists(folderMk.get()))
@@ -381,7 +380,7 @@ namespace UITests
 
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
 			VSADDRESULT addResult;
-			hr = td.proj.query<IVsProject>()->AddItem(V_VSITEMID(&folderItemId), oper, L"file.asm", 1, const_cast<LPCOLESTR*>(templatePath.addressof()), nullptr, &addResult);
+			hr = td.vsproj->AddItem(V_VSITEMID(&folderItemId), oper, L"file.asm", 1, const_cast<LPCOLESTR*>(templatePath.addressof()), nullptr, &addResult);
 			Assert::IsTrue(SUCCEEDED(hr));
 		}
 
@@ -457,8 +456,8 @@ namespace UITests
 
 		TEST_METHOD(GenPrePostInclude_AddFirstAsm_RemoveLastAsm)
 		{
-			TD td(classPath.get(), L"GenPrePostInclude_AddFirstAsm_RemoveLastAsm", TemplatePath_TwoConfigsOneFile.get());
 			HRESULT hr;
+			TD td(classPath.get(), L"GenPrePostInclude_AddFirstAsm_RemoveLastAsm", TemplatePath_TwoConfigsOneFile.get());
 
 			// We have a file in the project with BuildTool==Assembler. We should have a GeneratedFiles folder.
 			wil::unique_variant firstChild;
@@ -482,7 +481,7 @@ namespace UITests
 			auto filePath = str_concat(td.projDir, L"\\file.asm");
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(filePath.addressof()), nullptr, &addResult);
+			hr = td.vsproj->AddItem (VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(filePath.addressof()), nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			// First child should be "GeneratedFiles"
@@ -493,8 +492,8 @@ namespace UITests
 
 		TEST_METHOD(GenPrePostInclude_EnableDisableGeneration)
 		{
-			TD td(classPath.get(), L"GenPrePostInclude_EnableDisableGeneration", TemplatePath_TwoConfigsOneFile.get());
 			HRESULT hr;
+			TD td(classPath.get(), L"GenPrePostInclude_EnableDisableGeneration", TemplatePath_TwoConfigsOneFile.get());
 
 			// Assume first config is the active config.
 			wil::com_ptr_failfast<IVsCfg> cfgs[2];
@@ -536,8 +535,8 @@ namespace UITests
 
 		TEST_METHOD(GenPrePostInclude_SwitchActiveConfig)
 		{
-			TD td(classPath.get(), L"GenPrePostInclude_SwitchActiveConfig", TemplatePath_TwoConfigsOneFile.get());
 			HRESULT hr;
+			TD td(classPath.get(), L"GenPrePostInclude_SwitchActiveConfig", TemplatePath_TwoConfigsOneFile.get());
 
 			wil::com_ptr_failfast<VxDTE::SolutionConfigurations> slnConfigs;
 			hr = td.slnBuild->get_SolutionConfigurations(&slnConfigs);
@@ -662,8 +661,8 @@ namespace UITests
 
 		TEST_METHOD(Macro_CircularReference)
 		{
-			TD td(classPath.get(), L"Macro_CircularReference", TemplatePath_TwoConfigsOneFile.get());
 			HRESULT hr;
+			TD td(classPath.get(), L"Macro_CircularReference", TemplatePath_TwoConfigsOneFile.get());
 
 			wil::com_ptr_failfast<IVsCfg> cfg;
 			ULONG actual;

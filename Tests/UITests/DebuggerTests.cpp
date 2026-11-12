@@ -226,7 +226,7 @@ namespace UITests
 			LPCOLESTR files[] = { sourceFilePath.get() };
 			VSADDRESULT addResult;
 			auto operation = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, operation, L"", 1, files, nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, operation, L"", 1, files, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 			td.proj->Save();
 
@@ -264,7 +264,7 @@ namespace UITests
 			LPCOLESTR files[] = { sourceFilePath.get() };
 			VSADDRESULT addResult;
 			auto operation = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, operation, L"", 1, files, nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, operation, L"", 1, files, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 			td.proj->Save();
 
@@ -308,7 +308,7 @@ namespace UITests
 			LPCOLESTR files[] = { sourceFilePath };
 			VSADDRESULT addResult;
 			auto operation = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, operation, L"", 1, files, nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, operation, L"", 1, files, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 			td.proj->Save();
 
@@ -497,7 +497,7 @@ namespace UITests
 			LPCOLESTR files[] = { sourceFilePath.get() };
 			VSADDRESULT addResult;
 			auto operation = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, operation, L"", 1, files, nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, operation, L"", 1, files, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 			td.proj->Save();
 
@@ -557,7 +557,7 @@ namespace UITests
 			LPCOLESTR files[] = { libFilePath.get(), startFilePath.get() };
 			VSADDRESULT addResult;
 			auto operation = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, operation, L"", 2, files, nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, operation, L"", 2, files, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 			td.proj->Save();
 
@@ -618,7 +618,7 @@ namespace UITests
 			LPCOLESTR files[] = { sourceFilePath.get() };
 			VSADDRESULT addResult;
 			auto operation = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, operation, L"", 1, files, nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, operation, L"", 1, files, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 			hr = td.proj->Save();
 			Assert::AreEqual(S_OK, hr);

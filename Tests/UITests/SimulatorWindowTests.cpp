@@ -19,7 +19,7 @@ namespace UITests
 		{
 			HRESULT hr;
 
-			dte = GetDefaultVSInstance();
+			dte = GetDefaultVSInstance().dte;
 			hr = dte->get_Debugger(&debugger);
 			Assert::AreEqual(S_OK, hr);
 

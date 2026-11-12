@@ -188,7 +188,7 @@ namespace UITests
 			WriteFileCreateDirs(filePath, "\tnop\r\n\tend");
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem (VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(filePath.addressof()), NULL, &addResult);
+			hr = td.vsproj->AddItem (VSITEMID_ROOT, oper, L"", 1, const_cast<LPCOLESTR*>(filePath.addressof()), NULL, &addResult);
 			hr = td.proj.query<IVsHierarchy>()->ParseCanonicalName(L"Folder\\single.asm", &itemid);
 			Assert::AreEqual(S_OK, hr);
 
@@ -246,7 +246,7 @@ namespace UITests
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_CLONEFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&folder), oper, L"file1.asm", 1, TemplateEmptyFile, NULL, &addResult);
+			hr = td.vsproj->AddItem (V_VSITEMID(&folder), oper, L"file1.asm", 1, TemplateEmptyFile, NULL, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			wil::unique_variant subfolder;
@@ -257,7 +257,7 @@ namespace UITests
 			//hr = hier->SetProperty (V_VSITEMID(&subfolder), VSHPROPID_EditLabel, wil::make_variant_bstr_nothrow(L"subfolder"));
 			//Assert::IsTrue(SUCCEEDED(hr));
 
-			hr = td.proj.query<IVsProject>()->AddItem (V_VSITEMID(&subfolder), oper, L"file2.asm", 1, TemplateEmptyFile, NULL, &addResult);
+			hr = td.vsproj->AddItem (V_VSITEMID(&subfolder), oper, L"file2.asm", 1, TemplateEmptyFile, NULL, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			wil::com_ptr_failfast<IVsCfg> cfg;
@@ -297,7 +297,7 @@ namespace UITests
 
 			VSADDRESULT addResult;
 			auto oper = (VSADDITEMOPERATION)(VSADDITEMOP_OPENFILE | 0x1000);
-			hr = td.proj.query<IVsProject>()->AddItem(VSITEMID_ROOT, oper, L"", (ULONG)_countof(files), files, nullptr, &addResult);
+			hr = td.vsproj->AddItem(VSITEMID_ROOT, oper, L"", (ULONG)_countof(files), files, nullptr, &addResult);
 			Assert::AreEqual(S_OK, hr);
 
 			wil::com_ptr_failfast<IVsCfg> cfg;
