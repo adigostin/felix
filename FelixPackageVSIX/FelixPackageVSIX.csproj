@@ -51,6 +51,9 @@
     <Content Include="ROMs\Spectrum128K.rom">
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="ROMs\Spectrum128K.z80sym">
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="ROMs\Spectrum48K.z80sym">
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>

@@ -194,6 +194,7 @@ extern const wchar_t Z80AsmLanguageName[];
 extern const wchar_t SingleDebugPortName[];
 extern const wchar_t SettingsCollection[];
 extern const wchar_t SettingLoadSavePath[];
+extern const wchar_t* const PlatformNames[SpectrumVariantCount];
 extern const LCID InvariantLCID;
 FELIX_API extern const wchar_t ProjectElementName[];
 extern const wchar_t ConfigurationElementName[];

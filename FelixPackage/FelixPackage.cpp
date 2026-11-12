@@ -9,6 +9,10 @@
 #include "sentry.h"
 #define FORCE_EXPLICIT_DTE_NAMESPACE
 #include <dte.h>
+namespace VxDTE
+{
+	#include <dte80.h>
+}
 
 const wchar_t Z80AsmLanguageName[]  = L"Z80Asm";
 const wchar_t SingleDebugPortName[] = L"Single Z80 Port";
@@ -747,7 +751,88 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE OnAfterOpenSolution(IUnknown* pUnkReserved, BOOL fNewSolution) override
 	{
-		return E_NOTIMPL;
+		if (!fNewSolution)
+			return S_OK;
+
+		// When creating a new project, VS builds solution configurations out of project configurations,
+		// but stores solution configurations in a list sorted by name, and then auto-selects the first
+		// configuration. In our case, with a .flx template for two platforms, 48K and 128K, VS will
+		// auto-select 128K. This code here selects the solution configuration that corresponds to the first
+		// project configuration (48K as of this writing). I couldn't find a way to implement this without DTE.
+		auto selectMatchingConfiguration = [&]() -> HRESULT
+		{
+			com_ptr<VxDTE::_DTE> dte;
+			auto hr = serviceProvider->QueryService(VxDTE::SID_SDTE, IID_PPV_ARGS(&dte)); RETURN_IF_FAILED(hr);
+			com_ptr<IUnknown> solutionObject;
+			hr = dte->get_Solution((VxDTE::Solution**)solutionObject.addressof()); RETURN_IF_FAILED(hr);
+			com_ptr<VxDTE::_Solution> solution;
+			hr = solutionObject->QueryInterface(IID_PPV_ARGS(&solution)); RETURN_IF_FAILED(hr);
+			com_ptr<VxDTE::Projects> projects;
+			hr = solution->get_Projects(&projects); RETURN_IF_FAILED(hr);
+
+			long projectCount;
+			hr = projects->get_Count(&projectCount); RETURN_IF_FAILED(hr);
+			if (projectCount != 1)
+				return S_OK;
+
+			VARIANT projectIndex;
+			projectIndex.vt = VT_INT;
+			projectIndex.intVal = 1;
+			com_ptr<VxDTE::Project> project;
+			hr = projects->Item(projectIndex, &project); RETURN_IF_FAILED(hr);
+			com_ptr<IVsCfgProvider> cfgProvider;
+			hr = project->QueryInterface(IID_PPV_ARGS(&cfgProvider)); RETURN_IF_FAILED(hr);
+			com_ptr<IVsCfg> projectConfig;
+			ULONG actual;
+			hr = cfgProvider->GetCfgs(1, projectConfig.addressof(), &actual, nullptr);
+			RETURN_IF_FAILED(hr);
+			if (!actual)
+				return S_OK;
+
+			wil::unique_bstr displayName;
+			hr = projectConfig->get_DisplayName(&displayName); RETURN_IF_FAILED(hr);
+			auto sep = wcschr(displayName.get(), '|');
+			if (!sep)
+				return S_OK;
+			*sep = 0;
+			LPCWSTR configName = displayName.get();
+			LPCWSTR platformName = sep + 1;
+
+			com_ptr<VxDTE::SolutionBuild> solutionBuild;
+			hr = solution->get_SolutionBuild(&solutionBuild); RETURN_IF_FAILED(hr);
+			com_ptr<VxDTE::SolutionConfigurations> solutionConfigs;
+			hr = solutionBuild->get_SolutionConfigurations(&solutionConfigs); RETURN_IF_FAILED(hr);
+			long solutionConfigCount;
+			hr = solutionConfigs->get_Count(&solutionConfigCount); RETURN_IF_FAILED(hr);
+
+			for (long index = 1; index <= solutionConfigCount; ++index)
+			{
+				VARIANT itemIndex{};
+				itemIndex.vt = VT_INT;
+				itemIndex.intVal = index;
+				com_ptr<VxDTE::SolutionConfiguration> slnConfig;
+				hr = solutionConfigs->Item(itemIndex, &slnConfig); RETURN_IF_FAILED(hr);
+				wil::unique_bstr slnConfigName;
+				hr = slnConfig->get_Name(&slnConfigName); RETURN_IF_FAILED(hr);
+				if (wcscmp(slnConfigName.get(), configName))
+					continue;
+
+				com_ptr<VxDTE::SolutionConfiguration2> slnConfig2;
+				hr = slnConfig->QueryInterface(IID_PPV_ARGS(&slnConfig2)); RETURN_IF_FAILED(hr);
+				wil::unique_bstr slnPlatformName;
+				hr = slnConfig2->get_PlatformName(&slnPlatformName); RETURN_IF_FAILED(hr);
+				if (!wcscmp(slnPlatformName.get(), platformName))
+				{
+					hr = slnConfig->Activate(); RETURN_IF_FAILED(hr);
+					return S_OK;
+				}
+			}
+
+			return S_OK;
+		};
+
+		selectMatchingConfiguration();
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE OnQueryCloseSolution(IUnknown* pUnkReserved, BOOL* pfCancel) override

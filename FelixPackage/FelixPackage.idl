@@ -45,8 +45,10 @@ library ATLProject1Lib
 		[id(dispidConfigName), propget] HRESULT ConfigName ([out, retval] BSTR* pbstr);
 		[id(dispidConfigName), propput] HRESULT ConfigName (BSTR bstr);
 
-		[id(dispidPlatformName), propget] HRESULT PlatformName ([out, retval] BSTR* pbstr);
 		[id(dispidPlatformName), propput] HRESULT PlatformName (BSTR bstr);
+
+		[id(dispidPlatform), propget] HRESULT Platform ([out, retval] enum SpectrumVariant* pPlatform);
+		[id(dispidPlatform), propput] HRESULT Platform (enum SpectrumVariant platform);
 	}
 
 	[object, uuid(E83A8879-04BE-4A3F-9350-A7BCBB0AFCFF), dual, nonextensible, pointer_default(unique)]

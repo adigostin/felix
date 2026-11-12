@@ -596,6 +596,70 @@ namespace UITests
 			Assert::AreEqual<VSITEMID>(VSITEMID_GENFILES, V_VSITEMID(&firstChild));
 		}
 
+		TEST_METHOD(GenPrePostInclude_SwitchPlatform)
+		{
+			HRESULT hr;
+			TD td(classPath.get(), L"GenPrePostInclude_UpdatePlatform", nullptr);
+
+			auto projPath = str_concat(td.projDir, L"\\proj.flx");
+			WriteFileCreateDirs (projPath,
+				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n"
+				"<Z80Project Guid=\"{2839FDD7-4C8F-4772-90E6-222C702D045E}\">\r\n"
+				"  <Configurations>\r\n"
+				"    <Configuration ConfigName=\"Debug\" PlatformName=\"ZX Spectrum 48K\" />\r\n"
+				"    <Configuration ConfigName=\"Debug\" PlatformName=\"ZX Spectrum 128K\" />\r\n"
+				"  </Configurations>\r\n"
+				"  <Items>\r\n"
+				"    <File Path=\"file.asm\" BuildTool=\"Assembler\" />\r\n"
+				"  </Items>\r\n"
+				"</Z80Project>\r\n");
+
+			wil::com_ptr_failfast<VxDTE::Project> proj;
+			hr = td.sln->AddFromFile(wil::make_bstr_failfast(projPath.get()).get(), VARIANT_TRUE, &proj);
+			Assert::AreEqual(S_OK, hr);
+
+			wil::com_ptr_failfast<VxDTE::SolutionConfigurations> slnConfigs;
+			hr = td.slnBuild->get_SolutionConfigurations(&slnConfigs);
+			Assert::AreEqual(S_OK, hr);
+			long configCount;
+			hr = slnConfigs->get_Count(&configCount);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(2l, configCount);
+
+			wil::com_ptr_failfast<VxDTE::SolutionConfiguration> config48K, config128K;
+			for (long index = 1; index <= configCount; ++index)
+			{
+				VARIANT i; i.vt = VT_INT; i.intVal = index;
+				wil::com_ptr_failfast<VxDTE::SolutionConfiguration> slnConfig;
+				hr = slnConfigs->Item(i, &slnConfig);
+				Assert::AreEqual(S_OK, hr);
+				auto slnConfig2 = wil::com_query_failfast<VxDTE::SolutionConfiguration2>(slnConfig);
+				wil::unique_bstr platformName;
+				hr = slnConfig2->get_PlatformName(&platformName);
+				Assert::AreEqual(S_OK, hr);
+				if (wcscmp(platformName.get(), L"ZX Spectrum 48K") == 0)
+					config48K = slnConfig;
+				else if (wcscmp(platformName.get(), L"ZX Spectrum 128K") == 0)
+					config128K = slnConfig;
+			}
+			Assert::IsNotNull(config48K.get());
+			Assert::IsNotNull(config128K.get());
+
+			wil::unique_bstr preincludePath;
+			hr = proj.query<IVsProject>()->GetMkDocument(VSITEMID_PREINCLUDE, &preincludePath);
+			Assert::AreEqual(S_OK, hr);
+
+			hr = config48K->Activate();
+			Assert::AreEqual(S_OK, hr);
+			auto content = ReadAllText(preincludePath.get());
+			Assert::IsNotNull(strstr(content.get(), "DEVICE ZXSPECTRUM48"));
+
+			hr = config128K->Activate();
+			Assert::AreEqual(S_OK, hr);
+			content = ReadAllText(preincludePath.get());
+			Assert::IsNotNull(strstr(content.get(), "DEVICE ZXSPECTRUM128"));
+		}
+
 		TEST_METHOD(Macro_CircularReference)
 		{
 			TD td(classPath.get(), L"Macro_CircularReference", TemplatePath_TwoConfigsOneFile.get());

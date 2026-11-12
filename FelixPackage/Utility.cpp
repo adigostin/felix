@@ -12,6 +12,14 @@ const wchar_t MacroProjectDir[] = L"PROJECT_DIR";
 const wchar_t MacroConfigName[] = L"CONFIG_NAME";
 const wchar_t MacroOutputDir[] = L"OUTPUT_DIR";
 const wchar_t MacroOutputFilename[] = L"OUTPUT_FILENAME";
+const wchar_t* const PlatformNames[SpectrumVariantCount] = {
+	nullptr,
+	L"ZX Spectrum 48K",
+	L"ZX Spectrum 128K",
+	nullptr,
+	nullptr,
+	nullptr,
+};
 
 HRESULT InsertFolderNode (IProjectNode* proj, IParentNode* parent, IChildNode* insertBefore, IChildNode* insertAfter, IFolderNode* newFolder);
 
@@ -1136,7 +1144,18 @@ static HRESULT ResolveTemplateFileMacro (const wchar_t* macroFrom, const wchar_t
 	}
 	else if (macro == L"DEVICE")
 	{
-		valueOut = wil::make_process_heap_string_nothrow(L"ZXSPECTRUM48"); RETURN_IF_NULL_ALLOC(valueOut);
+		SpectrumVariant platform;
+		hr = config->AsProjectConfigProperties()->get_Platform(&platform); RETURN_IF_FAILED(hr);
+		if (platform == SpectrumVariant48K)
+		{
+			valueOut = wil::make_process_heap_string_nothrow(L"ZXSPECTRUM48"); RETURN_IF_NULL_ALLOC(valueOut);
+		}
+		else if (platform == SpectrumVariant128)
+		{
+			valueOut = wil::make_process_heap_string_nothrow(L"ZXSPECTRUM128"); RETURN_IF_NULL_ALLOC(valueOut);
+		}
+		else
+			RETURN_HR(E_NOTIMPL);
 		return S_OK;
 	}
 	else if (macro == L"ENTRY_POINT_ADDR")

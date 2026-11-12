@@ -447,6 +447,54 @@ namespace UITests
 	}
 	#pragma endregion
 
+	LONG GetBstrArraySize(VARIANT& values)
+	{
+		Assert::IsTrue((values.vt & VT_ARRAY) != 0);
+		Assert::IsNotNull(values.parray);
+		Assert::AreEqual<UINT>(1, SafeArrayGetDim(values.parray));
+
+		VARTYPE elementType;
+		auto hr = SafeArrayGetVartype(values.parray, &elementType);
+		Assert::AreEqual(S_OK, hr);
+		Assert::IsTrue(elementType == VT_BSTR || elementType == VT_VARIANT);
+
+		LONG lowerBound, upperBound;
+		hr = SafeArrayGetLBound(values.parray, 1, &lowerBound);
+		Assert::AreEqual(S_OK, hr);
+		hr = SafeArrayGetUBound(values.parray, 1, &upperBound);
+		Assert::AreEqual(S_OK, hr);
+		Assert::IsTrue(upperBound >= lowerBound);
+		return upperBound - lowerBound + 1;
+	}
+
+	wil::unique_bstr GetBstrArrayElement(VARIANT& values, LONG index)
+	{
+		LONG size = GetBstrArraySize(values);
+		Assert::IsTrue(index >= 0 && index < size);
+
+		LONG lowerBound;
+		auto hr = SafeArrayGetLBound(values.parray, 1, &lowerBound);
+		Assert::AreEqual(S_OK, hr);
+		LONG arrayIndex = lowerBound + index;
+
+		VARTYPE elementType;
+		hr = SafeArrayGetVartype(values.parray, &elementType);
+		Assert::AreEqual(S_OK, hr);
+		if (elementType == VT_BSTR)
+		{
+			BSTR element = nullptr;
+			hr = SafeArrayGetElement(values.parray, &arrayIndex, &element);
+			Assert::AreEqual(S_OK, hr);
+			return wil::unique_bstr(element);
+		}
+
+		wil::unique_variant element;
+		hr = SafeArrayGetElement(values.parray, &arrayIndex, &element);
+		Assert::AreEqual(S_OK, hr);
+		Assert::AreEqual<VARTYPE>(VT_BSTR, element.vt);
+		return wil::make_bstr_failfast(element.bstrVal);
+	}
+
 	static void __stdcall WilLoggingCallback (const wil::FailureInfo& fi) noexcept
 	{
 		Assert::Fail(fi.pszMessage);

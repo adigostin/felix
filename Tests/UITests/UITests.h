@@ -19,6 +19,8 @@ namespace UITests
 	extern wil::unique_process_heap_string TemplatePath_EmptyProject;
 	extern wil::unique_process_heap_string TemplatePath_EmptyFile;
 	extern LPCOLESTR TemplateEmptyFile[1];
+	LONG GetBstrArraySize(VARIANT& values);
+	wil::unique_bstr GetBstrArrayElement(VARIANT& values, LONG index);
 
 	struct VSInstance
 	{

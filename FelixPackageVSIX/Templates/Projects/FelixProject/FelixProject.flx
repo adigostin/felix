@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Z80Project AutoOpenFiles="start.asm">
-  <Configurations>
-    <Configuration ConfigName="Debug" PlatformName="ZX Spectrum 48K">
-      <AssemblerProperties BaseAddress="32768" EntryPointAddress="start" SaveListing="True" ListingFilename="output.lst" />
-    </Configuration>
-  </Configurations>
-  <Items>
-    <File Path="lib.asm" BuildTool="Assembler" />
-    <File Path="start.asm" BuildTool="Assembler" />
-  </Items>
+	<Configurations>
+		<Configuration ConfigName="Debug" PlatformName="ZX Spectrum 48K">
+			<AssemblerProperties BaseAddress="32768" EntryPointAddress="start" SaveListing="True" ListingFilename="output.lst" />
+		</Configuration>
+		<Configuration ConfigName="Debug" PlatformName="ZX Spectrum 128K">
+			<AssemblerProperties BaseAddress="32768" EntryPointAddress="start" SaveListing="True" ListingFilename="output.lst" />
+		</Configuration>
+	</Configurations>
+	<Items>
+		<File Path="lib.asm" BuildTool="Assembler" />
+		<File Path="start.asm" BuildTool="Assembler" />
+	</Items>
 </Z80Project>

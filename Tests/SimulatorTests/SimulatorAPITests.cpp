@@ -105,6 +105,49 @@ namespace SimulatorTests
 			Assert::IsTrue(snapshot.try_push_back(byte));
 	}
 
+	static void AppendSna128KSnapshot(vector_nothrow<uint8_t>& snapshot, uint8_t currentBank)
+	{
+		constexpr size_t headerSize = 27;
+		constexpr size_t bankSize = 0x4000;
+		const size_t remainingBankCount = currentBank == 2 || currentBank == 5 ? 6 : 5;
+		const size_t snapshotSize = headerSize + 3 * bankSize + 4 + remainingBankCount * bankSize;
+		Assert::IsTrue(snapshot.try_resize(snapshotSize));
+		memset(snapshot.data(), 0, snapshotSize);
+		snapshot[22] = 0x5A; // A register in the SNA header's AF word.
+
+		size_t offset = headerSize;
+		auto appendBank = [&](uint8_t bank)
+		{
+			memset(snapshot.data() + offset, 0x40 + bank, bankSize);
+			if (bank == currentBank)
+			{
+				snapshot[offset] = 0x32; // LD (0xC100),A
+				snapshot[offset + 1] = 0x00;
+				snapshot[offset + 2] = 0xC1;
+				snapshot[offset + 3] = 0x18; // JR back to the write instruction.
+				snapshot[offset + 4] = 0xFB;
+			}
+			offset += bankSize;
+		};
+
+		appendBank(5);
+		appendBank(2);
+		appendBank(currentBank);
+		snapshot[offset] = 0x00; // PC = 0xC000
+		snapshot[offset + 1] = 0xC0;
+		snapshot[offset + 2] = currentBank;
+		offset += 4; // PC, 7FFD paging state, and TR-DOS ROM state.
+
+		for (uint8_t bank = 0; bank < 8; bank++)
+		{
+			if (bank == 2 || bank == 5 || bank == currentBank)
+				continue;
+			memset(snapshot.data() + offset, 0x40 + bank, bankSize);
+			offset += bankSize;
+		}
+		Assert::AreEqual(snapshotSize, offset);
+	}
+
 	static void AppendCompressedPage(vector_nothrow<uint8_t>& snapshot, uint8_t page, uint32_t decompressedSize, uint8_t value)
 	{
 		vector_nothrow<uint8_t> compressed;
@@ -552,6 +595,59 @@ namespace SimulatorTests
 		{
 			auto simulator = MakeSimulator();
 			VerifyResetWhileRunning(simulator.get(), UINT32_MAX);
+		}
+
+		TEST_METHOD(LoadSna128KRestoresSelectedBankAndExecutesSnapshotCode)
+		{
+			TempFile file(L".sna");
+			auto simulator = MakeSimulator();
+			static constexpr uint8_t selectedBanks[] = { 2, 5, 3 };
+
+			for (uint8_t selectedBank : selectedBanks)
+			{
+				vector_nothrow<uint8_t> snapshot;
+				AppendSna128KSnapshot(snapshot, selectedBank);
+				file.Write(snapshot);
+				Assert::AreEqual(S_OK, simulator->LoadFile(file.Path()));
+
+				SpectrumVariant variant;
+				Assert::AreEqual(S_OK, simulator->GetVariant(&variant));
+				Assert::AreEqual((int)SpectrumVariant128, (int)variant);
+				UINT16 pc;
+				Assert::AreEqual(S_OK, simulator->GetPC(&pc));
+				Assert::AreEqual<UINT16>(0xC000, pc);
+				Assert::AreEqual<uint8_t>(selectedBank == 5 ? 0x32 : 0x45, ReadMemory(simulator, 0x4000));
+				Assert::AreEqual<uint8_t>(selectedBank == 2 ? 0x32 : 0x42, ReadMemory(simulator, 0x8000));
+				Assert::AreEqual<uint8_t>(0x32, ReadMemory(simulator, 0xC000));
+
+				Assert::AreEqual(S_OK, simulator->SimulateOne());
+				Assert::AreEqual<uint8_t>(0x5A, ReadMemory(simulator, 0xC100));
+				Assert::AreEqual(S_OK, simulator->GetPC(&pc));
+				Assert::AreEqual<UINT16>(0xC003, pc);
+			}
+		}
+
+		TEST_METHOD(LoadSna128KWhileRunning)
+		{
+			vector_nothrow<uint8_t> snapshot;
+			AppendSna128KSnapshot(snapshot, 3);
+
+			TempFile file(L".sna");
+			file.Write(snapshot);
+			auto simulator = MakeSimulator();
+			Assert::AreEqual(S_OK, simulator->Reset(0x8000, SpectrumVariant48K));
+			static constexpr uint8_t loop[] = { 0x18, 0xFE };
+			Assert::AreEqual(S_OK, simulator->WriteMemoryBus(0x8000, static_cast<uint16_t>(sizeof(loop)), loop));
+			Assert::AreEqual(S_OK, simulator->SetSpeed(100));
+			Assert::AreEqual(S_OK, simulator->Resume(TRUE));
+			Assert::AreEqual(S_OK, simulator->LoadFile(file.Path()));
+			Assert::AreEqual(S_OK, simulator->Running_HR());
+			Assert::AreEqual(S_OK, simulator->Break());
+			Assert::AreEqual(S_FALSE, simulator->Running_HR());
+			SpectrumVariant variant;
+			Assert::AreEqual(S_OK, simulator->GetVariant(&variant));
+			Assert::AreEqual((int)SpectrumVariant128, (int)variant);
+			Assert::AreEqual<uint8_t>(0x5A, ReadMemory(simulator, 0xC100));
 		}
 
 	};

@@ -64,6 +64,29 @@ namespace UITests
 			}
 		};
 
+		static wil::com_ptr_failfast<VxDTE::Configuration> GetConfigurationByName(VxDTE::Configurations* configurations, PCWSTR name)
+		{
+			long count;
+			auto hr = configurations->get_Count(&count);
+			Assert::AreEqual(S_OK, hr);
+			for (long i = 1; i <= count; i++)
+			{
+				VARIANT index;
+				index.vt = VT_I4;
+				index.lVal = i;
+				wil::com_ptr_failfast<VxDTE::Configuration> configuration;
+				hr = configurations->Item(index, &configuration);
+				Assert::AreEqual(S_OK, hr);
+				wil::unique_bstr configurationName;
+				hr = configuration->get_ConfigurationName(&configurationName);
+				Assert::AreEqual(S_OK, hr);
+				if (!wcscmp(configurationName.get(), name))
+					return configuration;
+			}
+			Assert::Fail(L"Configuration was not found.");
+			return {};
+		}
+
 		TEST_METHOD(AddItemNew)
 		{
 			HRESULT hr;
@@ -710,6 +733,102 @@ namespace UITests
 			Assert::IsTrue(SUCCEEDED(hr));
 			Assert::AreEqual<VARTYPE>(VT_BSTR, projDir.vt);
 			Assert::AreEqual(L'\\', projDir.bstrVal[SysStringLen(projDir.bstrVal) - 1]);
+		}
+
+		TEST_METHOD(LoadLegacyPlatformName)
+		{
+			HRESULT hr;
+			TestData td (L"LoadLegacyPlatformName", TemplatePath_EmptyProject.get());
+
+			wil::com_ptr_failfast<IVsCfg> cfg;
+			ULONG actual;
+			VSCFGFLAGS flags;
+			hr = td.proj.query<IVsCfgProvider>()->GetCfgs(1, cfg.addressof(), &actual, &flags);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<ULONG>(1, actual);
+
+			SpectrumVariant platform;
+			hr = cfg.query<IProjectConfigProperties>()->get_Platform(&platform);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<int>(SpectrumVariant48K, platform);
+		}
+
+		TEST_METHOD(AddCfgsOfPlatformName_ClonesAllConfigs)
+		{
+			HRESULT hr;
+			TestData td (L"AddCfgsOfPlatformName_ClonesAllConfigs", TemplatePath_TwoConfigsOneFile.get());
+
+			wil::com_ptr_failfast<VxDTE::ConfigurationManager> configurationManager;
+			hr = td.dteproj->get_ConfigurationManager(&configurationManager);
+			Assert::AreEqual(S_OK, hr);
+			wil::unique_variant platformNames;
+			hr = configurationManager->get_PlatformNames(&platformNames);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<LONG>(1, GetBstrArraySize(platformNames));
+			wil::unique_bstr sourcePlatformName = GetBstrArrayElement(platformNames, 0);
+			wil::unique_variant supportedPlatforms;
+			hr = configurationManager->get_SupportedPlatforms(&supportedPlatforms);
+			Assert::AreEqual(S_OK, hr);
+			wil::unique_bstr targetPlatformName = GetBstrArrayElement(supportedPlatforms, 1);
+
+			wil::com_ptr_failfast<VxDTE::Configurations> targetConfigs;
+			hr = configurationManager->AddPlatform(targetPlatformName.get(), sourcePlatformName.get(), VARIANT_TRUE, &targetConfigs);
+			Assert::AreEqual(S_OK, hr);
+			long targetConfigCount;
+			hr = targetConfigs->get_Count(&targetConfigCount);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<long>(2, targetConfigCount);
+			auto firstClonedCfg = GetConfigurationByName(targetConfigs, L"Debug");
+			auto secondClonedCfg = GetConfigurationByName(targetConfigs, L"Release");
+			wil::unique_bstr firstClonedPlatform;
+			hr = firstClonedCfg->get_PlatformName(&firstClonedPlatform);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(0, wcscmp(targetPlatformName.get(), firstClonedPlatform.get()));
+			wil::unique_bstr secondClonedPlatform;
+			hr = secondClonedCfg->get_PlatformName(&secondClonedPlatform);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual(0, wcscmp(targetPlatformName.get(), secondClonedPlatform.get()));
+		}
+
+		TEST_METHOD(DeleteCfgsOfPlatformName_DeletesAllConfigs)
+		{
+			HRESULT hr;
+			TestData td (L"DeleteCfgsOfPlatformName_DeletesAllConfigs", TemplatePath_TwoConfigsOneFile.get());
+
+			wil::com_ptr_failfast<VxDTE::ConfigurationManager> configurationManager;
+			hr = td.dteproj->get_ConfigurationManager(&configurationManager);
+			Assert::AreEqual(S_OK, hr);
+			wil::unique_variant platformNames;
+			hr = configurationManager->get_PlatformNames(&platformNames);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<LONG>(1, GetBstrArraySize(platformNames));
+			wil::unique_bstr sourcePlatformName = GetBstrArrayElement(platformNames, 0);
+			wil::unique_variant supportedPlatforms;
+			hr = configurationManager->get_SupportedPlatforms(&supportedPlatforms);
+			Assert::AreEqual(S_OK, hr);
+			wil::unique_bstr targetPlatformName = GetBstrArrayElement(supportedPlatforms, 1);
+
+			wil::com_ptr_failfast<VxDTE::Configurations> targetConfigs;
+			hr = configurationManager->AddPlatform(targetPlatformName.get(), sourcePlatformName.get(), VARIANT_TRUE, &targetConfigs);
+			Assert::AreEqual(S_OK, hr);
+			long targetConfigCount;
+			hr = targetConfigs->get_Count(&targetConfigCount);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<long>(2, targetConfigCount);
+			auto firstTargetCfg = GetConfigurationByName(targetConfigs, L"Debug");
+			auto secondTargetCfg = GetConfigurationByName(targetConfigs, L"Release");
+
+			hr = configurationManager->DeletePlatform(targetPlatformName.get());
+			Assert::AreEqual(S_OK, hr);
+			firstTargetCfg.reset();
+			secondTargetCfg.reset();
+			targetConfigs.reset();
+			wil::unique_variant remainingPlatformNames;
+			hr = configurationManager->get_PlatformNames(&remainingPlatformNames);
+			Assert::AreEqual(S_OK, hr);
+			Assert::AreEqual<LONG>(1, GetBstrArraySize(remainingPlatformNames));
+			wil::unique_bstr remainingPlatformName = GetBstrArrayElement(remainingPlatformNames, 0);
+			Assert::AreEqual(0, wcscmp(sourcePlatformName.get(), remainingPlatformName.get()));
 		}
 	};
 }

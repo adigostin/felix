@@ -43,4 +43,5 @@
 #define dispidNextVSItemIdDebug    35
 #define dispidAdditionalAsmOpts    36
 #define dispidSjasmCommandLine     37
+#define dispidPlatform             38
 #endif

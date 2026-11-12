@@ -20,6 +20,7 @@ class ProjectNode
 	, IPersistFileFormat       // includes IPersist
 	, IVsPersistHierarchyItem
 	, IVsGetCfgProvider
+	, IVsProjectCfgProvider
 	, IVsCfgProvider2          // includes IVsCfgProvider
 	, IProvideClassInfo
 	//, IConnectionPointContainer
@@ -323,6 +324,8 @@ public:
 		return enumChildren(this);
 	}
 
+	IUnknown* AsUnknown() { return static_cast<IVsUIHierarchy*>(this); }
+
 	#pragma region IUnknown
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
 	{
@@ -333,7 +336,7 @@ public:
 
 		if (   TryQI<IProjectNodeProperties>(this, riid, ppvObject)
 			|| TryQI<IDispatch>(static_cast<IProjectNodeProperties*>(this), riid, ppvObject)
-			|| TryQI<IUnknown>(static_cast<IVsUIHierarchy*>(this), riid, ppvObject)
+			|| TryQI<IUnknown>(AsUnknown(), riid, ppvObject)
 			|| TryQI<IVsHierarchy>(this, riid, ppvObject)
 			|| TryQI<IVsUIHierarchy>(this, riid, ppvObject)
 			|| TryQI<IPersist>(this, riid, ppvObject)
@@ -342,7 +345,8 @@ public:
 			|| TryQI<IVsProject2>(this, riid, ppvObject)
 			|| TryQI<IProvideClassInfo>(this, riid, ppvObject)
 			|| TryQI<IVsGetCfgProvider>(this, riid, ppvObject)
-			|| TryQI<IVsCfgProvider>(this, riid, ppvObject)
+			|| TryQI<IVsProjectCfgProvider>(static_cast<IVsProjectCfgProvider*>(this), riid, ppvObject)
+			|| TryQI<IVsCfgProvider>(static_cast<IVsCfgProvider2*>(this), riid, ppvObject)
 			|| TryQI<IVsCfgProvider2>(this, riid, ppvObject)
 			//|| TryQI<IConnectionPointContainer>(this, riid, ppvObject)
 			|| TryQI<IVsHierarchyDeleteHandler3>(this, riid, ppvObject)
@@ -668,6 +672,9 @@ public:
 					return E_FAIL;
 			}
 
+			if (propid == VSHPROPID_ConfigurationProvider) // -2036
+				return InitVariantFromUnknown(AsUnknown(), pvar);
+
 			if (propid == VSHPROPID_IsHiddenItem) // -2043
 				return InitVariantFromBoolean (FALSE, pvar);
 
@@ -724,7 +731,6 @@ public:
 				|| propid == VSHPROPID_SortPriority               // -2022 - requested when reverting in Git an open project file
 				|| propid == VSHPROPID_UserContext                // -2023
 				|| propid == VSHPROPID_StateIconIndex             // -2029
-				|| propid == VSHPROPID_ConfigurationProvider      // -2036
 				|| propid == VSHPROPID_ImplantHierarchy           // -2037 - "This property is optional."
 				|| propid == VSHPROPID_FirstVisibleChild          // -2041 - We show all children, so no need to handle this.
 				|| propid == VSHPROPID_OverlayIconIndex           // -2048
@@ -1820,7 +1826,7 @@ public:
 					if (SUCCEEDED(fn->get_Path(&existingPath)) && !_wcsicmp(path, existingPath.get()))
 						return S_OK;
 				}
-				return S_FALSE;
+					return S_FALSE;
 			}, nullptr);
 		if (hr == S_OK)
 			return SetFelixErrorInfo(HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), IDS_FILE_ALREADY_IN_PROJECT, path);
@@ -2041,8 +2047,28 @@ public:
 	#pragma region IVsGetCfgProvider
 	virtual HRESULT STDMETHODCALLTYPE GetCfgProvider (IVsCfgProvider** ppCfgProvider) override
 	{
-		*ppCfgProvider = this;
-		AddRef();
+		return copy_to(static_cast<IVsCfgProvider2*>(this), ppCfgProvider);
+	}
+	#pragma endregion
+
+	#pragma region IVsProjectCfgProvider
+	virtual HRESULT STDMETHODCALLTYPE OpenProjectCfg(LPCOLESTR szProjectCfgCanonicalName, IVsProjectCfg** ppIVsProjectCfg) override
+	{
+		RETURN_HR_IF(E_INVALIDARG, !szProjectCfgCanonicalName || !ppIVsProjectCfg);
+		const wchar_t* separator = wcschr(szProjectCfgCanonicalName, L'|');
+		RETURN_HR_IF(E_INVALIDARG, !separator || separator == szProjectCfgCanonicalName || !separator[1] || wcschr(separator + 1, L'|'));
+		wil::unique_process_heap_string configName;
+		auto configNameLength = static_cast<int>(separator - szProjectCfgCanonicalName);
+		auto hr = wil::str_printf_nothrow(configName, L"%.*s", configNameLength, szProjectCfgCanonicalName); RETURN_IF_FAILED(hr);
+		com_ptr<IVsCfg> config;
+		hr = GetCfgOfName(configName.get(), separator + 1, &config); RETURN_IF_FAILED(hr);
+		return config->QueryInterface(IID_PPV_ARGS(ppIVsProjectCfg));
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE get_UsesIndependentConfigurations(BOOL* pfUsesIndependentConfigurations) override
+	{
+		RETURN_HR_IF(E_POINTER, !pfUsesIndependentConfigurations);
+		*pfUsesIndependentConfigurations = TRUE;
 		return S_OK;
 	}
 	#pragma endregion
@@ -2074,6 +2100,14 @@ public:
 		return GetTypeInfo(0, 0, ppTI);
 	}
 	#pragma endregion
+
+	HRESULT AdviseSinks(IProjectConfig* config, ConfigTokens& tokens)
+	{
+		auto hr = AdviseSink<IPropertyChangeSink>(config, _weakRefToThis, &tokens.config); RETURN_IF_FAILED(hr);
+		hr = AdviseSink<IPropertyChangeSink>(config->AsmProps(), _weakRefToThis, &tokens.asmPage); RETURN_IF_FAILED(hr);
+		hr = AdviseSink<IPropertyChangeSink>(config->GeneralProps(), _weakRefToThis, &tokens.generalPage); RETURN_IF_FAILED(hr);
+		return S_OK;
+	}
 
 	#pragma region IVsCfgProvider2
 	virtual HRESULT STDMETHODCALLTYPE GetCfgNames(ULONG celt, BSTR rgbstr[], ULONG* pcActual) override
@@ -2108,14 +2142,23 @@ public:
 		vector_nothrow<wil::unique_bstr> names;
 		for (auto& c : _configs)
 		{
-			wil::unique_bstr n;
-			auto hr = c.first->AsProjectConfigProperties()->get_PlatformName(&n); RETURN_IF_FAILED(hr);
-			auto it = names.find_if([n=n.get()](auto& en) { return !wcscmp(en.get(), n); });
+			SpectrumVariant platform;
+			auto hr = c.first->AsProjectConfigProperties()->get_Platform(&platform); RETURN_IF_FAILED(hr);
+			if (platform >= _countof(PlatformNames) || !PlatformNames[platform])
+			{
+				LOG_HR(E_INVALIDARG);
+				continue;
+			}
+
+			LPCWSTR n = PlatformNames[platform];
+			auto it = names.find_if([n](auto& en) { return !wcscmp(en.get(), n); });
 			if (it == names.end())
 			{
-				bool pushed = names.try_push_back(std::move(n)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+				auto nn = wil::make_bstr_nothrow(n); RETURN_HR_IF(E_OUTOFMEMORY, !nn);
+				bool pushed = names.try_push_back(std::move(nn)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 			}
 		}
+
 		if (celt == 0)
 		{
 			*pcActual = names.size();
@@ -2133,10 +2176,13 @@ public:
 	{
 		for (auto& cfg : _configs)
 		{
-			wil::unique_bstr cn, pn;
+			wil::unique_bstr cn;
 			auto hr = cfg.first->AsProjectConfigProperties()->get_ConfigName(&cn); RETURN_IF_FAILED(hr);
-			hr = cfg.first->AsProjectConfigProperties()->get_PlatformName(&pn); RETURN_IF_FAILED(hr);
-			if (!wcscmp(pszCfgName, cn.get()) && !wcscmp(pszPlatformName, pn.get()))
+			SpectrumVariant platform;
+			hr = cfg.first->AsProjectConfigProperties()->get_Platform(&platform); RETURN_IF_FAILED(hr);
+			if (static_cast<size_t>(platform) >= _countof(PlatformNames) || !PlatformNames[platform])
+				continue;
+			if (!wcscmp(pszCfgName, cn.get()) && !wcscmp(pszPlatformName, PlatformNames[platform]))
 			{
 				auto hr = cfg.first->QueryInterface(ppCfg); RETURN_IF_FAILED(hr);
 				return S_OK;
@@ -2180,9 +2226,7 @@ public:
 		hr = newConfig->AsProjectConfigProperties()->put_ConfigName(newConfigNameBstr.get()); RETURN_IF_FAILED(hr);
 
 		ConfigTokens tokens;
-		hr = AdviseSink<IPropertyChangeSink>(newConfig, _weakRefToThis, &tokens.config); RETURN_IF_FAILED(hr);
-		hr = AdviseSink<IPropertyChangeSink>(newConfig->AsmProps(), _weakRefToThis, &tokens.asmPage); RETURN_IF_FAILED(hr);
-		hr = AdviseSink<IPropertyChangeSink>(newConfig->GeneralProps(), _weakRefToThis, &tokens.generalPage); RETURN_IF_FAILED(hr);
+		hr = AdviseSinks(newConfig, tokens); RETURN_IF_FAILED(hr);
 
 		bool pushed = _configs.try_push_back({ std::move(newConfig), std::move(tokens) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
 		auto removeConfig = wil::scope_exit([this] { _configs.remove_back(); });
@@ -2262,17 +2306,154 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE AddCfgsOfPlatformName(LPCOLESTR pszPlatformName, LPCOLESTR pszClonePlatformName) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		RETURN_HR_IF(E_INVALIDARG, !pszPlatformName || !pszPlatformName[0]);
+		RETURN_HR_IF(E_INVALIDARG, !pszClonePlatformName || !pszClonePlatformName[0]);
+		SpectrumVariant toPlatform = SpectrumVariantCount;
+		SpectrumVariant fromPlatform = SpectrumVariantCount;
+		for (size_t i = 0; i < _countof(PlatformNames); i++)
+		{
+			if (PlatformNames[i] && !wcscmp(PlatformNames[i], pszPlatformName))
+				toPlatform = static_cast<SpectrumVariant>(i);
+			if (PlatformNames[i] && !wcscmp(PlatformNames[i], pszClonePlatformName))
+				fromPlatform = static_cast<SpectrumVariant>(i);
+		}
+		RETURN_HR_IF(E_INVALIDARG, toPlatform == SpectrumVariantCount || fromPlatform == SpectrumVariantCount);
+		RETURN_HR_IF(E_INVALIDARG, toPlatform == fromPlatform);
+
+		for (auto& c : _configs)
+		{
+			SpectrumVariant existingPlatform;
+			auto hr = c.first->AsProjectConfigProperties()->get_Platform(&existingPlatform); RETURN_IF_FAILED(hr);
+			RETURN_HR_IF(E_INVALIDARG, existingPlatform == toPlatform);
+		}
+
+		vector_nothrow<std::pair<com_ptr<IProjectConfig>, ConfigTokens>> newConfigs;
+		HRESULT hr;
+		for (auto& c : _configs)
+		{
+			SpectrumVariant existingPlatform;
+			hr = c.first->AsProjectConfigProperties()->get_Platform(&existingPlatform); RETURN_IF_FAILED(hr);
+			if (existingPlatform != fromPlatform)
+				continue;
+
+			wil::unique_bstr configName;
+			hr = c.first->AsProjectConfigProperties()->get_ConfigName(&configName); RETURN_IF_FAILED(hr);
+
+			com_ptr<IProjectConfig> newConfig;
+			hr = MakeProjectConfig(&newConfig); RETURN_IF_FAILED_EXPECTED(hr);
+			auto stream = com_ptr(SHCreateMemStream(nullptr, 0)); RETURN_IF_NULL_ALLOC(stream);
+			hr = SaveToXml(c.first->AsProjectConfigProperties(), L"Temp", 0, stream); RETURN_IF_FAILED_EXPECTED(hr);
+			hr = stream->Seek({ 0 }, STREAM_SEEK_SET, nullptr); RETURN_IF_FAILED(hr);
+			hr = LoadFromXml(newConfig->AsProjectConfigProperties(), L"Temp", stream); RETURN_IF_FAILED_EXPECTED(hr);
+			hr = newConfig->AsProjectConfigProperties()->put_Platform(toPlatform); RETURN_IF_FAILED(hr);
+
+			ConfigTokens tokens;
+			hr = AdviseSinks(newConfig, tokens); RETURN_IF_FAILED(hr);
+
+			bool pushed = newConfigs.try_push_back({ std::move(newConfig), std::move(tokens) }); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		}
+
+		RETURN_HR_IF(E_INVALIDARG, newConfigs.empty());
+		bool reserved = _configs.try_reserve(_configs.size() + newConfigs.size()); RETURN_HR_IF(E_OUTOFMEMORY, !reserved);
+		const size_t originalSize = _configs.size();
+		auto removeNewConfigs = wil::scope_exit([this, originalSize]
+			{
+				while (_configs.size() > originalSize)
+					_configs.remove_back();
+			});
+		for (auto& c : newConfigs)
+		{
+			bool pushed = _configs.try_push_back(std::move(c)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		}
+		for (size_t i = originalSize; i < _configs.size(); i++)
+		{
+			hr = _configs[i].first->SetSite(this); RETURN_IF_FAILED(hr);
+		}
+
+		_isDirty = true;
+		removeNewConfigs.release();
+		for (size_t i = originalSize; i < _configs.size(); i++)
+		{
+			wil::unique_bstr name;
+			hr = _configs[i].first->AsProjectConfigProperties()->get_ConfigName(&name); RETURN_IF_FAILED(hr);
+			for (auto& sink : _cfgProviderEventSinks)
+				sink.second->OnCfgNameAdded(name.get());
+		}
+
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE DeleteCfgsOfPlatformName(LPCOLESTR pszPlatformName) override
 	{
-		RETURN_HR(E_NOTIMPL);
+		RETURN_HR_IF(E_INVALIDARG, !pszPlatformName || !pszPlatformName[0]);
+		SpectrumVariant platform = SpectrumVariantCount;
+		for (size_t i = 0; i < _countof(PlatformNames); i++)
+		{
+			if (PlatformNames[i] && !wcscmp(PlatformNames[i], pszPlatformName))
+				platform = static_cast<SpectrumVariant>(i);
+		}
+		RETURN_HR_IF(E_INVALIDARG, platform == SpectrumVariantCount);
+
+		vector_nothrow<IProjectConfig*> configsToDelete;
+		vector_nothrow<wil::unique_bstr> deletedConfigNames;
+		HRESULT hr;
+		for (auto& c : _configs)
+		{
+			SpectrumVariant existingPlatform;
+			hr = c.first->AsProjectConfigProperties()->get_Platform(&existingPlatform); RETURN_IF_FAILED(hr);
+			if (existingPlatform != platform)
+				continue;
+
+			wil::unique_bstr configName;
+			hr = c.first->AsProjectConfigProperties()->get_ConfigName(&configName); RETURN_IF_FAILED(hr);
+			bool pushed = configsToDelete.try_push_back(c.first.get()); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+			pushed = deletedConfigNames.try_push_back(std::move(configName)); RETURN_HR_IF(E_OUTOFMEMORY, !pushed);
+		}
+		RETURN_HR_IF(E_INVALIDARG, configsToDelete.empty());
+
+		for (auto configToDelete : configsToDelete)
+		{
+			auto it = _configs.find_if([configToDelete](auto& c) { return c.first.get() == configToDelete; });
+			RETURN_HR_IF(E_UNEXPECTED, it == _configs.end());
+			_configs.erase(it);
+		}
+
+		_isDirty = true;
+		for (auto& name : deletedConfigNames)
+			for (auto& sink : _cfgProviderEventSinks)
+				sink.second->OnCfgNameDeleted(name.get());
+
+		return S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetSupportedPlatformNames(ULONG celt, BSTR rgbstr[], ULONG* pcActual) override
 	{
-		return GetPlatformNames(celt, rgbstr, pcActual);
+		ULONG supportedCount = 0;
+		for (auto platformName : PlatformNames)
+			if (platformName)
+				supportedCount++;
+
+		if (celt == 0)
+		{
+			*pcActual = supportedCount;
+			return S_OK;
+		}
+
+		ULONG i = 0;
+		for (auto platformName : PlatformNames)
+		{
+			if (!platformName)
+				continue;
+
+			if (i == celt)
+				break;
+
+			rgbstr[i] = SysAllocString(platformName); RETURN_IF_NULL_ALLOC(rgbstr[i]);
+			++i;
+		}
+		*pcActual = i;
+
+		return (i < celt) ? S_FALSE : S_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE GetCfgProviderProperty(VSCFGPROPID propid, VARIANT* pvar) override
@@ -2284,9 +2465,9 @@ public:
 		if (propid == VSCFGPROPID_SupportsCfgRename)
 			return InitVariantFromBoolean(TRUE, pvar);
 		if (propid == VSCFGPROPID_SupportsPlatformAdd)
-			return InitVariantFromBoolean(FALSE, pvar);
+			return InitVariantFromBoolean(TRUE, pvar);
 		if (propid == VSCFGPROPID_SupportsPlatformDelete)
-			return InitVariantFromBoolean(FALSE, pvar);
+			return InitVariantFromBoolean(TRUE, pvar);
 
 		RETURN_HR(E_NOTIMPL);
 	}
@@ -2975,7 +3156,16 @@ public:
 				}
 			}
 			else if (auto genProps = wil::try_com_query_nothrow<IProjectConfigGeneralProperties>(pObject);
-				genProps && genProps == activeCfg->GeneralProps() && (dispID == dispidPlatformName || dispID == dispidOutputFileType))
+				genProps && genProps == activeCfg->GeneralProps() && dispID == dispidOutputFileType)
+			{
+				if (SUCCEEDED(activeCfg->AsmProps()->get_GeneratePrePostIncludeFiles(&generate)) && generate
+					&& SUCCEEDED(GetCountOfBuildToolAssemblerFiles(this, &count)) && count)
+				{
+					GeneratePrePostIncludeFiles(this);
+				}
+			}
+			else if (auto configProps = wil::try_com_query_nothrow<IProjectConfigProperties>(pObject);
+				configProps && configProps == activeCfg->AsProjectConfigProperties() && dispID == dispidPlatform)
 			{
 				if (SUCCEEDED(activeCfg->AsmProps()->get_GeneratePrePostIncludeFiles(&generate)) && generate
 					&& SUCCEEDED(GetCountOfBuildToolAssemblerFiles(this, &count)) && count)
@@ -3070,7 +3260,7 @@ public:
 	{
 		HRESULT hr;
 
-		if (pIVsHierarchy == this)
+		if (!pIVsHierarchy || pIVsHierarchy == this)
 		{
 			UINT count;
 			if (SUCCEEDED(GetCountOfBuildToolAssemblerFiles(this, &count)) && count && GetActiveCfgGeneratePrePostIncludeFiles(this) == S_OK)
@@ -3189,7 +3379,9 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE get_ConfigurationManager (VxDTE::ConfigurationManager **ppConfigurationManager) override
 	{
-		return E_NOTIMPL;
+		wil::com_ptr_nothrow<VxDTE::IVsExtensibility> extensibility;
+		auto hr = serviceProvider->QueryService(VxDTE::IID_IVsExtensibility, &extensibility); RETURN_IF_FAILED(hr);
+		return extensibility->GetConfigMgr(static_cast<IVsHierarchy*>(this), VSITEMID_ROOT, ppConfigurationManager);
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE get_Globals (VxDTE::Globals **ppGlobals) override

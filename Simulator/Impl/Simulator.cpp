@@ -1122,25 +1122,72 @@ public:
 
 		STATSTG stat;
 		hr = stream->Stat (&stat, STATFLAG_NONAME); RETURN_IF_FAILED_EXPECTED(hr);
-		if (stat.cbSize.QuadPart != sizeof(snapshot_file_header) + 48 * 1024)
-			return SetErrorInfo(E_FAIL, L"The file has an unrecognized size.\r\n(Only ZX Spectrum 48K files are supported for now.)");
+		constexpr uint64_t snapshot48KSize = sizeof(snapshot_file_header) + 48 * 1024;
+		constexpr uint64_t snapshot128KSize = snapshot48KSize + 4 + 5 * 16 * 1024;
+		constexpr uint64_t snapshot128KSizeWithDuplicateBank = snapshot48KSize + 4 + 6 * 16 * 1024;
+		if (stat.cbSize.QuadPart != snapshot48KSize
+			&& stat.cbSize.QuadPart != snapshot128KSize
+			&& stat.cbSize.QuadPart != snapshot128KSizeWithDuplicateBank)
+			return SetErrorInfo(E_FAIL, L"The file has an unrecognized size.\r\n(Only ZX Spectrum 48K and 128K files are supported.)");
 
 		snapshot_file_header header;
 		ULONG read;
 		hr = stream->Read (&header, (ULONG)sizeof(header), &read); RETURN_IF_FAILED(hr); RETURN_HR_IF(E_FAIL, read != sizeof(header));
 
-		auto buffer = wil::make_unique_hlocal_nothrow<uint8_t[]>(48 * 1024); RETURN_IF_NULL_ALLOC_EXPECTED(buffer);
+		auto buffer = wil::make_unique_hlocal_nothrow<uint8_t[]>(128 * 1024); RETURN_IF_NULL_ALLOC_EXPECTED(buffer);
 		hr = stream->Read(buffer.get(), 48 * 1024, &read); RETURN_IF_FAILED_EXPECTED(hr); RETURN_HR_IF(E_FAIL, read != 48 * 1024);
+
+		SpectrumVariant snapshotVariant = SpectrumVariant48K;
+		uint16_t snapshotPC = 0;
+		uint8_t pagingState = 0;
+		if (stat.cbSize.QuadPart != snapshot48KSize)
+		{
+			uint8_t currentBank;
+			uint8_t trDosRomPaged;
+			hr = stream->Read(&snapshotPC, sizeof(snapshotPC), &read); RETURN_IF_FAILED_EXPECTED(hr); RETURN_HR_IF(E_FAIL, read != sizeof(snapshotPC));
+			hr = stream->Read(&pagingState, sizeof(pagingState), &read); RETURN_IF_FAILED_EXPECTED(hr); RETURN_HR_IF(E_FAIL, read != sizeof(pagingState));
+			hr = stream->Read(&trDosRomPaged, sizeof(trDosRomPaged), &read); RETURN_IF_FAILED_EXPECTED(hr); RETURN_HR_IF(E_FAIL, read != sizeof(trDosRomPaged));
+			(void)trDosRomPaged;
+
+			currentBank = pagingState & 7;
+			uint32_t remainingBankCount = currentBank == 2 || currentBank == 5 ? 6 : 5;
+			uint64_t expectedSize = snapshot48KSize + 4 + remainingBankCount * 16 * 1024;
+			if (stat.cbSize.QuadPart != expectedSize)
+				return SetErrorInfo(E_FAIL, L"The file size does not match the selected 128K RAM bank.");
+
+			snapshotVariant = SpectrumVariant128;
+			memcpy(buffer.get() + currentBank * 0x4000, buffer.get() + 2 * 0x4000, 0x4000);
+			memcpy(buffer.get() + 5 * 0x4000, buffer.get(), 0x4000);
+			memcpy(buffer.get() + 2 * 0x4000, buffer.get() + 0x4000, 0x4000);
+			for (uint8_t bank = 0; bank < 8; bank++)
+			{
+				if (bank == 2 || bank == 5 || bank == currentBank)
+					continue;
+				hr = stream->Read(buffer.get() + bank * 0x4000, 0x4000, &read); RETURN_IF_FAILED_EXPECTED(hr); RETURN_HR_IF(E_FAIL, read != 0x4000);
+			}
+		}
 
 		unique_cotaskmem_bitmapinfo screen;
 		POINT beam;
 
 		// It's ok to catch by reference since the call to RunOnSimulatorThread is blocking (returns when the work is complete).
-		hr = RunOnSimulatorThread ([this, &header, buffer=buffer.get(), &screen, &beam]
+		hr = RunOnSimulatorThread ([&]
 			{
-				auto hr = ResetDevices(SpectrumVariant48K); RETURN_IF_FAILED(hr);
+				auto hr = ResetDevices(snapshotVariant); RETURN_IF_FAILED(hr);
 				_cpu->Reset();
-				hr = _ramDevice->WriteMemory(0x4000, 48 * 1024, buffer); RETURN_IF_FAILED(hr);
+				if (snapshotVariant == SpectrumVariant128)
+				{
+					for (uint8_t bank = 0; bank < 8; bank++)
+					{
+						ioBus.write(0x7FFD, bank);
+						hr = _ramDevice->WriteMemory(0xC000, 0x4000, buffer.get() + bank * 0x4000); RETURN_IF_FAILED(hr);
+					}
+					ioBus.write(0x7FFD, pagingState);
+				}
+				else
+				{
+					hr = _ramDevice->WriteMemory(0x4000, 48 * 1024, buffer.get()); RETURN_IF_FAILED(hr);
+				}
 
 				z80_register_set regs;
 				regs.halted = false;
@@ -1160,8 +1207,13 @@ public:
 				regs.main.af = header.af;
 				regs.sp      = header.sp;
 				regs.im      = header.im;
-				regs.pc = memoryBus.read_uint16(regs.sp);
-				regs.sp += 2;
+				if (snapshotVariant == SpectrumVariant128)
+					regs.pc = snapshotPC;
+				else
+				{
+					regs.pc = memoryBus.read_uint16(regs.sp);
+					regs.sp += 2;
+				}
 				ioBus.write(0x40FE, header.border & 7);
 				_cpu->SetZ80Registers(&regs);
 

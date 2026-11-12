@@ -10,7 +10,6 @@
 ; In the list of files passed to the assembler, this file comes first.
 
 	; This comes from the platform selected in the drop-down in the Standard toolbar.
-	; (Currently only ZX Spectrum 48K is supported.)
 	DEVICE %DEVICE%
 
 	; This comes from the Project Options -> Debugging -> BaseAddress.
